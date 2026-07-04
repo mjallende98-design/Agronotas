@@ -2181,17 +2181,19 @@ function vDatos(){
     <button class="btn sec chico" onclick="agregarPlantilla()">＋ Agregar plantilla</button>
   </div>`;
 
-  h += `<div class="card"><h2>🌧️ Lluvia automática del informe</h2>
-    <div class="muted">Con internet, el informe consulta los mm caídos en esta ubicación (Open-Meteo). Sin señal, usa tus registros de lluvia.</div>
+  h += `<div class="card"><h2>🌦️ Zona del clima y la lluvia</h2>
+    <div class="muted">De esta ubicación salen el pronóstico del Panel, la lluvia acumulada y la alerta de helada. Sin señal, se usan tus registros de lluvia.</div>
     <div class="grid2" style="margin-top:8px">
+      ${campoF("ll_nom","Nombre de la zona","text",D.lluviaLoc? (D.lluviaLoc.nom||"") : "",'placeholder="Ej: San Joaquín, Curacaví…"')}
       ${campoF("ll_lat","Latitud","text",D.lluviaLoc?D.lluviaLoc.lat:"",'inputmode="decimal" placeholder="-33.41230"')}
       ${campoF("ll_lng","Longitud","text",D.lluviaLoc?D.lluviaLoc.lng:"",'inputmode="decimal" placeholder="-71.13850"')}
     </div>
-    <div class="fila">
+    <div class="fila" style="flex-wrap:wrap">
+      <button class="btn sec chico" onclick="usarCuracavi()">🍊 Usar Curacaví</button>
       <button class="btn sec chico" onclick="lluviaGPS()">📍 Usar mi ubicación actual</button>
       <button class="btn chico" onclick="guardarLluviaLoc()">💾 Guardar</button>
     </div>
-    ${D.lluviaLoc? `<div class="muted" style="margin-top:6px">✓ Configurada: ${D.lluviaLoc.lat}, ${D.lluviaLoc.lng}</div>`:""}
+    ${D.lluviaLoc? `<div class="muted" style="margin-top:6px">✓ Zona actual: <b>${esc(zonaClima())}</b> (${D.lluviaLoc.lat}, ${D.lluviaLoc.lng})</div>` : `<div class="muted" style="margin-top:6px">✓ Zona actual: <b>Curacaví</b> (por defecto)</div>`}
   </div>`;
 
   h += `<div class="card"><h2>📤 Exportar para informes</h2>
@@ -2320,7 +2322,13 @@ function csvExport(que){
 function guardarLluviaLoc(){
   const lat = parseFloat(v("ll_lat").replace(",",".")), lng = parseFloat(v("ll_lng").replace(",","."));
   if(isNaN(lat) || isNaN(lng)){ alert("Ingresa latitud y longitud válidas (ej: -33.41 y -71.14)."); return; }
-  D.lluviaLoc = {lat:+lat.toFixed(5), lng:+lng.toFixed(5)};
+  D.lluviaLoc = {lat:+lat.toFixed(5), lng:+lng.toFixed(5), nom:(v("ll_nom")||"").trim()};
+  D.climaCache = null; // zona nueva = pronóstico nuevo
+  guardar(); render();
+}
+function usarCuracavi(){ // opción fija de Curacaví, siempre a un toque
+  D.lluviaLoc = {lat:LOC_DEF.lat, lng:LOC_DEF.lng, nom:"Curacaví"};
+  D.climaCache = null;
   guardar(); render();
 }
 function lluviaGPS(){
@@ -2731,7 +2739,7 @@ function vPanel(){
         <div style="flex:1;cursor:pointer" onclick="nav.planVista='sem';nav.semanaIni=null;ir('plan')"><div style="font-size:24px;font-weight:700">${pend.length}</div><div class="muted" style="font-size:11.5px">pendientes</div></div>
         <div style="flex:1;cursor:pointer" onclick="nav.planVista='sem';nav.semanaIni=null;ir('plan')"><div style="font-size:24px;font-weight:700;color:var(--urg)">${atras.length}</div><div class="muted" style="font-size:11.5px">atrasadas</div></div>
       </div></div>
-    <div class="card"><div class="w-tit">Clima local</div>
+    <div class="card"><div class="w-tit">Clima · ${esc(zonaClima())}</div>
       <div id="climaW" class="muted" style="font-size:13px">cargando pronóstico…</div></div>
   </div>`;
 
@@ -2811,7 +2819,7 @@ function widgetHTML(w){
     const barras = meses.map((m,i)=>`<div style="text-align:center;flex:1">
       <div style="height:60px;display:flex;align-items:flex-end;justify-content:center"><div style="width:70%;background:var(--azul,#3268a8);border-radius:4px 4px 0 0;height:${Math.round(tot[i]/mx*58)+2}px"></div></div>
       <div style="font-size:10px;color:#9a9d98">${m.slice(5)}</div><div style="font-size:10.5px;font-weight:700">${tot[i]? num(tot[i]) : "·"}</div></div>`).join("");
-    return widgetCard(w, `<div style="display:flex;gap:4px">${barras}</div><div class="muted" style="font-size:10.5px;margin-top:4px">mm por mes, según tus registros de Lluvia.</div>`, "🌧 Lluvia por mes");
+    return widgetCard(w, `<div style="display:flex;gap:4px">${barras}</div><div class="muted" style="font-size:10.5px;margin-top:4px">mm por mes, según tus registros de Lluvia de ${esc(PROY? PROY.nombre : "este proyecto")} · zona clima: ${esc(zonaClima())}.</div>`, `🌧 Lluvia por mes · ${esc(zonaClima())}`);
   }
   if(w.tipo==="variedades"){
     const por = {};
@@ -3175,12 +3183,17 @@ function fmtArea(m2){
   if(m2>=10000) return num(m2/10000)+" ha";
   return Math.round(m2).toLocaleString("es-CL")+" m²";
 }
-/* pin tipo gota, tamaño según importancia (alta / normal / baja) */
+/* pin tipo alfiler: cabeza redonda pequeña + aguja fina, tamaño según importancia */
 function pinIcono(col, tam){
-  const [w,h] = {alta:[30,42], normal:[21,29], baja:[14,20]}[tam||"normal"] || [21,29];
-  const op = tam==="baja"? .8 : 1;
-  return L.divIcon({className:"pin-div", iconSize:[w,h], iconAnchor:[w/2,h], popupAnchor:[0,-h+6],
-    html:`<svg width="${w}" height="${h}" viewBox="0 0 24 34" style="opacity:${op};filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))"><path d="M12 1C6 1 1.5 5.6 1.5 11.5 1.5 20 12 33 12 33s10.5-13 10.5-21.5C22.5 5.6 18 1 12 1z" fill="${col}" stroke="#fff" stroke-width="1.6"/><circle cx="12" cy="11.5" r="4.2" fill="#fff"/></svg>`});
+  const [w,h] = {alta:[22,32], normal:[16,24], baja:[12,18]}[tam||"normal"] || [16,24];
+  const op = tam==="baja"? .8 : .95;
+  return L.divIcon({className:"pin-div", iconSize:[w,h], iconAnchor:[w/2,h], popupAnchor:[0,-h+4],
+    html:`<svg width="${w}" height="${h}" viewBox="0 0 20 30" style="opacity:${op};filter:drop-shadow(0 1.5px 2px rgba(0,0,0,.4))">
+      <line x1="10" y1="13" x2="10" y2="29" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>
+      <line x1="10" y1="13" x2="10" y2="29" stroke="${col}" stroke-width="1.4" stroke-linecap="round"/>
+      <circle cx="10" cy="8" r="6.3" fill="${col}" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="7.8" cy="5.8" r="1.9" fill="rgba(255,255,255,.5)"/>
+    </svg>`});
 }
 /* elegir la ubicación tocando un mapa (cuando el GPS anda flojo) */
 let pickMp = null, pickLL = null;
@@ -4032,6 +4045,10 @@ function mpNombreAuto(){
 }
 
 /* ---------- Clima: actual + T° min/max + 3 días + lluvia del mes ---------- */
+function zonaClima(){ // nombre de la zona de la que vienen clima y lluvia
+  const l = D.lluviaLoc;
+  return l? (l.nom || (l.lat + ", " + l.lng)) : "Curacaví";
+}
 async function cargarClima(){
   const el = document.getElementById("climaW");
   if(!el) return;
