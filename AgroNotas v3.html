@@ -328,6 +328,7 @@ function cargar(){
     D.gesagro = D.gesagro || null; // extracto importado del respaldo de GesAgro (carencias)
     D.ultimoRespaldo = D.ultimoRespaldo || null;
     D.noticias = D.noticias || null; // noticias e indicadores guardados para leer sin internet
+    D.climaCache = D.climaCache || null; // último pronóstico guardado para verlo sin señal
     D.notas.forEach(n=>{ n.docs = n.docs || []; n.audios = n.audios || []; n.check = n.check || []; });
     D.registros.forEach(r=>{ r.fotos = r.fotos || []; r.docs = r.docs || []; r.audios = r.audios || []; });
   }catch(e){ alert("Error leyendo datos guardados: "+e.message); D = defaults(); }
@@ -427,7 +428,9 @@ let modalGuardar = null;
 function abrirModal(titulo, html, onGuardar, txtBtn){
   modalGuardar = onGuardar;
   document.getElementById("capaModal").innerHTML = `
-  <div class="modal-fondo" onclick="if(event.target===this) cerrarModal()">
+  <div class="modal-fondo"
+    onpointerdown="if(event.target===this){this._px=event.clientX;this._py=event.clientY;}"
+    onpointerup="if(event.target===this && this._px!==undefined && Math.hypot(event.clientX-this._px,event.clientY-this._py)<12) cerrarModal()">
     <div class="modal">
       <div class="mh"><h3>${titulo}</h3><button class="x" onclick="cerrarModal()">✕</button></div>
       <div class="mb">${html}</div>
@@ -2626,6 +2629,9 @@ body{padding-bottom:28px; padding-left:calc(var(--rail) + env(safe-area-inset-le
 .noti-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px; margin-bottom:16px;}
 .noti-card{margin-bottom:0; padding:13px 15px;}
 .noti-fu{font-size:10.5px; font-weight:800; padding:3px 10px; border-radius:20px; letter-spacing:.3px; white-space:nowrap;}
+/* iPad: elimina el retraso/tragado de toques de Safari en todos los controles */
+button, .btn, select, input, textarea, a, label, .chip, .tool, .col, .mtool, .mcol, .mtab, .mpc, .mpcf, .qx-cat, .badge, .item, .ph, .modal-fondo, .cal-cel, .dia-h{touch-action:manipulation;}
+html{-webkit-tap-highlight-color:rgba(30,122,76,.12);}
 .fotos-g{display:grid; grid-template-columns:1fr 1fr; gap:7px;}
 .fotos-g .ph{position:relative; height:92px; border-radius:8px; overflow:hidden;
   border:1px solid var(--borde); cursor:pointer; background:#eef0ec;}
@@ -2972,12 +2978,20 @@ function posPanel(){
 function initMapa(){
   const el = document.getElementById("mapaPanel");
   if(!el) return;
-  if(!window.L){ mapaOffline(el); mapaHerrDef(); iniciarGeo(); return; } // sin internet: croquis de tus áreas y notas
+  if(!window.L || !navigator.onLine){ mapaOffline(el); mapaHerrDef(); iniciarGeo(); return; } // sin internet: croquis de tus áreas y notas (la foto satelital necesita señal)
   try{
     const loc = D.lluviaLoc || LOC_DEF;
     const rot = !!(L.Map.prototype.setBearing); // plugin de rotación cargado
-    const mp = L.map(el, Object.assign({zoomControl:true, attributionControl:false},
-      rot? {rotate:true, touchRotate:true, rotateControl:false} : {})).setView([loc.lat, loc.lng], 13);
+    let mp;
+    try{
+      mp = L.map(el, Object.assign({zoomControl:true, attributionControl:false},
+        rot? {rotate:true, touchRotate:true, rotateControl:false} : {}));
+    }catch(err){ // si el plugin de rotación falla en este navegador, mapa sin rotación
+      try{ delete el._leaflet_id; }catch(x){}
+      el.innerHTML = "";
+      mp = L.map(el, {zoomControl:true, attributionControl:false});
+    }
+    mp.setView([loc.lat, loc.lng], 13);
     mapaP = mp;
     mapaTiles = [];
     aplicarCapa();
@@ -3009,7 +3023,7 @@ function initMapa(){
       div.textContent = "Las notas con 📍 ubicación aparecerán aquí como pins de color";
       el.appendChild(div);
     }
-    mp.on("click", mapaClickDib);
+    mapaTap(mp, ll=>mapaClickDib({latlng:ll})); // toque confiable para marcar esquinas (iPad incluido)
     mp.on("moveend", ()=>{ // guarda dónde quedó el mapa
       const c = mp.getCenter();
       mapaVista = {lat:c.lat, lng:c.lng, z:mp.getZoom(), b: mp.getBearing? (mp.getBearing()||0) : 0};
@@ -3019,11 +3033,30 @@ function initMapa(){
     pintarPos();
     iniciarGeo();
     mapaHerrDef();
-  }catch(e){ el.innerHTML = `<div class="muted" style="padding:24px">No se pudo cargar el mapa.</div>`; }
+  }catch(e){ el.innerHTML = `<div class="muted" style="padding:24px">No se pudo cargar el mapa (${esc((e && e.message)||"error")}). Recarga la página e inténtalo de nuevo.</div>`; }
 }
 
 /* ---------- Polígonos de fundos y cuarteles + pantalla completa ---------- */
 let mapaP = null, capaPoly = null, dibP = null, mapaTiles = [];
+/* toque corto = "click" confiable en iPad (Safari a veces no genera el click sobre el mapa) */
+function mapaTap(mp, fn){
+  const c = mp.getContainer();
+  let t0 = 0, x0 = 0, y0 = 0, pid = null, multi = false;
+  c.addEventListener("pointerdown", e=>{
+    if(pid!==null){ multi = true; return; }
+    pid = e.pointerId; multi = false; t0 = Date.now(); x0 = e.clientX; y0 = e.clientY;
+  });
+  c.addEventListener("pointerup", e=>{
+    if(e.pointerId!==pid) return;
+    pid = null;
+    if(multi) return;
+    if(Date.now()-t0 > 600) return; // toque largo = otra intención
+    if(Math.hypot(e.clientX-x0, e.clientY-y0) > 12) return; // arrastre = mover el mapa
+    if(e.target && e.target.closest && e.target.closest(".leaflet-marker-icon,.leaflet-popup,a,button")) return;
+    fn(mp.mouseEventToLatLng(e), e);
+  });
+  c.addEventListener("pointercancel", ()=>{ pid = null; });
+}
 let geoWatch = null, ultimaPos = null, posMarker = null, posCirc = null, seguirPos = false;
 let mapaVista = null; // recuerda dónde quedó el mapa para no saltar al guardar/editar
 /* capas base del mapa (satélite / híbrido con calles y nombres / relieve) */
@@ -3177,11 +3210,11 @@ function elegirEnMapa(){
   const pinta = ()=>{
     if(!pickLL) return;
     if(mk) mk.setLatLng([pickLL.lat, pickLL.lng]);
-    else mk = L.marker([pickLL.lat, pickLL.lng], {icon: pinIcono("#e53935","alta")}).addTo(mp);
+    else mk = L.marker([pickLL.lat, pickLL.lng], {icon: pinIcono("#e53935","alta"), interactive:false}).addTo(mp);
   };
   pinta();
-  mp.on("click", e=>{
-    pickLL = {lat:+e.latlng.lat.toFixed(6), lng:+e.latlng.lng.toFixed(6), acc:0, manual:true};
+  mapaTap(mp, ll=>{ // toque confiable también en iPad
+    pickLL = {lat:+ll.lat.toFixed(6), lng:+ll.lng.toFixed(6), acc:0, manual:true};
     pinta();
   });
   pickMp = mp;
@@ -4002,8 +4035,21 @@ function mpNombreAuto(){
 async function cargarClima(){
   const el = document.getElementById("climaW");
   if(!el) return;
-  const loc = D.lluviaLoc || LOC_DEF;
+  const C = D.climaCache;
   const mes1 = hoy().slice(0,8)+"01";
+  if(C && C.html){ // pinta al instante el último pronóstico guardado, sin "cargando…"
+    el.innerHTML = C.html + (navigator.onLine? "" :
+      `<div class="muted" style="font-size:10px;margin-top:3px">📡 pronóstico guardado el ${fmtF(C.act.slice(0,10))} a las ${C.act.slice(11,16)} · sin conexión</div>`);
+  }
+  if(!navigator.onLine){
+    if(!C || !C.html){
+      const lluviaReg = D.registros.filter(r=>r.tipo==="Lluvia" && r.fecha>=mes1).reduce((s,r)=>s+(+r.mm||0),0);
+      el.innerHTML = `<div class="muted" style="font-size:12.5px">Sin conexión y sin pronóstico guardado aún. Lluvia del mes según tus registros: <b>${num(lluviaReg)} mm</b></div>`;
+    }
+    return;
+  }
+  if(C && C.act && (Date.now() - new Date(C.act).getTime()) < 2*3600*1000) return; // fresco (<2 h): no consultar de nuevo
+  const loc = D.lluviaLoc || LOC_DEF;
   try{
     const [f,m] = await Promise.all([
       fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}&current=temperature_2m&daily=temperature_2m_min,temperature_2m_max,precipitation_sum&timezone=auto&forecast_days=4`).then(r=>r.json()),
@@ -4022,7 +4068,7 @@ async function cargarClima(){
         <div style="font-size:12px;font-weight:700;color:var(--txt)">${Math.round(d.temperature_2m_min[i])}°/${Math.round(d.temperature_2m_max[i])}°</div>
         <div style="font-size:10.5px;${pp?"color:var(--azul);font-weight:600":"color:#c5c7c3"}">${pp? num(pp)+" mm":"—"}</div></div>`;
     }
-    el.innerHTML = `<div style="display:flex;align-items:center;gap:12px;font-variant-numeric:tabular-nums">
+    const html = `<div style="display:flex;align-items:center;gap:12px;font-variant-numeric:tabular-nums">
       <div style="flex:0 0 auto"><span style="font-size:24px;font-weight:700;color:var(--txt)">${tAct}°</span>
         <div style="font-size:11px;color:var(--txt2)"><span style="color:var(--azul);font-weight:600">↓${Math.round(d.temperature_2m_min[0])}°</span> <span style="color:var(--urg);font-weight:600">↑${Math.round(d.temperature_2m_max[0])}°</span>${ppHoy?` · ${num(ppHoy)} mm hoy`:""}</div></div>
       <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr)">${cols}</div>
@@ -4030,9 +4076,14 @@ async function cargarClima(){
         <div style="font-size:15px;font-weight:700;color:var(--azul)">${num(acum)} mm</div>
         <div style="font-size:10px;color:var(--txt2)">${MESES[new Date().getMonth()]} acum.</div></div>
     </div>`;
+    el.innerHTML = html;
+    D.climaCache = {act: ahora(), html}; // queda guardado para verlo sin señal
+    guardar();
   }catch(e){
-    const lluviaReg = D.registros.filter(r=>r.tipo==="Lluvia" && r.fecha>=mes1).reduce((s,r)=>s+(+r.mm||0),0);
-    el.innerHTML = `<div class="muted" style="font-size:12.5px">Sin conexión. Lluvia del mes según tus registros: <b>${num(lluviaReg)} mm</b></div>`;
+    if(!C || !C.html){ // solo si no había nada guardado que mostrar
+      const lluviaReg = D.registros.filter(r=>r.tipo==="Lluvia" && r.fecha>=mes1).reduce((s,r)=>s+(+r.mm||0),0);
+      el.innerHTML = `<div class="muted" style="font-size:12.5px">No se pudo consultar el pronóstico. Lluvia del mes según tus registros: <b>${num(lluviaReg)} mm</b></div>`;
+    }
   }
 }
 
