@@ -329,6 +329,7 @@ function cargar(){
     D.ultimoRespaldo = D.ultimoRespaldo || null;
     D.noticias = D.noticias || null; // noticias e indicadores guardados para leer sin internet
     D.climaCache = D.climaCache || null; // último pronóstico guardado para verlo sin señal
+    D.zonas = D.zonas || []; // zonas de clima guardadas por el usuario (presets)
     D.notas.forEach(n=>{ n.docs = n.docs || []; n.audios = n.audios || []; n.check = n.check || []; });
     D.registros.forEach(r=>{ r.fotos = r.fotos || []; r.docs = r.docs || []; r.audios = r.audios || []; });
   }catch(e){ alert("Error leyendo datos guardados: "+e.message); D = defaults(); }
@@ -2193,6 +2194,8 @@ function vDatos(){
       <button class="btn sec chico" onclick="lluviaGPS()">📍 Usar mi ubicación actual</button>
       <button class="btn chico" onclick="guardarLluviaLoc()">💾 Guardar</button>
     </div>
+    ${(D.zonas&&D.zonas.length)? `<div class="chips" style="margin-top:10px;flex-wrap:wrap">${D.zonas.map((z,i)=>
+      `<div class="chip ${D.lluviaLoc&&D.lluviaLoc.nom===z.nom?"act":""}" onclick="usarZona(${i})">📍 ${esc(z.nom)} <button class="qx-cat" onclick="event.stopPropagation();quitarZona(${i})">✕</button></div>`).join("")}</div>`:""}
     ${D.lluviaLoc? `<div class="muted" style="margin-top:6px">✓ Zona actual: <b>${esc(zonaClima())}</b> (${D.lluviaLoc.lat}, ${D.lluviaLoc.lng})</div>` : `<div class="muted" style="margin-top:6px">✓ Zona actual: <b>Curacaví</b> (por defecto)</div>`}
   </div>`;
 
@@ -2322,13 +2325,32 @@ function csvExport(que){
 function guardarLluviaLoc(){
   const lat = parseFloat(v("ll_lat").replace(",",".")), lng = parseFloat(v("ll_lng").replace(",","."));
   if(isNaN(lat) || isNaN(lng)){ alert("Ingresa latitud y longitud válidas (ej: -33.41 y -71.14)."); return; }
-  D.lluviaLoc = {lat:+lat.toFixed(5), lng:+lng.toFixed(5), nom:(v("ll_nom")||"").trim()};
+  const nom = (v("ll_nom")||"").trim();
+  D.lluviaLoc = {lat:+lat.toFixed(5), lng:+lng.toFixed(5), nom};
+  if(nom && nom.toLowerCase()!=="curacaví" && nom.toLowerCase()!=="curacavi"){ // queda guardada como zona reutilizable
+    D.zonas = D.zonas || [];
+    const i = D.zonas.findIndex(z=>z.nom.toLowerCase()===nom.toLowerCase());
+    const z = {nom, lat:D.lluviaLoc.lat, lng:D.lluviaLoc.lng};
+    if(i>=0) D.zonas[i] = z; else D.zonas.push(z);
+  }
   D.climaCache = null; // zona nueva = pronóstico nuevo
   guardar(); render();
 }
 function usarCuracavi(){ // opción fija de Curacaví, siempre a un toque
   D.lluviaLoc = {lat:LOC_DEF.lat, lng:LOC_DEF.lng, nom:"Curacaví"};
   D.climaCache = null;
+  guardar(); render();
+}
+function usarZona(i){ // activar una zona guardada
+  const z = (D.zonas||[])[i]; if(!z) return;
+  D.lluviaLoc = {lat:z.lat, lng:z.lng, nom:z.nom};
+  D.climaCache = null;
+  guardar(); render();
+}
+function quitarZona(i){
+  const z = (D.zonas||[])[i]; if(!z) return;
+  if(!confirm(`¿Quitar la zona guardada "${z.nom}"?`)) return;
+  D.zonas.splice(i,1);
   guardar(); render();
 }
 function lluviaGPS(){
@@ -2782,11 +2804,12 @@ function vPanel(){
 
 /* ---------- Widgets configurables del panel ---------- */
 function widgetCard(w, inner, titulo){
+  const i = D.widgets.findIndex(x=>x.id===w.id), n = D.widgets.length;
   return `<div class="card"><div class="fila" style="justify-content:space-between;align-items:center;margin-bottom:6px">
     <div class="w-tit" style="margin:0">${titulo}</div>
     <div class="fila" style="gap:2px">
-      <button class="qx-cat" onclick="moverWidget(${w.id},-1)" title="Subir">↑</button>
-      <button class="qx-cat" onclick="moverWidget(${w.id},1)" title="Bajar">↓</button>
+      ${i>0? `<button class="qx-cat" onclick="moverWidget(${w.id},-1)" title="Subir">↑</button>`:""}
+      ${i<n-1? `<button class="qx-cat" onclick="moverWidget(${w.id},1)" title="Bajar">↓</button>`:""}
       <button class="qx-cat" onclick="quitarWidget(${w.id})" title="Quitar">✕</button>
     </div></div>${inner}</div>`;
 }
