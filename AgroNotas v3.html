@@ -325,6 +325,8 @@ function cargar(){
     D.catalogos.catsNota = D.catalogos.catsNota || [...DEF_CATS_NOTA];
     D.catalogos.tiposLabor = D.catalogos.tiposLabor || [...DEF_TIPOS_LABOR];
     D.catalogos.tiposReg = D.catalogos.tiposReg || [...DEF_TIPOS_REG];
+    D.catalogos.tiposReg = D.catalogos.tiposReg.filter(t=>t!=="Avance"); // el avance ahora vive dentro de las labores del Plan
+    D.labores.forEach(l=>{ l.avances = l.avances || []; }); // avances por labor
     D.catalogos.plantillas = D.catalogos.plantillas || DEF_PLANTILLAS.map(p=>({...p}));
     D.tablero = D.tablero || [];
     D.lluviaLoc = D.lluviaLoc || null;
@@ -338,7 +340,7 @@ function cargar(){
     D.climaCache = D.climaCache || null; // último pronóstico guardado para verlo sin señal
     D.zonas = D.zonas || []; // zonas de clima guardadas por el usuario (presets)
     D.ia = D.ia || {key:"", modelo:""}; // ajustes de IA (identificar fotos y escanear etiquetas)
-    D.notas.forEach(n=>{ n.docs = n.docs || []; n.audios = n.audios || []; n.check = n.check || []; });
+    D.notas.forEach(n=>{ n.titulo = n.titulo || ""; n.docs = n.docs || []; n.audios = n.audios || []; n.check = n.check || []; });
     D.registros.forEach(r=>{ r.fotos = r.fotos || []; r.docs = r.docs || []; r.audios = r.audios || []; });
     if(!raw) guardar(); // primera vez: deja guardados los defaults ya migrados
   }catch(e){ alert("Error leyendo datos guardados: "+e.message); D = defaults(); }
@@ -395,6 +397,8 @@ function req(...ids){
   return true;
 }
 function fundos(){ return [...new Set([...(D.fundos||[]), ...D.cuarteles.map(q=>q.fundo)])]; }
+const GENERAL = "General"; // alcance de toda la agrícola (no un fundo específico: reuniones, proveedores, decisiones de empresa)
+function fundosSel(){ return [GENERAL, ...fundos().filter(f=>f!==GENERAL)]; } // para selectores y filtros: "General" siempre arriba
 function cuartelesDe(f){ return D.cuarteles.filter(q=>q.fundo===f); }
 function num(x){ return (Math.round(x*100)/100).toLocaleString("es-CL"); }
 
@@ -481,7 +485,7 @@ function render(){
 }
 /* Chips de filtro por fundo (compartidos) */
 function chipsFundo(){
-  const fs = fundos();
+  const fs = fundosSel();
   return `<div class="chips">
     <div class="chip ${!nav.filtroFundo?"act":""}" onclick="nav.filtroFundo='';render()">Todos</div>
     ${fs.map(f=>`<div class="chip ${nav.filtroFundo===f?"act":""}" onclick="nav.filtroFundo='${esc(f)}';render()">${esc(f)}</div>`).join("")}
@@ -557,6 +561,7 @@ function vPanel(){
 function miniNota(n){
   return `<div class="item" style="box-shadow:none;border:1px solid var(--borde);padding:10px 12px" onclick="verNota(${n.id})">
     <div class="tit" style="font-size:14px">${n.fijada?"📌 ":""}${badgeCat(n.cat)} ${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""}</div>
+    ${n.titulo? `<div style="font-weight:700;font-size:13.5px;margin-top:2px">${esc(n.titulo)}</div>`:""}
     <div class="txt" style="margin-top:3px;font-size:13.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(n.texto)}</div>
     <div class="met">${fmtFH(n.fh)}${n.fotos.length?` · 📷 ${n.fotos.length}`:""}</div>
   </div>`;
@@ -571,7 +576,7 @@ function vNotas(){
   let lst = [...D.notas].sort((a,b)=> (b.fijada?1:0)-(a.fijada?1:0) || b.fh.localeCompare(a.fh));
   if(nav.filtroFundo) lst = lst.filter(n=>n.fundo===nav.filtroFundo);
   if(nav.notaBuscar){ const q = nav.notaBuscar.toLowerCase();
-    lst = lst.filter(n=>(n.texto+" "+n.cuartel+" "+n.cat).toLowerCase().includes(q)); }
+    lst = lst.filter(n=>(n.texto+" "+(n.titulo||"")+" "+n.cuartel+" "+n.cat).toLowerCase().includes(q)); }
   let h = chipsFundo();
   h += `<div class="chips" style="margin-bottom:8px">
     ${plantillas().map((p,i)=>`<div class="chip" onclick="notaPlantilla(${i})">${esc(p.n)}</div>`).join("")}
@@ -588,7 +593,7 @@ function filtrarNotasEnVivo(){
   let lst = [...D.notas].sort((a,b)=> (b.fijada?1:0)-(a.fijada?1:0) || b.fh.localeCompare(a.fh));
   if(nav.filtroFundo) lst = lst.filter(n=>n.fundo===nav.filtroFundo);
   const q = nav.notaBuscar.toLowerCase();
-  if(q) lst = lst.filter(n=>(n.texto+" "+n.cuartel+" "+n.cat).toLowerCase().includes(q));
+  if(q) lst = lst.filter(n=>(n.texto+" "+(n.titulo||"")+" "+n.cuartel+" "+n.cat).toLowerCase().includes(q));
   cont.innerHTML = lst.map(n=>tarjetaNota(n)).join("") || `<div class="vacio"><span class="ico">🔍</span>Sin resultados.</div>`;
   posNotas();
 }
@@ -599,6 +604,7 @@ function tarjetaNota(n){
       ${badgeCat(n.cat)}
     </div>
     <div class="met">${fmtFH(n.fh)}${(n.audios&&n.audios.length)?" · 🎤 "+n.audios.length:""}${(n.check&&n.check.length)?` · ☑ ${n.check.filter(c=>c.ok).length}/${n.check.length}`:""}${n.gps?" · 📍":""}</div>
+    ${n.titulo? `<div style="font-weight:800;font-size:15px;margin-top:4px">${esc(n.titulo)}</div>`:""}
     <div class="txt" style="display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${esc(n.texto)}</div>
     ${n.fotos.length? `<div class="thumbs" data-fotos="${n.fotos.join(",")}"></div>`:""}
     ${(n.docs&&n.docs.length)? `<div class="docs">${chipsDocs(n.docs)}</div>`:""}
@@ -637,7 +643,8 @@ function formNota(id){
   gpsTmp = n? (n.gps||null) : null;
   gpsOn = n? !!n.gps : true; // nota nueva: con ubicación por defecto; el usuario puede apagarla
   abrirModal(n?"Editar nota":"📝 Nueva nota", `
-    ${selF("m_fundo","Fundo *",fundos(),n?.fundo,"— Elegir fundo —")}
+    ${campoF("m_titulo","Título (opcional)","text",n?.titulo,'placeholder="Ej: Reunión proveedor, Novedad cuartel 3…"')}
+    ${selF("m_fundo","Fundo *",fundosSel(),n?.fundo,"— Elegir fundo —")}
     ${bloqueCuarteles(n?.cuartel)}
     ${selF("m_cat","Categoría",catsNota(),n?.cat||"Observación")}
     ${areaF("m_texto","Nota *",n?.texto,"Escribe aquí lo observado…")}
@@ -670,11 +677,11 @@ function formNota(id){
       for(const fid of n.fotos) if(!fotosTmp.includes(fid)) await fotoDel(fid);
       for(const dc of (n.docs||[])) if(!docsTmp.some(x=>x.id===dc.id)) await fotoDel(dc.id);
       for(const aid of (n.audios||[])) if(!audiosTmp.includes(aid)) await fotoDel(aid);
-      Object.assign(n,{fundo:v("m_fundo"),cuartel:cuartelesElegidos(),cat:v("m_cat"),texto:v("m_texto"),
+      Object.assign(n,{titulo:v("m_titulo"),fundo:v("m_fundo"),cuartel:cuartelesElegidos(),cat:v("m_cat"),texto:v("m_texto"),
         aviso:v("m_aviso"), fijada:document.getElementById("m_fijada").checked, fotos:[...fotosTmp], docs:[...docsTmp],
         audios:[...audiosTmp], check:[...chkTmp], gps:gpsTmp, pin:v("m_pin")});
     }else{
-      D.notas.push({id:nid(), fh:ahora(), fundo:v("m_fundo"), cuartel:cuartelesElegidos(), cat:v("m_cat"),
+      D.notas.push({id:nid(), fh:ahora(), titulo:v("m_titulo"), fundo:v("m_fundo"), cuartel:cuartelesElegidos(), cat:v("m_cat"),
         texto:v("m_texto"), aviso:v("m_aviso"), fijada:document.getElementById("m_fijada").checked,
         fotos:[...fotosTmp], docs:[...docsTmp], audios:[...audiosTmp], check:[...chkTmp], gps:gpsTmp, pin:v("m_pin"), resuelta:false});
     }
@@ -1768,7 +1775,7 @@ function iaContextoDatos(){
   for(const q of D.cuarteles) L.push(`- ${q.fundo} / ${q.nombre}: ${q.especie||""} ${q.variedad||""}, ${q.ha||0} ha${q.anio?", plantado "+q.anio:""}`);
   L.push("\nNOTAS (recientes):");
   for(const n of [...D.notas].sort((a,b)=>(b.fh||"").localeCompare(a.fh||"")).slice(0,250))
-    L.push(`- ${fmtF((n.fh||"").slice(0,10))} · ${n.fundo}${n.cuartel?"/"+n.cuartel:""} · ${n.cat}: ${String(n.texto||"").slice(0,180)}`);
+    L.push(`- ${fmtF((n.fh||"").slice(0,10))} · ${n.fundo}${n.cuartel?"/"+n.cuartel:""} · ${n.cat}: ${n.titulo?n.titulo+" — ":""}${String(n.texto||"").slice(0,180)}`);
   L.push("\nREGISTROS (recientes):");
   for(const r of [...D.registros].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,300)){
     const det = (CAMPOS_REG[r.tipo]||[]).map(([k,lab])=>r[k]?lab.replace(" *","").split(" (")[0]+": "+r[k]:"").filter(Boolean).join(", ");
@@ -1801,7 +1808,7 @@ ${pregunta}`;
   }catch(err){ if(out){ out.style.color="var(--rojo)"; out.textContent = "⚠️ "+(err.msg||err.message||"No se pudo consultar"); } }
 }
 /* --- Gráfico de barras SVG para el informe --- */
-function barrasSVG(titulo, pares, color){
+function barrasSVG(titulo, pares, color, fmt){
   pares = (pares||[]).filter(p=>+p[1]>0);
   if(!pares.length) return "";
   const max = Math.max(...pares.map(p=>+p[1]));
@@ -1813,7 +1820,7 @@ function barrasSVG(titulo, pares, color){
     const bh = Math.max(2, Math.round((+p[1]/max)*(h-34)));
     const y = h-20-bh;
     bars += `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="4" fill="${color||"#1e7a4c"}"></rect>`
-      + `<text x="${x+bw/2}" y="${y-4}" text-anchor="middle" font-size="12" font-weight="700" fill="#14532d">${+p[1]}</text>`
+      + `<text x="${x+bw/2}" y="${y-4}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#14532d">${fmt?esc(String(fmt(+p[1]))):(+p[1])}</text>`
       + `<text x="${x+bw/2}" y="${h-5}" text-anchor="middle" font-size="10.5" fill="#555">${esc(String(p[0]).slice(0,12))}</text>`;
   });
   return `<div style="flex:1;min-width:230px"><div style="font-weight:700;font-size:13px;color:#14532d;margin-bottom:2px">${esc(titulo)}</div>`
@@ -1838,6 +1845,7 @@ function verNota(id){
   const n = D.notas.find(x=>x.id===id); if(!n) return;
   abrirModal(`${n.fijada?"📌 ":""}Nota · ${esc(n.fundo)}`, `
     <div class="met" style="margin-bottom:6px">${badgeCat(n.cat)} &nbsp; ${fmtFH(n.fh)}${n.cuartel?" · Cuartel: <b>"+esc(n.cuartel)+"</b>":""}${n.aviso?` · 🔔 ${fmtF(n.aviso)}`:""}</div>
+    ${n.titulo? `<div style="font-size:18px;font-weight:800;margin-bottom:6px">${esc(n.titulo)}</div>`:""}
     <div class="txt" style="font-size:16px">${esc(n.texto)}</div>
     <div class="thumbs" data-fotos="${n.fotos.join(",")}" style="margin-top:12px"></div>
     ${(n.docs&&n.docs.length)? `<div class="docs">${chipsDocs(n.docs)}</div>`:""}
@@ -2000,6 +2008,11 @@ function badgeEstado(e){
 }
 function filaLabor(l, mini){
   const atrasada = l.estado!=="hecha" && l.fecha<hoy();
+  const av = l.avances||[];
+  const hecho = av.reduce((s,a)=>s+(+a.cantidad||0),0);
+  const costo = av.reduce((s,a)=>s+(+a.total||0),0);
+  const meta = +l.meta||0;
+  const pct = meta>0? Math.min(100,Math.round(hecho/meta*100)) : 0;
   return `<div class="item" style="${mini?"box-shadow:none;border:1px solid var(--borde);padding:10px 12px;":""}${atrasada?"border-left:4px solid var(--rojo);":""}" onclick="formLabor(${l.id})">
     <div class="fila" style="justify-content:space-between">
       <div class="tit" style="font-size:14.5px">${esc(l.tipo)} · ${esc(l.fundo)}${l.cuartel?" · "+esc(l.cuartel):""}</div>
@@ -2007,13 +2020,73 @@ function filaLabor(l, mini){
     </div>
     ${l.desc?`<div class="txt" style="font-size:13.5px;margin-top:3px">${esc(l.desc)}</div>`:""}
     <div class="met">${fmtDia(l.fecha)}${l.fecha2?" → "+fmtF(l.fecha2):""}${l.resp?" · 👤 "+esc(l.resp):""}</div>
-    ${l.estado!=="hecha"?`<div class="fila" style="margin-top:8px;gap:8px">
-      ${l.estado==="pendiente"?`<button class="btn sec chico" onclick="event.stopPropagation();estadoLabor(${l.id},'encurso')">▶️ Iniciar</button>`:""}
-      <button class="btn chico" onclick="event.stopPropagation();estadoLabor(${l.id},'hecha')">✅ Hecha</button>
+    ${(meta>0||av.length)?`<div style="margin-top:6px">
+      ${meta>0?`<div class="fila" style="justify-content:space-between;font-size:12.5px"><span>${num(hecho)}${l.unidad?" "+esc(l.unidad):""} de ${num(meta)}</span><b style="color:var(--p2)">${pct}%</b></div>
+        <div style="background:#eef1ec;border-radius:6px;height:8px;margin-top:2px"><div style="width:${pct}%;background:var(--p);height:8px;border-radius:6px"></div></div>`
+        : `<div class="met">Realizado: <b>${num(hecho)}${l.unidad?" "+esc(l.unidad):""}</b></div>`}
+      ${costo>0?`<div class="met" style="margin-top:2px">💵 $${Math.round(costo).toLocaleString("es-CL")} · ${av.length} avance${av.length>1?"s":""}</div>`:""}
     </div>`:""}
+    <div class="fila" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+      <button class="btn sec chico" onclick="event.stopPropagation();formAvanceLabor(${l.id})">➕ Avance</button>
+      ${av.length?`<button class="btn sec chico" onclick="event.stopPropagation();verAvancesLabor(${l.id})">📋 Avances (${av.length})</button>`:""}
+      ${l.estado==="pendiente"?`<button class="btn sec chico" onclick="event.stopPropagation();estadoLabor(${l.id},'encurso')">▶️ Iniciar</button>`:""}
+      ${l.estado!=="hecha"?`<button class="btn chico" onclick="event.stopPropagation();estadoLabor(${l.id},'hecha')">✅ Hecha</button>`:""}
+    </div>
   </div>`;
 }
 function estadoLabor(id,e){ const l=D.labores.find(x=>x.id===id); if(l){ l.estado=e; guardar(); render(); } }
+/* --- Avances de una labor (parte diario medible) --- */
+function formAvanceLabor(laborId, idx){
+  const l = D.labores.find(x=>x.id===laborId); if(!l) return;
+  l.avances = l.avances || [];
+  const a = (idx!=null)? l.avances[idx] : null;
+  nav.avancePago = a? (a.pago||"trato") : (nav.avancePago||"trato");
+  const pg = nav.avancePago;
+  abrirModal(a?"Editar avance":"➕ Avance · "+esc(l.tipo)+(l.cuartel?" · "+esc(l.cuartel):""), `
+    ${campoF("m_fecha","Fecha *","date",a?.fecha||hoy())}
+    ${campoF("m_cantidad","Cantidad realizada *"+(l.unidad?" ("+esc(l.unidad)+")":""),"text",a?.cantidad,'inputmode="decimal" oninput="avanceCalc()"')}
+    ${campoF("m_personas","N° de personas","text",a?.personas,'inputmode="decimal" oninput="avanceCalc()"')}
+    <div class="fila" style="margin:2px 0 8px">
+      <button type="button" class="chip ${pg==="trato"?"act":""}" id="pg_trato" onclick="avancePago('trato')">💵 A trato (por unidad)</button>
+      <button type="button" class="chip ${pg==="dia"?"act":""}" id="pg_dia" onclick="avancePago('dia')">📅 Por día (jornal)</button>
+    </div>
+    ${campoF("m_valor","Valor ($) — por unidad si es trato, por persona/día si es por día","text",a?.valor,'inputmode="numeric" oninput="avanceCalc()"')}
+    <div id="avanceTot" class="card" style="background:var(--pclaro);border:1px solid var(--p);padding:10px 12px;margin-bottom:8px"></div>
+    ${areaF("m_avobs","Observación (opcional)",a?.obs)}
+    ${a!=null?`<button class="btn peligro chico" onclick="borrarAvance(${laborId},${idx})">🗑️ Eliminar avance</button>`:""}
+  `, ()=>{
+    if(!req("m_fecha","m_cantidad")) return false;
+    const cn=x=>{ const y=parseFloat((v(x)||"").replace(/\./g,"").replace(",",".").replace(/[^0-9.\-]/g,"")); return isNaN(y)?0:y; };
+    const cant=cn("m_cantidad"), pers=cn("m_personas"), val=cn("m_valor"), pago=nav.avancePago||"trato";
+    const rec = {fecha:v("m_fecha"), cantidad:cant, personas:pers, pago, valor:val,
+      total:(pago==="trato"? cant*val : pers*val), rend:(pers>0?cant/pers:0), obs:v("m_avobs")};
+    if(idx!=null) l.avances[idx]=rec; else l.avances.push(rec);
+    const hecho = l.avances.reduce((s,x)=>s+(+x.cantidad||0),0);
+    if((+l.meta||0)>0 && hecho>=+l.meta && l.estado!=="hecha") l.estado="hecha";
+    else if(l.estado==="pendiente") l.estado="encurso";
+  });
+  avanceCalc();
+}
+function borrarAvance(laborId, idx){
+  const l = D.labores.find(x=>x.id===laborId); if(!l||!l.avances) return;
+  if(!confirm("¿Eliminar este avance?")) return;
+  l.avances.splice(idx,1); guardar(); cerrarModal(); render();
+}
+function verAvancesLabor(laborId){
+  const l = D.labores.find(x=>x.id===laborId); if(!l) return;
+  const av = l.avances||[];
+  const hecho = av.reduce((s,a)=>s+(+a.cantidad||0),0);
+  const costo = av.reduce((s,a)=>s+(+a.total||0),0);
+  const filas = av.map((a,i)=>`<div class="item" style="box-shadow:none;border:1px solid var(--borde);padding:10px 12px" onclick="cerrarModal();formAvanceLabor(${laborId},${i})">
+    <div class="fila" style="justify-content:space-between"><b>${fmtF(a.fecha)}</b><b style="color:var(--p2)">$${Math.round(a.total||0).toLocaleString("es-CL")}</b></div>
+    <div class="met">${num(a.cantidad)}${l.unidad?" "+esc(l.unidad):""}${a.personas?" · "+num(a.personas)+" pers":""}${(a.personas&&a.total)?" · 💰 $"+Math.round(a.total/a.personas).toLocaleString("es-CL")+"/pers":""} · ${a.pago==="dia"?"por día":"a trato"}${a.obs?" · "+esc(a.obs):""}</div>
+  </div>`).join("");
+  abrirModal("📋 Avances · "+esc(l.tipo)+(l.cuartel?" · "+esc(l.cuartel):""), `
+    <div class="card" style="background:var(--pclaro);border:1px solid var(--p)"><div class="fila" style="justify-content:space-between"><span>Total realizado: <b>${num(hecho)}${l.unidad?" "+esc(l.unidad):""}</b></span><b style="color:var(--p2)">$${Math.round(costo).toLocaleString("es-CL")}</b></div></div>
+    ${filas||`<div class="muted">Aún no hay avances.</div>`}
+    <button class="btn full" style="margin-top:8px" onclick="cerrarModal();formAvanceLabor(${laborId})">➕ Agregar avance</button>
+  `, null, "Cerrar");
+}
 function vPlan(){
   const vista = nav.planVista || "sem";
   let h = chipsFundo();
@@ -2126,9 +2199,11 @@ function formLabor(id, fechaSug, pre){
     ${campoF("m_fecha","Fecha inicio *","date",l?.fecha||fechaSug||hoy())}
     ${campoF("m_fecha2","Fecha término (opcional)","date",l?.fecha2)}
     ${selF("m_tipo","Tipo de labor *",tiposLabor(),l?.tipo,"— Elegir —")}
-    ${selF("m_fundo","Fundo *",fundos(),l?.fundo||pre?.fundo,"— Elegir fundo —")}
+    ${selF("m_fundo","Fundo *",fundosSel(),l?.fundo||pre?.fundo,"— Elegir fundo —")}
     <label class="f">Cuartel<select id="m_cuartel"></select></label>
     ${areaF("m_desc","Detalle",l?.desc||pre?.desc,"Ej: podar filas 1 a 10, revisar goteros…")}
+    ${campoF("m_unidad","Unidad de avance (plantas, hileras, kg…)","text",l?.unidad,'placeholder="plantas"')}
+    ${campoF("m_meta","Meta / objetivo (opcional)","text",l?.meta||"",'inputmode="decimal" placeholder="Ej: 500 — para ver % de avance"')}
     ${campoF("m_resp","Responsable","text",l?.resp,'placeholder="Ej: Daniel Bosch"')}
     ${l? selF("m_estado","Estado",["pendiente","encurso","hecha"],l.estado):""}
     ${l? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarLabor(${l.id})">🗑️ Eliminar labor</button>`:""}
@@ -2136,9 +2211,9 @@ function formLabor(id, fechaSug, pre){
     if(!req("m_fecha","m_tipo","m_fundo")) return false;
     if(v("m_fecha2") && v("m_fecha2")<v("m_fecha")){ alert("La fecha de término no puede ser anterior al inicio."); return false; }
     const o = {fecha:v("m_fecha"), fecha2:v("m_fecha2"), tipo:v("m_tipo"), fundo:v("m_fundo"), cuartel:v("m_cuartel"),
-      desc:v("m_desc"), resp:v("m_resp")};
+      desc:v("m_desc"), resp:v("m_resp"), unidad:v("m_unidad"), meta:(parseFloat((v("m_meta")||"").replace(",","."))||0)};
     if(l) Object.assign(l,o,{estado:v("m_estado")||l.estado});
-    else D.labores.push({id:nid(), estado:"pendiente", ...o});
+    else D.labores.push({id:nid(), estado:"pendiente", avances:[], ...o});
   });
   document.getElementById("m_fundo").onchange = ()=>syncCuarteles();
   syncCuarteles(l?.cuartel||pre?.cuartel);
@@ -2172,7 +2247,7 @@ function vReg(){
   h += `<button class="btn-fab" onclick="formReg()">+</button>`;
   return h;
 }
-function icoReg(t){ return {"Aplicación":"🧪","Riego":"💧","Fertilización":"🌱","Fenología":"🌸","Lluvia":"🌧️","Otro":"📄"}[t]||"📄"; }
+function icoReg(t){ return {"Aplicación":"🧪","Riego":"💧","Fertilización":"🌱","Fenología":"🌸","Lluvia":"🌧️","Avance":"📊","Otro":"📄"}[t]||"📄"; }
 function tarjetaReg(r){
   const det = (CAMPOS_REG[r.tipo]||[]).map(([k,lab])=>r[k]?`<b>${lab.replace(" *","").split(" (")[0]}:</b> ${esc(r[k])}`:"").filter(Boolean).join(" · ");
   return `<div class="item" onclick="formReg(${r.id})">
@@ -2197,7 +2272,7 @@ function formReg(id){
   abrirModal(r?"Editar registro":"📋 Nuevo registro", `
     ${selF("m_tipo","Tipo de registro *",tiposReg(),r?.tipo||nav.regTipo,"— Elegir —")}
     ${campoF("m_fecha","Fecha *","date",r?.fecha||hoy())}
-    ${selF("m_fundo","Fundo *",fundos(),r?.fundo,"— Elegir fundo —")}
+    ${selF("m_fundo","Fundo *",fundosSel(),r?.fundo,"— Elegir fundo —")}
     ${bloqueCuarteles(r?.cuartel)}
     <div id="camposTipo"></div>
     ${areaF("m_obs","Observaciones",r?.obs)}
@@ -2245,6 +2320,28 @@ function formReg(id){
   document.getElementById("m_tipo").addEventListener("change",pintaCampos);
   pintaCampos();
 }
+function avancePago(pg){
+  nav.avancePago = pg;
+  const a=document.getElementById("pg_trato"), b=document.getElementById("pg_dia");
+  if(a) a.className="chip "+(pg==="trato"?"act":""); if(b) b.className="chip "+(pg==="dia"?"act":"");
+  avanceCalc();
+}
+function avanceCalc(){
+  const out=document.getElementById("avanceTot"); if(!out) return;
+  const cn=x=>{ const y=parseFloat((v(x)||"").replace(/\./g,"").replace(",",".").replace(/[^0-9.\-]/g,"")); return isNaN(y)?0:y; };
+  const cant=cn("m_cantidad"), pers=cn("m_personas"), val=cn("m_valor"), pg=nav.avancePago||"trato";
+  const total = pg==="trato"? (cant>0&&val>0? cant*val : 0) : (pers>0&&val>0? pers*val : 0);
+  const rend = (cant>0&&pers>0)? cant/pers : 0;
+  const costoU = (total>0&&cant>0)? total/cant : 0;
+  const porPers = (total>0&&pers>0)? total/pers : 0;
+  let h = `<div style="font-weight:700;margin-bottom:4px">${pg==="trato"?"💵 A trato (cantidad × valor)":"📅 Por día (personas × valor)"}</div>`;
+  h += total>0? `<div>Total: <b style="font-size:19px;color:var(--p2)">$${Math.round(total).toLocaleString("es-CL")}</b></div>`
+    : `<div class="muted">Ingresa ${pg==="trato"?"cantidad y valor por unidad":"personas y valor por día"}.</div>`;
+  if(porPers>0) h += `<div style="font-size:14px;margin-top:3px">💰 Gana por persona: <b style="color:var(--p2)">$${Math.round(porPers).toLocaleString("es-CL")}</b></div>`;
+  if(rend>0) h += `<div class="muted" style="font-size:12px">Rendimiento: ${(Math.round(rend*100)/100).toLocaleString("es-CL")} por persona</div>`;
+  if(costoU>0) h += `<div class="muted" style="font-size:12px">Costo por unidad: $${(Math.round(costoU*100)/100).toLocaleString("es-CL")}</div>`;
+  out.innerHTML = h;
+}
 async function eliminarReg(id){
   if(!confirm("¿Eliminar este registro y sus adjuntos?")) return;
   const r = D.registros.find(x=>x.id===id);
@@ -2284,7 +2381,7 @@ function vTab(){
 function formTarjeta(id, col){
   const t = id? D.tablero.find(x=>x.id===id) : null;
   abrirModal(t?"Editar tarjeta":"🗂️ Nueva tarjeta", `
-    ${selF("m_fundo","Fundo *",fundos(),t?.fundo||nav.filtroFundo,"— Elegir fundo —")}
+    ${selF("m_fundo","Fundo *",fundosSel(),t?.fundo||nav.filtroFundo,"— Elegir fundo —")}
     ${areaF("m_txt","Apunte *",t?.txt,"Ej: pasar el sector 3 a goteros dobles, arreglar el camino de la entrada…")}
     ${selF("m_col","Columna",TAB_COLS.map(c=>c[0]),t?.col||col||"Ideas")}
     ${t? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarTarjeta(${t.id})">🗑️ Eliminar tarjeta</button>`:""}
@@ -2604,9 +2701,10 @@ function csvExport(que){
   const cel = x=>{ x = (x==null? "" : String(x)); return /[;"\n]/.test(x)? '"'+x.replace(/"/g,'""')+'"' : x; };
   let head = [], filas = [];
   if(que==="labores"){
-    head = ["Fecha","Término","Tipo","Fundo","Cuartel","Detalle","Responsable","Estado"];
+    head = ["Fecha","Término","Tipo","Fundo","Cuartel","Detalle","Responsable","Estado","Meta","Realizado","Unidad","Costo $","N° avances"];
     filas = [...D.labores].sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""))
-      .map(l=>[fmtF(l.fecha),fmtF(l.fecha2),l.tipo,l.fundo,l.cuartel,l.desc,l.resp,l.estado]);
+      .map(l=>{ const av=l.avances||[]; const hecho=av.reduce((s,a)=>s+(+a.cantidad||0),0); const costo=av.reduce((s,a)=>s+(+a.total||0),0);
+        return [fmtF(l.fecha),fmtF(l.fecha2),l.tipo,l.fundo,l.cuartel,l.desc,l.resp,l.estado,(l.meta||""),(hecho||""),(l.unidad||""),(costo||""),(av.length||"")]; });
   }else if(que==="registros"){
     const extras = [...new Set(Object.values(CAMPOS_REG).flat().map(c=>c[0]))];
     head = ["Fecha","Tipo","Fundo","Cuartel",...extras,"Observaciones"];
@@ -2737,7 +2835,7 @@ function abrirInforme(iniIso){
             const det = (CAMPOS_REG[r.tipo]||[]).map(([k,lab])=>r[k]?`${lab.replace(" *","").split(" (")[0]}: ${esc(r[k])}`:"").filter(Boolean).join(" · ");
             return `<tr><td>${fmtF(r.fecha)}</td><td>${icoReg(r.tipo)} ${esc(r.tipo)}</td><td>${esc(r.fundo)}</td><td>${esc(r.cuartel)}</td><td>${det}${r.obs?`${det?" · ":""}${esc(r.obs)}`:""}</td><td class="no-print" style="border:none"><button class="inf-x" onclick="this.closest('tr').remove()">✕</button></td></tr>`;}).join("")}</table>` : `<div class="inf-vacio">Sin registros esta semana.</div>`}</div>
         <div class="inf-sec"><h2>📝 Notas de terreno <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
-        ${nots.length? nots.map(n=>`<div class="inf-nota"><button class="inf-x no-print" style="float:right" onclick="this.closest('.inf-nota').remove()">✕</button>${n.cat==="Urgente"?"🔴 ":""}${n.fijada?"📌 ":""}<b>${fmtFH(n.fh)}</b> · ${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""} · <i>${esc(n.cat)}</i><br>${esc(n.texto)}</div>`).join("") : `<div class="inf-vacio">Sin notas esta semana.</div>`}</div>
+        ${nots.length? nots.map(n=>`<div class="inf-nota"><button class="inf-x no-print" style="float:right" onclick="this.closest('.inf-nota').remove()">✕</button>${n.cat==="Urgente"?"🔴 ":""}${n.fijada?"📌 ":""}<b>${fmtFH(n.fh)}</b> · ${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""} · <i>${esc(n.cat)}</i><br>${n.titulo?`<b>${esc(n.titulo)}</b><br>`:""}${esc(n.texto)}</div>`).join("") : `<div class="inf-vacio">Sin notas esta semana.</div>`}</div>
         ${fotos.length? `<div class="inf-sec"><h2>📷 Fotos de la semana <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2><div class="inf-fotos">${fotos.map(f=>`<div style="position:relative"><img id="inf_${f}"><button class="inf-x no-print" style="position:absolute;top:4px;right:4px" onclick="this.parentElement.remove()">✕</button></div>`).join("")}</div></div>`:""}
         <div style="margin-top:18px;padding-top:8px;border-top:1px solid #ccc;color:#777;font-size:11.5px">Generado con AgroNotas · ${PROY? esc(PROY.nombre) : ""}</div>
       </div>
@@ -2952,7 +3050,7 @@ body{padding-bottom:28px; padding-left:calc(var(--rail) + env(safe-area-inset-le
 .w-tit{font-size:11px; font-weight:700; letter-spacing:.8px; color:#a8aaa6;
   margin-bottom:8px; text-transform:uppercase;}
 .g2p{display:grid; grid-template-columns:1.35fr 1fr; gap:12px; margin-bottom:14px;}
-.gmapa{display:grid; grid-template-columns:1.75fr 1fr; gap:12px; margin-bottom:14px;}
+.gmapa{display:grid; grid-template-columns:1.75fr 1fr; gap:12px; margin-bottom:14px; align-items:start;}
 .gmapa .card{margin-bottom:0;}
 .g2p .card{margin-bottom:0;}
 .urgente-card{display:flex; align-items:center; gap:12px; background:#fff;
@@ -3031,6 +3129,7 @@ function render(){
       <button class="btn" onclick="formNota()">＋ Nota</button>
       <button class="btn sec" onclick="formLabor()">＋ Labor</button>
       <button class="btn sec" onclick="formReg()">＋ Registro</button>
+      <button class="btn sec" onclick="abrirCalc()">🧮 Calc</button>
     </div>`;
   document.getElementById("tabbar").innerHTML =
     `<div class="marca-r">${ICO.marca}</div>` +
@@ -3109,13 +3208,15 @@ function vPanel(){
       <div class="mapa-dibbar" id="mapaDibBar"></div>
       <div class="mapa-med" id="mapaMedPanel" style="display:none"></div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:12px">
-      <div class="card"><div class="w-tit">Hoy · ${fmtDia(hoyISO)}</div>
-        ${deHoy.length? deHoy.map(l=>filaLabor(l,true)).join("") : `<div class="muted">Sin labores hoy. Toca ＋ Labor para agregar.</div>`}</div>
-      <div class="card" style="flex:1"><div class="w-tit">Fotos recientes</div>
-        <div class="fotos-g" id="fotosRec"></div></div>
+    <div class="card" style="display:flex;flex-direction:column;max-height:470px;overflow:hidden">
+      <div class="w-tit">Hoy · ${fmtDia(hoyISO)}</div>
+      <div style="overflow-y:auto;flex:1;margin-top:2px;padding-right:2px">
+        ${deHoy.length? deHoy.map(l=>filaLabor(l,true)).join("") : `<div class="muted">Sin labores hoy. Toca ＋ Labor para agregar.</div>`}
+      </div>
     </div>
   </div>`;
+
+  h += panelAvances();
 
   /* Semana + notas recientes */
   let hSem = `<div class="card"><div class="w-tit">📅 Esta semana</div>`;
@@ -3293,6 +3394,7 @@ function widgetHTML(w){
       <div style="flex:0 0 62px;text-align:right;font-size:12px;font-weight:700">${num(ha)} ha</div></div>`).join("") : `<div class="muted">Sin cuarteles aún.</div>`;
     return widgetCard(w, h, "🏡 Superficie por fundo");
   }
+  if(w.tipo==="fotos"){ return widgetCard(w, `<div class="fotos-g" id="fotosRec"></div>`, "📷 Fotos recientes"); }
   return "";
 }
 function agregarWidget(){
@@ -3312,7 +3414,8 @@ function agregarWidget(){
       <option value="respaldo">💾 Recordatorio de respaldo</option>
       <option value="registros">📋 Registros por tipo (90 días)</option>
       <option value="ultimas">🕒 Últimas notas</option>
-      <option value="hafundo">🏡 Superficie por fundo</option></select></label>
+      <option value="hafundo">🏡 Superficie por fundo</option>
+      <option value="fotos">📷 Fotos recientes</option></select></label>
     <div id="w_cfg"></div>
     <div class="muted">Los widgets aparecen al final del Panel. Puedes reordenarlos con ↑ ↓ y quitarlos con ✕.</div>
   `, ()=>{
@@ -3446,11 +3549,12 @@ async function lluviaAnalizar(id){
   catch(err){ out.style.color="var(--rojo)"; out.textContent = "⚠️ "+(err.msg||err.message||"No se pudo analizar"); }
 }
 function lluviaZona(id){
-  const zonas = [{nom:zonaClima(), lat:(D.lluviaLoc||LOC_DEF).lat, lng:(D.lluviaLoc||LOC_DEF).lng, def:true}, ...(D.zonas||[])];
-  const chip = z=>{ const nn=(z.nom||"").replace(/['"\\]/g,""); return `<button class="btn sec chico" style="margin:3px" onclick="lluviaSetZona(${id}, ${z.lat}, ${z.lng}, '${esc(nn)}')">📍 ${esc(z.nom)}${z.def?" · clima":""}</button>`; };
+  const def = {nom:zonaClima(), lat:(D.lluviaLoc||LOC_DEF).lat, lng:(D.lluviaLoc||LOC_DEF).lng};
+  const chipDef = `<button class="btn sec chico" style="margin:3px" onclick="lluviaSetZona(${id}, ${def.lat}, ${def.lng}, '${esc((def.nom||"").replace(/['"\\]/g,""))}')">📍 ${esc(def.nom)} · clima</button>`;
+  const favs = (D.zonas||[]).map((z,i)=>{ const nn=(z.nom||"").replace(/['"\\]/g,""); return `<span class="chip act" style="margin:3px;display:inline-flex;align-items:center;gap:6px"><span style="cursor:pointer" onclick="lluviaSetZona(${id}, ${z.lat}, ${z.lng}, '${esc(nn)}')">⭐ ${esc(z.nom)}</span><button class="qx-cat" onclick="event.stopPropagation();lluviaQuitarFav(${id}, ${i})">✕</button></span>`; }).join("");
   abrirModal("📍 Localidad de la lluvia", `
-    <div class="muted">Elige una zona guardada o busca cualquier localidad.</div>
-    <div style="margin:10px 0;display:flex;flex-wrap:wrap">${zonas.map(chip).join("")}</div>
+    <div class="muted">Elige una zona o un favorito ⭐, o busca cualquier localidad y guárdala como favorita.</div>
+    <div style="margin:10px 0;display:flex;flex-wrap:wrap;align-items:center">${chipDef}${favs}</div>
     <label class="f">Buscar localidad
       <input id="llq" placeholder="Ej: Ovalle, Curicó, Los Ángeles…" autocapitalize="words" onkeydown="if(event.key==='Enter'){event.preventDefault();lluviaBuscarLoc(${id});}"></label>
     <button class="btn sec chico" onclick="lluviaBuscarLoc(${id})">🔎 Buscar</button>
@@ -3477,9 +3581,25 @@ async function lluviaBuscarLoc(id){
     res.innerHTML = rs.map(r=>{
       const nn = (r.name||"").replace(/['"\\]/g,"");
       const et = [r.name, r.admin1, r.country].filter(Boolean).join(", ");
-      return `<button class="btn sec chico" style="display:block;width:100%;text-align:left;margin:4px 0" onclick="lluviaSetZona(${id}, ${r.latitude}, ${r.longitude}, '${esc(nn)}')">📍 ${esc(et)}</button>`;
+      return `<div class="fila" style="gap:6px;margin:5px 0;align-items:center">
+        <button class="btn sec chico" style="flex:1;text-align:left;justify-content:flex-start" onclick="lluviaSetZona(${id}, ${r.latitude}, ${r.longitude}, '${esc(nn)}')">📍 ${esc(et)}</button>
+        <button class="btn sec chico" title="Guardar como favorita" onclick="lluviaFav(${id}, ${r.latitude}, ${r.longitude}, '${esc(nn)}')">⭐</button>
+      </div>`;
     }).join("");
   }catch(e){ res.innerHTML = `<div class="muted">No se pudo buscar. Reintenta.</div>`; }
+}
+function lluviaFav(id, lat, lng, nom){
+  D.zonas = D.zonas || [];
+  const i = D.zonas.findIndex(z=>(z.nom||"").toLowerCase()===String(nom).toLowerCase());
+  if(i<0) D.zonas.push({nom:nom, lat:lat, lng:lng}); else { D.zonas[i].lat=lat; D.zonas[i].lng=lng; }
+  guardar();
+  lluviaZona(id); // refresca el modal mostrando el nuevo favorito ⭐
+}
+function lluviaQuitarFav(id, i){
+  if(!D.zonas || !D.zonas[i]) return;
+  D.zonas.splice(i,1);
+  guardar();
+  lluviaZona(id);
 }
 async function iaBuscarWeb(prompt){
   const c = iaCfg();
@@ -3531,6 +3651,313 @@ Valores en mm. Usa null en los meses sin dato oficial claro. NO inventes cifras:
       out.textContent = (r.text||"Sin resultado.") + "\n\n(No pude estructurarlo por meses esta vez; reintenta o revisa el texto.)";
     }
   }catch(err){ out.style.color="var(--rojo)"; out.textContent = "⚠️ "+(err.msg||err.message||"No se pudo buscar"); }
+}
+/* ================== CALCULADORA DE TERRENO ================== */
+const CALC_TABS = [["aplic","🧪 Aplicación"],["cosecha","🍒 Cosecha"],["plant","🌿 Plantación"],["cuad","👷 Cuadrilla"]];
+function abrirCalc(tab){
+  nav.calcTab = tab || nav.calcTab || "aplic";
+  const chips = CALC_TABS.map(([id,lab])=>`<button class="chip ${nav.calcTab===id?"act":""}" onclick="abrirCalc('${id}')">${lab}</button>`).join("");
+  const form = ({aplic:calcFormAplic, cosecha:calcFormCosecha, plant:calcFormPlant, cuad:calcFormCuad}[nav.calcTab]||(()=>""))();
+  document.getElementById("capaVisor").innerHTML = `
+  <div class="visor" style="background:#eef1ec">
+    <div class="vh" style="background:linear-gradient(135deg,#123f24,#1e7a4c)">
+      <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
+      <div style="flex:1;color:#fff;font-weight:800">🧮 Calculadora de terreno</div>
+    </div>
+    <div style="flex:1;overflow:auto;-webkit-overflow-scrolling:touch">
+      <div style="max-width:640px;margin:0 auto;padding:14px 16px 40px">
+        <div class="chips" style="margin-bottom:12px;flex-wrap:wrap">${chips}</div>
+        <div class="card">${form}</div>
+        <div class="card" id="calcRes" style="background:var(--pclaro);border:1.5px solid var(--p)"></div>
+        <div class="muted" style="font-size:11.5px;margin-top:8px">Cálculos referenciales para terreno. Confirma siempre con la etiqueta del producto y tu asesor.</div>
+      </div>
+    </div>
+  </div>`;
+  calcRun();
+}
+function calcRun(){
+  const out = document.getElementById("calcRes"); if(!out) return;
+  const f = {aplic:calcAplic, cosecha:calcCosecha, plant:calcPlant, cuad:calcCuad}[nav.calcTab];
+  out.innerHTML = f? f() : "";
+}
+function cval(id){ const el=document.getElementById(id); if(!el) return NaN; const s=(el.value||"").trim().replace(",","."); const x=parseFloat(s.replace(/[^0-9.\-]/g,"")); return isNaN(x)?NaN:x; }
+function calcSet(id,val){ nav.calcVals=nav.calcVals||{}; nav.calcVals[id]=val; calcRun(); }
+function calcInput(id,lab,ph){ const cv=(nav.calcVals&&nav.calcVals[id])||""; return `<label class="f">${lab}<input id="${id}" type="text" inputmode="decimal" placeholder="${esc(ph||"")}" value="${esc(cv)}" oninput="calcSet('${id}',this.value)"></label>`; }
+function calcR(lab,val,unit,big){
+  if(val==null||isNaN(val)||!isFinite(val)) return "";
+  const n=(Math.round(val*100)/100).toLocaleString("es-CL");
+  return `<div class="fila" style="justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px dashed rgba(0,0,0,.12)"><span style="font-size:13.5px">${lab}</span><b style="font-size:${big?18:15}px;color:var(--p2);white-space:nowrap">${n}${unit?` <span style="font-size:11px;font-weight:400;color:var(--txt2)">${esc(unit)}</span>`:""}</b></div>`;
+}
+/* --- Plantación --- */
+function calcFormPlant(){ return `<h3 style="margin-top:0">🌿 Plantación / densidad</h3>
+  ${calcInput("p_a","Distancia entre hileras (m)","5")}
+  ${calcInput("p_b","Distancia sobre la hilera (m)","2")}
+  ${calcInput("p_ha","Superficie (ha)","1")}`; }
+function calcPlant(){
+  const a=cval("p_a"),b=cval("p_b"),ha=cval("p_ha");
+  const dens=(a>0&&b>0)?10000/(a*b):NaN;
+  const tot=(!isNaN(dens)&&ha>0)?dens*ha:NaN;
+  let h=`<h3 style="margin-top:0">Resultado</h3>${calcR("Plantas por hectárea",dens,"pl/ha",true)}${calcR("Total de plantas",tot,"plantas",true)}`;
+  if(a>0&&b>0) h+=`<div class="muted" style="font-size:11.5px;margin-top:6px">Marco ${a}×${b} m = ${Math.round(a*b*100)/100} m² por planta.</div>`;
+  else h+=`<div class="muted">Ingresa el marco de plantación (las dos distancias).</div>`;
+  return h;
+}
+/* --- Cosecha --- */
+function calcFormCosecha(){ return `<h3 style="margin-top:0">🍒 Cosecha / producción</h3>
+  ${calcInput("c_kgpl","Kilos por planta (kg)","25")}
+  ${calcInput("c_dens","Plantas por hectárea","1000")}
+  ${calcInput("c_ha","Superficie (ha)","1")}
+  ${calcInput("c_bin","Kilos por bin","400 · bin de campo ~350–450")}
+  ${calcInput("c_caja","Kilos por caja (opcional)","8.2")}`; }
+function calcCosecha(){
+  const kgpl=cval("c_kgpl"),dens=cval("c_dens"),ha=cval("c_ha"),bin=cval("c_bin"),caja=cval("c_caja");
+  const kgha=(kgpl>0&&dens>0)?kgpl*dens:NaN;
+  const tot=(!isNaN(kgha)&&ha>0)?kgha*ha:NaN;
+  const bins=(!isNaN(tot)&&bin>0)?tot/bin:NaN;
+  const cajas=(!isNaN(tot)&&caja>0)?tot/caja:NaN;
+  let h=`<h3 style="margin-top:0">Resultado</h3>${calcR("Rendimiento",kgha,"kg/ha",true)}${calcR("Producción total",tot,"kg",true)}${calcR("Bins estimados",bins,"bins")}${calcR("Cajas estimadas",cajas,"cajas")}`;
+  if(isNaN(kgha)) h+=`<div class="muted">Ingresa kg por planta y plantas/ha (la densidad la sacas en la pestaña Plantación).</div>`;
+  return h;
+}
+/* --- Aplicación --- */
+function calcUHint(){ return (nav.calcDosisU==="ha")? "Ej: 2 L/ha o 3 kg/ha." : "Ej: 110 g/100 L o 250 cc/100 L (dosis por cada 100 litros de agua)."; }
+function calcSetU(u){
+  nav.calcDosisU=u;
+  const c1=document.getElementById("a_u100"), c2=document.getElementById("a_uha");
+  if(c1) c1.className="chip "+(u==="100L"?"act":"");
+  if(c2) c2.className="chip "+(u==="ha"?"act":"");
+  const hint=document.getElementById("a_uhint"); if(hint) hint.textContent=calcUHint();
+  calcRun();
+}
+function calcFormAplic(){
+  const u=nav.calcDosisU||"100L";
+  return `<h3 style="margin-top:0">🧪 Aplicación fitosanitaria</h3>
+  ${calcInput("a_dosis","Dosis del producto","110")}
+  <div class="fila" style="margin:-4px 0 6px">
+    <button id="a_u100" class="chip ${u==="100L"?"act":""}" onclick="calcSetU('100L')">por 100 L</button>
+    <button id="a_uha" class="chip ${u==="ha"?"act":""}" onclick="calcSetU('ha')">por hectárea</button>
+  </div>
+  <div class="muted" id="a_uhint" style="font-size:11.5px;margin:-2px 0 8px">${calcUHint()}</div>
+  ${calcInput("a_moja","Mojamiento (litros de agua por ha)","cerezo/cítrico ~1000 · según follaje 700–2000")}
+  ${calcInput("a_ha","Superficie a aplicar (ha)","1")}
+  ${calcInput("a_est","Capacidad del estanque (L)","2000")}
+  <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-size:13.5px">📐 Estimar mojamiento por TRV (opcional)</summary>
+    <div style="margin-top:8px">
+    ${calcInput("t_h","Altura de copa (m)","2.5")}
+    ${calcInput("t_w","Ancho de copa (m)","2")}
+    ${calcInput("t_row","Distancia entre hileras (m)","4")}
+    ${calcInput("t_f","Litros por 1.000 m³ de copa (cítricos 80–140)","vacío usa 100")}
+    <div id="trvRes" class="muted" style="font-size:12px;margin-top:4px">Ingresa altura, ancho y distancia de hilera.</div>
+    </div>
+  </details>`;
+}
+function calcAplic(){
+  const dosis=cval("a_dosis"),moja=cval("a_moja"),ha=cval("a_ha"),est=cval("a_est");
+  const u=nav.calcDosisU||"100L";
+  let d100=NaN,dha=NaN;
+  if(u==="ha"){ dha=dosis; if(moja>0&&!isNaN(dosis)) d100=dosis/(moja/100); }
+  else { d100=dosis; if(moja>0&&!isNaN(dosis)) dha=dosis*(moja/100); }
+  const agua=(moja>0&&ha>0)?moja*ha:NaN;
+  const nEst=(!isNaN(agua)&&est>0)?Math.ceil(agua/est):NaN;
+  const haEst=(moja>0&&est>0)?est/moja:NaN;
+  const total=(!isNaN(dha)&&ha>0)?dha*ha:NaN;
+  const porEst=(!isNaN(d100)&&est>0)?(est/100)*d100:NaN;
+  const th=cval("t_h"),tw=cval("t_w"),tr=cval("t_row"); let tf=cval("t_f"); if(isNaN(tf)) tf=100;
+  const trvEl=document.getElementById("trvRes");
+  if(trvEl){
+    if(th>0&&tw>0&&tr>0){ const trv=th*tw*(10000/tr); const aguaTrv=trv/1000*tf;
+      trvEl.innerHTML=`TRV = <b>${Math.round(trv).toLocaleString("es-CL")}</b> m³/ha → mojamiento sugerido <b>${Math.round(aguaTrv).toLocaleString("es-CL")}</b> L/ha &nbsp;<button class="btn sec chico" style="min-height:26px;padding:2px 8px" onclick="document.getElementById('a_moja').value='${Math.round(aguaTrv)}';calcRun()">Usar</button>`;
+    } else trvEl.textContent="Ingresa altura, ancho y distancia de hilera.";
+  }
+  if(isNaN(dosis)&&isNaN(moja)) return `<h3 style="margin-top:0">Resultado</h3><div class="muted">Ingresa la dosis y el mojamiento.</div>`;
+  return `<h3 style="margin-top:0">Resultado</h3>
+    ${calcR("Producto por estanque",porEst,"(misma unidad de la dosis)",true)}
+    ${calcR("Producto total"+(ha>0?" (para "+(Math.round(ha*100)/100)+" ha)":""),total,"",true)}
+    ${calcR("Nº de estanques",nEst,"estanques")}
+    ${calcR("Superficie por estanque",haEst,"ha")}
+    ${calcR("Agua total",agua,"L")}
+    ${calcR("Dosis equivalente por 100 L",d100,"por 100 L")}
+    ${calcR("Dosis equivalente por ha",dha,"por ha")}
+    <div class="muted" style="font-size:11px;margin-top:6px">Las unidades (g, cc, mL, kg, L) son las mismas que pusiste en la dosis.</div>`;
+}
+/* --- Cuadrilla --- */
+function calcFormCuad(){ return `<h3 style="margin-top:0">👷 Cuadrilla / rendimiento</h3>
+  ${calcInput("q_tot","Total a realizar (plantas, ha, bins, kg…)","5000")}
+  ${calcInput("q_pers","Nº de personas","10")}
+  ${calcInput("q_rend","Rendimiento por persona al día","60")}
+  ${calcInput("q_dias","Días disponibles (opcional)","5")}
+  ${calcInput("q_val","Valor por unidad $ (trato, opcional)","")}`; }
+function calcCuad(){
+  const tot=cval("q_tot"),pers=cval("q_pers"),rend=cval("q_rend"),dias=cval("q_dias"),val=cval("q_val");
+  const porDia=(pers>0&&rend>0)?pers*rend:NaN;
+  const diasNec=(tot>0&&pers>0&&rend>0)?tot/(pers*rend):NaN;
+  const persNec=(tot>0&&dias>0&&rend>0)?tot/(dias*rend):NaN;
+  const rendReq=(tot>0&&pers>0&&dias>0)?tot/(pers*dias):NaN;
+  const diasJ=(dias>0)?dias:diasNec;
+  const jornales=(pers>0&&diasJ>0)?pers*diasJ:NaN;
+  const costo=(tot>0&&val>0)?tot*val:NaN;
+  return `<h3 style="margin-top:0">Resultado</h3>
+    ${calcR("Producción por día (toda la cuadrilla)",porDia,"por día",true)}
+    ${calcR("Días para terminar",diasNec,"días",true)}
+    ${calcR("Personas necesarias (para esos días)",persNec,"personas")}
+    ${calcR("Rendimiento requerido por persona/día",rendReq,"c/u")}
+    ${calcR("Jornales",jornales,"jornales")}
+    ${calcR("Costo a trato",costo,"$")}
+    <div class="muted" style="font-size:11px;margin-top:6px">Llena solo los campos que tengas; se calcula lo que se pueda.</div>`;
+}
+/* ================== AVANCES: resumen + análisis ================== */
+function avAll(){ const out=[]; for(const l of D.labores) for(const a of (l.avances||[])) out.push({...a, tipo:l.tipo, fundo:l.fundo, cuartel:l.cuartel, laborId:l.id, unidad:l.unidad}); return out; }
+function avKpis(a){
+  const total=a.reduce((s,x)=>s+(+x.total||0),0);
+  const cant=a.reduce((s,x)=>s+(+x.cantidad||0),0);
+  const persDia=a.reduce((s,x)=>s+(+x.personas||0),0);
+  return {total, cant, persDia, ganaPers: persDia>0? total/persDia:0, rend: persDia>0? cant/persDia:0, costoU: cant>0? total/cant:0, n:a.length};
+}
+function avFiltrar(){
+  let a = avAll();
+  const per = nav.avPeriodo||"semana", hoyISO=hoy();
+  if(per==="hoy") a=a.filter(x=>x.fecha===hoyISO);
+  else if(per==="semana"){ const s=semanaDe(hoyISO); a=a.filter(x=>x.fecha>=s[0]&&x.fecha<=s[6]); }
+  else if(per==="mes"){ const m=hoyISO.slice(0,7); a=a.filter(x=>(x.fecha||"").slice(0,7)===m); }
+  else if(per==="rango"){ if(nav.avIni) a=a.filter(x=>x.fecha>=nav.avIni); if(nav.avFin) a=a.filter(x=>x.fecha<=nav.avFin); }
+  if(nav.avFundo) a=a.filter(x=>x.fundo===nav.avFundo);
+  if(nav.avLabor) a=a.filter(x=>x.tipo===nav.avLabor);
+  if(nav.avCuartel) a=a.filter(x=>x.cuartel===nav.avCuartel);
+  return a;
+}
+function panelAvances(){
+  const all = avAll(); if(!all.length) return "";
+  const s=semanaDe(hoy()); const wk = all.filter(x=>x.fecha>=s[0]&&x.fecha<=s[6]);
+  const usar = wk.length? wk : all; const k = avKpis(usar);
+  const per = wk.length? "esta semana" : "histórico";
+  const mil = x=>Math.round(x).toLocaleString("es-CL");
+  const mono = new Set(usar.map(x=>x.unidad||x.tipo)).size===1;
+  const uni = mono? ((usar.find(x=>x.unidad)||{}).unidad||"") : "";
+  const g={}; usar.forEach(x=>{ const key=x.tipo+"|"+x.fundo+"|"+(x.cuartel||""); (g[key]=g[key]||{tipo:x.tipo,fundo:x.fundo,cuartel:x.cuartel,unidad:x.unidad,c:0,t:0,p:0}); g[key].c+=(+x.cantidad||0); g[key].t+=(+x.total||0); g[key].p+=(+x.personas||0); });
+  const lines = Object.values(g).sort((a,b)=>b.t-a.t).map(x=>`<div class="fila" style="justify-content:space-between;align-items:baseline;font-size:13.5px;padding:6px 0;border-top:1px solid var(--borde)">
+    <span><b>${esc(x.tipo)}</b> · ${esc(x.fundo)}${x.cuartel?" · "+esc(x.cuartel):""}<span class="muted"> · ${num(x.c)}${x.unidad?" "+esc(x.unidad):""}${x.p?" · "+num(x.p)+" pers":""}</span></span>
+    <b style="color:var(--p2)">$${mil(x.t)}</b></div>`).join("");
+  const kpis = `<div class="kpi"><div class="num" style="font-size:20px">$${mil(k.total)}</div><div class="lab">total pagado</div></div>
+    <div class="kpi azul"><div class="num" style="font-size:20px">$${mil(k.ganaPers)}</div><div class="lab">prom. por persona</div></div>`
+    + (mono?`<div class="kpi acc"><div class="num" style="font-size:20px">${num(k.rend)}</div><div class="lab">rendim./persona</div></div>
+    <div class="kpi"><div class="num" style="font-size:20px">${num(k.cant)}</div><div class="lab">realizado${uni?" ("+esc(uni)+")":""}</div></div>`:"");
+  return `<div class="card">
+    <div class="fila" style="justify-content:space-between;align-items:center">
+      <div class="w-tit" style="margin:0">📊 Avance realizado · ${per}</div>
+      <button class="btn sec chico" onclick="abrirAvances()">📈 Análisis / PDF</button>
+    </div>
+    <div class="${mono?"grid4":"grid2"}" style="margin:10px 0 6px">${kpis}</div>
+    ${lines}
+  </div>`;
+}
+function avSet(key,val){ nav[key]=val; abrirAvances(); }
+function abrirAvances(){
+  const all = avAll();
+  const per = nav.avPeriodo||"semana";
+  const fundos=[...new Set(all.map(x=>x.fundo).filter(Boolean))];
+  const labores=[...new Set(all.map(x=>x.tipo).filter(Boolean))];
+  const cuarteles=[...new Set(all.map(x=>x.cuartel).filter(Boolean))];
+  const perChips=[["hoy","Hoy"],["semana","Semana"],["mes","Mes"],["todo","Todo"],["rango","Rango"]].map(([id,lab])=>`<button class="chip ${per===id?"act":""}" style="min-height:30px;padding:4px 13px" onclick="avSet('avPeriodo','${id}')">${lab}</button>`).join("");
+  const sel=(key,lista,cur,ph)=>`<select style="flex:1;min-width:130px;padding:8px 10px;border:1.5px solid var(--borde);border-radius:9px;font-size:14px;background:#fff" onchange="avSet('${key}',this.value)"><option value="">${ph}</option>${lista.map(o=>`<option ${cur===o?"selected":""}>${esc(o)}</option>`).join("")}</select>`;
+  const rango = per==="rango"? `<div class="fila" style="margin-top:8px;gap:6px;align-items:center">${campoF("av_ini","","date",nav.avIni)}<span class="muted">a</span>${campoF("av_fin","","date",nav.avFin)}<button class="btn sec chico" onclick="nav.avIni=v('av_ini');nav.avFin=v('av_fin');abrirAvances()">Aplicar</button></div>`:"";
+  document.getElementById("capaVisor").innerHTML = `
+  <div class="visor inf-v" style="background:#eef1ec">
+    <div class="vh no-print" style="background:linear-gradient(135deg,#123f24,#1e7a4c)">
+      <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
+      <div style="flex:1;color:#fff;font-weight:800;min-width:80px">📈 Avances</div>
+      <button class="btn sec chico" onclick="iaAnalizarAvances()">✨ IA</button>
+      <button class="btn chico" onclick="window.print()">🖨️ PDF</button>
+    </div>
+    <div class="no-print" style="background:#fff;border-bottom:1px solid var(--borde);padding:9px 14px">
+      <div class="chips" style="flex-wrap:wrap;gap:6px">${perChips}</div>
+      ${rango}
+      <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+        ${sel("avFundo",fundos,nav.avFundo||"","Todos los fundos")}
+        ${sel("avLabor",labores,nav.avLabor||"","Todas las labores")}
+        ${cuarteles.length?sel("avCuartel",cuarteles,nav.avCuartel||"","Todos los cuarteles"):""}
+      </div>
+    </div>
+    <div class="inf-scroll" style="flex:1;overflow:auto"><div class="informe" id="avInforme">${avBody()}</div></div>
+  </div>`;
+}
+function avDelta(cur, prev, invert){
+  if(prev==null||prev===0) return cur>0?`<span style="color:#1e7a4c;font-weight:700">nuevo</span>`:"—";
+  const d=cur-prev, pct=Math.round(d/prev*100);
+  const good = invert? d<0 : d>0;
+  const color = d===0?"#777":(good?"#1e7a4c":"#c62828");
+  return `<span style="color:${color};font-weight:700">${d>0?"▲":d<0?"▼":"="} ${Math.abs(pct)}%</span>`;
+}
+function avBody(){
+  const a = avFiltrar();
+  const filtroTxt = `${nav.avLabor||"Todas las labores"} · ${nav.avFundo||"Todos los fundos"}${nav.avCuartel?" · "+nav.avCuartel:""} · ${({hoy:"Hoy",semana:"Esta semana",mes:"Este mes",todo:"Histórico",rango:(nav.avIni||"…")+" a "+(nav.avFin||"…")}[nav.avPeriodo||"semana"])}`;
+  const mil=x=>Math.round(x).toLocaleString("es-CL");
+  const kMoney=v=>"$"+(Math.abs(v)>=1000?Math.round(v/1000)+"k":Math.round(v));
+  if(!a.length) return `<div style="font-size:20px;font-weight:800;color:#14532d">📈 Análisis de avances</div><div style="color:#555">${esc(filtroTxt)}</div><div class="inf-vacio" style="margin-top:12px">Sin avances en este filtro.</div>`;
+  const mono = new Set(a.map(x=>x.unidad||x.tipo)).size===1;
+  const uni = mono? ((a.find(x=>x.unidad)||{}).unidad||"") : "";
+  const k = avKpis(a);
+  const pd={}; a.forEach(x=>{ pd[x.fecha]=pd[x.fecha]||{t:0,c:0,p:0}; pd[x.fecha].t+=(+x.total||0); pd[x.fecha].c+=(+x.cantidad||0); pd[x.fecha].p+=(+x.personas||0); });
+  const dias=Object.keys(pd).sort();
+  const sd=f=>f.slice(8)+"/"+f.slice(5,7);
+  const chTot=dias.map(d=>[sd(d),pd[d].t]);
+  const chGana=dias.map(d=>[sd(d),pd[d].p>0?Math.round(pd[d].t/pd[d].p):0]);
+  const chRend=dias.map(d=>[sd(d),pd[d].p>0?Math.round(pd[d].c/pd[d].p):0]);
+  const pc={}; a.forEach(x=>{ const kk=(x.fundo||"")+(x.cuartel?" · "+x.cuartel:""); pc[kk]=(pc[kk]||0)+(+x.total||0); });
+  const chCu=Object.entries(pc).sort((x,y)=>y[1]-x[1]).slice(0,8);
+  let cmp="";
+  if(dias.length>=2){
+    const d1=dias[dias.length-1], d0=dias[dias.length-2];
+    const k1=avKpis(a.filter(x=>x.fecha===d1)), k0=avKpis(a.filter(x=>x.fecha===d0));
+    const row=(lab,c,p,fmt,inv)=>`<tr><td>${lab}</td><td style="text-align:right">${fmt(p)}</td><td style="text-align:right">${fmt(c)}</td><td style="text-align:right">${avDelta(c,p,inv)}</td></tr>`;
+    cmp=`<div class="inf-sec"><h2>📊 Último día vs anterior · ${fmtF(d1)} vs ${fmtF(d0)}</h2>
+      <table><tr><th>Indicador</th><th style="text-align:right">${fmtF(d0)}</th><th style="text-align:right">${fmtF(d1)}</th><th style="text-align:right">Cambio</th></tr>
+      ${row("$ pagado",Math.round(k1.total),Math.round(k0.total),v=>"$"+mil(v),false)}
+      ${row("Prom. por persona",Math.round(k1.ganaPers),Math.round(k0.ganaPers),v=>"$"+mil(v),false)}
+      ${mono?row("Total realizado"+(uni?" ("+esc(uni)+")":""),k1.cant,k0.cant,mil,false):""}
+      ${mono?row("Rendimiento por persona",Math.round(k1.rend),Math.round(k0.rend),mil,false):""}
+      ${mono?row("Costo por unidad",Math.round(k1.costoU),Math.round(k0.costoU),v=>"$"+mil(v),true):""}
+      </table><div class="muted" style="font-size:11px">Verde = mejora.</div></div>`;
+  }
+  return `
+    <div style="border-bottom:3px solid #1e7a4c;padding-bottom:8px;margin-bottom:6px">
+      <div style="font-size:20px;font-weight:800;color:#14532d">📈 Análisis de avances</div>
+      <div style="color:#555;font-size:13px">${esc(filtroTxt)} · generado ${fmtF(hoy())}</div>
+      ${!mono?`<div style="color:#8a5a00;font-size:12px;margin-top:3px">⚠️ Varias labores/unidades: se muestran solo los montos ($). Filtra por una labor para ver rendimiento y cantidades.</div>`:""}
+    </div>
+    <div class="inf-kpis">
+      <div><b>$${mil(k.total)}</b>Total pagado</div>
+      <div><b>$${mil(k.ganaPers)}</b>Prom./persona</div>
+      <div><b>${k.persDia}</b>Personas-día</div>
+      ${mono?`<div><b>${num(k.cant)}</b>Realizado${uni?" "+esc(uni):""}</div>
+      <div><b>${num(k.rend)}</b>Rendim./persona</div>
+      <div><b>$${mil(k.costoU)}</b>Costo/unidad</div>`:""}
+    </div>
+    <div id="avIAres"></div>
+    ${cmp}
+    <div class="inf-sec"><h2>📈 Gráficos</h2>
+      <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-end">
+        ${barrasSVG("$ por día", chTot, "#1e7a4c", kMoney)}
+        ${barrasSVG("Prom. por persona ($/día)", chGana, "#2563eb", kMoney)}
+        ${mono?barrasSVG("Rendimiento por persona", chRend, "#b45309"):""}
+        ${chCu.length>1?barrasSVG("$ por fundo/cuartel", chCu, "#14532d", kMoney):""}
+      </div>
+    </div>
+    <div class="inf-sec"><h2>📋 Detalle</h2>
+      <table><tr><th>Fecha</th><th>Labor</th><th>Fundo · Cuartel</th><th style="text-align:right">Cant.</th><th style="text-align:right">Pers.</th><th style="text-align:right">$ total</th><th style="text-align:right">$/pers</th></tr>
+      ${a.slice().sort((x,y)=>(y.fecha||"").localeCompare(x.fecha||"")).map(x=>`<tr><td>${fmtF(x.fecha)}</td><td>${esc(x.tipo)}</td><td>${esc(x.fundo||"")}${x.cuartel?" · "+esc(x.cuartel):""}</td><td style="text-align:right">${num(x.cantidad)}${x.unidad?" "+esc(x.unidad):""}</td><td style="text-align:right">${x.personas||""}</td><td style="text-align:right">$${mil(x.total||0)}</td><td style="text-align:right">${x.personas&&x.total?"$"+mil(x.total/x.personas):""}</td></tr>`).join("")}
+      </table></div>`;
+}
+async function iaAnalizarAvances(){
+  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); return; }
+  const out=document.getElementById("avIAres"); if(!out) return;
+  out.innerHTML=`<div class="inf-sec"><h2>✨ Análisis IA</h2><div class="muted">Analizando…</div></div>`;
+  const a=avFiltrar(); const k=avKpis(a);
+  const pd={}; a.forEach(x=>{ pd[x.fecha]=pd[x.fecha]||{t:0,c:0,p:0}; pd[x.fecha].t+=(+x.total||0); pd[x.fecha].c+=(+x.cantidad||0); pd[x.fecha].p+=(+x.personas||0); });
+  const serie=Object.keys(pd).sort().map(d=>`${d}: ${Math.round(pd[d].c)} u, ${pd[d].p} pers-dia, $${Math.round(pd[d].t)}, rend ${pd[d].p>0?Math.round(pd[d].c/pd[d].p):0}/pers, gana $${pd[d].p>0?Math.round(pd[d].t/pd[d].p):0}/pers`).join("\n");
+  const instr=`Eres jefe de campo frutícola en Chile. Analiza el avance de "${nav.avLabor||"labores"}" en ${nav.avFundo||"todos los fundos"}${nav.avCuartel?" (cuartel "+nav.avCuartel+")":""}. Datos por día:\n${serie}\nTotales: $${Math.round(k.total)}, ${Math.round(k.cant)} unidades, ${k.persDia} personas-día, rendimiento ${Math.round(k.rend)}/persona, gana $${Math.round(k.ganaPers)}/persona, costo por unidad $${Math.round(k.costoU)}.\nEn 3 a 5 frases: la tendencia (rendimiento, costo, ritmo), compara el último día con el anterior (subió o bajó y una posible causa), y 1-2 recomendaciones prácticas. Español de Chile, directo. No inventes cifras.`;
+  try{ const txt=(await iaLlamar([{text:instr}])).trim();
+    out.innerHTML=`<div class="inf-sec"><h2>✨ Análisis IA</h2><div style="white-space:pre-wrap;line-height:1.5">${esc(txt||"Sin análisis.")}</div><div class="muted" style="font-size:11px;margin-top:6px">Generado por IA — referencial.</div></div>`;
+  }catch(err){ out.innerHTML=`<div class="inf-sec"><h2>✨ Análisis IA</h2><div style="color:#b00">⚠️ ${esc(err.msg||err.message||"No se pudo analizar")}</div></div>`; }
 }
 function posPanel(){
   posNotas();
