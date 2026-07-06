@@ -117,6 +117,13 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
   background:var(--rojo); color:#fff; border:2px solid #fff; font-size:14px; line-height:1; cursor:pointer;}
 .thumbwrap{position:relative;}
 
+/* ===== IA (identificación con IA) ===== */
+.ia-carga{position:fixed; inset:0; z-index:300; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; padding:24px;}
+.ia-carga-box{background:#fff; border-radius:16px; padding:26px 22px; text-align:center; max-width:320px; box-shadow:var(--som2);}
+.ia-spin{width:36px; height:36px; border:4px solid var(--pclaro); border-top-color:var(--p); border-radius:50%; margin:0 auto; animation:iaGiro .8s linear infinite;}
+@keyframes iaGiro{to{transform:rotate(360deg);}}
+.ia-diag b{color:var(--p2);}
+
 /* ===== Documentos adjuntos (PDF) ===== */
 .docs{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;}
 .doc-chip{display:inline-flex; align-items:center; gap:7px; padding:9px 14px; border-radius:12px;
@@ -159,6 +166,7 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
 .visor .lienzo{flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative; touch-action:none;}
 .visor canvas, .visor img.full{max-width:100%; max-height:100%; display:block;}
 #cqBase, #cqTmp{max-width:none !important; max-height:none !important;} /* el zoom del editor necesita crecer más allá de la pantalla */
+.visor, .visor .lienzo, .visor img, .visor canvas, #cqBase, #cqTmp{-webkit-user-select:none; user-select:none; -webkit-touch-callout:none;} /* evita el menú iOS (copiar/traducir/buscar) al dibujar con el lápiz */
 .visor .herr{background:#000; padding:8px 12px calc(10px + env(safe-area-inset-bottom));
   display:flex; gap:8px; align-items:center; overflow-x:auto;}
 .herr .tool{width:46px; height:46px; border-radius:12px; border:2px solid #444; background:#222; color:#fff;
@@ -330,6 +338,7 @@ function cargar(){
     D.noticias = D.noticias || null; // noticias e indicadores guardados para leer sin internet
     D.climaCache = D.climaCache || null; // último pronóstico guardado para verlo sin señal
     D.zonas = D.zonas || []; // zonas de clima guardadas por el usuario (presets)
+    D.ia = D.ia || {key:"", modelo:""}; // ajustes de IA (identificar fotos y escanear etiquetas)
     D.notas.forEach(n=>{ n.docs = n.docs || []; n.audios = n.audios || []; n.check = n.check || []; });
     D.registros.forEach(r=>{ r.fotos = r.fotos || []; r.docs = r.docs || []; r.audios = r.audios || []; });
   }catch(e){ alert("Error leyendo datos guardados: "+e.message); D = defaults(); }
@@ -507,6 +516,16 @@ function vPanel(){
     </div>
   </div>`;
 
+  h += `<div class="card">
+    <h3>🔎 Pregúntale a tus datos <span class="badge b-azul">IA</span></h3>
+    <div class="muted">Pregunta en lenguaje normal sobre tus notas, registros, labores y cuarteles. Necesita señal.</div>
+    <div class="fila" style="margin-top:8px">
+      <input id="iaBuscaQ" placeholder="Ej: ¿cuándo apliqué por última vez en San Joaquín?" style="flex:1;padding:11px;border:1.5px solid var(--borde);border-radius:10px;font-size:16px;min-width:150px" onkeydown="if(event.key==='Enter'){event.preventDefault();iaBuscar();}">
+      <button class="btn chico" onclick="iaBuscar()">Preguntar</button>
+    </div>
+    <div id="iaBuscaR" style="margin-top:10px;white-space:pre-wrap;font-size:14.5px"></div>
+  </div>`;
+
   if(urg.length) h += `<div class="card" style="border-left:5px solid var(--rojo)">
     <h3>🚨 Urgentes sin resolver (${urg.length})</h3>
     ${urg.slice(0,5).map(n=>miniNota(n)).join("")}</div>`;
@@ -623,6 +642,7 @@ function formNota(id){
     ${selF("m_cat","Categoría",catsNota(),n?.cat||"Observación")}
     ${areaF("m_texto","Nota *",n?.texto,"Escribe aquí lo observado…")}
     ${campoF("m_aviso","Recordatorio 🔔 (opcional: aparece en el Panel ese día)","date",n?.aviso)}
+    <button type="button" class="btn sec chico" style="margin:-4px 0 10px" onclick="var e=document.getElementById('m_aviso'); e.value=''; e.blur();">✕ Quitar recordatorio</button>
     <label class="f" style="display:flex;align-items:center;gap:10px;font-size:15px">
       <input type="checkbox" id="m_fijada" ${n?.fijada?"checked":""} style="width:24px;height:24px;min-height:0;margin:0"> 📌 Fijar arriba (importante)
     </label>
@@ -737,6 +757,7 @@ async function abrirDoc(id,nombre){
     <div class="vh">
       <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
       <div style="flex:1;color:#fff;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ${esc(nombre||"Documento")}</div>
+      <button class="btn chico" style="background:var(--azul)" onclick="iaInterpretarDoc('${id}','${esc(nombre||"Documento")}')">🔎 Interpretar</button>
       <a class="btn chico" style="text-decoration:none" href="${url}" download="${esc(nombre||"documento.pdf")}">⬇️</a>
     </div>
     <iframe src="${url}" style="flex:1;border:none;background:#fff"></iframe>
@@ -783,7 +804,7 @@ async function pintarAudiosTmp(){
   let h = "";
   for(const aid of audiosTmp){
     const d = await fotoGet(aid);
-    if(d) h += `<div class="aud-fila">🎤<audio controls preload="metadata" src="${d}"></audio><button class="qx-cat" onclick="quitarAudioTmp('${aid}')">✕</button></div>`;
+    if(d) h += `<div class="aud-fila">🎤<audio controls preload="metadata" src="${d}"></audio><button class="btn sec chico" style="min-height:32px;padding:4px 9px" onclick="iaTranscribir('${aid}')">📝 Transcribir</button><button class="qx-cat" onclick="quitarAudioTmp('${aid}')">✕</button></div>`;
   }
   cont.innerHTML = h;
 }
@@ -1551,6 +1572,267 @@ function comprimirImagen(file){
     img.src = URL.createObjectURL(file);
   });
 }
+/* ================== IA: identificación y escaneo (Gemini) ================== */
+function iaCfg(){ const c = D.ia||{}; return {key:(c.key||"").trim(), modelo:(c.modelo||"").trim()||"gemini-2.5-flash"}; }
+function iaVerClave(btn){
+  const el = document.getElementById("ia_key"); if(!el) return;
+  const ver = el.type==="password"; el.type = ver? "text" : "password";
+  if(btn) btn.textContent = ver? "🙈 Ocultar clave" : "👁 Ver clave";
+}
+function iaCargando(msg){
+  let el = document.getElementById("iaCarga");
+  if(!el){ el = document.createElement("div"); el.id="iaCarga"; document.body.appendChild(el); }
+  el.className = "ia-carga";
+  el.innerHTML = `<div class="ia-carga-box"><div class="ia-spin"></div>
+    <div style="margin-top:12px;font-weight:700">${esc(msg||"Analizando con IA…")}</div>
+    <div class="muted" style="margin-top:4px">Puede tardar unos segundos.</div></div>`;
+  el.style.display = "flex";
+}
+function iaCerrarCarga(){ const el = document.getElementById("iaCarga"); if(el) el.remove(); }
+function iaPartes(instr, dataURLs){
+  const partes = [{text:instr}];
+  for(const du of (dataURLs||[])){ const m = /^data:(.*?);base64,(.*)$/.exec(du||""); if(m) partes.push({inline_data:{mime_type:(m[1]||"").split(";")[0], data:m[2]}}); }
+  return partes;
+}
+async function iaLlamar(partes, opts){
+  opts = opts||{};
+  const c = iaCfg();
+  if(!c.key) throw {msg:"Configura tu clave de IA en Datos → 🤖 Inteligencia (IA)."};
+  if(navigator.onLine===false) throw {msg:"Sin señal. La IA necesita internet: guarda la foto y reinténtalo con conexión."};
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(c.modelo)}:generateContent?key=${encodeURIComponent(c.key)}`;
+  const genCfg = {temperature: opts.temp!=null? opts.temp : 0.2};
+  if(opts.json) genCfg.responseMimeType = "application/json";
+  let resp;
+  try{
+    resp = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({contents:[{parts:partes}], generationConfig:genCfg})});
+  }catch(e){ throw {msg:"No se pudo conectar. Revisa tu señal a internet."}; }
+  if(!resp.ok){
+    let det=""; try{ det = (await resp.json())?.error?.message||""; }catch(_){}
+    if(resp.status===400) throw {msg:"Clave o modelo inválidos. Revisa tu API key en Datos."};
+    if(resp.status===403) throw {msg:"La clave no tiene permiso o está restringida. Revisa tu clave de Google AI Studio."};
+    if(resp.status===429) throw {msg:"Cuota diaria agotada. Intenta más tarde."};
+    throw {msg:"La IA respondió con error "+resp.status+(det?": "+det:".")};
+  }
+  const j = await resp.json();
+  return (j?.candidates?.[0]?.content?.parts||[]).map(p=>p.text||"").join("");
+}
+async function iaTexto(t){ return iaLlamar([{text:t}]); }
+function iaJSON(txt){
+  if(!txt) return null;
+  let s = String(txt).trim().replace(/^```json/i,"").replace(/^```/,"").replace(/```$/,"").trim();
+  try{ return JSON.parse(s); }catch(e){}
+  const a=s.indexOf("{"), b=s.lastIndexOf("}");
+  if(a>=0 && b>a){ try{ return JSON.parse(s.slice(a,b+1)); }catch(e){} }
+  return null;
+}
+/* --- Ajustes de IA en Datos --- */
+function guardarIA(){
+  D.ia = D.ia || {}; D.ia.key = v("ia_key"); D.ia.modelo = v("ia_modelo"); guardar();
+  const e = document.getElementById("ia_estado");
+  if(e) e.innerHTML = D.ia.key? "✓ Clave guardada. La identificación con IA está activa." : "Sin clave: la identificación con IA está apagada.";
+  alert("Listo, clave guardada. 🤖");
+}
+async function probarIA(){
+  D.ia = {key:v("ia_key"), modelo:v("ia_modelo")}; guardar();
+  const est = document.getElementById("ia_estado"); if(est) est.textContent = "Probando conexión…";
+  try{ await iaTexto("Responde solo con la palabra: ok");
+    if(est) est.innerHTML = "✓ Conexión correcta con la IA.";
+    alert("✓ La IA respondió. Todo listo. 🤖");
+  }catch(err){ const m = err.msg||err.message||"No se pudo conectar";
+    if(est) est.innerHTML = "⚠️ "+esc(m); alert("⚠️ "+m); }
+}
+/* --- Identificar plaga / enfermedad / maleza en una foto --- */
+async function iaIdentificar(fid){
+  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); cerrarVisor(); ir("datos"); return; }
+  const du = await fotoGet(fid); if(!du){ alert("No encontré la foto."); return; }
+  cerrarVisor();
+  iaCargando("Identificando en la foto…");
+  const instr = `Eres un ingeniero agrónomo experto en fruticultura chilena (cítricos, paltos, carozos, vides, olivos). Observa la imagen de terreno y determina qué muestra. Responde SOLO un objeto JSON válido, en español de Chile, con exactamente estas claves:
+{"tipo":"plaga|enfermedad|maleza|deficiencia nutricional|daño abiótico|planta sana|no identificable","nombre_comun":"","nombre_cientifico":"","confianza":"alta|media|baja","organo":"hoja|fruto|rama|tronco|raíz|planta completa|otro","sintomas":"lo observable en la imagen","posibles_confusiones":"otras causas parecidas a descartar","que_monitorear":"pasos de monitoreo o umbral, sin recomendar productos comerciales","recomendacion":"acción de manejo general y prudente"}
+Si no hay certeza, usa confianza "baja" y explícalo en sintomas. No inventes datos.`;
+  try{
+    const txt = await iaLlamar(iaPartes(instr, [du]), {json:true});
+    iaCerrarCarga();
+    const r = iaJSON(txt) || {tipo:"no identificable", nombre_comun:"", confianza:"baja", sintomas:(txt||"La IA no devolvió un resultado claro.")};
+    iaMostrarDiag(r);
+  }catch(err){ iaCerrarCarga(); alert("⚠️ "+(err.msg||err.message||"No se pudo identificar")); }
+}
+function iaMostrarDiag(r){
+  const badge = {alta:"b-verde", media:"b-ambar", baja:"b-rojo"}[String(r.confianza||"").toLowerCase()]||"b-gris";
+  const fila = (lab,val)=> val? `<div style="margin-top:7px"><b>${lab}:</b> ${esc(val)}</div>` : "";
+  const cuerpo = `<div class="ia-diag">
+    <div><span class="badge b-azul">${esc(String(r.tipo||"—").toUpperCase())}</span>
+      <span class="badge ${badge}">confianza ${esc(r.confianza||"—")}</span></div>
+    <div style="font-size:17px;font-weight:800;margin-top:8px">${esc(r.nombre_comun||"—")}</div>
+    ${r.nombre_cientifico? `<div class="muted" style="font-style:italic">${esc(r.nombre_cientifico)}</div>`:""}
+    ${fila("Órgano", r.organo)}
+    ${fila("Síntomas", r.sintomas)}
+    ${fila("Posibles confusiones", r.posibles_confusiones)}
+    ${fila("Qué monitorear", r.que_monitorear)}
+    ${fila("Manejo sugerido", r.recomendacion)}
+    <div class="muted" style="margin-top:12px;border-top:1px solid var(--borde);padding-top:8px">⚠️ Es una <b>sugerencia</b> de IA para orientar tu monitoreo. Confírmala en terreno; no decidas aplicaciones solo con esto.</div>
+  </div>`;
+  window._iaDiag = iaDiagTexto(r);
+  abrirModal("🔬 Identificación con IA", cuerpo, ()=>{ iaCopiar(window._iaDiag); return false; }, "📋 Copiar");
+}
+function iaDiagTexto(r){
+  return `🔬 Identificación IA · AgroNotas\nTipo: ${r.tipo||"—"}\nNombre: ${r.nombre_comun||"—"}${r.nombre_cientifico? " ("+r.nombre_cientifico+")":""}\nConfianza: ${r.confianza||"—"}\nSíntomas: ${r.sintomas||"—"}\nQué monitorear: ${r.que_monitorear||"—"}\nManejo sugerido: ${r.recomendacion||"—"}\n⚠️ Sugerencia de IA, confirmar en terreno.`;
+}
+async function iaCopiar(t){
+  try{ if(navigator.clipboard){ await navigator.clipboard.writeText(t); alert("Diagnóstico copiado 📋. Pégalo en una nota o WhatsApp."); } else alert(t); }
+  catch(e){ alert(t); }
+}
+/* --- Escanear etiqueta / receta para autollenar una Aplicación --- */
+function iaEscanearEtiqueta(){
+  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); return; }
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.accept = "image/*"; inp.setAttribute("capture","environment");
+  inp.onchange = async ()=>{
+    const f = inp.files && inp.files[0]; if(!f) return;
+    let du; try{ du = await comprimirImagen(f); }catch(e){ alert("No pude leer la imagen."); return; }
+    iaCargando("Leyendo la etiqueta…");
+    const instr = `Eres un asistente agronómico en Chile. Lee la ETIQUETA o RECETA de un producto fitosanitario o fertilizante y extrae sus datos. Responde SOLO un objeto JSON válido, en español, con estas claves:
+{"producto":"nombre comercial","ingrediente_activo":"","dosis":"dosis tal como aparece","objetivo":"plaga/enfermedad/objetivo","carencia_dias":"solo el número de días de carencia si aparece","reingreso":"periodo de reingreso si aparece","mojamiento":"L/ha si aparece","banda_toxicologica":"banda o clase toxicológica si aparece","notas":"otros datos útiles"}
+Deja "" en lo que no aparezca en la imagen. No inventes.`;
+    try{
+      const txt = await iaLlamar(iaPartes(instr, [du]), {json:true});
+      iaCerrarCarga();
+      const r = iaJSON(txt);
+      if(!r){ alert("No pude leer bien la etiqueta. Prueba una foto más nítida y de cerca."); return; }
+      iaRellenarAplicacion(r);
+    }catch(err){ iaCerrarCarga(); alert("⚠️ "+(err.msg||err.message||"No se pudo leer la etiqueta")); }
+  };
+  inp.click();
+}
+function iaNum(x){ return String(x==null?"":x).replace(",",".").replace(/[^0-9.]/g,""); }
+function iaRellenarAplicacion(r){
+  const set = (id,val)=>{ const el=document.getElementById(id); if(el && val!=null && val!=="") el.value = val; };
+  set("m_producto", r.producto);
+  set("m_dosis", r.dosis);
+  set("m_objetivo", r.objetivo);
+  set("m_carencia", iaNum(r.carencia_dias));
+  set("m_mojamiento", iaNum(r.mojamiento));
+  const extra = [];
+  if(r.ingrediente_activo) extra.push("I.A.: "+r.ingrediente_activo);
+  if(r.banda_toxicologica) extra.push("Banda tox.: "+r.banda_toxicologica);
+  if(r.reingreso) extra.push("Reingreso: "+r.reingreso);
+  if(r.notas) extra.push(r.notas);
+  if(extra.length){ const ob=document.getElementById("m_obs"); if(ob) ob.value = (ob.value? ob.value+"\n":"") + extra.join(" · "); }
+  alert("✓ Datos cargados desde la etiqueta. Revísalos y corrige antes de guardar.");
+}
+/* --- Dictado: transcribir nota de voz --- */
+async function iaTranscribir(aid){
+  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); return; }
+  const campo = document.getElementById("m_texto") || document.getElementById("m_obs");
+  if(!campo){ alert("Abre la nota o el registro para volcar ahí la transcripción."); return; }
+  const du = await fotoGet(aid); if(!du){ alert("No encontré el audio."); return; }
+  iaCargando("Transcribiendo tu voz…");
+  const instr = "Transcribe fielmente a texto este audio en español de Chile (contexto agrícola/frutícola: cuarteles, labores, aplicaciones, riego, dosis). Devuelve SOLO la transcripción, sin comillas ni comentarios.";
+  try{
+    const txt = (await iaLlamar(iaPartes(instr, [du]))).trim();
+    iaCerrarCarga();
+    if(!txt){ alert("No pude entender el audio. Prueba grabando más cerca y sin ruido."); return; }
+    campo.value = (campo.value.trim()? campo.value.trim()+"\n" : "") + txt;
+    alert("✓ Voz transcrita y agregada al texto. Revísala por si acaso.");
+  }catch(err){ iaCerrarCarga(); alert("⚠️ "+(err.msg||err.message||"No se pudo transcribir")+"\n\nSi el formato de audio no fuera compatible, avísame y lo ajustamos."); }
+}
+/* --- Leer / interpretar un documento (PDF o foto) --- */
+async function iaInterpretarDoc(id, nombre){
+  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); return; }
+  const du = await fotoGet(id); if(!du){ alert("No encontré el documento."); return; }
+  cerrarVisor();
+  iaCargando("Leyendo el documento…");
+  const instr = `Eres un asesor agronómico en Chile. Lee este documento (puede ser un análisis de suelo, foliar o de agua, una receta o una ficha técnica) y resume en español de Chile, claro y breve:
+- Tipo de documento.
+- Valores o datos clave con sus unidades (en viñetas).
+- Qué se ve alto/bajo o fuera de rango, si se puede saber.
+- Recomendaciones prácticas y prudentes.
+Si no puedes leerlo bien, dilo. No inventes valores.`;
+  try{
+    const txt = (await iaLlamar(iaPartes(instr, [du]))).trim();
+    iaCerrarCarga();
+    iaTextoModal("🔎 "+(nombre||"Documento"), txt || "No pude leer el documento. Prueba con una foto/scan más nítido.");
+  }catch(err){ iaCerrarCarga(); alert("⚠️ "+(err.msg||err.message||"No se pudo leer el documento")); }
+}
+function iaTextoModal(titulo, texto){
+  window._iaTxt = texto;
+  const cuerpo = `<div class="ia-diag" style="white-space:pre-wrap;font-size:15px;line-height:1.5">${esc(texto)}</div>
+    <div class="muted" style="margin-top:12px;border-top:1px solid var(--borde);padding-top:8px">⚠️ Generado por IA. Revísalo y confírmalo antes de decidir.</div>`;
+  abrirModal(titulo, cuerpo, ()=>{ iaCopiar(window._iaTxt); return false; }, "📋 Copiar");
+}
+/* --- Buscador inteligente sobre mis datos --- */
+function iaContextoDatos(){
+  const L = [];
+  L.push("CUARTELES:");
+  for(const q of D.cuarteles) L.push(`- ${q.fundo} / ${q.nombre}: ${q.especie||""} ${q.variedad||""}, ${q.ha||0} ha${q.anio?", plantado "+q.anio:""}`);
+  L.push("\nNOTAS (recientes):");
+  for(const n of [...D.notas].sort((a,b)=>(b.fh||"").localeCompare(a.fh||"")).slice(0,250))
+    L.push(`- ${fmtF((n.fh||"").slice(0,10))} · ${n.fundo}${n.cuartel?"/"+n.cuartel:""} · ${n.cat}: ${String(n.texto||"").slice(0,180)}`);
+  L.push("\nREGISTROS (recientes):");
+  for(const r of [...D.registros].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,300)){
+    const det = (CAMPOS_REG[r.tipo]||[]).map(([k,lab])=>r[k]?lab.replace(" *","").split(" (")[0]+": "+r[k]:"").filter(Boolean).join(", ");
+    L.push(`- ${fmtF(r.fecha)} · ${r.tipo} · ${r.fundo}${r.cuartel?"/"+r.cuartel:""}${det?" · "+det:""}${r.obs?" · "+String(r.obs).slice(0,120):""}`);
+  }
+  L.push("\nLABORES (recientes):");
+  for(const l of [...D.labores].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,200))
+    L.push(`- ${fmtF(l.fecha)}${l.fecha2?" a "+fmtF(l.fecha2):""} · ${l.tipo} · ${l.fundo}${l.cuartel?"/"+l.cuartel:""} · ${l.estado}${l.resp?" · resp: "+l.resp:""}${l.desc?" · "+String(l.desc).slice(0,100):""}`);
+  let s = L.join("\n");
+  if(s.length>28000) s = s.slice(0,28000)+"\n…(datos recortados)";
+  return s;
+}
+async function iaBuscar(){
+  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); ir("datos"); return; }
+  const el = document.getElementById("iaBuscaQ");
+  const pregunta = ((el&&el.value)||"").trim();
+  const out = document.getElementById("iaBuscaR");
+  if(!pregunta){ if(out){ out.style.color="var(--txt2)"; out.textContent = "Escribe una pregunta arriba."; } return; }
+  if(out){ out.style.color="var(--txt2)"; out.textContent = "Buscando en tus datos…"; }
+  const instr = `Eres el asistente de AgroNotas, un cuaderno de campo frutícola en Chile. Responde la PREGUNTA del usuario USANDO SOLO los DATOS de abajo. Si el dato no aparece, dilo con claridad. Sé breve y concreto, en español de Chile, con fechas dd-mm-aaaa. Si listas varios ítems usa viñetas.
+
+=== DATOS ===
+${iaContextoDatos()}
+
+=== PREGUNTA ===
+${pregunta}`;
+  try{
+    const txt = (await iaLlamar([{text:instr}])).trim();
+    if(out){ out.style.color="var(--txt)"; out.textContent = txt || "No encontré nada relacionado en tus datos."; }
+  }catch(err){ if(out){ out.style.color="var(--rojo)"; out.textContent = "⚠️ "+(err.msg||err.message||"No se pudo consultar"); } }
+}
+/* --- Gráfico de barras SVG para el informe --- */
+function barrasSVG(titulo, pares, color){
+  pares = (pares||[]).filter(p=>+p[1]>0);
+  if(!pares.length) return "";
+  const max = Math.max(...pares.map(p=>+p[1]));
+  const bw = 46, gap = 26, h = 132, pad = 20;
+  const w = pad*2 + pares.length*bw + (pares.length-1)*gap;
+  let bars = "";
+  pares.forEach((p,i)=>{
+    const x = pad + i*(bw+gap);
+    const bh = Math.max(2, Math.round((+p[1]/max)*(h-34)));
+    const y = h-20-bh;
+    bars += `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="4" fill="${color||"#1e7a4c"}"></rect>`
+      + `<text x="${x+bw/2}" y="${y-4}" text-anchor="middle" font-size="12" font-weight="700" fill="#14532d">${+p[1]}</text>`
+      + `<text x="${x+bw/2}" y="${h-5}" text-anchor="middle" font-size="10.5" fill="#555">${esc(String(p[0]).slice(0,12))}</text>`;
+  });
+  return `<div style="flex:1;min-width:230px"><div style="font-weight:700;font-size:13px;color:#14532d;margin-bottom:2px">${esc(titulo)}</div>`
+    + `<svg viewBox="0 0 ${w} ${h}" style="width:100%;max-width:${w}px;height:auto"><line x1="${pad-4}" y1="${h-20}" x2="${w-4}" y2="${h-20}" stroke="#ccc"></line>${bars}</svg></div>`;
+}
+/* --- Resumen ejecutivo del informe (IA) --- */
+async function iaResumenInforme(){
+  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); return; }
+  const cont = document.getElementById("infResumen"); if(!cont) return;
+  cont.style.color="#555"; cont.textContent = "Redactando el resumen…";
+  const instr = `Eres un jefe de campo frutícola en Chile. Con estos datos de la semana, redacta un RESUMEN EJECUTIVO breve (4 a 6 frases) para el directorio: qué se hizo, lo relevante (aplicaciones, urgencias, lluvia, atrasos) y 1 o 2 recomendaciones prudentes. Español de Chile, tono profesional y directo. No inventes datos.
+
+${window._infTxt||""}`;
+  try{
+    const txt = (await iaLlamar([{text:instr}])).trim();
+    cont.style.whiteSpace="pre-wrap"; cont.style.color="#222";
+    cont.textContent = txt || "No se pudo redactar el resumen.";
+  }catch(err){ cont.style.color="#b00020"; cont.textContent = "⚠️ "+(err.msg||err.message||"No se pudo redactar"); }
+}
 /* --- Ver nota --- */
 function verNota(id){
   const n = D.notas.find(x=>x.id===id); if(!n) return;
@@ -1603,6 +1885,7 @@ async function abrirVisor(fid){
     <div class="vh">
       <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
       <div style="flex:1"></div>
+      <button class="btn chico" style="background:var(--azul)" onclick="iaIdentificar('${fid}')">🔬 Identificar</button>
       <button class="btn chico" style="background:var(--acc);color:#222" onclick="abrirEditor('${fid}')">✏️ Dibujar</button>
       <button class="btn sec chico" onclick="descargarFoto('${fid}')">⬇️</button>
     </div>
@@ -1954,8 +2237,10 @@ function formReg(id){
   pintarCuartsTmp();
   const pintaCampos = ()=>{
     const t = v("m_tipo");
-    document.getElementById("camposTipo").innerHTML =
-      (CAMPOS_REG[t]||[]).map(([k,lab,tp])=>campoF("m_"+k,lab,tp,r?.[k],tp==="number"?'inputmode="decimal"':"")).join("");
+    const campos = (CAMPOS_REG[t]||[]).map(([k,lab,tp])=>campoF("m_"+k,lab,tp,r?.[k],tp==="number"?'inputmode="decimal"':"")).join("");
+    const scan = (t==="Aplicación"||t==="Fertilización")
+      ? `<button type="button" class="btn sec chico" style="margin:2px 0 12px" onclick="iaEscanearEtiqueta()">📷 Escanear etiqueta / receta con IA</button>` : "";
+    document.getElementById("camposTipo").innerHTML = scan + campos;
   };
   document.getElementById("m_tipo").addEventListener("change",pintaCampos);
   pintaCampos();
@@ -2145,6 +2430,21 @@ function vDatos(){
       ${D.gesagro? `<button class="btn peligro chico" onclick="quitarGesAgro()">✕ Quitar</button>`:""}
     </div>
     ${D.gesagro? `<div class="muted" style="margin-top:6px">✓ Importado el ${fmtF(D.gesagro.importado)} · ${D.gesagro.regFito.length} aplicaciones · ${D.gesagro.cuarteles.length} cuarteles · ${D.gesagro.productos.length} productos</div>`:""}
+  </div>`;
+  h += `<div class="card"><h2>🤖 Inteligencia (IA)</h2>
+    <div class="muted">Activa <b>🔬 Identificar</b> en las fotos (plaga, enfermedad, maleza o deficiencia) y <b>📷 Escanear etiqueta</b> en los registros de Aplicación. Funciona con Google Gemini: necesitas una clave gratuita y señal a internet.</div>
+    <label class="f" style="margin-top:8px">Clave API de Gemini
+      <input id="ia_key" type="password" value="${esc((D.ia&&D.ia.key)||"")}" placeholder="Pega aquí tu API key" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <button type="button" class="btn sec chico" style="margin:-4px 0 10px" onclick="iaVerClave(this)">👁 Ver clave</button>
+    <label class="f">Modelo <span class="muted">(avanzado, opcional)</span>
+      <input id="ia_modelo" type="text" value="${esc((D.ia&&D.ia.modelo)||"")}" placeholder="gemini-2.5-flash" autocapitalize="off" spellcheck="false"></label>
+    <div class="fila" style="flex-wrap:wrap">
+      <button class="btn chico" onclick="guardarIA()">💾 Guardar clave</button>
+      <button class="btn sec chico" onclick="probarIA()">🔌 Probar conexión</button>
+      <a class="btn sec chico" style="text-decoration:none" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">🔑 Obtener clave gratis</a>
+    </div>
+    <div class="muted" id="ia_estado" style="margin-top:6px">${(D.ia&&D.ia.key)? "✓ Clave guardada. La identificación con IA está activa." : "Sin clave: la identificación con IA está apagada."}</div>
+    <div class="muted" style="margin-top:6px"><b>Consejo:</b> crea la clave en Google AI Studio y, si quieres, restríngela por “referente HTTP” a tu sitio (mjallende98-design.github.io). La IA es una <b>sugerencia</b> que tú confirmas; no decidas aplicaciones solo con ella.</div>
   </div>`;
   h += `<div class="card"><h2>🌳 Cuarteles por fundo</h2><div class="muted" style="margin-bottom:8px">Toca un cuartel para editarlo.</div>`;
   for(const f of fundos()){
@@ -2355,9 +2655,20 @@ function quitarZona(i){
 }
 function lluviaGPS(){
   if(!navigator.geolocation){ alert("Este equipo no entrega ubicación."); return; }
-  navigator.geolocation.getCurrentPosition(p=>{
-    document.getElementById("ll_lat").value = p.coords.latitude.toFixed(5);
-    document.getElementById("ll_lng").value = p.coords.longitude.toFixed(5);
+  navigator.geolocation.getCurrentPosition(async p=>{
+    const lat = p.coords.latitude, lng = p.coords.longitude;
+    const latEl = document.getElementById("ll_lat"), lngEl = document.getElementById("ll_lng"), nomEl = document.getElementById("ll_nom");
+    if(latEl) latEl.value = lat.toFixed(5);
+    if(lngEl) lngEl.value = lng.toFixed(5);
+    if(nomEl && navigator.onLine){
+      const antes = nomEl.value;
+      nomEl.value = "buscando lugar…";
+      try{
+        const j = await (await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=es`)).json();
+        const nom = j.city || j.locality || j.principalSubdivision || j.principalSubdivisionCode || "";
+        nomEl.value = nom || antes || "";
+      }catch(e){ nomEl.value = antes || ""; }
+    }
   }, e=>alert("No se pudo obtener la ubicación: "+e.message), {enableHighAccuracy:true, timeout:8000});
 }
 /* --- Informe semanal (imprimir / guardar PDF) --- */
@@ -2378,6 +2689,10 @@ function abrirInforme(iniIso){
   const est = {pendiente:"Pendiente", encurso:"En curso", hecha:"Hecha ✓"};
   const fotos = [];
   for(const x of [...nots,...regs]) for(const f of (x.fotos||[])) if(fotos.length<9) fotos.push(f);
+  const gReg={}; regs.forEach(r=>{ gReg[r.tipo]=(gReg[r.tipo]||0)+1; });
+  const gLab={}; labs.forEach(l=>{ const k=est[l.estado]||l.estado||"—"; gLab[k]=(gLab[k]||0)+1; });
+  const gNot={}; nots.forEach(n=>{ const k=n.cat||"—"; gNot[k]=(gNot[k]||0)+1; });
+  window._infTxt = `Semana ${fmtF(infIni)} a ${fmtF(fin)}. Labores ${labs.length} (${hechas} hechas, ${atras} atrasadas de antes). Aplicaciones ${apls}. Lluvia ${num(lluvia)} mm. Notas ${nots.length} (${urg} urgentes).\nRegistros: ${regs.map(r=>`${r.tipo} ${r.fundo}${r.cuartel?"/"+r.cuartel:""}${r.producto?" ("+r.producto+")":""}`).join("; ")||"ninguno"}.\nNotas: ${nots.map(n=>`[${n.cat}] ${String(n.texto||"").slice(0,140)}`).join(" | ")||"ninguna"}.`;
   document.getElementById("capaVisor").innerHTML = `
   <div class="visor inf-v" style="background:#e8e8e8">
     <div class="vh no-print">
@@ -2396,6 +2711,10 @@ function abrirInforme(iniIso){
           <div><div style="font-size:21px;font-weight:800;color:#14532d">Informe semanal — ${PROY? esc(PROY.nombre) : ""}</div>
           <div style="color:#555">Semana del ${fmtF(infIni)} al ${fmtF(fin)} · generado el ${fmtF(hoy())}</div></div>
         </div>
+        <div class="inf-sec"><h2>✨ Resumen ejecutivo <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
+          <div id="infResumen" class="muted">Aún sin resumen. Toca "✨ Redactar con IA" para generarlo, o quita esta sección con la ✕.</div>
+          <button class="btn sec chico no-print" style="margin-top:8px" onclick="iaResumenInforme()">✨ Redactar con IA</button>
+        </div>
         <div class="inf-kpis">
           <div><b>${hechas}/${labs.length}</b>Labores hechas</div>
           <div><b>${apls}</b>Aplicaciones</div>
@@ -2403,6 +2722,12 @@ function abrirInforme(iniIso){
           <div><b>${nots.length}</b>Notas${urg?` (${urg} urgentes)`:""}</div>
         </div>
         ${atras? `<div class="inf-alerta">⚠️ ${atras} labor${atras>1?"es":""} de semanas anteriores sin completar</div>`:""}
+        <div class="inf-sec"><h2>📊 Resumen gráfico <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
+        ${(Object.keys(gReg).length||Object.keys(gLab).length||Object.keys(gNot).length)? `<div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-end">
+          ${barrasSVG("Registros por tipo", Object.entries(gReg), "#1e7a4c")}
+          ${barrasSVG("Labores por estado", Object.entries(gLab), "#2563eb")}
+          ${barrasSVG("Notas por categoría", Object.entries(gNot), "#b45309")}
+        </div>` : `<div class="inf-vacio">Sin datos para graficar esta semana.</div>`}</div>
         <div class="inf-sec"><h2>📅 Labores de la semana <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
         ${labs.length? `<table><tr><th>Fecha</th><th>Labor</th><th>Fundo</th><th>Cuartel</th><th>Responsable</th><th>Estado</th><th class="no-print" style="border:none;background:none"></th></tr>
           ${labs.map(l=>`<tr><td>${fmtF(l.fecha)}${l.fecha2?` → ${fmtF(l.fecha2)}`:""}</td><td>${esc(l.tipo)}${l.desc?` — <span style="color:#555">${esc(l.desc)}</span>`:""}</td><td>${esc(l.fundo)}</td><td>${esc(l.cuartel)}</td><td>${esc(l.resp)}</td><td>${est[l.estado]||esc(l.estado)}</td><td class="no-print" style="border:none"><button class="inf-x" onclick="this.closest('tr').remove()">✕</button></td></tr>`).join("")}</table>` : `<div class="inf-vacio">Sin labores registradas esta semana.</div>`}</div>
@@ -2765,6 +3090,17 @@ function vPanel(){
       <div id="climaW" class="muted" style="font-size:13px">cargando pronóstico…</div></div>
   </div>`;
 
+  /* Pregúntale a tus datos (IA) */
+  h += `<div class="card">
+    <div class="w-tit">🔎 Pregúntale a tus datos <span class="badge b-azul">IA</span></div>
+    <div class="muted">Pregunta en lenguaje normal sobre tus notas, registros, labores y cuarteles. Necesita señal.</div>
+    <div class="fila" style="margin-top:8px">
+      <input id="iaBuscaQ" placeholder="Ej: ¿cuándo apliqué por última vez en San Joaquín?" style="flex:1;padding:11px;border:1.5px solid var(--borde);border-radius:10px;font-size:16px;min-width:150px" onkeydown="if(event.key==='Enter'){event.preventDefault();iaBuscar();}">
+      <button class="btn chico" onclick="iaBuscar()">Preguntar</button>
+    </div>
+    <div id="iaBuscaR" style="margin-top:10px;white-space:pre-wrap;font-size:14.5px"></div>
+  </div>`;
+
   /* Mapa + hoy + fotos */
   h += `<div class="gmapa">
     <div class="card mapa-wrap" id="mapaCard"><div class="w-tit">Mapa · notas en terreno</div>
@@ -2835,14 +3171,23 @@ function widgetHTML(w){
     return widgetCard(w, f.length? f.slice(0,5).map(n=>miniNota(n)).join("") : `<div class="muted">No hay notas fijadas.</div>`, `📌 Fijadas (${f.length})`);
   }
   if(w.tipo==="lluvia"){
-    const hd = new Date(), meses = [];
-    for(let k=5;k>=0;k--){ const d = new Date(hd.getFullYear(), hd.getMonth()-k, 1, 12); meses.push(d.toISOString().slice(0,7)); }
-    const tot = meses.map(m=> D.registros.filter(r=>r.tipo==="Lluvia" && (r.fecha||"").startsWith(m)).reduce((s,r)=>s+(+r.mm||0),0));
-    const mx = Math.max(...tot, 1);
-    const barras = meses.map((m,i)=>`<div style="text-align:center;flex:1">
-      <div style="height:60px;display:flex;align-items:flex-end;justify-content:center"><div style="width:70%;background:var(--azul,#3268a8);border-radius:4px 4px 0 0;height:${Math.round(tot[i]/mx*58)+2}px"></div></div>
-      <div style="font-size:10px;color:#9a9d98">${m.slice(5)}</div><div style="font-size:10.5px;font-weight:700">${tot[i]? num(tot[i]) : "·"}</div></div>`).join("");
-    return widgetCard(w, `<div style="display:flex;gap:4px">${barras}</div><div class="muted" style="font-size:10.5px;margin-top:4px">mm por mes, según tus registros de Lluvia de ${esc(PROY? PROY.nombre : "este proyecto")} · zona clima: ${esc(zonaClima())}.</div>`, `🌧 Lluvia por mes · ${esc(zonaClima())}`);
+    const anio = w.anio || (new Date()).getFullYear();
+    const locNom = (w.loc&&w.loc.nom) || zonaClima();
+    return widgetCard(w, `<div class="fila" style="justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <div class="fila" style="gap:6px;align-items:center">
+          <button class="btn sec chico" style="min-height:32px;padding:3px 11px" onclick="lluviaAnio(${w.id},-1)">◀</button>
+          <b style="font-size:16px;min-width:44px;text-align:center">${anio}</b>
+          <button class="btn sec chico" style="min-height:32px;padding:3px 11px" onclick="lluviaAnio(${w.id},1)">▶</button>
+          <button class="btn sec chico" style="min-height:32px;padding:3px 12px" onclick="lluviaZona(${w.id})">📍 ${esc(locNom)} ▾</button>
+        </div>
+        <div class="fila" style="gap:6px">
+          <button class="btn sec chico" style="min-height:32px;padding:3px 11px" onclick="lluviaOficialIA(${w.id})">🔎 Oficial</button>
+          <button class="btn chico" style="min-height:32px;padding:3px 12px;background:var(--azul)" onclick="lluviaAnalizar(${w.id})">☁️ Analizar</button>
+        </div>
+      </div>
+      <div id="wLluvia_${w.id}" class="muted" style="font-size:12px">cargando lluvia…</div>
+      <div id="wLluviaIA_${w.id}" style="font-size:12.5px;margin-top:8px;white-space:pre-wrap;line-height:1.45"></div>`,
+      `🌧 Lluvia por mes`);
   }
   if(w.tipo==="variedades"){
     const por = {};
@@ -2925,6 +3270,29 @@ function widgetHTML(w){
       `Último respaldo hace ${dias} día${dias===1?"":"s"}${rojo?" — ¡toca hacer uno!":" ✅"}`}</div>
       <button class="btn sec chico" style="margin-top:8px" onclick="ir('datos')">📦 Ir a Datos</button>`, "💾 Respaldo");
   }
+  if(w.tipo==="registros"){
+    const d=new Date(); d.setDate(d.getDate()-90); const desde=d.toISOString().slice(0,10);
+    const por={}; for(const r of D.registros) if((r.fecha||"")>=desde) por[r.tipo]=(por[r.tipo]||0)+1;
+    const top=Object.entries(por).sort((a,b)=>b[1]-a[1]); const mx=Math.max(...top.map(x=>x[1]),1);
+    const h = top.length? top.map(([k,c])=>`<div class="fila" style="align-items:center;gap:8px;padding:2px 0">
+      <div style="flex:0 0 108px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${icoReg(k)} ${esc(k)}</div>
+      <div style="flex:1;background:#eef1ec;border-radius:5px"><div style="width:${Math.round(c/mx*100)}%;background:var(--azul,#2563eb);border-radius:5px;height:12px"></div></div>
+      <div style="flex:0 0 28px;text-align:right;font-size:12px;font-weight:700">${c}</div></div>`).join("") : `<div class="muted">Sin registros en los últimos 90 días.</div>`;
+    return widgetCard(w, h, "📋 Registros (últimos 90 días)");
+  }
+  if(w.tipo==="ultimas"){
+    const rec=[...D.notas].sort((a,b)=>(b.fh||"").localeCompare(a.fh||"")).slice(0,5);
+    return widgetCard(w, rec.length? rec.map(n=>miniNota(n)).join("") : `<div class="muted">Aún no hay notas.</div>`, "🕒 Últimas notas");
+  }
+  if(w.tipo==="hafundo"){
+    const por={}; for(const q of D.cuarteles) por[q.fundo]=(por[q.fundo]||0)+(+q.ha||0);
+    const top=Object.entries(por).sort((a,b)=>b[1]-a[1]); const mx=Math.max(...top.map(x=>x[1]),1);
+    const h = top.length? top.map(([k,ha])=>`<div class="fila" style="align-items:center;gap:8px;padding:2px 0">
+      <div style="flex:0 0 110px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(k)}</div>
+      <div style="flex:1;background:#eef1ec;border-radius:5px"><div style="width:${Math.round(ha/mx*100)}%;background:var(--p,#1e7a4c);border-radius:5px;height:12px"></div></div>
+      <div style="flex:0 0 62px;text-align:right;font-size:12px;font-weight:700">${num(ha)} ha</div></div>`).join("") : `<div class="muted">Sin cuarteles aún.</div>`;
+    return widgetCard(w, h, "🏡 Superficie por fundo");
+  }
   return "";
 }
 function agregarWidget(){
@@ -2941,7 +3309,10 @@ function agregarWidget(){
       <option value="carencias">🚦 Carencias de cosecha (GesAgro)</option>
       <option value="plan">📈 Avance de la semana</option>
       <option value="supmapa">🧮 Superficie: catálogo vs mapa</option>
-      <option value="respaldo">💾 Recordatorio de respaldo</option></select></label>
+      <option value="respaldo">💾 Recordatorio de respaldo</option>
+      <option value="registros">📋 Registros por tipo (90 días)</option>
+      <option value="ultimas">🕒 Últimas notas</option>
+      <option value="hafundo">🏡 Superficie por fundo</option></select></label>
     <div id="w_cfg"></div>
     <div class="muted">Los widgets aparecen al final del Panel. Puedes reordenarlos con ↑ ↓ y quitarlos con ✕.</div>
   `, ()=>{
@@ -2997,12 +3368,177 @@ async function cargarHeladas(){
   }catch(e){}
 }
 
+let LL_RT = {}; // datos de lluvia en memoria (por widget), para el análisis IA — no se persiste
+async function cargarLluviaWidgets(){
+  const ws = (D.widgets||[]).filter(w=>w.tipo==="lluvia");
+  if(!ws.length) return;
+  const MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const anioAct = (new Date()).getFullYear();
+  for(const w of ws){
+    const cont = document.getElementById("wLluvia_"+w.id); if(!cont) continue;
+    const anio = w.anio || anioAct;
+    const loc = w.loc || D.lluviaLoc || LOC_DEF;
+    const locNom = (w.loc&&w.loc.nom) || zonaClima();
+    const man = new Array(12).fill(0);
+    for(const r of D.registros) if(r.tipo==="Lluvia" && (r.fecha||"").slice(0,4)==String(anio)){ const m=+((r.fecha||"").slice(5,7))-1; if(m>=0&&m<12) man[m]+=(+r.mm||0); }
+    let mm = null, fuente = "";
+    LL_RT[w.id] = LL_RT[w.id] || {cache:{}};
+    if(navigator.onLine){
+      try{
+        const fin = (anio < anioAct)? `${anio}-12-31` : hoy();
+        const j = await (await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${loc.lat}&longitude=${loc.lng}&start_date=${anio}-01-01&end_date=${fin}&daily=precipitation_sum&timezone=auto`)).json();
+        const t = (j.daily&&j.daily.time)||[], p = (j.daily&&j.daily.precipitation_sum)||[];
+        if(t.length){ mm = new Array(12).fill(0); t.forEach((d,i)=>{ const m=+d.slice(5,7)-1; if(m>=0&&m<12) mm[m]+=(+p[i]||0); }); fuente="clima real (Open-Meteo)"; LL_RT[w.id].cache[anio]=mm; }
+      }catch(e){ mm = null; }
+    }
+    if(!mm && LL_RT[w.id].cache[anio]){ mm = LL_RT[w.id].cache[anio]; }
+    const hayMan = man.some(x=>x>0);
+    const of = (w.oficial && w.oficial[anio]) || null;
+    let datos, faltan = 0;
+    if(hayMan){ datos = man; fuente = "🌧️ tu pluviómetro (oficial)"; }
+    else if(of && Array.isArray(of.meses) && of.meses.some(x=>x!=null)){
+      datos = of.meses.map(x=> x==null? 0 : +x);
+      faltan = of.meses.filter(x=>x==null).length;
+      fuente = "DMC · IA" + (of.estacion? " · "+of.estacion : "");
+    }
+    else if(mm){ datos = mm; fuente = "modelo Open-Meteo · estimación"; }
+    else { datos = man; fuente = "sin datos"; }
+    const tot = datos.reduce((s,x)=>s+x,0);
+    const mx = Math.max(...datos, 1);
+    const maxi = tot>0? datos.indexOf(Math.max(...datos)) : -1;
+    const barras = datos.map((val,i)=>{
+      const on = val>0, isMax = i===maxi;
+      const hpx = on? Math.round(val/mx*66)+3 : 2;
+      const fill = !on? "#e3e8e1" : isMax? "linear-gradient(180deg,#2563eb,#1e4fb8)" : "linear-gradient(180deg,#6fa0e0,#3a72b8)";
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+        <div style="font-size:10px;font-weight:700;height:13px;color:${isMax?"var(--azul,#2563eb)":"#7a8794"}">${on?Math.round(val):""}</div>
+        <div style="width:100%;height:72px;display:flex;align-items:flex-end;justify-content:center">
+          <div title="${MES[i]}: ${num(val)} mm" style="width:64%;height:${hpx}px;border-radius:5px 5px 0 0;background:${fill}"></div></div>
+        <div style="font-size:10px;color:${isMax?"var(--azul,#2563eb)":"#9a9d98"};font-weight:${isMax?800:500}">${MES[i][0]}</div>
+      </div>`;
+    }).join("");
+    cont.innerHTML = `<div style="display:flex;gap:4px;align-items:flex-end;border-bottom:1px solid var(--borde);padding-bottom:6px">${barras}</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px">
+        <div><span style="font-size:20px;font-weight:800;color:var(--azul,#2563eb);font-variant-numeric:tabular-nums">${num(tot)}</span> <span class="muted" style="font-size:11px">mm en ${anio}</span></div>
+        <div class="muted" style="font-size:10.5px;text-align:right;line-height:1.4">📍 ${esc(locNom)}<br>${fuente||"sin datos"}${faltan?` · faltan ${faltan} m. sin dato`:""}</div>
+      </div>`;
+    LL_RT[w.id].ll = {anio, datos, tot, fuente, locNom};
+  }
+}
+function lluviaAnio(id, delta){
+  const w = (D.widgets||[]).find(x=>x.id===id); if(!w) return;
+  const cur = (new Date()).getFullYear();
+  w.anio = (w.anio || cur) + delta;
+  if(w.anio>cur) w.anio = cur;
+  if(w.anio<2015) w.anio = 2015;
+  guardar(); render();
+}
+async function lluviaAnalizar(id){
+  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); ir("datos"); return; }
+  const out = document.getElementById("wLluviaIA_"+id); if(!out) return;
+  const ll = (LL_RT[id]||{}).ll;
+  if(!ll || !ll.datos){ out.style.color="var(--txt2)"; out.textContent = "Espera a que cargue la lluvia y reintenta."; return; }
+  out.style.color="#555"; out.textContent = "Analizando la lluvia…";
+  const MES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  const serie = ll.datos.map((val,i)=>`${MES[i]} ${Math.round(val)}mm`).join(", ");
+  const instr = `Eres agrónomo frutícola en Chile, zona ${zonaClima()}. Analiza breve (2 a 4 frases) esta lluvia mensual del año ${ll.anio}: ${serie}. Total ${Math.round(ll.tot)} mm. Di si el año viene seco o lluvioso para la fruta, los meses clave y una recomendación prudente de riego/manejo. Español de Chile, directo. No inventes cifras fuera de las dadas.`;
+  try{ const txt = (await iaLlamar([{text:instr}])).trim(); out.style.color="var(--txt)"; out.textContent = txt || "Sin análisis."; }
+  catch(err){ out.style.color="var(--rojo)"; out.textContent = "⚠️ "+(err.msg||err.message||"No se pudo analizar"); }
+}
+function lluviaZona(id){
+  const zonas = [{nom:zonaClima(), lat:(D.lluviaLoc||LOC_DEF).lat, lng:(D.lluviaLoc||LOC_DEF).lng, def:true}, ...(D.zonas||[])];
+  const chip = z=>{ const nn=(z.nom||"").replace(/['"\\]/g,""); return `<button class="btn sec chico" style="margin:3px" onclick="lluviaSetZona(${id}, ${z.lat}, ${z.lng}, '${esc(nn)}')">📍 ${esc(z.nom)}${z.def?" · clima":""}</button>`; };
+  abrirModal("📍 Localidad de la lluvia", `
+    <div class="muted">Elige una zona guardada o busca cualquier localidad.</div>
+    <div style="margin:10px 0;display:flex;flex-wrap:wrap">${zonas.map(chip).join("")}</div>
+    <label class="f">Buscar localidad
+      <input id="llq" placeholder="Ej: Ovalle, Curicó, Los Ángeles…" autocapitalize="words" onkeydown="if(event.key==='Enter'){event.preventDefault();lluviaBuscarLoc(${id});}"></label>
+    <button class="btn sec chico" onclick="lluviaBuscarLoc(${id})">🔎 Buscar</button>
+    <div id="llres" style="margin-top:10px"></div>
+  `, null, "Cerrar");
+}
+function lluviaSetZona(id, lat, lng, nom){
+  const w = (D.widgets||[]).find(x=>x.id===id); if(!w) return;
+  w.loc = {nom:nom, lat:lat, lng:lng};
+  if(LL_RT[id]) LL_RT[id].cache = {};
+  guardar(); cerrarModal(); render();
+}
+async function lluviaBuscarLoc(id){
+  const inp = document.getElementById("llq");
+  const nom = ((inp&&inp.value)||"").trim();
+  const res = document.getElementById("llres"); if(!res) return;
+  if(!nom){ res.innerHTML = `<div class="muted">Escribe un nombre y toca Buscar.</div>`; return; }
+  if(!navigator.onLine){ res.innerHTML = `<div class="muted">Necesitas señal para buscar localidades.</div>`; return; }
+  res.innerHTML = `<div class="muted">Buscando…</div>`;
+  try{
+    const j = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(nom)}&count=8&language=es`)).json();
+    const rs = j.results||[];
+    if(!rs.length){ res.innerHTML = `<div class="muted">Sin resultados para "${esc(nom)}".</div>`; return; }
+    res.innerHTML = rs.map(r=>{
+      const nn = (r.name||"").replace(/['"\\]/g,"");
+      const et = [r.name, r.admin1, r.country].filter(Boolean).join(", ");
+      return `<button class="btn sec chico" style="display:block;width:100%;text-align:left;margin:4px 0" onclick="lluviaSetZona(${id}, ${r.latitude}, ${r.longitude}, '${esc(nn)}')">📍 ${esc(et)}</button>`;
+    }).join("");
+  }catch(e){ res.innerHTML = `<div class="muted">No se pudo buscar. Reintenta.</div>`; }
+}
+async function iaBuscarWeb(prompt){
+  const c = iaCfg();
+  if(!c.key) throw {msg:"Configura tu clave de IA en Datos → 🤖 Inteligencia (IA)."};
+  if(navigator.onLine===false) throw {msg:"Sin señal. La búsqueda web necesita internet."};
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(c.modelo)}:generateContent?key=${encodeURIComponent(c.key)}`;
+  let resp;
+  try{ resp = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({contents:[{parts:[{text:prompt}]}], tools:[{google_search:{}}]})}); }
+  catch(e){ throw {msg:"No se pudo conectar. Revisa tu señal."}; }
+  if(!resp.ok){
+    let det=""; try{ det=(await resp.json())?.error?.message||""; }catch(_){}
+    if(resp.status===400 && /billing|grounding|search|precondition|tool/i.test(det)) throw {msg:"La búsqueda web (grounding) necesita activar facturación en tu proyecto de Google AI Studio. Con el plan gratis puedes usar ☁️ Analizar, pero no 🔎 Oficial."};
+    if(resp.status===429) throw {msg:"Cuota agotada, intenta más tarde."};
+    throw {msg:"Error "+resp.status+(det?": "+det:"")};
+  }
+  const j = await resp.json();
+  const cand = (j.candidates||[])[0]||{};
+  const text = ((cand.content&&cand.content.parts)||[]).map(p=>p.text||"").join("");
+  const chunks = (cand.groundingMetadata&&cand.groundingMetadata.groundingChunks)||[];
+  const fuentes = chunks.map(ch=>ch.web&&(ch.web.title||ch.web.uri)).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).slice(0,4);
+  return {text, fuentes};
+}
+async function lluviaOficialIA(id){
+  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); ir("datos"); return; }
+  const w = (D.widgets||[]).find(x=>x.id===id); if(!w) return;
+  const out = document.getElementById("wLluviaIA_"+id); if(!out) return;
+  const ll = (LL_RT[id]||{}).ll || {};
+  const loc = ll.locNom || (w.loc&&w.loc.nom) || zonaClima();
+  const anio = ll.anio || w.anio || (new Date()).getFullYear();
+  out.style.color="#555"; out.textContent = "Buscando datos oficiales (DMC)… puede tardar unos segundos.";
+  const prompt = `Busca en fuentes oficiales chilenas (Dirección Meteorológica de Chile/DMC —usa la estación más cercana—, DGA, Agromet-INIA o CR2) la precipitación MENSUAL (en mm) caída en ${loc}, Chile, durante el año ${anio}. Al final entrega SOLO un objeto JSON válido con esta forma exacta (sin texto después):
+{"meses":{"1":num_o_null,"2":num_o_null,"3":num_o_null,"4":num_o_null,"5":num_o_null,"6":num_o_null,"7":num_o_null,"8":num_o_null,"9":num_o_null,"10":num_o_null,"11":num_o_null,"12":num_o_null},"total":num_o_null,"estacion":"nombre de la estación","fuente":"organismo","fecha":"fecha del dato más reciente"}
+Valores en mm. Usa null en los meses sin dato oficial claro. NO inventes cifras: si no hay dato, null.`;
+  try{
+    const r = await iaBuscarWeb(prompt);
+    const o = iaJSON(r.text);
+    if(o && o.meses){
+      const meses = [];
+      for(let m=1;m<=12;m++){ const v = o.meses[String(m)]; meses.push((v==null||v==="")? null : (+v)); }
+      w.oficial = w.oficial || {};
+      w.oficial[anio] = {meses, total:(o.total==null?null:+o.total), estacion:o.estacion||"", fuente:o.fuente||"", fecha:o.fecha||"", cita:(r.fuentes||[]).slice(0,3)};
+      guardar();
+      const con = meses.filter(x=>x!=null).length;
+      out.style.color="var(--txt)";
+      out.textContent = `✓ Datos oficiales cargados en el gráfico${o.estacion?" · est. "+o.estacion:""} — ${con}/12 meses con dato.${(r.fuentes&&r.fuentes.length)? "\n📚 "+r.fuentes.join(" · ") : ""}\n(Referencial de búsqueda web; confírmalo en la fuente.)`;
+      cargarLluviaWidgets();
+    } else {
+      out.style.color="var(--txt)";
+      out.textContent = (r.text||"Sin resultado.") + "\n\n(No pude estructurarlo por meses esta vez; reintenta o revisa el texto.)";
+    }
+  }catch(err){ out.style.color="var(--rojo)"; out.textContent = "⚠️ "+(err.msg||err.message||"No se pudo buscar"); }
+}
 function posPanel(){
   posNotas();
   initMapa();
   cargarClima();
   cargarFotosRec();
   cargarHeladas();
+  cargarLluviaWidgets();
 }
 
 /* ---------- Mapa satelital con pins de notas GPS ---------- */
