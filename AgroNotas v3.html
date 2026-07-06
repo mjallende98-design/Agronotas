@@ -3807,6 +3807,10 @@ function calcCuad(){
 }
 /* ================== AVANCES: resumen + análisis ================== */
 function avAll(){ const out=[]; for(const l of D.labores) for(const a of (l.avances||[])) out.push({...a, tipo:l.tipo, fundo:l.fundo, cuartel:l.cuartel, laborId:l.id, unidad:l.unidad}); return out; }
+function haDe(fundo, cuartel){ // superficie (ha) desde el catálogo de cuarteles
+  if(cuartel){ const q=D.cuarteles.find(x=>x.fundo===fundo && x.nombre===cuartel); return q? (+q.ha||0):0; }
+  return D.cuarteles.filter(x=>x.fundo===fundo).reduce((s,x)=>s+(+x.ha||0),0);
+}
 function avKpis(a){
   const total=a.reduce((s,x)=>s+(+x.total||0),0);
   const cant=a.reduce((s,x)=>s+(+x.cantidad||0),0);
@@ -3833,10 +3837,21 @@ function panelAvances(){
   const mil = x=>Math.round(x).toLocaleString("es-CL");
   const mono = new Set(usar.map(x=>x.unidad||x.tipo)).size===1;
   const uni = mono? ((usar.find(x=>x.unidad)||{}).unidad||"") : "";
-  const g={}; usar.forEach(x=>{ const key=x.tipo+"|"+x.fundo+"|"+(x.cuartel||""); (g[key]=g[key]||{tipo:x.tipo,fundo:x.fundo,cuartel:x.cuartel,unidad:x.unidad,c:0,t:0,p:0}); g[key].c+=(+x.cantidad||0); g[key].t+=(+x.total||0); g[key].p+=(+x.personas||0); });
-  const lines = Object.values(g).sort((a,b)=>b.t-a.t).map(x=>`<div class="fila" style="justify-content:space-between;align-items:baseline;font-size:13.5px;padding:6px 0;border-top:1px solid var(--borde)">
-    <span><b>${esc(x.tipo)}</b> · ${esc(x.fundo)}${x.cuartel?" · "+esc(x.cuartel):""}<span class="muted"> · ${num(x.c)}${x.unidad?" "+esc(x.unidad):""}${x.p?" · "+num(x.p)+" pers":""}</span></span>
-    <b style="color:var(--p2)">$${mil(x.t)}</b></div>`).join("");
+  const g={}; usar.forEach(x=>{ const key=x.fundo+"||"+x.tipo+"||"+(x.cuartel||""); (g[key]=g[key]||{fundo:x.fundo,tipo:x.tipo,cuartel:x.cuartel,unidad:x.unidad,c:0,t:0,p:0}); g[key].c+=(+x.cantidad||0); g[key].t+=(+x.total||0); g[key].p+=(+x.personas||0); });
+  const byF={}; Object.values(g).forEach(x=>{ (byF[x.fundo]=byF[x.fundo]||[]).push(x); });
+  const lines = Object.keys(byF).sort().map(f=>{
+    const items = byF[f].sort((a,b)=>b.t-a.t);
+    const sub = items.reduce((s,x)=>s+x.t,0);
+    return `<div style="margin-top:6px">
+      <div class="fila" style="justify-content:space-between;align-items:baseline;border-top:2px solid var(--borde);padding-top:6px">
+        <span style="font-weight:800;font-size:11.5px;color:var(--txt2);text-transform:uppercase;letter-spacing:.4px">🏡 ${esc(f)}</span>
+        <b style="color:var(--p2)">$${mil(sub)}</b></div>
+      ${items.map(x=>{ const ha=haDe(x.fundo,x.cuartel); const cph=ha>0?x.t/ha:0;
+        return `<div class="fila" style="justify-content:space-between;align-items:baseline;font-size:13px;padding:3px 0 3px 4px">
+          <span><b>${esc(x.tipo)}</b>${x.cuartel?" · "+esc(x.cuartel):""} <span class="muted">${num(x.c)}${x.unidad?" "+esc(x.unidad):""} · ${num(x.p)} pers</span></span>
+          <span style="white-space:nowrap;text-align:right">$${mil(x.t)}${cph?` <span class="muted">· $${mil(cph)}/ha</span>`:""}</span></div>`;}).join("")}
+    </div>`;
+  }).join("");
   const kpis = `<div class="kpi"><div class="num" style="font-size:20px">$${mil(k.total)}</div><div class="lab">total pagado</div></div>
     <div class="kpi azul"><div class="num" style="font-size:20px">$${mil(k.ganaPers)}</div><div class="lab">prom. por persona</div></div>`
     + (mono?`<div class="kpi acc"><div class="num" style="font-size:20px">${num(k.rend)}</div><div class="lab">rendim./persona</div></div>
@@ -3918,6 +3933,12 @@ function avBody(){
       ${mono?row("Costo por unidad",Math.round(k1.costoU),Math.round(k0.costoU),v=>"$"+mil(v),true):""}
       </table><div class="muted" style="font-size:11px">Verde = mejora.</div></div>`;
   }
+  const gh={}; a.forEach(x=>{ const key=x.fundo+"||"+x.tipo+"||"+(x.cuartel||""); (gh[key]=gh[key]||{fundo:x.fundo,tipo:x.tipo,cuartel:x.cuartel,t:0}); gh[key].t+=(+x.total||0); });
+  const filasHa = Object.values(gh).map(x=>({fundo:x.fundo,tipo:x.tipo,cuartel:x.cuartel,t:x.t,ha:haDe(x.fundo,x.cuartel)})).sort((p,q)=>(p.fundo||"").localeCompare(q.fundo||"")||q.t-p.t);
+  const seccionHa = `<div class="inf-sec"><h2>💰 Costo por hectárea (por labor y fundo)</h2>
+    <table><tr><th>Fundo</th><th>Labor</th><th>Cuartel</th><th style="text-align:right">ha</th><th style="text-align:right">$ total</th><th style="text-align:right">$/ha</th></tr>
+    ${filasHa.map(x=>`<tr><td>${esc(x.fundo||"")}</td><td>${esc(x.tipo)}</td><td>${esc(x.cuartel||"—")}</td><td style="text-align:right">${x.ha?num(x.ha):"—"}</td><td style="text-align:right">$${mil(x.t)}</td><td style="text-align:right">${x.ha?"<b>$"+mil(x.t/x.ha)+"</b>":"—"}</td></tr>`).join("")}
+    </table><div class="muted" style="font-size:11px">Superficie tomada del catálogo de cuarteles. "—" = cuartel sin ha registrada.</div></div>`;
   return `
     <div style="border-bottom:3px solid #1e7a4c;padding-bottom:8px;margin-bottom:6px">
       <div style="font-size:20px;font-weight:800;color:#14532d">📈 Análisis de avances</div>
@@ -3942,6 +3963,7 @@ function avBody(){
         ${chCu.length>1?barrasSVG("$ por fundo/cuartel", chCu, "#14532d", kMoney):""}
       </div>
     </div>
+    ${seccionHa}
     <div class="inf-sec"><h2>📋 Detalle</h2>
       <table><tr><th>Fecha</th><th>Labor</th><th>Fundo · Cuartel</th><th style="text-align:right">Cant.</th><th style="text-align:right">Pers.</th><th style="text-align:right">$ total</th><th style="text-align:right">$/pers</th></tr>
       ${a.slice().sort((x,y)=>(y.fecha||"").localeCompare(x.fecha||"")).map(x=>`<tr><td>${fmtF(x.fecha)}</td><td>${esc(x.tipo)}</td><td>${esc(x.fundo||"")}${x.cuartel?" · "+esc(x.cuartel):""}</td><td style="text-align:right">${num(x.cantidad)}${x.unidad?" "+esc(x.unidad):""}</td><td style="text-align:right">${x.personas||""}</td><td style="text-align:right">$${mil(x.total||0)}</td><td style="text-align:right">${x.personas&&x.total?"$"+mil(x.total/x.personas):""}</td></tr>`).join("")}
