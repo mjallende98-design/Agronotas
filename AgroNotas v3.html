@@ -315,9 +315,8 @@ function defaults(){
 function cargar(){
   try{
     const raw = localStorage.getItem(CLAVE);
-    if(!raw){ D = defaults(); guardar(); return; }
-    D = JSON.parse(raw);
-    // migraciones futuras: dar defaults a campos nuevos aquí
+    D = raw ? JSON.parse(raw) : defaults();
+    // migraciones futuras: dar defaults a campos nuevos aquí (corren también en instalación nueva)
     D.cuarteles = D.cuarteles || []; D.notas = D.notas || [];
     D.labores = D.labores || []; D.registros = D.registros || [];
     D.seq = D.seq || 1000;
@@ -341,6 +340,7 @@ function cargar(){
     D.ia = D.ia || {key:"", modelo:""}; // ajustes de IA (identificar fotos y escanear etiquetas)
     D.notas.forEach(n=>{ n.docs = n.docs || []; n.audios = n.audios || []; n.check = n.check || []; });
     D.registros.forEach(r=>{ r.fotos = r.fotos || []; r.docs = r.docs || []; r.audios = r.audios || []; });
+    if(!raw) guardar(); // primera vez: deja guardados los defaults ya migrados
   }catch(e){ alert("Error leyendo datos guardados: "+e.message); D = defaults(); }
 }
 function guardar(){
