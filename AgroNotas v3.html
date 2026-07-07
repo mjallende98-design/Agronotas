@@ -95,6 +95,7 @@ label.f input, label.f select, label.f textarea{display:block; width:100%; margi
   font-family:inherit; -webkit-appearance:none; appearance:none; min-height:46px;}
 label.f select{background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="9" viewBox="0 0 14 9"><path d="M1 1l6 6 6-6" stroke="%23607d8b" stroke-width="2" fill="none"/></svg>') no-repeat right 12px center;}
 label.f textarea{min-height:90px; resize:vertical;}
+#m_texto{min-height:200px; line-height:1.5;}
 label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; border-color:var(--p);}
 
 /* ===== Listas / items ===== */
@@ -1846,7 +1847,7 @@ function verNota(id){
   abrirModal(`${n.fijada?"📌 ":""}Nota · ${esc(n.fundo)}`, `
     <div class="met" style="margin-bottom:6px">${badgeCat(n.cat)} &nbsp; ${fmtFH(n.fh)}${n.cuartel?" · Cuartel: <b>"+esc(n.cuartel)+"</b>":""}${n.aviso?` · 🔔 ${fmtF(n.aviso)}`:""}</div>
     ${n.titulo? `<div style="font-size:18px;font-weight:800;margin-bottom:6px">${esc(n.titulo)}</div>`:""}
-    <div class="txt" style="font-size:16px">${esc(n.texto)}</div>
+    <div class="txt" style="font-size:16px;white-space:pre-wrap;word-break:break-word;line-height:1.5">${esc(n.texto)}</div>
     <div class="thumbs" data-fotos="${n.fotos.join(",")}" style="margin-top:12px"></div>
     ${(n.docs&&n.docs.length)? `<div class="docs">${chipsDocs(n.docs)}</div>`:""}
     <div class="audios" data-audios="${(n.audios||[]).join(",")}"></div>
@@ -2034,6 +2035,7 @@ function filaLabor(l, mini){
       ${l.estado==="pendiente"?`<button class="btn sec chico" onclick="event.stopPropagation();estadoLabor(${l.id},'encurso')">▶️ Iniciar</button>`:""}
       ${l.estado==="encurso"?`<button class="btn sec chico" onclick="event.stopPropagation();pausarLabor(${l.id})">⏸ Pausar</button>`:""}
       ${l.estado==="pausada"?`<button class="btn sec chico" onclick="event.stopPropagation();retomarLabor(${l.id})">▶️ Retomar hoy</button>`:""}
+      ${l.estado==="hecha"?`<button class="btn sec chico" onclick="event.stopPropagation();estadoLabor(${l.id},'encurso')">↩️ Reabrir</button>`:""}
       ${l.estado!=="hecha"?`<button class="btn chico" onclick="event.stopPropagation();estadoLabor(${l.id},'hecha')">✅ Hecha</button>`:""}
     </div>
   </div>`;
@@ -2097,17 +2099,30 @@ function verAvancesLabor(laborId){
     <button class="btn full" style="margin-top:8px" onclick="cerrarModal();formAvanceLabor(${laborId})">➕ Agregar avance</button>
   `, null, "Cerrar");
 }
+function planTerminadas(){
+  let ls = D.labores.filter(l=>l.estado==="hecha" && (!nav.filtroFundo||l.fundo===nav.filtroFundo));
+  ls.sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"") || b.id-a.id);
+  if(!ls.length) return `<div class="vacio"><span class="ico">✅</span>Aún no hay labores terminadas.${nav.filtroFundo?" en "+esc(nav.filtroFundo):""}</div>`;
+  const totCosto = ls.reduce((s,l)=>s+(l.avances||[]).reduce((t,a)=>t+(+a.total||0),0),0);
+  let h = `<div class="card" style="background:var(--pclaro);border:1px solid var(--p)"><div class="fila" style="justify-content:space-between;align-items:center"><b>✓ ${ls.length} labores terminadas${nav.filtroFundo?" · "+esc(nav.filtroFundo):""}</b><b style="color:var(--p2)">$${Math.round(totCosto).toLocaleString("es-CL")}</b></div>
+    <div class="muted" style="font-size:12px;margin-top:2px">Toca una para ver su detalle, o abre 📊 Análisis / PDF (en el Panel) para el resumen completo con gráficos.</div></div>`;
+  h += ls.map(l=>filaLabor(l,true)).join("");
+  return h;
+}
 function vPlan(){
   const vista = nav.planVista || "sem";
   let h = chipsFundo();
   h += `<div class="chips" style="margin-bottom:8px">
-    ${[["dia","📄 Día"],["sem","📅 Semana"],["mes","🗓️ Mes"]].map(([id,lab])=>
+    ${[["dia","📄 Día"],["sem","📅 Semana"],["mes","🗓️ Mes"],["fin","✓ Terminadas"]].map(([id,lab])=>
       `<div class="chip ${vista===id?"act":""}" onclick="nav.planVista='${id}';render()">${lab}</div>`).join("")}
   </div>`;
-  h += cardPausadas();
-  if(vista==="dia") h += planDia();
-  else if(vista==="mes") h += planMes();
-  else h += planSemana();
+  if(vista==="fin"){ h += planTerminadas(); }
+  else {
+    h += cardPausadas();
+    if(vista==="dia") h += planDia();
+    else if(vista==="mes") h += planMes();
+    else h += planSemana();
+  }
   h += `<button class="btn-fab" onclick="formLabor(null,'${vista==="dia"?(nav.diaSel||hoy()):hoy()}')">+</button>`;
   return h;
 }
