@@ -498,8 +498,8 @@ function vPanel(){
   const haPlant = D.cuarteles.filter(q=>q.especie!=="Por plantar").reduce((s,q)=>s+(+q.ha||0),0);
   const hoyISO = hoy();
   const pend = D.labores.filter(l=>l.estado!=="hecha");
-  const atras = pend.filter(l=>(l.fecha2||l.fecha)<hoyISO);
-  const deHoy = D.labores.filter(l=>l.fecha===hoyISO || (l.fecha2 && l.fecha<=hoyISO && hoyISO<=l.fecha2));
+  const atras = pend.filter(l=>l.estado==="pendiente" && (l.fecha2||l.fecha)<hoyISO);
+  const deHoy = D.labores.filter(l=>l.estado==="encurso" || ((l.estado==="pendiente"||l.estado==="hecha") && (l.fecha===hoyISO || (l.fecha2 && l.fecha<=hoyISO && hoyISO<=l.fecha2))));
   const sem = semanaDe(hoyISO);
   const deSemana = D.labores.filter(l=>l.fecha>=sem[0] && l.fecha<=sem[6]);
   const notasRec = [...D.notas].sort((a,b)=>b.fh.localeCompare(a.fh));
@@ -2004,10 +2004,11 @@ function moverSemana(n){
 function badgeEstado(e){
   return {pendiente:`<span class="badge b-gris">Pendiente</span>`,
     encurso:`<span class="badge b-azul">En curso</span>`,
+    pausada:`<span class="badge b-ambar">⏸ En pausa</span>`,
     hecha:`<span class="badge b-verde">✓ Hecha</span>`}[e]||"";
 }
 function filaLabor(l, mini){
-  const atrasada = l.estado!=="hecha" && l.fecha<hoy();
+  const atrasada = l.estado==="pendiente" && l.fecha<hoy();
   const av = l.avances||[];
   const hecho = av.reduce((s,a)=>s+(+a.cantidad||0),0);
   const costo = av.reduce((s,a)=>s+(+a.total||0),0);
@@ -2021,20 +2022,26 @@ function filaLabor(l, mini){
     ${l.desc?`<div class="txt" style="font-size:13.5px;margin-top:3px">${esc(l.desc)}</div>`:""}
     <div class="met">${fmtDia(l.fecha)}${l.fecha2?" → "+fmtF(l.fecha2):""}${l.resp?" · 👤 "+esc(l.resp):""}</div>
     ${(meta>0||av.length)?`<div style="margin-top:6px">
-      ${meta>0?`<div class="fila" style="justify-content:space-between;font-size:12.5px"><span>${num(hecho)}${l.unidad?" "+esc(l.unidad):""} de ${num(meta)}</span><b style="color:var(--p2)">${pct}%</b></div>
+      ${meta>0?`<div class="fila" style="justify-content:space-between;font-size:12.5px"><span>Avanzado <b>${num(hecho)}</b> / ${num(meta)}${l.unidad?" "+esc(l.unidad):""} · restan <b>${num(Math.max(0,meta-hecho))}</b></span><b style="color:var(--p2)">${pct}%</b></div>
         <div style="background:#eef1ec;border-radius:6px;height:8px;margin-top:2px"><div style="width:${pct}%;background:var(--p);height:8px;border-radius:6px"></div></div>`
         : `<div class="met">Realizado: <b>${num(hecho)}${l.unidad?" "+esc(l.unidad):""}</b></div>`}
       ${costo>0?`<div class="met" style="margin-top:2px">💵 $${Math.round(costo).toLocaleString("es-CL")} · ${av.length} avance${av.length>1?"s":""}</div>`:""}
     </div>`:""}
+    ${l.estado==="pausada"?`<div class="fila" style="margin-top:6px;align-items:center;gap:6px;flex-wrap:wrap"><span class="muted" style="font-size:12px">⏸ Reanuda el</span><input type="date" value="${esc(l.reanudar||"")}" onclick="event.stopPropagation()" onchange="event.stopPropagation();setReanudar(${l.id},this.value)" style="padding:5px 8px;border:1.5px solid var(--borde);border-radius:8px;font-size:13px">${(l.reanudar && l.reanudar<=hoy())?`<span class="badge b-ambar">↩️ toca retomar</span>`:""}</div>`:""}
     <div class="fila" style="margin-top:8px;gap:8px;flex-wrap:wrap">
       <button class="btn sec chico" onclick="event.stopPropagation();formAvanceLabor(${l.id})">➕ Avance</button>
       ${av.length?`<button class="btn sec chico" onclick="event.stopPropagation();verAvancesLabor(${l.id})">📋 Avances (${av.length})</button>`:""}
       ${l.estado==="pendiente"?`<button class="btn sec chico" onclick="event.stopPropagation();estadoLabor(${l.id},'encurso')">▶️ Iniciar</button>`:""}
+      ${l.estado==="encurso"?`<button class="btn sec chico" onclick="event.stopPropagation();pausarLabor(${l.id})">⏸ Pausar</button>`:""}
+      ${l.estado==="pausada"?`<button class="btn sec chico" onclick="event.stopPropagation();retomarLabor(${l.id})">▶️ Retomar hoy</button>`:""}
       ${l.estado!=="hecha"?`<button class="btn chico" onclick="event.stopPropagation();estadoLabor(${l.id},'hecha')">✅ Hecha</button>`:""}
     </div>
   </div>`;
 }
-function estadoLabor(id,e){ const l=D.labores.find(x=>x.id===id); if(l){ l.estado=e; guardar(); render(); } }
+function estadoLabor(id,e){ const l=D.labores.find(x=>x.id===id); if(l){ l.estado=e; if(e!=="pausada") l.reanudar=""; guardar(); render(); } }
+function pausarLabor(id){ const l=D.labores.find(x=>x.id===id); if(!l) return; l.estado="pausada"; if(!l.reanudar){ const d=new Date(hoy()+"T12:00:00"); d.setDate(d.getDate()+1); l.reanudar=d.toISOString().slice(0,10); } guardar(); render(); }
+function retomarLabor(id){ const l=D.labores.find(x=>x.id===id); if(!l) return; l.estado="encurso"; l.reanudar=""; guardar(); render(); }
+function setReanudar(id,fecha){ const l=D.labores.find(x=>x.id===id); if(l){ l.reanudar=fecha; guardar(); render(); } }
 /* --- Avances de una labor (parte diario medible) --- */
 function formAvanceLabor(laborId, idx){
   const l = D.labores.find(x=>x.id===laborId); if(!l) return;
@@ -2042,7 +2049,10 @@ function formAvanceLabor(laborId, idx){
   const a = (idx!=null)? l.avances[idx] : null;
   nav.avancePago = a? (a.pago||"trato") : (nav.avancePago||"trato");
   const pg = nav.avancePago;
+  const hechoAct=(l.avances||[]).reduce((s,x)=>s+(+x.cantidad||0),0);
+  const metaHint=(+l.meta>0)?`<div class="card" style="background:var(--pclaro);border:1px solid var(--p);padding:8px 11px;font-size:12.5px;margin:0 0 8px">Meta <b>${num(+l.meta)}${l.unidad?" "+esc(l.unidad):""}</b> · avanzado <b>${num(hechoAct)}</b> · restan <b>${num(Math.max(0,+l.meta-hechoAct))}</b></div>`:"";
   abrirModal(a?"Editar avance":"➕ Avance · "+esc(l.tipo)+(l.cuartel?" · "+esc(l.cuartel):""), `
+    ${metaHint}
     ${campoF("m_fecha","Fecha *","date",a?.fecha||hoy())}
     ${campoF("m_cantidad","Cantidad realizada *"+(l.unidad?" ("+esc(l.unidad)+")":""),"text",a?.cantidad,'inputmode="decimal" oninput="avanceCalc()"')}
     ${campoF("m_personas","N° de personas","text",a?.personas,'inputmode="decimal" oninput="avanceCalc()"')}
@@ -2062,8 +2072,8 @@ function formAvanceLabor(laborId, idx){
       total:(pago==="trato"? cant*val : pers*val), rend:(pers>0?cant/pers:0), obs:v("m_avobs")};
     if(idx!=null) l.avances[idx]=rec; else l.avances.push(rec);
     const hecho = l.avances.reduce((s,x)=>s+(+x.cantidad||0),0);
-    if((+l.meta||0)>0 && hecho>=+l.meta && l.estado!=="hecha") l.estado="hecha";
-    else if(l.estado==="pendiente") l.estado="encurso";
+    if((+l.meta||0)>0 && hecho>=+l.meta && l.estado!=="hecha"){ l.estado="hecha"; l.reanudar=""; }
+    else if(l.estado==="pendiente"||l.estado==="pausada"){ l.estado="encurso"; l.reanudar=""; }
   });
   avanceCalc();
 }
@@ -2082,7 +2092,7 @@ function verAvancesLabor(laborId){
     <div class="met">${num(a.cantidad)}${l.unidad?" "+esc(l.unidad):""}${a.personas?" · "+num(a.personas)+" pers":""}${(a.personas&&a.total)?" · 💰 $"+Math.round(a.total/a.personas).toLocaleString("es-CL")+"/pers":""} · ${a.pago==="dia"?"por día":"a trato"}${a.obs?" · "+esc(a.obs):""}</div>
   </div>`).join("");
   abrirModal("📋 Avances · "+esc(l.tipo)+(l.cuartel?" · "+esc(l.cuartel):""), `
-    <div class="card" style="background:var(--pclaro);border:1px solid var(--p)"><div class="fila" style="justify-content:space-between"><span>Total realizado: <b>${num(hecho)}${l.unidad?" "+esc(l.unidad):""}</b></span><b style="color:var(--p2)">$${Math.round(costo).toLocaleString("es-CL")}</b></div></div>
+    <div class="card" style="background:var(--pclaro);border:1px solid var(--p)"><div class="fila" style="justify-content:space-between"><span>Avanzado: <b>${num(hecho)}${l.unidad?" "+esc(l.unidad):""}</b></span><b style="color:var(--p2)">$${Math.round(costo).toLocaleString("es-CL")}</b></div>${(+l.meta>0)?`<div class="fila" style="justify-content:space-between;margin-top:3px"><span class="muted">Meta ${num(+l.meta)} · restan ${num(Math.max(0,+l.meta-hecho))}</span><b style="color:var(--p2)">${Math.min(100,Math.round(hecho/(+l.meta)*100))}%</b></div><div style="background:#eef1ec;border-radius:6px;height:8px;margin-top:4px"><div style="width:${Math.min(100,Math.round(hecho/(+l.meta)*100))}%;background:var(--p);height:8px;border-radius:6px"></div></div>`:""}</div>
     ${filas||`<div class="muted">Aún no hay avances.</div>`}
     <button class="btn full" style="margin-top:8px" onclick="cerrarModal();formAvanceLabor(${laborId})">➕ Agregar avance</button>
   `, null, "Cerrar");
@@ -2094,21 +2104,34 @@ function vPlan(){
     ${[["dia","📄 Día"],["sem","📅 Semana"],["mes","🗓️ Mes"]].map(([id,lab])=>
       `<div class="chip ${vista===id?"act":""}" onclick="nav.planVista='${id}';render()">${lab}</div>`).join("")}
   </div>`;
+  h += cardPausadas();
   if(vista==="dia") h += planDia();
   else if(vista==="mes") h += planMes();
   else h += planSemana();
   h += `<button class="btn-fab" onclick="formLabor(null,'${vista==="dia"?(nav.diaSel||hoy()):hoy()}')">+</button>`;
   return h;
 }
-function laboresDe(f){ // labores activas el día f (incluye las de varios días)
-  return D.labores.filter(l=>(l.fecha===f || (l.fecha2 && l.fecha<=f && f<=l.fecha2))
-    && (!nav.filtroFundo || l.fundo===nav.filtroFundo));
+function laboresDe(f){ // labores activas el día f. En curso "flota" a hoy; pausada va a su propia sección
+  const hoyISO=hoy();
+  return D.labores.filter(l=>{
+    if(nav.filtroFundo && l.fundo!==nav.filtroFundo) return false;
+    if(l.estado==="pausada") return false; // las pausadas se muestran aparte, no en un día
+    if(l.estado==="encurso") return f===hoyISO;
+    return l.fecha===f || (l.fecha2 && l.fecha<=f && f<=l.fecha2);
+  });
+}
+function cardPausadas(){
+  const ps = D.labores.filter(l=>l.estado==="pausada" && (!nav.filtroFundo||l.fundo===nav.filtroFundo));
+  if(!ps.length) return "";
+  return `<div class="card" style="border-left:5px solid var(--acc)"><h3>⏸ En pausa (${ps.length})</h3>
+    <div class="muted" style="font-size:12px;margin-bottom:6px">Detenidas por lluvia, falta de gente, etc. Toca ▶️ Retomar cuando las sigas.</div>
+    ${ps.sort((a,b)=>(a.reanudar||"").localeCompare(b.reanudar||"")).map(l=>filaLabor(l,true)).join("")}</div>`;
 }
 function planSemana(){
   const sem = semanaDe(nav.semanaIni || hoy());
   const hoyISO = hoy();
   const esActual = sem.includes(hoyISO);
-  const atras = D.labores.filter(l=>l.estado!=="hecha" && (l.fecha2||l.fecha)<hoyISO && (!nav.filtroFundo||l.fundo===nav.filtroFundo));
+  const atras = D.labores.filter(l=>l.estado==="pendiente" && (l.fecha2||l.fecha)<hoyISO && (!nav.filtroFundo||l.fundo===nav.filtroFundo));
 
   let h = `<div class="card"><div class="fila" style="justify-content:space-between">
     <button class="btn sec chico" onclick="moverSemana(-1)">‹ Anterior</button>
@@ -2193,6 +2216,38 @@ function moverMes(n){
   const d = new Date(a, m-1+n, 1, 12);
   nav.mesIni = d.toISOString().slice(0,7); render();
 }
+function marcoPlantas(marco, ha){ // marco "4,5 x 2,25" → densidad y total de plantas
+  const s=String(marco||"").replace(/,/g,".");
+  const m=s.match(/([\d.]+)\s*[x×*]\s*([\d.]+)/i);
+  if(!m) return null;
+  const a=parseFloat(m[1]), b=parseFloat(m[2]);
+  if(!(a>0&&b>0)) return null;
+  const densidad=10000/(a*b);
+  return {a,b,densidad,total: ha>0? densidad*ha : 0};
+}
+function laborInfo(){
+  const cont=document.getElementById("laborInfo"); if(!cont) return;
+  const fundo=v("m_fundo"), cuartel=v("m_cuartel");
+  const q = cuartel? D.cuarteles.find(x=>x.fundo===fundo && x.nombre===cuartel) : null;
+  if(!q){ cont.innerHTML=""; return; }
+  const ha=+q.ha||0, mp=marcoPlantas(q.marco, ha);
+  const plReal=+q.plantas||0;
+  const plMeta = plReal>0? plReal : (mp? Math.round(mp.total):0);
+  let h=`<div class="card" style="background:var(--pclaro);border:1px solid var(--p);padding:9px 11px;font-size:12.5px;margin:0">
+    <b>${esc(q.nombre)}</b>${q.especie?" · "+esc(q.especie):""}${q.variedad?" "+esc(q.variedad):""} · ${ha?num(ha)+" ha":"sin ha"}${q.marco?" · marco "+esc(q.marco):""}`;
+  if(plReal>0) h+=` · <b>${plReal.toLocaleString("es-CL")}</b> plantas <span class="muted">(registradas)</span>`;
+  else if(mp) h+=` · ${Math.round(mp.densidad).toLocaleString("es-CL")} pl/ha · ~${Math.round(mp.total).toLocaleString("es-CL")} plantas <span class="muted">(teórico)</span>`;
+  h+=`<div class="fila" style="gap:6px;margin-top:6px;flex-wrap:wrap">
+    <span class="muted" style="align-self:center">Sugerir meta:</span>`;
+  if(plMeta>0) h+=`<button type="button" class="btn sec chico" onclick="laborSetMeta('plantas',${plMeta})">🌳 Por planta (${plMeta.toLocaleString("es-CL")})</button>`;
+  if(ha>0) h+=`<button type="button" class="btn sec chico" onclick="laborSetMeta('hectareas',${ha})">📐 Por superficie (${num(ha)} ha)</button>`;
+  h+=`</div><div class="muted" style="font-size:11px;margin-top:4px">${plReal>0?"Plantas registradas en el cuartel.":"Teórico del marco — deja las plantas reales fijas en Datos → Cuarteles."} La meta es editable.</div></div>`;
+  cont.innerHTML=h;
+}
+function laborSetMeta(unidad, valor){
+  const u=document.getElementById("m_unidad"), m=document.getElementById("m_meta");
+  if(u) u.value=unidad; if(m) m.value=valor;
+}
 function formLabor(id, fechaSug, pre){
   const l = id? D.labores.find(x=>x.id===id) : null;
   abrirModal(l?"Editar labor":"📅 Nueva labor", `
@@ -2201,11 +2256,12 @@ function formLabor(id, fechaSug, pre){
     ${selF("m_tipo","Tipo de labor *",tiposLabor(),l?.tipo,"— Elegir —")}
     ${selF("m_fundo","Fundo *",fundosSel(),l?.fundo||pre?.fundo,"— Elegir fundo —")}
     <label class="f">Cuartel<select id="m_cuartel"></select></label>
+    <div id="laborInfo" style="margin:2px 0 8px"></div>
     ${areaF("m_desc","Detalle",l?.desc||pre?.desc,"Ej: podar filas 1 a 10, revisar goteros…")}
     ${campoF("m_unidad","Unidad de avance (plantas, hileras, kg…)","text",l?.unidad,'placeholder="plantas"')}
-    ${campoF("m_meta","Meta / objetivo (opcional)","text",l?.meta||"",'inputmode="decimal" placeholder="Ej: 500 — para ver % de avance"')}
+    ${campoF("m_meta","Meta / objetivo (editable)","text",l?.meta||"",'inputmode="decimal" placeholder="Auto o a mano · ajústala a lo real"')}
     ${campoF("m_resp","Responsable","text",l?.resp,'placeholder="Ej: Daniel Bosch"')}
-    ${l? selF("m_estado","Estado",["pendiente","encurso","hecha"],l.estado):""}
+    ${l? selF("m_estado","Estado",["pendiente","encurso","pausada","hecha"],l.estado):""}
     ${l? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarLabor(${l.id})">🗑️ Eliminar labor</button>`:""}
   `, ()=>{
     if(!req("m_fecha","m_tipo","m_fundo")) return false;
@@ -2215,8 +2271,10 @@ function formLabor(id, fechaSug, pre){
     if(l) Object.assign(l,o,{estado:v("m_estado")||l.estado});
     else D.labores.push({id:nid(), estado:"pendiente", avances:[], ...o});
   });
-  document.getElementById("m_fundo").onchange = ()=>syncCuarteles();
+  document.getElementById("m_fundo").onchange = ()=>{ syncCuarteles(); laborInfo(); };
+  document.getElementById("m_cuartel").onchange = laborInfo;
   syncCuarteles(l?.cuartel||pre?.cuartel);
+  laborInfo();
 }
 function eliminarLabor(id){
   if(!confirm("¿Eliminar esta labor?")) return;
@@ -2623,6 +2681,12 @@ function vDatos(){
     <span class="muted">Los datos se guardan en el iPad. Importante: usa siempre la misma app (el ícono), porque Safari y el ícono guardan datos por separado.</span></div></div>`;
   return h;
 }
+function cuartelCalcPlantas(){
+  const ha=parseFloat((v("m_ha")||"").replace(",","."))||0;
+  const mp=marcoPlantas(v("m_marco"), ha);
+  if(!mp||!mp.total){ alert("Ingresa el marco (ej. 4,5 x 2,25) y la superficie primero."); return; }
+  const el=document.getElementById("m_plantas"); if(el) el.value=Math.round(mp.total);
+}
 function formCuartel(id){
   const q = id? D.cuarteles.find(x=>x.id===id) : null;
   abrirModal(q?"Editar cuartel":"Nuevo cuartel", `
@@ -2635,13 +2699,16 @@ function formCuartel(id){
       ${campoF("m_ha","Superficie (ha)","number",q?.ha,'inputmode="decimal" step="0.01"')}
       ${campoF("m_marco","Marco de plantación","text",q?.marco,'placeholder="Ej: 6x3"')}
       ${campoF("m_anio","Año de plantación","number",q?.anio,'inputmode="numeric"')}
+      ${campoF("m_plantas","Plantas (reales)","number",q?.plantas,'inputmode="numeric" placeholder="cantidad real"')}
     </div>
+    <button type="button" class="btn sec chico" style="margin-bottom:6px" onclick="cuartelCalcPlantas()">🌳 Calcular plantas del marco</button>
+    <div class="muted" style="font-size:11.5px;margin-bottom:8px">Este número se usa como meta al podar/ralear. Calcúlalo del marco y ajústalo a lo real (plantas arrancadas o muertas). Queda guardado en el cuartel.</div>
     ${q? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarCuartel(${q.id})">🗑️ Eliminar cuartel</button>`:""}
   `, ()=>{
     if(!req("m_fundo","m_nombre")) return false;
     if(v("m_fundo")==="__nuevo"){ alert("Elige o crea el fundo primero."); return false; }
     const o = {fundo:v("m_fundo"), nombre:v("m_nombre"), especie:v("m_especie"), variedad:v("m_variedad"),
-      portainjerto:v("m_portainjerto"), ha:+v("m_ha")||0, marco:v("m_marco"), anio:v("m_anio")};
+      portainjerto:v("m_portainjerto"), ha:+v("m_ha")||0, marco:v("m_marco"), anio:v("m_anio"), plantas:+v("m_plantas")||0};
     if(q) Object.assign(q,o); else D.cuarteles.push({id:nid(), ...o});
   });
   const sf = document.getElementById("m_fundo");
@@ -3147,8 +3214,8 @@ function vPanel(){
   const haPlant = D.cuarteles.filter(q=>q.especie!=="Por plantar").reduce((s,q)=>s+(+q.ha||0),0);
   const hoyISO = hoy();
   const pend = D.labores.filter(l=>l.estado!=="hecha");
-  const atras = pend.filter(l=>(l.fecha2||l.fecha)<hoyISO);
-  const deHoy = D.labores.filter(l=>l.fecha===hoyISO || (l.fecha2 && l.fecha<=hoyISO && hoyISO<=l.fecha2));
+  const atras = pend.filter(l=>l.estado==="pendiente" && (l.fecha2||l.fecha)<hoyISO);
+  const deHoy = D.labores.filter(l=>l.estado==="encurso" || ((l.estado==="pendiente"||l.estado==="hecha") && (l.fecha===hoyISO || (l.fecha2 && l.fecha<=hoyISO && hoyISO<=l.fecha2))));
   const sem = semanaDe(hoyISO);
   const deSemana = D.labores.filter(l=>l.fecha>=sem[0] && l.fecha<=sem[6]);
   const notasRec = [...D.notas].sort((a,b)=>b.fh.localeCompare(a.fh));

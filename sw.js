@@ -1,7 +1,7 @@
 /* Service worker — AgroNotas (Total Fruit Curacaví)
    Permite usar la app sin señal: guarda una copia en el iPad y,
    cuando hay internet, busca la versión más nueva en segundo plano. */
-const CACHE = "agronotas-v22";
+const CACHE = "agronotas-v28";
 const ARCHIVOS = ["./", "./index.html", "./AgroNotas%20v3.html", "./apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
