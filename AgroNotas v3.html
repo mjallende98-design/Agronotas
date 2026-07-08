@@ -93,6 +93,7 @@ label.f{display:block; margin-bottom:10px; font-size:13px; font-weight:600; colo
 label.f input, label.f select, label.f textarea{display:block; width:100%; margin-top:4px; padding:12px;
   font-size:16px; border:1.5px solid var(--borde); border-radius:10px; background:#fff; color:var(--txt);
   font-family:inherit; -webkit-appearance:none; appearance:none; min-height:46px;}
+label.f input[type=checkbox]{-webkit-appearance:auto; appearance:auto; accent-color:var(--p); width:22px; height:22px; min-height:0; padding:0; border:none; background:none; display:inline-block; flex:0 0 auto;}
 label.f select{background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="9" viewBox="0 0 14 9"><path d="M1 1l6 6 6-6" stroke="%23607d8b" stroke-width="2" fill="none"/></svg>') no-repeat right 12px center;}
 label.f textarea{min-height:90px; resize:vertical;}
 #m_texto{min-height:200px; line-height:1.5;}
@@ -302,6 +303,10 @@ let PROY = null;            // proyecto activo {id, nombre, sub, clave}
 let D = null;
 let nav = {tab:"panel", filtroFundo:"", semanaIni:null, regTipo:"", notaBuscar:"", planVista:"sem", diaSel:null, mesIni:null};
 
+const SEED_PRODUCTOS_FITO = [{"id":71,"n":"Karate Zeon 5 CS","t":"Insecticida","ia":"Lambda-cihalotrina 5%","o":"Polillas, pulgones, eulia, chape del cerezo; piretroide amplio espectro","u":"L","du":"cc/100L","dmin":10.0,"dmax":20.0,"dtxt":"10–20 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":24,"p":0},{"id":72,"n":"Coragen 20 SC","t":"Insecticida","ia":"Clorantraniliprol 20%","o":"Larvas de polillas (Lobesia, Cydia), cuncunillas; selectivo con polinizadores","u":"L","du":"cc/100L","dmin":10.0,"dmax":20.0,"dtxt":"10–20 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":4,"p":0},{"id":73,"n":"Actara 25 WG","t":"Insecticida","ia":"Tiametoxam 25%","o":"Chanchito blanco, pulgones, escamas; sistémico neonicotinoide","u":"kg","du":"g/100L","dmin":20.0,"dmax":30.0,"dtxt":"20–30 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":21,"r":12,"p":0},{"id":74,"n":"Movento 150 OD","t":"Insecticida","ia":"Spirotetramat 15%","o":"Escamas, chanchito blanco, pulgones; sistémico de doble vía","u":"L","du":"cc/100L","dmin":40.0,"dmax":60.0,"dtxt":"40–60 cc/100 L","mmin":1000.0,"mmax":2000.0,"mtxt":"1.000–2.000 L/ha","c":14,"r":24,"p":0},{"id":75,"n":"Confidor 350 SC","t":"Insecticida","ia":"Imidacloprid 35%","o":"Pulgones, mosquita blanca, escamas; sistémico","u":"L","du":"cc/100L","dmin":20.0,"dmax":30.0,"dtxt":"20–30 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":76,"n":"Sivanto Prime","t":"Insecticida","ia":"Flupiradifurona 20%","o":"Pulgones y chanchito blanco; perfil favorable con polinizadores","u":"L","du":"cc/100L","dmin":40.0,"dmax":60.0,"dtxt":"40–60 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":12,"p":0},{"id":77,"n":"Closer 240 SC","t":"Insecticida","ia":"Sulfoxaflor 24%","o":"Pulgones y escamas; rápida acción (alternativa a neonicotinoides)","u":"L","du":"cc/100L","dmin":20.0,"dmax":40.0,"dtxt":"20–40 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":12,"p":0},{"id":78,"n":"Delegate 250 WG","t":"Insecticida","ia":"Spinetoram 25%","o":"Trips, polillas, minadores","u":"kg","du":"g/100L","dmin":10.0,"dmax":15.0,"dtxt":"10–15 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":4,"p":0},{"id":79,"n":"Entrust 80 WP","t":"Insecticida","ia":"Spinosad 80%","o":"Trips y polillas; autorizado en producción orgánica","u":"kg","du":"g/100L","dmin":5.0,"dmax":10.0,"dtxt":"5–10 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":3,"r":4,"p":0},{"id":80,"n":"Intrepid 240 SC","t":"Insecticida","ia":"Metoxifenocida 24%","o":"Larvas de eulias y polillas; regulador de muda selectivo","u":"L","du":"cc/100L","dmin":30.0,"dmax":60.0,"dtxt":"30–60 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":4,"p":0},{"id":82,"n":"Ultraspray (aceite mineral)","t":"Insecticida","ia":"Aceite parafínico 97%","o":"Escamas, arañitas y huevos invernantes; lavado de invierno","u":"L","du":"cc/100L","dmin":1000.0,"dmax":2000.0,"dtxt":"1–2 L/100 L","mmin":2000.0,"mmax":3000.0,"mtxt":"2.000–3.000 L/ha","c":0,"r":12,"p":0},{"id":83,"n":"Vertimec 018 EC","t":"Acaricida","ia":"Abamectina 1,8%","o":"Arañita roja, falsa arañita de la vid, eriófidos","u":"L","du":"cc/100L","dmin":30.0,"dmax":50.0,"dtxt":"30–50 cc/100 L","mmin":1000.0,"mmax":2000.0,"mtxt":"1.000–2.000 L/ha","c":14,"r":12,"p":0},{"id":84,"n":"Envidor 240 SC","t":"Acaricida","ia":"Spirodiclofen 24%","o":"Arañita roja europea: huevos y estados inmaduros","u":"L","du":"cc/100L","dmin":20.0,"dmax":40.0,"dtxt":"20–40 cc/100 L","mmin":1000.0,"mmax":2000.0,"mtxt":"1.000–2.000 L/ha","c":14,"r":12,"p":0},{"id":85,"n":"Acramite 480 SC","t":"Acaricida","ia":"Bifenazate 48%","o":"Arañitas tetraníquidas (adultos); selectivo con depredadores","u":"L","du":"cc/100L","dmin":50.0,"dmax":75.0,"dtxt":"50–75 cc/100 L","mmin":1000.0,"mmax":2000.0,"mtxt":"1.000–2.000 L/ha","c":7,"r":12,"p":0},{"id":86,"n":"Captan 80 WG","t":"Fungicida","ia":"Captan 80%","o":"Pudrición parda, venturia, corazón mohoso; contacto multisitio","u":"kg","du":"g/100L","dmin":120.0,"dmax":180.0,"dtxt":"120–180 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":24,"p":0},{"id":87,"n":"Score 250 EC","t":"Fungicida","ia":"Difenoconazol 25%","o":"Venturia, oídio, pudrición parda; triazol sistémico","u":"L","du":"cc/100L","dmin":10.0,"dmax":15.0,"dtxt":"10–15 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":88,"n":"Topas 200 EW","t":"Fungicida","ia":"Penconazol 20%","o":"Oídio en carozos, pomáceas y vides","u":"L","du":"cc/100L","dmin":20.0,"dmax":30.0,"dtxt":"20–30 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":89,"n":"Thiovit Jet 80 WG","t":"Fungicida","ia":"Azufre 80%","o":"Oídio; efecto acaricida secundario; orgánico","u":"kg","du":"g/100L","dmin":300.0,"dmax":500.0,"dtxt":"300–500 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":5,"r":24,"p":0},{"id":90,"n":"Switch 62.5 WG","t":"Fungicida","ia":"Ciprodinil 37,5% + Fludioxonil 25%","o":"Botritis y pudrición parda en flor y precosecha","u":"kg","du":"g/100L","dmin":80.0,"dmax":100.0,"dtxt":"80–100 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":12,"p":0},{"id":91,"n":"Teldor 500 SC","t":"Fungicida","ia":"Fenhexamid 50%","o":"Botritis en floración y precosecha; carencia corta","u":"L","du":"cc/100L","dmin":100.0,"dmax":150.0,"dtxt":"100–150 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":12,"p":0},{"id":92,"n":"Luna Experience","t":"Fungicida","ia":"Fluopyram 20% + Tebuconazol 20%","o":"Botritis, oídio y pudrición parda; SDHI + triazol","u":"L","du":"cc/100L","dmin":40.0,"dmax":60.0,"dtxt":"40–60 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":93,"n":"Folicur 250 EW","t":"Fungicida","ia":"Tebuconazol 25%","o":"Pudrición parda, cloca, oídio","u":"L","du":"cc/100L","dmin":50.0,"dmax":75.0,"dtxt":"50–75 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":94,"n":"Kocide 3000","t":"Bactericida","ia":"Hidróxido de cobre 46%","o":"Bacteriosis (Pseudomonas syringae), tizones; otoño-invierno","u":"kg","du":"g/100L","dmin":150.0,"dmax":250.0,"dtxt":"150–250 g/100 L","mmin":1000.0,"mmax":2000.0,"mtxt":"1.000–2.000 L/ha","c":7,"r":24,"p":0},{"id":95,"n":"Oxicloruro de cobre 50 WP","t":"Bactericida","ia":"Oxicloruro de cobre 50%","o":"Bacteriosis y enfermedades de madera; caída de hojas y poda","u":"kg","du":"g/100L","dmin":250.0,"dmax":300.0,"dtxt":"250–300 g/100 L","mmin":1000.0,"mmax":2000.0,"mtxt":"1.000–2.000 L/ha","c":7,"r":24,"p":0},{"id":96,"n":"Serenade ASO","t":"Fungicida","ia":"Bacillus subtilis QST 713","o":"Botritis y bacteriosis; biológico, carencia 0, orgánico","u":"L","du":"cc/100L","dmin":400.0,"dmax":800.0,"dtxt":"400–800 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":97,"n":"Aliette 80 WG","t":"Fungicida","ia":"Fosetil aluminio 80%","o":"Phytophthora en cítricos y paltos; sistémico descendente","u":"kg","du":"g/100L","dmin":250.0,"dmax":250.0,"dtxt":"250 g/100 L","mmin":1000.0,"mmax":2000.0,"mtxt":"1.000–2.000 L/ha","c":14,"r":12,"p":0},{"id":98,"n":"Ridomil Gold MZ","t":"Fungicida","ia":"Metalaxil-M 4% + Mancozeb 64%","o":"Phytophthora y mildiú","u":"kg","du":"g/100L","dmin":250.0,"dmax":250.0,"dtxt":"250 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":24,"p":0},{"id":99,"n":"Fosfimax 40-20","t":"Fungicida","ia":"Fosfito de potasio","o":"Phytophthora; inductor de defensas, carencia 0","u":"L","du":"cc/100L","dmin":250.0,"dmax":300.0,"dtxt":"250–300 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":100,"n":"Roundup Full II","t":"Herbicida","ia":"Glifosato 66%","o":"Malezas anuales y perennes emergidas; sistémico no selectivo. No mojar follaje ni tronco verde","u":"L","du":"L/ha","dmin":2.0,"dmax":4.0,"dtxt":"2–4 L/ha","mmin":100.0,"mmax":200.0,"mtxt":"100–200 L/ha","c":0,"r":12,"p":0},{"id":101,"n":"Basta 200 SL","t":"Herbicida","ia":"Glufosinato de amonio 20%","o":"Malezas emergidas; contacto, quemante, sin traslocación a raíz","u":"L","du":"L/ha","dmin":3.0,"dmax":5.0,"dtxt":"3–5 L/ha","mmin":150.0,"mmax":200.0,"mtxt":"150–200 L/ha","c":0,"r":12,"p":0},{"id":102,"n":"Goal 2XL","t":"Herbicida","ia":"Oxifluorfen 24%","o":"Preemergente de hoja ancha sobre la hilera; suelo limpio","u":"L","du":"L/ha","dmin":2.0,"dmax":4.0,"dtxt":"2–4 L/ha","mmin":150.0,"mmax":200.0,"mtxt":"150–200 L/ha","c":0,"r":24,"p":0},{"id":103,"n":"Herbadox 455 CS","t":"Herbicida","ia":"Pendimetalina 45,5%","o":"Preemergente de gramíneas y hoja ancha","u":"L","du":"L/ha","dmin":4.0,"dmax":6.0,"dtxt":"4–6 L/ha","mmin":150.0,"mmax":200.0,"mtxt":"150–200 L/ha","c":0,"r":24,"p":0},{"id":104,"n":"Alion 500 SC","t":"Herbicida","ia":"Indaziflam 50%","o":"Preemergente residual de larga duración (huertos establecidos)","u":"L","du":"cc/ha","dmin":200.0,"dmax":250.0,"dtxt":"200–250 cc/ha","mmin":150.0,"mmax":200.0,"mtxt":"150–200 L/ha","c":0,"r":12,"p":0},{"id":105,"n":"Centurion Super","t":"Herbicida","ia":"Cletodim 24%","o":"Graminicida post-emergente selectivo (chépica, ballica)","u":"L","du":"L/ha","dmin":0.5,"dmax":1.0,"dtxt":"0,5–1 L/ha","mmin":100.0,"mmax":200.0,"mtxt":"100–200 L/ha","c":0,"r":12,"p":0},{"id":106,"n":"ProGibb 40 SG","t":"Regulador de crecimiento","ia":"Ácido giberélico (GA3) 40%","o":"Calibre y firmeza en cereza; alargamiento de racimo en uva","u":"kg","du":"g/ha","dmin":10.0,"dmax":30.0,"dtxt":"10–30 ppm (25–75 g/ha)","mmin":1000.0,"mmax":2000.0,"mtxt":"1.000–2.000 L/ha","c":0,"r":4,"p":0},{"id":107,"n":"Dormex 50 SL","t":"Regulador de crecimiento","ia":"Cianamida hidrogenada 50%","o":"Ruptura de dormancia y homogeneización de brotación. ⚠️ Alta toxicidad: EPP completo","u":"L","du":"cc/100L","dmin":2000.0,"dmax":4000.0,"dtxt":"2–4 L/100 L","mmin":500.0,"mmax":1000.0,"mtxt":"500–1.000 L/ha","c":0,"r":48,"p":0},{"id":108,"n":"Ethrel 48 SL","t":"Regulador de crecimiento","ia":"Ethephon 48%","o":"Maduración y abscisión (nogal, cítricos)","u":"L","du":"cc/100L","dmin":100.0,"dmax":300.0,"dtxt":"100–300 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":12,"p":0},{"id":109,"n":"ReTain","t":"Regulador de crecimiento","ia":"AVG 15%","o":"Retrasa madurez y caída; mejora cuaja en cerezo","u":"kg","du":"g/ha","dmin":830.0,"dmax":830.0,"dtxt":"830 g/ha","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":12,"p":0},{"id":110,"n":"Regalis Plus","t":"Regulador de crecimiento","ia":"Prohexadiona de calcio 10%","o":"Control de vigor en manzano y peral","u":"kg","du":"kg/ha","dmin":1.0,"dmax":2.5,"dtxt":"1–2,5 kg/ha","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":30,"r":12,"p":0},{"id":111,"n":"Promalin","t":"Regulador de crecimiento","ia":"GA4+7 + 6-Bencilaminopurina","o":"Forma y calibre en manzana; reduce russet","u":"L","du":"cc/100L","dmin":25.0,"dmax":50.0,"dtxt":"25–50 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":112,"n":"Acadian","t":"Bioestimulante","ia":"Extracto de algas Ascophyllum","o":"Antiestrés, cuaja y desarrollo radicular","u":"L","du":"cc/100L","dmin":200.0,"dmax":300.0,"dtxt":"200–300 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":113,"n":"Terra-Sorb Foliar","t":"Bioestimulante","ia":"Aminoácidos libres 9,3%","o":"Recuperación de estrés (helada, sequía); potencia mezclas foliares","u":"L","du":"cc/100L","dmin":200.0,"dmax":300.0,"dtxt":"200–300 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":114,"n":"Stopit","t":"Fertilizante foliar","ia":"Cloruro de calcio 12%","o":"Firmeza y menos partidura en cereza; bitter pit en manzana","u":"L","du":"cc/100L","dmin":300.0,"dmax":500.0,"dtxt":"300–500 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":115,"n":"Solubor","t":"Fertilizante foliar","ia":"Boro 17,5%","o":"Cuaja y polinización; precosecha y postcosecha","u":"kg","du":"g/100L","dmin":100.0,"dmax":150.0,"dtxt":"100–150 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":116,"n":"Zinc quelatado EDTA","t":"Fertilizante foliar","ia":"Zn-EDTA 14%","o":"Corrección de deficiencia de zinc en brotación","u":"kg","du":"g/100L","dmin":100.0,"dmax":150.0,"dtxt":"100–150 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":117,"n":"Sequestrene 138","t":"Fertilizante foliar","ia":"Fe-EDDHA 6%","o":"Clorosis férrica en cítricos y arándanos","u":"kg","du":"","dmin":30.0,"dmax":60.0,"dtxt":"30–60 g/planta (al suelo)","mmin":null,"mmax":null,"mtxt":"riego dirigido","c":0,"r":4,"p":0},{"id":118,"n":"Break-Thru S240","t":"Coadyuvante","ia":"Polieter-polimetilsiloxano","o":"Superhumectante siliconado; mejora cobertura","u":"L","du":"cc/100L","dmin":25.0,"dmax":50.0,"dtxt":"25–50 cc/100 L","mmin":null,"mmax":null,"mtxt":"—","c":0,"r":4,"p":0},{"id":119,"n":"LI-700","t":"Coadyuvante","ia":"Lecitina + ácido propiónico","o":"Penetrante, acidificante y antideriva","u":"L","du":"cc/100L","dmin":50.0,"dmax":100.0,"dtxt":"50–100 cc/100 L","mmin":null,"mmax":null,"mtxt":"—","c":0,"r":4,"p":0},{"id":120,"n":"Citowett","t":"Coadyuvante","ia":"Alquil aril poliglicol éter","o":"Humectante no iónico clásico","u":"L","du":"cc/100L","dmin":25.0,"dmax":50.0,"dtxt":"25–50 cc/100 L","mmin":null,"mmax":null,"mtxt":"—","c":0,"r":4,"p":0},{"id":121,"n":"Buffer pH","t":"Coadyuvante","ia":"Mezcla de ácidos","o":"Corrige pH y dureza del agua de aplicación","u":"L","du":"cc/100L","dmin":25.0,"dmax":50.0,"dtxt":"25–50 cc/100 L","mmin":null,"mmax":null,"mtxt":"—","c":0,"r":4,"p":0},{"id":122,"n":"Mospilan 20 SP","t":"Insecticida","ia":"Acetamiprid 20%","o":"Pulgones, escamas, mosquita blanca (sust.: Hurricane 70 WP)","u":"kg","du":"g/100L","dmin":25.0,"dmax":50.0,"dtxt":"25–50 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":123,"n":"Avaunt 30 WG","t":"Insecticida","ia":"Indoxacarb 30%","o":"Polillas, eulia, burrito (sust.: Explicit 30 WG, Belenus 30 WG)","u":"kg","du":"g/100L","dmin":10.0,"dmax":20.0,"dtxt":"10–20 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":12,"p":0},{"id":124,"n":"Imidan 70 WP","t":"Insecticida","ia":"Fosmet 70%","o":"Polillas, escamas, burrito; organofosforado","u":"kg","du":"g/100L","dmin":100.0,"dmax":150.0,"dtxt":"100–150 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":24,"p":0},{"id":125,"n":"Orthene 75 SP","t":"Insecticida","ia":"Acefato 75%","o":"Pulgones, langostinos, burrito; sistémico","u":"kg","du":"g/100L","dmin":100.0,"dmax":100.0,"dtxt":"100 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":24,"p":0},{"id":126,"n":"Calypso 480 SC","t":"Insecticida","ia":"Tiacloprid 48%","o":"Pulgones, escamas, burrito (sust.: Movento Smart 240 SC)","u":"L","du":"cc/100L","dmin":20.0,"dmax":30.0,"dtxt":"20–30 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":127,"n":"Admiral 10 EC","t":"Insecticida","ia":"Piriproxifén 10%","o":"Escamas y mosquita blanca; regulador de crecimiento de insectos","u":"L","du":"cc/100L","dmin":25.0,"dmax":50.0,"dtxt":"25–50 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":30,"r":12,"p":0},{"id":128,"n":"Diazol 50 EW","t":"Insecticida","ia":"Diazinón 50%","o":"Escamas, burrito y mosca; organofosforado (sust.: Diazinon 40 WP)","u":"L","du":"cc/100L","dmin":100.0,"dmax":150.0,"dtxt":"100–150 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":24,"p":0},{"id":129,"n":"Sanmite WP","t":"Acaricida","ia":"Piridaben 20%","o":"Arañitas y mosquita blanca; todos los estados móviles","u":"kg","du":"g/100L","dmin":50.0,"dmax":75.0,"dtxt":"50–75 g/100 L","mmin":1000.0,"mmax":2000.0,"mtxt":"1.000–2.000 L/ha","c":14,"r":12,"p":0},{"id":130,"n":"Bifentrin 100 EC","t":"Acaricida","ia":"Bifentrina 10%","o":"Arañitas, burrito y trips; piretroide insecticida-acaricida","u":"L","du":"cc/100L","dmin":30.0,"dmax":50.0,"dtxt":"30–50 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":12,"p":0},{"id":131,"n":"Amistar Top","t":"Fungicida","ia":"Azoxistrobina 20% + Difenoconazol 12,5%","o":"Oídio, venturia, alternaria (sust.: Fontelis, Frontal 425 SC)","u":"L","du":"cc/100L","dmin":50.0,"dmax":75.0,"dtxt":"50–75 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":132,"n":"Fontelis","t":"Fungicida","ia":"Penthiopyrad 20%","o":"Botritis, oídio y venturia; SDHI","u":"L","du":"cc/100L","dmin":50.0,"dmax":75.0,"dtxt":"50–75 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":133,"n":"Comet","t":"Fungicida","ia":"Piraclostrobina 25%","o":"Oídio, royas y botritis; estrobilurina","u":"L","du":"cc/100L","dmin":30.0,"dmax":50.0,"dtxt":"30–50 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":134,"n":"Cantus","t":"Fungicida","ia":"Boscalid 50%","o":"Botritis, oídio y pudrición parda (sust. de Indar/Bellis)","u":"kg","du":"g/100L","dmin":30.0,"dmax":60.0,"dtxt":"30–60 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":135,"n":"Indar 2F","t":"Fungicida","ia":"Fenbuconazol 24%","o":"Pudrición parda y venturia (sust.: Bellis, Cantus, Captan)","u":"L","du":"cc/100L","dmin":30.0,"dmax":50.0,"dtxt":"30–50 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":136,"n":"Systhane 40 WP","t":"Fungicida","ia":"Myclobutanil 40%","o":"Oídio y venturia (sust.: Crusader)","u":"kg","du":"g/100L","dmin":10.0,"dmax":15.0,"dtxt":"10–15 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":137,"n":"Yamato SE","t":"Fungicida","ia":"Tiofanato metilo 38,7%","o":"Botritis, cloca y enfermedades de la madera (sust.: Cercobin M, Rutyl)","u":"L","du":"cc/100L","dmin":70.0,"dmax":100.0,"dtxt":"70–100 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":14,"r":12,"p":0},{"id":138,"n":"Mancozeb 80 WP","t":"Fungicida","ia":"Mancozeb 80%","o":"Venturia, tizones, mildiú; contacto multisitio (sust.: Manzate 200, Fungizeb 800 WP)","u":"kg","du":"g/100L","dmin":200.0,"dmax":300.0,"dtxt":"200–300 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":21,"r":24,"p":0},{"id":139,"n":"Kasumin 2 SL","t":"Bactericida","ia":"Kasugamicina 2%","o":"Bacteriosis (Pseudomonas) en floración (sust.: Strepto Plus, Agrygent)","u":"L","du":"cc/100L","dmin":150.0,"dmax":250.0,"dtxt":"150–250 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":12,"p":0},{"id":140,"n":"Agrygent Plus WP","t":"Bactericida","ia":"Gentamicina 2% + Oxitetraciclina 6%","o":"Bacteriosis en floración; antibiótico","u":"kg","du":"g/100L","dmin":40.0,"dmax":60.0,"dtxt":"40–60 g/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":7,"r":12,"p":0},{"id":141,"n":"Caldo bordelés","t":"Bactericida","ia":"Sulfato de cobre + cal","o":"Bacteriosis y repilo en otoño-invierno (sust.: Bordo WP, Cuprobordoles)","u":"kg","du":"g/100L","dmin":500.0,"dmax":1000.0,"dtxt":"500–1.000 g/100 L","mmin":1000.0,"mmax":2000.0,"mtxt":"1.000–2.000 L/ha","c":7,"r":24,"p":0},{"id":142,"n":"Reglone","t":"Herbicida","ia":"Diquat 20%","o":"Desecante de contacto rápido (sust. de glufosinato: Fascinate, Ranger, Basta)","u":"L","du":"L/ha","dmin":2.0,"dmax":3.0,"dtxt":"2–3 L/ha","mmin":150.0,"mmax":200.0,"mtxt":"150–200 L/ha","c":0,"r":24,"p":0},{"id":143,"n":"Defender K","t":"Fertilizante foliar","ia":"Potasio foliar (K2O 30%)","o":"Color, calibre y madurez de fruta (sust.: Nutri-Potasio, Potash Advance)","u":"L","du":"cc/100L","dmin":250.0,"dmax":500.0,"dtxt":"250–500 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":144,"n":"Defender Mg","t":"Fertilizante foliar","ia":"Magnesio foliar (MgO)","o":"Corrección de deficiencia de magnesio (sust.: Nutri Mg, Hidromag Flow)","u":"L","du":"cc/100L","dmin":200.0,"dmax":300.0,"dtxt":"200–300 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":145,"n":"Biorend","t":"Bioestimulante","ia":"Quitosano 5%","o":"Inductor de defensas y cicatrizante (sust.: Pilatus)","u":"L","du":"cc/100L","dmin":200.0,"dmax":300.0,"dtxt":"200–300 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":146,"n":"Bayfolan Algae","t":"Bioestimulante","ia":"Extracto de algas","o":"Bioestimulante antiestrés (sust.: Kelpac, Seabio Duo, Superfifty, Stimplex)","u":"L","du":"cc/100L","dmin":200.0,"dmax":300.0,"dtxt":"200–300 cc/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":147,"n":"Silwet TX-100","t":"Coadyuvante","ia":"Trisiloxano etoxilado","o":"Superhumectante organosiliconado (sust.: Break)","u":"L","du":"cc/100L","dmin":15.0,"dmax":25.0,"dtxt":"15–25 cc/100 L","mmin":null,"mmax":null,"mtxt":"—","c":0,"r":4,"p":0},{"id":148,"n":"Nu-Film 17","t":"Coadyuvante","ia":"Pinolene (di-1-p-menteno)","o":"Adherente y antideriva; prolonga residualidad (sust.: Bond, Sustain, Colafria)","u":"L","du":"cc/100L","dmin":50.0,"dmax":100.0,"dtxt":"50–100 cc/100 L","mmin":null,"mmax":null,"mtxt":"—","c":0,"r":4,"p":0},{"id":149,"n":"Hipoclorito de sodio 10%","t":"Otro","ia":"Hipoclorito de sodio 10%","o":"Desinfección de equipos, herramientas de poda y líneas de riego","u":"L","du":"cc/100L","dmin":100.0,"dmax":200.0,"dtxt":"100–200 cc/100 L","mmin":null,"mmax":null,"mtxt":"—","c":0,"r":4,"p":0},{"id":150,"n":"VP Filter","t":"Otro","ia":"Carbonato de calcio (protector solar)","o":"Protección contra golpe de sol en fruta (sust.: Suntec, Screen Duo)","u":"kg","du":"g/100L","dmin":2.0,"dmax":4.0,"dtxt":"2–4 kg/100 L","mmin":1000.0,"mmax":1500.0,"mtxt":"1.000–1.500 L/ha","c":0,"r":4,"p":0},{"id":151,"n":"Poda Latex","t":"Otro","ia":"Látex con fungicida","o":"Sellante de cortes de poda (sust.: Latex Negro, Silitec Q Poda, Podexal)","u":"L","du":"","dmin":null,"dmax":null,"dtxt":"aplicación directa","mmin":null,"mmax":null,"mtxt":"—","c":0,"r":4,"p":0}];
+
+const SEED_PLAGAS = [{"id":152,"n":"Chanchito blanco de la vid","c":"Pseudococcus viburni","t":"Insecto","cu":"Vides, pomáceas, carozos, cítricos, paltos"},{"id":153,"n":"Chanchito blanco de cola larga","c":"Pseudococcus longispinus","t":"Insecto","cu":"Vides, cítricos, paltos"},{"id":154,"n":"Chanchito blanco de los cítricos","c":"Planococcus citri","t":"Insecto","cu":"Cítricos, vides"},{"id":155,"n":"Escama de San José","c":"Diaspidiotus perniciosus","t":"Insecto","cu":"Pomáceas y carozos"},{"id":156,"n":"Escama roja de los cítricos","c":"Aonidiella aurantii","t":"Insecto","cu":"Cítricos"},{"id":157,"n":"Escama blanca de la hiedra","c":"Aspidiotus nerii","t":"Insecto","cu":"Cítricos, olivos, paltos"},{"id":158,"n":"Conchuela negra del olivo","c":"Saissetia oleae","t":"Insecto","cu":"Olivos, cítricos"},{"id":159,"n":"Conchuela café","c":"Coccus hesperidum","t":"Insecto","cu":"Cítricos, paltos"},{"id":160,"n":"Polilla de la manzana","c":"Cydia pomonella","t":"Insecto","cu":"Manzano, peral, nogal, membrillo"},{"id":161,"n":"Polilla del racimo de la vid","c":"Lobesia botrana","t":"Insecto","cu":"Vides (cuarentenaria; otros hospederos)"},{"id":162,"n":"Polilla oriental de la fruta","c":"Grapholita molesta","t":"Insecto","cu":"Duraznero, nectarino, ciruelo, manzano"},{"id":163,"n":"Eulia","c":"Proeulia auraria","t":"Insecto","cu":"Vides, carozos, pomáceas, kiwi"},{"id":164,"n":"Cuncunilla","c":"Copitarsia spp.","t":"Insecto","cu":"Frutales jóvenes y brotes"},{"id":165,"n":"Burrito de la vid","c":"Naupactus xanthographus","t":"Insecto","cu":"Vides, carozos, cítricos, arándano"},{"id":166,"n":"Capachito de los frutales","c":"Pantomorus cervinus","t":"Insecto","cu":"Cítricos, paltos, vides"},{"id":167,"n":"Pulgón verde del duraznero","c":"Myzus persicae","t":"Insecto","cu":"Duraznero, nectarino, ciruelo"},{"id":168,"n":"Pulgón negro de los cítricos","c":"Toxoptera aurantii","t":"Insecto","cu":"Cítricos"},{"id":169,"n":"Pulgón lanígero del manzano","c":"Eriosoma lanigerum","t":"Insecto","cu":"Manzano"},{"id":170,"n":"Pulgón del nogal","c":"Chromaphis juglandicola","t":"Insecto","cu":"Nogal"},{"id":171,"n":"Mosquita blanca algodonosa","c":"Aleurothrixus floccosus","t":"Insecto","cu":"Cítricos"},{"id":172,"n":"Trips de California","c":"Frankliniella occidentalis","t":"Insecto","cu":"Carozos, vides, arándano, palto"},{"id":173,"n":"Trips del palto","c":"Heliothrips haemorrhoidalis","t":"Insecto","cu":"Palto, cítricos"},{"id":174,"n":"Minador de los cítricos","c":"Phyllocnistis citrella","t":"Insecto","cu":"Cítricos"},{"id":175,"n":"Mosca del Mediterráneo","c":"Ceratitis capitata","t":"Insecto","cu":"Todos los frutales (cuarentenaria)"},{"id":176,"n":"Drosófila de alas manchadas","c":"Drosophila suzukii","t":"Insecto","cu":"Cerezo, arándano, frambuesa"},{"id":177,"n":"Chape del cerezo","c":"Caliroa cerasi","t":"Insecto","cu":"Cerezo, peral, ciruelo"},{"id":178,"n":"Hormiga argentina","c":"Linepithema humile","t":"Insecto","cu":"Todos (dispersa chanchitos y escamas)"},{"id":179,"n":"Arañita roja europea","c":"Panonychus ulmi","t":"Ácaro","cu":"Pomáceas y carozos"},{"id":180,"n":"Arañita bimaculada","c":"Tetranychus urticae","t":"Ácaro","cu":"Todos los frutales"},{"id":181,"n":"Falsa arañita de la vid","c":"Brevipalpus chilensis","t":"Ácaro","cu":"Vides, cítricos, kiwi (cuarentenaria)"},{"id":182,"n":"Erinosis de la vid","c":"Colomerus vitis","t":"Ácaro","cu":"Vides"},{"id":183,"n":"Eriófido del nogal (erinosis)","c":"Aceria erinea","t":"Ácaro","cu":"Nogal"},{"id":184,"n":"Botritis / pudrición gris","c":"Botrytis cinerea","t":"Hongo","cu":"Vides, cerezo, arándano, frutilla"},{"id":185,"n":"Pudrición parda","c":"Monilinia fructicola","t":"Hongo","cu":"Carozos (cerezo, durazno, ciruelo)"},{"id":186,"n":"Oídio de la vid","c":"Erysiphe necator","t":"Hongo","cu":"Vides"},{"id":187,"n":"Oídio de los carozos","c":"Podosphaera pannosa","t":"Hongo","cu":"Duraznero, nectarino, cerezo"},{"id":188,"n":"Venturia / sarna del manzano","c":"Venturia inaequalis","t":"Hongo","cu":"Manzano, peral"},{"id":189,"n":"Cloca del duraznero","c":"Taphrina deformans","t":"Hongo","cu":"Duraznero, nectarino"},{"id":190,"n":"Corazón mohoso / mancha café","c":"Alternaria spp.","t":"Hongo","cu":"Manzano, cítricos, nogal"},{"id":191,"n":"Pudrición del cuello y raíces","c":"Phytophthora spp.","t":"Hongo","cu":"Paltos, cítricos, nogal, cerezo"},{"id":192,"n":"Plateado","c":"Chondrostereum purpureum","t":"Hongo","cu":"Carozos y pomáceas"},{"id":193,"n":"Eutipiosis (brazo muerto)","c":"Eutypa lata","t":"Hongo","cu":"Vides, carozos"},{"id":194,"n":"Hongos de la madera","c":"Botryosphaeria spp.","t":"Hongo","cu":"Nogal, paltos, vides, arándano"},{"id":195,"n":"Mildiú de la vid","c":"Plasmopara viticola","t":"Hongo","cu":"Vides"},{"id":196,"n":"Antracnosis","c":"Colletotrichum gloeosporioides","t":"Hongo","cu":"Paltos, cítricos, arándano"},{"id":197,"n":"Verticilosis","c":"Verticillium dahliae","t":"Hongo","cu":"Paltos, carozos"},{"id":198,"n":"Cáncer bacterial / tizón de flor","c":"Pseudomonas syringae pv. syringae","t":"Bacteria","cu":"Cerezo, ciruelo, almendro, kiwi"},{"id":199,"n":"Agalla del cuello","c":"Agrobacterium tumefaciens","t":"Bacteria","cu":"Viveros y frutales jóvenes"},{"id":200,"n":"Nematodo agallador","c":"Meloidogyne spp.","t":"Nematodo","cu":"Vides y frutales (replante)"},{"id":201,"n":"Nematodo de la lesión","c":"Pratylenchus spp.","t":"Nematodo","cu":"Frutales y vides"},{"id":202,"n":"Chépica","c":"Cynodon dactylon","t":"Maleza","cu":"Huertos en general"},{"id":203,"n":"Ballica","c":"Lolium spp.","t":"Maleza","cu":"Huertos en general"},{"id":204,"n":"Pasto cebolla","c":"Arrhenatherum elatius var. bulbosum","t":"Maleza","cu":"Huertos en general"},{"id":205,"n":"Maicillo","c":"Sorghum halepense","t":"Maleza","cu":"Huertos en general"},{"id":206,"n":"Correhuela","c":"Convolvulus arvensis","t":"Maleza","cu":"Huertos en general"},{"id":207,"n":"Bledo","c":"Amaranthus spp.","t":"Maleza","cu":"Huertos en general"},{"id":208,"n":"Quinguilla","c":"Chenopodium album","t":"Maleza","cu":"Huertos en general"},{"id":209,"n":"Rábano silvestre","c":"Raphanus raphanistrum","t":"Maleza","cu":"Huertos en general"},{"id":210,"n":"Vinagrillo","c":"Oxalis pes-caprae","t":"Maleza","cu":"Huertos en general"},{"id":211,"n":"Galega","c":"Galega officinalis","t":"Maleza","cu":"Huertos en general"},{"id":212,"n":"Yuyo","c":"Brassica rapa","t":"Maleza","cu":"Huertos en general"},{"id":213,"n":"Cardo negro","c":"Cirsium vulgare","t":"Maleza","cu":"Huertos en general"},{"id":214,"n":"Diente de león","c":"Taraxacum officinale","t":"Maleza","cu":"Huertos en general"},{"id":215,"n":"Pata de gallina","c":"Digitaria sanguinalis","t":"Maleza","cu":"Huertos en general"},{"id":216,"n":"Hualcacho","c":"Echinochloa crus-galli","t":"Maleza","cu":"Huertos con riego gravitacional"},{"id":217,"n":"Siete venas","c":"Plantago lanceolata","t":"Maleza","cu":"Huertos en general"},{"id":218,"n":"Golpe de sol en fruta","c":"","t":"Fisiopatía","cu":"Manzano, cerezo, vides, cítricos"},{"id":219,"n":"Partidura de fruta (cracking)","c":"","t":"Fisiopatía","cu":"Cerezo"},{"id":220,"n":"Russet","c":"","t":"Fisiopatía","cu":"Manzano, peral"},{"id":228,"n":"Cebollín","c":"Cyperus esculentus / rotundus","t":"Maleza","cu":"Huertos en general"},{"id":229,"n":"Zarzamora","c":"Rubus ulmifolius","t":"Maleza","cu":"Bordes y huertos en general"},{"id":230,"n":"Mostacilla","c":"Sisymbrium officinale","t":"Maleza","cu":"Huertos en general"},{"id":231,"n":"Verdolaga","c":"Portulaca oleracea","t":"Maleza","cu":"Huertos en general"},{"id":232,"n":"Malva","c":"Malva nicaeensis","t":"Maleza","cu":"Huertos en general"},{"id":233,"n":"Ortiga","c":"Urtica urens","t":"Maleza","cu":"Huertos en general"},{"id":234,"n":"Chamico","c":"Datura stramonium","t":"Maleza","cu":"Huertos en general"},{"id":235,"n":"Duraznillo","c":"Persicaria maculosa","t":"Maleza","cu":"Sectores húmedos"},{"id":236,"n":"Sanguinaria","c":"Polygonum aviculare","t":"Maleza","cu":"Huertos en general"},{"id":237,"n":"Pichoga (lechetrez)","c":"Euphorbia helioscopia","t":"Maleza","cu":"Huertos en general"},{"id":238,"n":"Manzanillón","c":"Anthemis cotula","t":"Maleza","cu":"Huertos en general"},{"id":239,"n":"Manzanilla","c":"Matricaria recutita","t":"Maleza","cu":"Huertos en general"},{"id":240,"n":"Bolsita del pastor","c":"Capsella bursa-pastoris","t":"Maleza","cu":"Huertos en general"},{"id":241,"n":"Hierba cana","c":"Senecio vulgaris","t":"Maleza","cu":"Huertos en general"},{"id":242,"n":"Falaris","c":"Phalaris spp.","t":"Maleza","cu":"Huertos en general"},{"id":243,"n":"Avenilla","c":"Avena fatua","t":"Maleza","cu":"Huertos en general"},{"id":244,"n":"Piojillo","c":"Poa annua","t":"Maleza","cu":"Huertos en general"},{"id":245,"n":"Cola de zorro","c":"Hordeum murinum","t":"Maleza","cu":"Huertos en general"},{"id":246,"n":"Pasto miel","c":"Holcus lanatus","t":"Maleza","cu":"Huertos en general"},{"id":247,"n":"Trébol blanco","c":"Trifolium repens","t":"Maleza","cu":"Huertos en general"},{"id":248,"n":"Alfilerillo","c":"Erodium cicutarium","t":"Maleza","cu":"Huertos en general"}];
+
 function defaults(){
   return {
     cuarteles: SEED_CUARTELES.map((q,i)=>({id:i+1, fundo:q.f, nombre:q.c, especie:q.e, variedad:q.v,
@@ -329,6 +334,8 @@ function cargar(){
     D.catalogos.tiposReg = D.catalogos.tiposReg.filter(t=>t!=="Avance"); // el avance ahora vive dentro de las labores del Plan
     D.labores.forEach(l=>{ l.avances = l.avances || []; }); // avances por labor
     D.catalogos.plantillas = D.catalogos.plantillas || DEF_PLANTILLAS.map(p=>({...p}));
+    D.catalogos.productosFito = D.catalogos.productosFito || SEED_PRODUCTOS_FITO.map(p=>({...p}));
+    D.catalogos.plagas = D.catalogos.plagas || SEED_PLAGAS.map(p=>({...p}));
     D.tablero = D.tablero || [];
     D.lluviaLoc = D.lluviaLoc || null;
     D.mapoly = D.mapoly || []; // polígonos de fundos y cuarteles dibujados en el mapa
@@ -336,6 +343,7 @@ function cargar(){
     D.fundos = D.fundos || [...new Set(D.cuarteles.map(q=>q.fundo))]; // catálogo de fundos (permite fundos sin cuarteles)
     D.widgets = D.widgets || []; // widgets configurables del panel
     D.gesagro = D.gesagro || null; // extracto importado del respaldo de GesAgro (carencias)
+    D.planFito = D.planFito || null; // Calculadora Fito: plan/cotización de aplicación (se inicializa al abrir la pestaña)
     D.ultimoRespaldo = D.ultimoRespaldo || null;
     D.noticias = D.noticias || null; // noticias e indicadores guardados para leer sin internet
     D.climaCache = D.climaCache || null; // último pronóstico guardado para verlo sin señal
@@ -343,6 +351,7 @@ function cargar(){
     D.ia = D.ia || {key:"", modelo:""}; // ajustes de IA (identificar fotos y escanear etiquetas)
     D.notas.forEach(n=>{ n.titulo = n.titulo || ""; n.docs = n.docs || []; n.audios = n.audios || []; n.check = n.check || []; });
     D.registros.forEach(r=>{ r.fotos = r.fotos || []; r.docs = r.docs || []; r.audios = r.audios || []; });
+    D.registros.forEach(r=>{ if(r.tipo==="Aplicación" && !r.estado) r.estado="pendiente"; });
     if(!raw) guardar(); // primera vez: deja guardados los defaults ya migrados
   }catch(e){ alert("Error leyendo datos guardados: "+e.message); D = defaults(); }
 }
@@ -470,6 +479,8 @@ const TABS = [
   {id:"reg", ico:"📋", lab:"Registros"},
   {id:"tab", ico:"🗂️", lab:"Tablero"},
   {id:"noti", ico:"📰", lab:"Noticias"},
+  {id:"calcfito", ico:"🧪", lab:"Calc Fito"},
+  {id:"aplic", ico:"📒", lab:"Aplic."},
   {id:"datos", ico:"⚙️", lab:"Datos"}
 ];
 function ir(tab){ nav.tab = tab; render(); window.scrollTo(0,0); }
@@ -574,37 +585,62 @@ function badgeCat(c){
   return `<span class="badge ${m[c]||"b-verde"}">${esc(c)}</span>`;
 }
 function vNotas(){
-  let lst = [...D.notas].sort((a,b)=> (b.fijada?1:0)-(a.fijada?1:0) || b.fh.localeCompare(a.fh));
-  if(nav.filtroFundo) lst = lst.filter(n=>n.fundo===nav.filtroFundo);
-  if(nav.notaBuscar){ const q = nav.notaBuscar.toLowerCase();
-    lst = lst.filter(n=>(n.texto+" "+(n.titulo||"")+" "+n.cuartel+" "+n.cat).toLowerCase().includes(q)); }
+  const modo=nav.notaAgr||"mes";
   let h = chipsFundo();
-  h += `<div class="chips" style="margin-bottom:8px">
-    ${plantillas().map((p,i)=>`<div class="chip" onclick="notaPlantilla(${i})">${esc(p.n)}</div>`).join("")}
-  </div>`;
-  h += `<label class="f" style="margin-bottom:8px"><input type="search" placeholder="🔍 Buscar en notas…" value="${esc(nav.notaBuscar)}"
-    oninput="nav.notaBuscar=this.value;filtrarNotasEnVivo()" id="buscaNotas"></label><div id="listaNotas">`;
-  h += lst.length? lst.map(n=>tarjetaNota(n)).join("") :
-    `<div class="vacio"><span class="ico">📝</span>No hay notas${nav.filtroFundo?" en "+esc(nav.filtroFundo):""}.<br>Toca el botón + para crear una.</div>`;
+  h += `<div class="chips" style="margin-bottom:8px">${plantillas().map((p,i)=>`<div class="chip" onclick="notaPlantilla(${i})">${esc(p.n)}</div>`).join("")}</div>`;
+  h += `<div class="chips" style="margin-bottom:6px"><span class="muted" style="align-self:center;font-size:12px;margin-right:2px">Agrupar por:</span>${[["dia","Día"],["semana","Semana"],["mes","Mes"]].map(([k,l])=>`<div class="chip ${modo===k?"act":""}" onclick="nav.notaAgr='${k}';render()">${l}</div>`).join("")}</div>`;
+  h += `<label class="f" style="margin-bottom:8px"><input type="search" placeholder="🔍 Buscar en notas…" value="${esc(nav.notaBuscar||"")}" oninput="nav.notaBuscar=this.value;filtrarNotasEnVivo()" id="buscaNotas"></label><div id="listaNotas">`;
+  h += notasListaHTML();
   h += `</div><button class="btn-fab" onclick="formNota()">+</button>`;
   return h;
 }
-function filtrarNotasEnVivo(){
-  const cont = document.getElementById("listaNotas");
-  let lst = [...D.notas].sort((a,b)=> (b.fijada?1:0)-(a.fijada?1:0) || b.fh.localeCompare(a.fh));
-  if(nav.filtroFundo) lst = lst.filter(n=>n.fundo===nav.filtroFundo);
-  const q = nav.notaBuscar.toLowerCase();
-  if(q) lst = lst.filter(n=>(n.texto+" "+(n.titulo||"")+" "+n.cuartel+" "+n.cat).toLowerCase().includes(q));
-  cont.innerHTML = lst.map(n=>tarjetaNota(n)).join("") || `<div class="vacio"><span class="ico">🔍</span>Sin resultados.</div>`;
-  posNotas();
+function notasFiltradas(){
+  let lst=[...D.notas];
+  if(nav.filtroFundo) lst=lst.filter(n=>n.fundo===nav.filtroFundo);
+  if(nav.notaBuscar){ const q=nav.notaBuscar.toLowerCase(); lst=lst.filter(n=>((n.oculta?"":(n.texto||"")+" "+(n.titulo||""))+" "+(n.cuartel||"")+" "+(n.cat||"")).toLowerCase().includes(q)); }
+  return lst;
 }
-function tarjetaNota(n){
-  return `<div class="item" onclick="verNota(${n.id})">
-    <div class="fila" style="justify-content:space-between">
-      <div class="tit">${n.fijada?"📌 ":""}${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""}</div>
-      ${badgeCat(n.cat)}
+function notasSeccion(label,key,items){
+  const ab = nav.regAbiertos["nk_"+key]!==false;
+  return `<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;cursor:pointer;background:var(--pclaro)" onclick="regTglP('nk_${esc(key)}')">
+      <div style="font-weight:800;font-size:15px">${ab?"▾":"▸"} ${esc(label)}</div><span class="badge b-gris">${items.length}</span>
     </div>
-    <div class="met">${fmtFH(n.fh)}${(n.audios&&n.audios.length)?" · 🎤 "+n.audios.length:""}${(n.check&&n.check.length)?` · ☑ ${n.check.filter(c=>c.ok).length}/${n.check.length}`:""}${n.gps?" · 📍":""}</div>
+    ${ab?`<div style="padding:8px 10px">${items.map(n=>tarjetaNota(n)).join("")}</div>`:""}
+  </div>`;
+}
+function notasListaHTML(){
+  const lst=notasFiltradas();
+  if(!lst.length) return `<div class="vacio"><span class="ico">📝</span>No hay notas${nav.filtroFundo?" en "+esc(nav.filtroFundo):""}${nav.notaBuscar?" con esa búsqueda":""}.<br>Toca el botón + para crear una.</div>`;
+  const modo=nav.notaAgr||"mes";
+  nav.regAbiertos=nav.regAbiertos||{};
+  let h="";
+  const fij=lst.filter(n=>n.fijada).sort((a,b)=>(b.fh||"").localeCompare(a.fh||""));
+  const resto=lst.filter(n=>!n.fijada).sort((a,b)=>(b.fh||"").localeCompare(a.fh||""));
+  if(fij.length) h += notasSeccion("📌 Fijadas","fij",fij);
+  const per=[]; const pidx={};
+  resto.forEach(n=>{ const pk=regPeriodoKey((n.fh||"").slice(0,10),modo); if(pidx[pk]==null){pidx[pk]=per.length;per.push({k:pk,items:[]});} per[pidx[pk]].items.push(n); });
+  per.forEach(p=>{ h += notasSeccion(regPeriodoLabel(p.k,modo), p.k, p.items); });
+  return h;
+}
+function filtrarNotasEnVivo(){
+  const cont=document.getElementById("listaNotas"); if(cont){ cont.innerHTML=notasListaHTML(); posNotas(); }
+}
+function notaOcultar(id){ const n=D.notas.find(x=>x.id===id); if(!n) return; n.oculta=!n.oculta; guardar(); render(); }
+function tarjetaNota(n){
+  const cab = `<div class="fila" style="justify-content:space-between;align-items:flex-start;gap:6px">
+      <div class="tit">${n.fijada?"📌 ":""}${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""}</div>
+      <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto">${n.oculta?`<span class="badge b-gris">🙈 Oculta</span>`:""}${badgeCat(n.cat)}<button onclick="event.stopPropagation();notaOcultar(${n.id})" title="${n.oculta?'Mostrar':'Ocultar'}" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0 2px;line-height:1">${n.oculta?"👁️":"🙈"}</button></div>
+    </div>
+    <div class="met">${fmtFH(n.fh)}${(n.audios&&n.audios.length)?" · 🎤 "+n.audios.length:""}${(n.check&&n.check.length)?` · ☑ ${n.check.filter(c=>c.ok).length}/${n.check.length}`:""}${n.gps?" · 📍":""}</div>`;
+  if(n.oculta){
+    return `<div class="item" style="cursor:default">
+    ${cab}
+    <div style="margin-top:8px;padding:11px;background:#f1f3f5;border:1px dashed var(--borde);border-radius:8px;text-align:center;color:var(--txt2);font-size:13px">🙈 Contenido oculto — toca <b>👁️</b> para mostrar</div>
+  </div>`;
+  }
+  return `<div class="item" onclick="verNota(${n.id})">
+    ${cab}
     ${n.titulo? `<div style="font-weight:800;font-size:15px;margin-top:4px">${esc(n.titulo)}</div>`:""}
     <div class="txt" style="display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${esc(n.texto)}</div>
     ${n.fotos.length? `<div class="thumbs" data-fotos="${n.fotos.join(",")}"></div>`:""}
@@ -1971,6 +2007,21 @@ function visorGestos(){
   }, {passive:false});
 }
 function cerrarVisor(){ document.getElementById("capaVisor").innerHTML=""; }
+async function descargarPDF(nombre){
+  const cont = document.querySelector("#capaVisor .informe") || document.querySelector("#capaVisor .visor");
+  if(typeof html2pdf==="undefined" || !cont){ try{ window.print(); }catch(e){} return; }
+  const btns=[].slice.call(document.querySelectorAll("#capaVisor .vh .btn")); btns.forEach(b=>b.disabled=true);
+  const ocultos=[].slice.call(cont.querySelectorAll(".no-print"));
+  const prev=ocultos.map(e=>e.style.display); ocultos.forEach(e=>e.style.display="none");
+  const opt={ margin:[10,10,12,10], filename:(nombre||("agronotas_"+hoy()+".pdf")),
+    image:{type:"jpeg",quality:0.98},
+    html2canvas:{scale:2,useCORS:true,backgroundColor:"#ffffff",windowWidth:(cont.scrollWidth||820)},
+    jsPDF:{unit:"mm",format:"a4",orientation:"portrait"},
+    pagebreak:{mode:["css","legacy"],avoid:["tr","h2",".card"]} };
+  try{ await html2pdf().set(opt).from(cont).save(); }
+  catch(err){ console.warn("PDF: fallback a imprimir",err); try{ window.print(); }catch(e){} }
+  finally{ ocultos.forEach((e,i)=>{ e.style.display=prev[i]; }); btns.forEach(b=>b.disabled=false); }
+}
 async function descargarFoto(fid){
   const d = await fotoGet(fid); if(!d) return;
   const a = document.createElement("a"); a.href=d; a.download="foto_"+fid+"_"+hoy()+".jpg"; a.click();
@@ -2310,16 +2361,212 @@ function vReg(){
   let lst = [...D.registros].sort((a,b)=>b.fecha.localeCompare(a.fecha) || b.id-a.id);
   if(nav.filtroFundo) lst = lst.filter(r=>r.fundo===nav.filtroFundo);
   if(nav.regTipo) lst = lst.filter(r=>r.tipo===nav.regTipo);
+  lst = lst.filter(r=>r.tipo!=="Aplicación");
+  const modo = nav.regAgr||"mes";
   let h = chipsFundo();
   h += `<div class="chips">
     <div class="chip ${!nav.regTipo?"act":""}" onclick="nav.regTipo='';render()">Todos los tipos</div>
-    ${tiposReg().map(t=>`<div class="chip ${nav.regTipo===t?"act":""}" onclick="nav.regTipo='${esc(t)}';render()">${icoReg(t)} ${esc(t)}</div>`).join("")}
+    ${tiposReg().filter(t=>t!=="Aplicación").map(t=>`<div class="chip ${nav.regTipo===t?"act":""}" onclick="nav.regTipo='${esc(t)}';render()">${icoReg(t)} ${esc(t)}</div>`).join("")}
   </div>`;
-  h += lst.length? lst.map(r=>tarjetaReg(r)).join("") :
-    `<div class="vacio"><span class="ico">📋</span>Sin registros${nav.regTipo?" de "+esc(nav.regTipo):""}. Toca + para agregar.</div>`;
+  h += `<div class="chips" style="margin-bottom:6px"><span class="muted" style="align-self:center;font-size:12px;margin-right:2px">Agrupar por:</span>${[["dia","Día"],["semana","Semana"],["mes","Mes"]].map(([k,l])=>`<div class="chip ${modo===k?"act":""}" onclick="nav.regAgr='${k}';render()">${l}</div>`).join("")}</div>`;
+  if(!lst.length){
+    h += `<div class="vacio"><span class="ico">📋</span>Sin registros${nav.regTipo?" de "+esc(nav.regTipo):""}. Toca + para agregar.</div>`;
+    h += `<button class="btn-fab" onclick="formReg()">+</button>`;
+    return h;
+  }
+  nav.regAbiertos = nav.regAbiertos || {};
+  const periodos=[]; const pidx={};
+  lst.forEach(r=>{ const pk=regPeriodoKey(r.fecha,modo); if(pidx[pk]==null){ pidx[pk]=periodos.length; periodos.push({k:pk,items:[]}); } periodos[pidx[pk]].items.push(r); });
+  h += periodos.map(p=>{
+    const abierto = nav.regAbiertos[p.k]!==false;
+    return `<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer;background:var(--pclaro)" onclick="regTglP('${esc(p.k)}')">
+        <div style="font-weight:800;font-size:15px">${abierto?"▾":"▸"} ${esc(regPeriodoLabel(p.k,modo))}</div>
+        <span class="badge b-gris">${p.items.length} registro${p.items.length>1?"s":""}</span>
+      </div>
+      ${abierto? `<div style="padding:8px 10px">${regAgrupar(p.items)}</div>` : ""}
+    </div>`;
+  }).join("");
   h += `<button class="btn-fab" onclick="formReg()">+</button>`;
   return h;
 }
+function regPeriodoKey(iso,modo){ if(!iso) return "z-sin"; const p=String(iso).slice(0,10); if(modo==="dia") return p; if(modo==="mes") return p.slice(0,7); const d=new Date(p+"T00:00:00"); if(isNaN(d)) return p; const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow); return "S"+d.toISOString().slice(0,10); }
+function regPeriodoLabel(k,modo){ if(k==="z-sin") return "Sin fecha"; if(modo==="dia") return fmtF(k); if(modo==="mes"){ const a=k.split("-"); const M=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]; return (M[+a[1]]||a[1])+" "+a[0]; } const lun=k.slice(1); const d=new Date(lun+"T00:00:00"); d.setDate(d.getDate()+6); return "Semana "+fmtF(lun)+" al "+fmtF(d.toISOString().slice(0,10)); }
+function regTglP(k){ nav.regAbiertos=nav.regAbiertos||{}; nav.regAbiertos[k]=(nav.regAbiertos[k]===false); render(); }
+function regTglB(k){ nav.regAbiertos=nav.regAbiertos||{}; nav.regAbiertos[k]=!(nav.regAbiertos[k]===true); render(); }
+function regSig(r){ return r.aplId || ("sig:"+r.fecha+"|"+(r.producto||"")+"|"+(r.objetivo||"")+"|"+(r.mojamiento||"")); }
+function regAgrupar(items){
+  let out=""; let i=0;
+  while(i<items.length){
+    const r=items[i];
+    if(r.tipo==="Aplicación"){
+      const k=regSig(r); const grp=[r]; let j=i+1;
+      while(j<items.length && items[j].tipo==="Aplicación" && regSig(items[j])===k){ grp.push(items[j]); j++; }
+      if(grp.length>1){ out += regBatchHTML(grp); i=j; continue; }
+    }
+    out += tarjetaReg(r); i++;
+  }
+  return out;
+}
+const REG_ESPEMOJI={"Naranjo":"🍊","Limonero":"🍋","Limón":"🍋","Pomelo":"🍈","Cerezo":"🍒","Por plantar":"🌱"};
+function regCuartelInfo(r){ return (D.cuarteles||[]).find(x=>x.fundo===r.fundo && x.nombre===r.cuartel) || {}; }
+function regBatchInner(grp){
+  const groups=[]; const idx={};
+  grp.forEach(r=>{ const q=regCuartelInfo(r); const esp=q.especie||"—", vari=q.variedad||""; const k=esp+"||"+vari; if(idx[k]==null){ idx[k]=groups.length; groups.push({esp:esp,vari:vari,items:[]}); } groups[idx[k]].items.push(r); });
+  if(groups.length<=1) return grp.map(r=>regItemHTML(r)).join("");
+  return groups.map(g=>`<div style="margin-bottom:8px">
+    <div style="font-size:12px;font-weight:700;color:var(--txt2);margin:2px 0 5px;padding-bottom:2px;border-bottom:1px solid var(--borde)">${(REG_ESPEMOJI[g.esp]||"🌿")} ${esc(g.esp)}${g.vari?" · "+esc(g.vari):""} <span class="muted" style="font-weight:400">(${g.items.length})</span></div>
+    ${g.items.map(r=>regItemHTML(r)).join("")}
+  </div>`).join("");
+}
+function regItemHTML(r){
+  const nombre = r.cuartel || r.fundo || "—";
+  return `<div class="item" onclick="formReg(${r.id})" style="margin:0 0 6px;padding:9px 12px;box-shadow:none;border:1px solid var(--borde);background:#fff">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+      <div style="font-weight:700;font-size:13.5px;min-width:0">${esc(nombre)}</div>
+      ${r.cuartel&&r.fundo?`<span class="muted" style="font-size:11px;white-space:nowrap">${esc(r.fundo)}</span>`:""}
+    </div>
+    ${r.dosis?`<div style="font-size:12px;margin-top:2px">${esc(r.dosis)}</div>`:""}
+    ${r.obs?`<div class="muted" style="font-size:11.5px;margin-top:1px">${esc(r.obs)}</div>`:""}
+    ${r.estado?(r.estado==="pendiente"?`<div style="margin-top:4px" onclick="event.stopPropagation()"><span class="badge" style="background:#fff3e0;color:#b26a00">🕓 Pendiente</span> <button class="btn sec chico" onclick="regConfirmar(${r.id})">✓ Confirmar</button></div>`:`<div style="margin-top:4px"><span class="badge b-verde">✓ Aplicado${r.fechaReal?" "+fmtF(r.fechaReal):""}</span></div>`):""}
+  </div>`;
+}
+function regBatchHTML(grp){
+  const r0=grp[0], key="b_"+(r0.aplId||r0.id);
+  nav.regAbiertos=nav.regAbiertos||{};
+  const abierto = nav.regAbiertos[key]===true;
+  const fundos=[...new Set(grp.map(x=>x.fundo).filter(Boolean))];
+  const cuarteles=grp.map(x=>x.cuartel).filter(Boolean);
+  return `<div style="background:var(--card);border:1px solid var(--borde);border-radius:var(--rad);box-shadow:var(--som);margin-bottom:10px;overflow:hidden">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:12px 14px;cursor:pointer" onclick="regTglB('${key}')">
+      <div style="min-width:0;flex:1">
+        <div style="font-weight:800;font-size:17px;line-height:1.2">${abierto?"▾ ":"▸ "}${esc(r0.producto||"—")}</div>
+        <div class="muted" style="font-size:12px;margin-top:3px">Aplicación · ${grp.length} cuarteles${fundos.length?" · "+esc(fundos.join(", ")):""}${r0.objetivo?" · 🎯 "+esc(r0.objetivo):""}</div>
+        <div class="muted" style="font-size:11.5px;margin-top:1px">${cuarteles.map(c=>esc(c)).join(" · ")}</div>
+        ${(function(){var pen=grp.filter(function(x){return x.estado==="pendiente";}).length,apl=grp.filter(function(x){return x.estado==="aplicado";}).length;if(!pen&&!apl)return"";return `<div style="margin-top:5px" onclick="event.stopPropagation()">${pen?`<span class="badge" style="background:#fff3e0;color:#b26a00">🕓 ${pen} pendiente${pen>1?"s":""}</span> `:""}${apl?`<span class="badge b-verde">✓ ${apl} aplicado${apl>1?"s":""}</span> `:""}${pen?`<button class="btn sec chico" onclick="regConfirmarBatch('${esc(String(r0.aplId||regSig(r0)))}')">✓ Confirmar</button>`:""}</div>`;})()}
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 0 auto" onclick="event.stopPropagation()">
+        <span class="badge b-gris">${fmtF(r0.fecha)}</span>
+        <button class="btn sec chico" onclick="regBorrarBatch('${esc(String(r0.aplId||regSig(r0)))}')" title="Eliminar esta aplicación" style="color:var(--rojo)">🗑️</button>
+      </div>
+    </div>
+    ${abierto? `<div style="padding:2px 10px 8px;background:#fafafa">${regBatchInner(grp)}</div>` : ""}
+  </div>`;
+}
+
+function regConfirmar(id){
+  const r=D.registros.find(x=>x.id===id); if(!r) return;
+  abrirModal("✓ Confirmar aplicación", `<div class="muted" style="margin-bottom:8px">Confirmas que YA se aplicó <b>${esc(r.producto||"")}</b> en <b>${esc(r.fundo||"")}${r.cuartel?" · "+esc(r.cuartel):""}</b>.</div><label class="f">Fecha real de aplicación<input id="rc_fecha" type="date" value="${esc(hoy())}"></label>`, ()=>{ const f=((document.getElementById("rc_fecha")||{}).value)||hoy(); r.estado="aplicado"; r.fechaReal=f; }, "✓ Confirmar");
+}
+function regConfirmarBatch(sig){
+  const pend=D.registros.filter(r=>r.tipo==="Aplicación"&&r.estado==="pendiente"&&String(r.aplId||regSig(r))===String(sig));
+  if(!pend.length){ alert("No hay cuarteles pendientes en esta aplicación."); return; }
+  abrirModal("✓ Confirmar aplicación", `
+    <label class="f">Fecha real de aplicación<input id="rc_fecha" type="date" value="${esc(hoy())}"></label>
+    <div class="muted" style="font-size:12.5px;margin-bottom:4px">Marca los cuarteles que YA aplicaste (los demás quedan pendientes):</div>
+    ${pend.map(r=>`<label class="chk-fila"><input type="checkbox" class="rc_chk" data-id="${r.id}" checked><span style="flex:1">${esc(r.fundo)}${r.cuartel?" · "+esc(r.cuartel):""}</span></label>`).join("")}
+  `, ()=>{ const f=((document.getElementById("rc_fecha")||{}).value)||hoy(); document.querySelectorAll(".rc_chk").forEach(c=>{ if(c.checked){ const r=D.registros.find(x=>String(x.id)===String(c.getAttribute("data-id"))); if(r){ r.estado="aplicado"; r.fechaReal=f; } } }); }, "✓ Confirmar");
+}
+function regBorrarBatch(sig){
+  const items=D.registros.filter(r=>r.tipo==="Aplicación"&&String(r.aplId||regSig(r))===String(sig));
+  if(!items.length) return;
+  if(!confirm("🗑️ ¿Eliminar esta aplicación completa ("+items.length+" cuartel"+(items.length>1?"es":"")+")?\nEsta acción no se puede deshacer.")) return;
+  const ids={}; items.forEach(r=>ids[r.id]=1);
+  D.registros=D.registros.filter(r=>!ids[r.id]);
+  guardar(); render();
+}
+function vAplic(){
+  let lst = D.registros.filter(r=>r.tipo==="Aplicación").sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")||b.id-a.id);
+  if(nav.filtroFundo) lst = lst.filter(r=>r.fundo===nav.filtroFundo);
+  const modo = nav.regAgr||"mes";
+  let h = `<div class="fila" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+    <div class="muted" style="font-size:12.5px">📒 Cuaderno de aplicaciones — se planifican en <b>Calc Fito</b> y se confirman al aplicar.</div>
+    <div style="display:flex;gap:6px"><button class="btn sec chico" onclick="exportarAplicExcel()">⬇️ Excel</button><button class="btn sec chico" onclick="enviarAplicExcel()">📧 Enviar</button></div>
+  </div>`;
+  h += chipsFundo();
+  h += `<div class="chips" style="margin-bottom:6px"><span class="muted" style="align-self:center;font-size:12px;margin-right:2px">Agrupar por:</span>${[["dia","Día"],["semana","Semana"],["mes","Mes"]].map(([k,l])=>`<div class="chip ${modo===k?"act":""}" onclick="nav.regAgr='${k}';render()">${l}</div>`).join("")}</div>`;
+  if(!lst.length){
+    h += `<div class="vacio"><span class="ico">📒</span>Aún no hay aplicaciones. Ve a <b>Calc Fito</b>, arma el plan y toca <b>Guardar</b>.</div>`;
+    h += `<button class="btn-fab" onclick="ir('calcfito')">＋</button>`;
+    return h;
+  }
+  nav.regAbiertos = nav.regAbiertos || {};
+  const periodos=[]; const pidx={};
+  lst.forEach(r=>{ const pk=regPeriodoKey(r.fecha,modo); if(pidx[pk]==null){ pidx[pk]=periodos.length; periodos.push({k:pk,items:[]}); } periodos[pidx[pk]].items.push(r); });
+  h += periodos.map(p=>{
+    const abierto = nav.regAbiertos[p.k]!==false;
+    return `<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer;background:var(--pclaro)" onclick="regTglP('${esc(p.k)}')">
+        <div style="font-weight:800;font-size:15px">${abierto?"▾":"▸"} ${esc(regPeriodoLabel(p.k,modo))}</div>
+        <span class="badge b-gris">${p.items.length} aplic.</span>
+      </div>
+      ${abierto? `<div style="padding:8px 10px">${regAgrupar(p.items)}</div>` : ""}
+    </div>`;
+  }).join("");
+  h += `<button class="btn-fab" onclick="ir('calcfito')">＋</button>`;
+  return h;
+}
+function aplicExcelBlob(){
+  let lst = D.registros.filter(r=>r.tipo==="Aplicación");
+  if(nav.filtroFundo) lst = lst.filter(r=>r.fundo===nav.filtroFundo);
+  if(!lst.length){ alert("No hay aplicaciones para exportar."); return; }
+  lst.sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")||b.id-a.id);
+  const cols=[["Fecha plan",70],["Estado",80],["Fecha real",80],["Fundo",100],["Cuartel",140],["Especie",85],["Variedad",95],["Producto",125],["Dosis",155],["Objetivo",255],["Carencia (d)",78],["Mojamiento (L/ha)",100],["Superficie (ha)",90],["Producto total",105],["Costo",95],["Cosecha desde",95],["Responsable",120]];
+  const numCols=new Set([10,11,12,13,14]);
+  const m=(s,re)=>{ const x=String(s||"").match(re); return x?x[1]:""; };
+  const rows=lst.map(r=>{
+    const q=regCuartelInfo(r), obs=r.obs||"";
+    return [ fmtF(r.fecha), (r.estado==="aplicado"?"Aplicado":"Pendiente"), (r.fechaReal?fmtF(r.fechaReal):""),
+      r.fundo||"", r.cuartel||"", q.especie||"", q.variedad||"", r.producto||"", r.dosis||"", r.objetivo||"", r.carencia||"", r.mojamiento||"",
+      m(obs,/Sup ([\d.,]+) ha/), m(obs,/producto ([\d.,]+ ?[a-zA-Z]+)/), m(obs,/costo (\$[\d.]+)/), m(obs,/cosecha desde ([\d-]+)/), m(obs,/resp: (.+?)(?: ·|$)/) ];
+  });
+  const e2=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const nC=cols.length;
+  const colg=`<colgroup>${cols.map(c=>`<col width="${c[1]}">`).join("")}</colgroup>`;
+  const thead=`<tr>${cols.map(c=>`<th>${e2(c[0])}</th>`).join("")}</tr>`;
+  const tbody=rows.map((row,ri)=>`<tr class="${ri%2?'par':''}">${row.map((v,ci)=>{
+    if(ci===1){ const pend=(v==="Pendiente"); return `<td style="text-align:center;font-weight:bold;color:${pend?'#b26a00':'#14532d'}">${e2(v)}</td>`; }
+    return `<td class="${numCols.has(ci)?'num':''}">${e2(v)}</td>`;
+  }).join("")}</tr>`).join("");
+  const style=`<style>
+    table{border-collapse:collapse;font-family:Calibri,Segoe UI,Arial,sans-serif;font-size:11pt}
+    td,th{border:0.5pt solid #cfd8d3;padding:5px 8px;vertical-align:top}
+    td{mso-number-format:"\\@"}
+    th{background:#14532d;color:#ffffff;font-weight:bold;text-align:center;white-space:nowrap;padding:6px 9px}
+    td.num{text-align:right}
+    tr.par td{background:#eef5ef}
+    .tit{font-size:16pt;font-weight:bold;color:#14532d;border:none}
+    .sub{color:#555555;font-size:10pt;border:none}
+  </style>`;
+  const freeze=`<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Aplicaciones</x:Name><x:WorksheetOptions><x:FreezePanes/><x:FrozenNoSplit/><x:SplitHorizontal>4</x:SplitHorizontal><x:TopRowBottomPane>4</x:TopRowBottomPane><x:ActivePane>2</x:ActivePane><x:Panes><x:Pane><x:Number>3</x:Number></x:Pane><x:Pane><x:Number>2</x:Number></x:Pane></x:Panes></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->`;
+  const titulo=(typeof PROY!=="undefined"&&PROY)?PROY.nombre:"Total Fruit Curacaví";
+  const doc=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8">${style}${freeze}</head><body>
+    <table>
+    <tr><td class="tit" colspan="${nC}">Cuaderno de aplicaciones fitosanitarias</td></tr>
+    <tr><td class="sub" colspan="${nC}">${e2(titulo)} &#183; generado el ${fmtF(hoy())} &#183; ${lst.length} registro${lst.length>1?'s':''}</td></tr>
+    <tr><td colspan="${nC}" style="border:none;height:6px"></td></tr>
+    ${thead}${tbody}</table></body></html>`;
+  return {blob:new Blob(["﻿"+doc],{type:"application/vnd.ms-excel"}), nombre:"aplicaciones_"+hoy()+".xls"};
+}
+function exportarAplicExcel(){
+  const x=aplicExcelBlob(); if(!x) return;
+  const url=URL.createObjectURL(x.blob), a=document.createElement("a");
+  a.href=url; a.download=x.nombre; document.body.appendChild(a); a.click();
+  setTimeout(function(){ try{ document.body.removeChild(a); }catch(e){} URL.revokeObjectURL(url); }, 500);
+}
+async function enviarAplicExcel(){
+  const x=aplicExcelBlob(); if(!x) return;
+  try{
+    const file=new File([x.blob], x.nombre, {type:"application/vnd.ms-excel"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:"Aplicaciones", text:"Cuaderno de aplicaciones fitosanitarias — AgroNotas"});
+      return;
+    }
+  }catch(e){ if(e && e.name==="AbortError") return; }
+  exportarAplicExcel();
+  alert("Tu dispositivo no dejó compartir directo, así que descargué el archivo. Adjúntalo al correo desde la app Archivos.");
+}
+
 function icoReg(t){ return {"Aplicación":"🧪","Riego":"💧","Fertilización":"🌱","Fenología":"🌸","Lluvia":"🌧️","Avance":"📊","Otro":"📄"}[t]||"📄"; }
 function tarjetaReg(r){
   const det = (CAMPOS_REG[r.tipo]||[]).map(([k,lab])=>r[k]?`<b>${lab.replace(" *","").split(" (")[0]}:</b> ${esc(r[k])}`:"").filter(Boolean).join(" · ");
@@ -2329,6 +2576,7 @@ function tarjetaReg(r){
       <span class="badge b-gris">${fmtF(r.fecha)}</span>
     </div>
     ${det?`<div class="txt" style="font-size:13.5px;margin-top:4px">${det}</div>`:""}
+    ${r.estado?(r.estado==="pendiente"?`<div style="margin-top:5px" onclick="event.stopPropagation()"><span class="badge" style="background:#fff3e0;color:#b26a00">🕓 Pendiente</span> <button class="btn sec chico" onclick="regConfirmar(${r.id})">✓ Confirmar aplicado</button></div>`:`<div style="margin-top:5px"><span class="badge b-verde">✓ Aplicado${r.fechaReal?" "+fmtF(r.fechaReal):""}</span></div>`):""}
     ${r.obs?`<div class="met" style="margin-top:3px">${esc(r.obs)}</div>`:""}
     ${(r.fotos&&r.fotos.length)? `<div class="thumbs" data-fotos="${r.fotos.join(",")}"></div>`:""}
     ${(r.docs&&r.docs.length)? `<div class="docs">${chipsDocs(r.docs)}</div>`:""}
@@ -2881,7 +3129,7 @@ function abrirInforme(iniIso){
       <div style="color:#fff;font-size:13.5px">${fmtF(infIni)} – ${fmtF(fin)}</div>
       <button class="btn sec chico" onclick="infMover(1)">▶</button>
       <div style="flex:1"></div>
-      <button class="btn chico" onclick="window.print()">🖨️ Guardar PDF</button>
+      <button class="btn chico" onclick="descargarPDF('informe_semanal_'+hoy()+'.pdf')">🖨️ Guardar PDF</button>
     </div>
     <div class="no-print" style="text-align:center;color:#999;font-size:12.5px;padding:4px;background:#000">Toca ✕ para ocultar del PDF lo que no quieras mostrar · al cambiar de semana se restaura todo</div>
     <div class="inf-scroll" style="flex:1;overflow:auto">
@@ -3189,11 +3437,14 @@ html{-webkit-tap-highlight-color:rgba(30,122,76,.12);}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+<script src="https://unpkg.com/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
 <script>
 /* ================== REDISEÑO 6a: navegación + panel nuevo ================== */
 const LOC_DEF = {lat:-33.4123, lng:-71.1385}; // Curacaví (se usa D.lluviaLoc si está configurada)
 const ICO = {
   noti:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="14" height="13" rx="2"></rect><path d="M6.5 8h7M6.5 11h7M6.5 14h4"></path></svg>',
+  calcfito:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 3h4M8.5 3v4.5L5 14.2A1.6 1.6 0 0 0 6.4 16.6h7.2A1.6 1.6 0 0 0 15 14.2L11.5 7.5V3"></path><path d="M7.2 12.6h5.6"></path></svg>',
+  aplic:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4.5" y="3" width="11" height="14" rx="1.5"></rect><path d="M4.5 6.5h11M8 3v14"></path></svg>',
   marca:'<svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="#e97409" stroke-width="1.8"><circle cx="10" cy="11.5" r="5.5"></circle><path d="M10 6V3.5M10 3.5c1.8-1 3.5-.5 3.5-.5s-.3 1.9-2 2.5"></path></svg>',
   panel:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="5.5" height="5.5" rx="1.3"></rect><rect x="11" y="3.5" width="5.5" height="5.5" rx="1.3"></rect><rect x="3.5" y="11" width="5.5" height="5.5" rx="1.3"></rect><rect x="11" y="11" width="5.5" height="5.5" rx="1.3"></rect></svg>',
   notas:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="12" height="14" rx="2"></rect><path d="M7 7.5h6M7 10.5h6M7 13.5h3.5"></path></svg>',
@@ -3204,7 +3455,7 @@ const ICO = {
 };
 
 function render(){
-  const t = {panel:"Panel", notas:"Notas de terreno", plan:"Planificación", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", datos:"Datos y ajustes"}[nav.tab];
+  const t = {panel:"Panel", notas:"Notas de terreno", plan:"Planificación", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", datos:"Datos y ajustes"}[nav.tab];
   document.getElementById("topbar").innerHTML =
     `<div style="flex:1;min-width:180px"><h1>${t}<span class="sub">${PROY? esc(PROY.nombre) : "AgroNotas"} · ${fmtF(hoy())}</span></h1></div>
     <div class="acciones">
@@ -3216,7 +3467,7 @@ function render(){
   document.getElementById("tabbar").innerHTML =
     `<div class="marca-r">${ICO.marca}</div>` +
     TABS.map(x=>`${x.id==="datos"?'<button class="esp"></button>':""}<button class="${nav.tab===x.id?"act":""}" onclick="ir('${x.id}')">${ICO[x.id]||""}${x.lab}</button>`).join("");
-  const vistas = {panel:vPanel, notas:vNotas, plan:vPlan, reg:vReg, tab:vTab, noti:vNoticias, datos:vDatos};
+  const vistas = {panel:vPanel, notas:vNotas, plan:vPlan, reg:vReg, tab:vTab, noti:vNoticias, calcfito:vCalcFito, aplic:vAplic, datos:vDatos};
   document.getElementById("app").innerHTML = vistas[nav.tab]();
   if(nav.tab!=="panel" && geoWatch){ navigator.geolocation.clearWatch(geoWatch); geoWatch = null; } // ahorra batería fuera del mapa
   const posrender = {notas:posNotas, panel:posPanel, reg:posNotas, noti:posNoticias}[nav.tab];
@@ -3734,6 +3985,823 @@ Valores en mm. Usa null en los meses sin dato oficial claro. NO inventes cifras:
     }
   }catch(err){ out.style.color="var(--rojo)"; out.textContent = "⚠️ "+(err.msg||err.message||"No se pudo buscar"); }
 }
+/* ================== CALCULADORA FITO (planificación + cotización) ================== */
+/* Núcleo verificado en Fase 1. Reutiliza el catastro real D.cuarteles. Estado en D.planFito. */
+const CF_ESP = [["all","Todas"],["naranjo","🍊 Naranjos"],["limon","🍋 Limones"],["cerezo","🍒 Cerezos"],["pomelo","🍈 Pomelos"]];
+const CF_ESPKEY = {"Naranjo":"naranjo","Limonero":"limon","Cerezo":"cerezo","Pomelo":"pomelo","Por plantar":"plantar"};
+/* Unidades de dosis según sólido/líquido. Clave interna + etiqueta visible. */
+const CF_UNID_SOL = [["g/100L","g/100 L"],["kg/ha","kg/ha"],["g/ha","g/ha"],["%","%"]];
+const CF_UNID_LIQ = [["cc/100L","cc/100 L"],["L/ha","L/ha"],["cc/ha","cc/ha"],["%","%"]];
+const CF_UNID_LAB = {"g/100L":"g/100 L","cc/100L":"cc/100 L","kg/ha":"kg/ha","L/ha":"L/ha","g/ha":"g/ha","cc/ha":"cc/ha","%":"%"};
+const CF_UNID_PAR = {"g/100L":"cc/100L","cc/100L":"g/100L","kg/ha":"L/ha","L/ha":"kg/ha","g/ha":"cc/ha","cc/ha":"g/ha","%":"%"};
+function cfEspKey(e){ return CF_ESPKEY[e] || "otro"; }
+function cfP(v){ if(v==null) return NaN; const s=String(v).trim().replace(",","."); const x=parseFloat(s.replace(/[^0-9.\-]/g,"")); return isNaN(x)?NaN:x; }
+function cfCLP(n){ return "$" + Math.round(n||0).toLocaleString("es-CL"); }
+function cfNum(x,d){ if(x==null||isNaN(x)||!isFinite(x)) return "—"; return (+x).toLocaleString("es-CL",{minimumFractionDigits:d||0,maximumFractionDigits:d||0}); }
+function cfQty(v,uP,dec){ if(v==null||isNaN(v)||!isFinite(v)) return "—"; if(Math.abs(v)>0 && Math.abs(v)<1){ const c=v*1000; return cfNum(c, Math.abs(c)<10?1:0)+" "+(uP==="L"?"cc":"g"); } return cfNum(v, dec==null?2:dec)+" "+uP; }
+function cfSumaDias(iso,dias){ if(!iso) return ""; const d=new Date(iso+"T00:00:00"); if(isNaN(d)) return ""; d.setDate(d.getDate()+(parseInt(dias,10)||0)); return d.toISOString().slice(0,10); }
+function cfDefault(){ return {producto:"", unidad:"kg", unidadDosis:"g/100L", dosis:"", moj:"", estanque:2000, napp:1, fecha:hoy(), carencia:"", carenciaEsp:{}, precioU:"", margen:5, envase:"", filtro:"all", abiertos:{}, sel:{}, mezcla:[]}; }
+function cfMigra(pf){
+  if(!pf) return;
+  if(pf.unidadDosis==null){ // modelo viejo (modo/gHL/kgHa) → nuevo
+    if(pf.modo==="ha"){ pf.unidadDosis=(pf.unidad==="L")?"L/ha":"kg/ha"; pf.dosis=(pf.kgHa!=null?pf.kgHa:""); }
+    else { pf.unidadDosis=(pf.unidad==="L")?"cc/100L":"g/100L"; pf.dosis=(pf.gHL!=null?pf.gHL:""); }
+  }
+  if(pf.dosis==null) pf.dosis="";
+  if(pf.estanque==null) pf.estanque=2000;
+  if(!pf.carenciaEsp||typeof pf.carenciaEsp!=="object") pf.carenciaEsp={};
+  if(!Array.isArray(pf.mezcla)) pf.mezcla=[];
+  if(!Array.isArray(pf.plagas)) pf.plagas = pf.plagaNombre?[{id:pf.plagaId,n:pf.plagaNombre,t:pf.plagaTipo}]:[];
+}
+function cfPF(){ if(!D.planFito) D.planFito=cfDefault(); cfMigra(D.planFito); return D.planFito; }
+function cfSelDe(id){ const pf=cfPF(); if(!pf.sel[id]) pf.sel[id]={on:false,dosis:"",ha:"",sincos:false}; return pf.sel[id]; }
+function cfFundos(){ return (D.fundos&&D.fundos.length)? D.fundos : [...new Set(D.cuarteles.map(q=>q.fundo))]; }
+
+/* --- Unidades / dosis --- */
+function cfUProd(){ return cfPF().unidad; }                         // kg | L (sólido/líquido)
+function cfUConc(){ return cfPF().unidad==="L" ? "cc/100 L" : "g/100 L"; }
+function cfUnidsDisp(){ return cfPF().unidad==="L" ? CF_UNID_LIQ : CF_UNID_SOL; }
+function cfLabUnid(ud){ return CF_UNID_LAB[ud]||ud; }
+function cfUDosis(){ return cfLabUnid(cfPF().unidadDosis); }
+function cfDosisGlobal(){ return cfP(cfPF().dosis)||0; }
+/* dosis + unidad → producto por ha (kg o L). Usa mojamiento para unidades por 100 L y %. */
+function cfProdHaDe(dose, ud, moj){
+  const d=cfP(dose); if(isNaN(d)) return NaN; const m=cfP(moj)||0;
+  switch(ud){
+    case "g/100L": case "cc/100L": return d*m/100000;      // g|cc por 100 L → kg|L por ha
+    case "kg/ha":  case "L/ha":    return d;
+    case "g/ha":   case "cc/ha":   return d/1000;
+    case "%":                      return d*m/100;         // % → kg|L por ha (equivale a %×1000 g/100 L)
+    default:                       return d*m/100000;
+  }
+}
+function cfProdHa(){ const pf=cfPF(); const v=cfProdHaDe(pf.dosis, pf.unidadDosis, pf.moj); return isNaN(v)?0:v; }
+function cfHaCuartel(q){ const s=cfSelDe(q.id); const ov=cfP(s.ha); return isNaN(ov) ? (+q.ha||0) : ov; }
+function cfRowHa(q){ const pf=cfPF(), s=cfSelDe(q.id); const ov=cfP(s.dosis); if(isNaN(ov)) return cfProdHa(); const v=cfProdHaDe(s.dosis, pf.unidadDosis, pf.moj); return isNaN(v)?cfProdHa():v; }
+function cfPer100(prodHa){ const m=cfP(cfPF().moj)||0; return m>0 ? (prodHa*100000/m) : NaN; } // kg|L por ha → g|cc por 100 L
+function cfNapp(){ return parseInt(cfPF().napp,10)||1; }
+
+/* --- Cálculo global sobre cuarteles incluidos --- */
+/* --- Carencia por frutal (Fase B) --- */
+const CF_ESPEMOJI = {naranjo:"🍊",limon:"🍋",pomelo:"🍈",cerezo:"🍒",plantar:"🌱",otro:"🌿"};
+function cfCarenciaCuartel(q){ const pf=cfPF(), ce=pf.carenciaEsp||{}, k=cfEspKey(q.especie), v=cfP(ce[k]); let c=isNaN(v)?(parseInt(pf.carencia,10)||0):v; (pf.mezcla||[]).forEach(m=>{ const mc=parseInt(m.carencia,10)||0; if(mc>c) c=mc; }); return c; }
+function cfFechaCosechaCuartel(q){ const pf=cfPF(); return pf.fecha? cfSumaDias(pf.fecha, cfCarenciaCuartel(q)) : ""; }
+function cfSetCE(k,v){ const pf=cfPF(); pf.carenciaEsp=pf.carenciaEsp||{}; pf.carenciaEsp[k]=v; guardar(); cfLive(); }
+function cfCosechaInfo(){ const pf=cfPF(); const m={}; D.cuarteles.forEach(q=>{ const s=pf.sel[q.id]; if(s&&s.on){ const k=cfEspKey(q.especie); if(!m[k]) m[k]={esp:q.especie,c:cfCarenciaCuartel(q),f:cfFechaCosechaCuartel(q)}; } }); return m; }
+function cfCosechaResumenHTML(){ const pf=cfPF(), m=cfCosechaInfo(), ks=Object.keys(m).filter(k=>k!=="plantar"&&k!=="otro"); if(ks.length>1){ return `<div class="muted" style="font-size:11.5px">Carencia por especie: ${ks.map(k=>`${(CF_ESPEMOJI[k]||"")} ${cfNum(m[k].c,0)} d → ${m[k].f?fmtF(m[k].f):"—"}`).join(" · ")} · se muestra la más tardía.</div>`; } return `<div class="muted" style="font-size:11.5px">Aplicación ${pf.fecha?fmtF(pf.fecha):"—"} + carencia · envases completos, sin IVA.</div>`; }
+function cfCalc(){
+  const pf=cfPF(), n=cfNapp(); let haTot=0, neto=0, incl=0;
+  let fcMax="";
+  D.cuarteles.forEach(q=>{ const s=pf.sel[q.id]; if(s&&s.on){ const ha=cfHaCuartel(q); if(ha>0){ haTot+=ha; neto+=cfRowHa(q)*ha*n; incl++; const fcq=cfFechaCosechaCuartel(q); if(fcq && fcq>fcMax) fcMax=fcq; } } });
+  const margen=(cfP(pf.margen)||0)/100, conM=neto*(1+margen);
+  const env=cfP(pf.envase)||0, nEnv=(conM>0&&env>0)?Math.ceil(conM/env):0, compra=nEnv*env;
+  const precio=cfP(pf.precioU)||0, moj=cfP(pf.moj)||0, agua=haTot*moj*n;
+  const cap=cfP(pf.estanque)||0, aguaPasada=haTot*moj, nEst=(cap>0&&aguaPasada>0)?Math.ceil(aguaPasada/cap):0, prodEst=(moj>0)?(cfProdHa()/moj)*cap:0, haEst=(moj>0)?cap/moj:0;
+  const fc = fcMax || (pf.fecha? cfSumaDias(pf.fecha,pf.carencia) : "");
+  return {n,incl,haTot,prodHa:cfProdHa(),neto,conM,env,nEnv,compra,costoCompra:compra*precio,costoTeorico:neto*precio,agua,cap,nEst,prodEst,haEst,aguaPasada,fechaCosecha:fc};
+}
+
+/* --- Estadística por fundo (aplica filtro por especie) --- */
+function cfFundoStats(f){
+  const pf=cfPF();
+  let qs=D.cuarteles.filter(q=>q.fundo===f);
+  if(pf.filtro!=="all") qs=qs.filter(q=>cfEspKey(q.especie)===pf.filtro);
+  const inc=qs.filter(q=>{ const s=pf.sel[q.id]; return s&&s.on; });
+  const haF=qs.reduce((s,q)=>s+(+q.ha||0),0);
+  const haInc=inc.reduce((s,q)=>s+cfHaCuartel(q),0);
+  return {qs, inc, haF, haInc, todo: qs.length>0 && inc.length===qs.length};
+}
+function cfFbarTxt(f){
+  const st=cfFundoStats(f);
+  return `${st.qs.length} cuarteles · ${cfNum(st.haF,1)} ha` + (st.inc.length? ` · <b style="color:var(--p)">${st.inc.length} incluidos · ${cfNum(st.haInc,1)} ha</b>` : "");
+}
+function cfCellTxt(q){
+  const pf=cfPF(), s=cfSelDe(q.id);
+  if(!s.on) return `<span class="muted">no incluido</span>`;
+  const ha=cfHaCuartel(q), rha=cfRowHa(q), prod=rha*ha*cfNapp(), precio=cfP(pf.precioU)||0;
+  const propia = !isNaN(cfP(s.dosis));
+  return `${cfQty(rha,cfUProd(),2)}/ha · <b>${cfQty(prod,cfUProd(),1)}</b>${precio>0?` · ${cfCLP(prod*precio)}`:""}${propia?` <span class="badge b-verde">dosis propia</span>`:""}`;
+}
+
+/* --- Vista --- */
+function vCalcFito(){
+  const pf=cfPF();
+  return `
+  <div style="max-width:840px;margin:0 auto">
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div><b style="font-size:17px">🧪 Calculadora Fito</b><div class="muted" style="font-size:12px">Planifica y cotiza una aplicación por cuartel.</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn chico" onclick="cfGuardarRegistro()">💾 Guardar</button>
+        <button class="btn sec chico" onclick="cfPDF()">📄 Plan</button>
+        <button class="btn sec chico" onclick="cfExpandir(true)">Expandir</button>
+        <button class="btn sec chico" onclick="cfExpandir(false)">Contraer</button>
+        <button class="btn sec chico" onclick="cfReset()">Limpiar</button>
+      </div>
+    </div>
+
+    <div id="cfKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">${cfKpisHTML()}</div>
+
+    <div class="card">
+      <h3 style="margin:0 0 10px">Producto de esta aplicación</h3>
+      <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px">
+        <div style="flex:1;position:relative">
+          <div style="font-size:13px;font-weight:600;color:var(--txt2);margin-bottom:4px">Producto</div>
+          <input id="cfProdInput" type="text" autocomplete="off" value="${esc(pf.producto)}" placeholder="Ej: Diazinon 40 WP" oninput="cfProdInput(this.value)" onfocus="cfProdAC(this.value)" onblur="cfProdACHide()" style="display:block;width:100%;padding:12px;font-size:16px;border:1.5px solid var(--borde);border-radius:10px;background:#fff;color:var(--txt);box-sizing:border-box">
+          <div id="cfProdAC" style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:60;background:#fff;border:1.5px solid var(--borde);border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.16);max-height:280px;overflow-y:auto"></div>
+        </div>
+        <button class="btn sec chico" style="min-height:46px;white-space:nowrap" onclick="cfAbrirProductos()">📋 Mi base</button>
+      </div>
+      <div id="cfProdInfo">${cfProdInfoHTML()}</div>
+      <div id="cfPlagaSel" style="margin-bottom:12px">${cfPlagaSelHTML()}</div>
+      <div class="muted" style="font-size:12px;margin-bottom:4px">Tipo de producto</div>
+      <div class="chips" style="margin-bottom:12px"><button class="chip ${pf.unidad==='kg'?'act':''}" onclick="cfUnidad('kg')">Sólido (kg)</button><button class="chip ${pf.unidad==='L'?'act':''}" onclick="cfUnidad('L')">Líquido (L)</button></div>
+      <div class="muted" style="font-size:12px;margin-bottom:4px">Unidad de dosis</div>
+      <div class="chips" style="margin-bottom:12px">${cfUnidsDisp().map(([k,l])=>`<button class="chip ${pf.unidadDosis===k?'act':''}" onclick="cfUnidadDosis('${k}')">${l}</button>`).join("")}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <label class="f" style="flex:1;min-width:130px">Dosis (${cfLabUnid(pf.unidadDosis)})<input type="text" inputmode="decimal" value="${esc(pf.dosis)}" placeholder="${pf.unidadDosis==='%'?'0,2':'150'}" oninput="cfSet('dosis',this.value)"></label>
+        <label class="f" style="flex:1;min-width:130px">Mojamiento (L/ha)<input type="text" inputmode="decimal" value="${esc(pf.moj)}" placeholder="2000" oninput="cfSet('moj',this.value)"></label>
+        <label class="f" style="flex:1;min-width:120px">Estanque (L)<input type="text" inputmode="numeric" value="${esc(pf.estanque)}" placeholder="2000" oninput="cfSet('estanque',this.value)"></label>
+      </div>
+      <div id="cfDoseHint" style="margin:-4px 0 12px;font-size:13px;color:var(--p2);font-weight:600">${cfDoseHint()}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <label class="f" style="flex:1;min-width:90px">N° aplic.<input type="text" inputmode="numeric" value="${esc(pf.napp)}" placeholder="1" oninput="cfSet('napp',this.value)"></label>
+        <label class="f" style="flex:1;min-width:150px">Fecha de aplicación<input type="date" value="${esc(pf.fecha)}" onchange="cfSet('fecha',this.value)"></label>
+        <label class="f" style="flex:1;min-width:110px">Carencia (días)<input type="text" inputmode="numeric" value="${esc(pf.carencia)}" placeholder="80" oninput="cfSet('carencia',this.value)"></label>
+      </div>
+      <div class="muted" style="font-size:11px;margin:-4px 0 10px">💡 <b>N° aplic.</b> = cuántas veces repetirás esta misma receta (para comprar de una vez). Deja 1 si aplicas una sola vez.</div>
+      <details style="margin:0 0 12px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--txt2)">🍃 Carencia por frutal (si difiere por especie)</summary>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <label class="f" style="flex:1;min-width:96px">🍊 Naranjo<input type="text" inputmode="numeric" value="${esc(pf.carenciaEsp.naranjo||'')}" placeholder="${parseInt(pf.carencia,10)||''}" oninput="cfSetCE('naranjo',this.value)"></label>
+          <label class="f" style="flex:1;min-width:96px">🍋 Limón<input type="text" inputmode="numeric" value="${esc(pf.carenciaEsp.limon||'')}" placeholder="${parseInt(pf.carencia,10)||''}" oninput="cfSetCE('limon',this.value)"></label>
+          <label class="f" style="flex:1;min-width:96px">🍈 Pomelo<input type="text" inputmode="numeric" value="${esc(pf.carenciaEsp.pomelo||'')}" placeholder="${parseInt(pf.carencia,10)||''}" oninput="cfSetCE('pomelo',this.value)"></label>
+          <label class="f" style="flex:1;min-width:96px">🍒 Cerezo<input type="text" inputmode="numeric" value="${esc(pf.carenciaEsp.cerezo||'')}" placeholder="${parseInt(pf.carencia,10)||''}" oninput="cfSetCE('cerezo',this.value)"></label>
+        </div>
+        <div class="muted" style="font-size:11px">Vacío = usa la carencia general. La fecha de cosecha se calcula por la especie de cada cuartel (se muestra la más tardía). Verifica cada valor en la etiqueta SAG / lista de tu exportadora.</div>
+      </details>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <label class="f" style="flex:1;min-width:120px">Precio ($/${cfUProd()})<input type="text" inputmode="numeric" value="${esc(pf.precioU)}" placeholder="9000" oninput="cfSet('precioU',this.value)"></label>
+        <label class="f" style="flex:1;min-width:100px">Margen (%)<input type="text" inputmode="decimal" value="${esc(pf.margen)}" placeholder="5" oninput="cfSet('margen',this.value)"></label>
+        <label class="f" style="flex:1;min-width:120px">Envase (${cfUProd()})<input type="text" inputmode="decimal" value="${esc(pf.envase)}" placeholder="20" oninput="cfSet('envase',this.value)"></label>
+      </div>
+    </div>
+
+    <div id="cfMezcla">${cfMezclaHTML()}</div>
+    <div class="card">
+      <h3 style="margin:0 0 8px">Cuarteles a tratar</h3>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">Toca un fundo para desplegar. Prende solo los cuarteles de esta aplicación (por defecto, nada seleccionado).</div>
+      <div class="chips" style="margin-bottom:10px">${CF_ESP.map(([k,l])=>`<button class="chip ${pf.filtro===k?'act':''}" onclick="cfFiltro('${k}')">${l}</button>`).join("")}</div>
+      <div id="cfAcordeon">${cfAcordeonHTML()}</div>
+    </div>
+
+    <div class="card" id="cfResumen" style="background:var(--pclaro);border:1.5px solid var(--p)">${cfResumenHTML()}</div>
+
+    <div class="muted" style="font-size:11px;margin:6px 2px 40px">Cálculos referenciales. Confirma dosis, carencia y compatibilidades en la etiqueta SAG y con la lista aprobada por tu exportadora antes de aplicar.</div>
+  </div>`;
+}
+
+function cfDoseHint(){
+  const pf=cfPF(); const d=cfP(pf.dosis); const uP=cfUProd(), uC=cfUConc();
+  if(isNaN(d)) return `<span class="muted" style="font-weight:400">Ingresa la dosis y verás el equivalente en ${uP}/ha.</span>`;
+  const ph=cfProdHa(), per100=cfPer100(ph), esPor100 = (pf.unidadDosis==="g/100L"||pf.unidadDosis==="cc/100L"||pf.unidadDosis==="%");
+  const partes=[`<b>${cfNum(ph,3)} ${uP}/ha</b>`];
+  if(!isNaN(per100)){ partes.push(`${cfNum(per100, per100<10?1:0)} ${uC}`); partes.push(`${cfNum(per100/1000,3)} %`); }
+  const falta = (esPor100 && !(cfP(pf.moj)>0)) ? ` <span class="muted" style="font-weight:400">(pon mojamiento para el resto)</span>` : (!(cfP(pf.moj)>0)? ` <span class="muted" style="font-weight:400">(pon mojamiento para ver g/100 L)</span>`:"");
+  return `≈ ${partes.join("  ·  ")}${falta}`;
+}
+
+function cfKpisHTML(){
+  const r=cfCalc(), _mz=cfMezcla().length, costoTot=_mz?cfCostoTotalMezcla():(r.costoCompra>0?r.costoCompra:r.costoTeorico);
+  return `
+  <div class="kpi"><div class="num">${cfNum(r.haTot,1)}</div><div class="lab">ha a tratar · ${r.incl} cuarteles</div></div>
+  <div class="kpi azul"><div class="num">${cfNum(cfDosisGlobal(), cfDosisGlobal()<10?1:0)}</div><div class="lab">dosis general (${cfUDosis()})</div></div>
+  <div class="kpi"><div class="num">${r.conM>0?cfNum(r.conM,1):'—'}</div><div class="lab">producto total ${cfUProd()} (c/margen)</div></div>
+  <div class="kpi acc"><div class="num" style="font-size:22px">${costoTot>0?cfCLP(costoTot):'—'}</div><div class="lab">costo estimado ${_mz?'(mezcla)':(r.costoCompra>0?'(compra)':(r.costoTeorico>0?'(s/ envase)':'(compra)'))}</div></div>`;
+}
+
+function cfAcordeonHTML(){
+  const pf=cfPF(); let h="";
+  cfFundos().forEach((f,i)=>{
+    const st=cfFundoStats(f);
+    if(!st.qs.length) return;
+    const abierto=!!pf.abiertos[f];
+    h += `<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px;border:1px solid ${st.inc.length?'var(--p)':'var(--borde)'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;background:${st.inc.length?'var(--pclaro)':'#fff'}" onclick="cfToggleAcordeon('${esc(f)}')">
+        <div style="min-width:0;flex:1">
+          <div style="font-weight:800;font-size:15px">${abierto?'▾':'▸'} ${esc(f)}</div>
+          <div class="muted" style="font-size:12px" id="cfFbar_${i}">${cfFbarTxt(f)}</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--txt2);white-space:nowrap" onclick="event.stopPropagation()"><input type="checkbox" ${st.todo?'checked':''} onchange="cfTodoFundo('${esc(f)}',this.checked)" style="width:20px;height:20px"> Todo</label>
+      </div>
+      ${abierto ? `<div style="padding:2px 12px 10px">${st.qs.map(q=>cfFila(q)).join("")}</div>` : ""}
+    </div>`;
+  });
+  return h || `<div class="muted" style="padding:8px">No hay cuarteles para el filtro elegido.</div>`;
+}
+
+function cfFila(q){
+  const s=cfSelDe(q.id), on=!!s.on, esP=(q.especie==="Por plantar");
+  return `<div style="display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px dashed var(--borde)">
+    <input type="checkbox" ${on?'checked':''} onchange="cfIncluir(${q.id},this.checked)" style="width:24px;height:24px;flex:0 0 auto">
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:700;font-size:14px">${esc(q.nombre)} ${esP?'<span class="badge b-gris">por plantar</span>':''}</div>
+      <div class="muted" style="font-size:11.5px">${esc(q.especie)}${q.variedad?' · '+esc(q.variedad):''}</div>
+      <div id="cfCell_${q.id}" style="font-size:11.5px;margin-top:2px">${cfCellTxt(q)}</div>
+    </div>
+    <div style="text-align:center;flex:0 0 auto"><div style="font-size:9.5px;color:var(--txt2)">ha</div><input type="text" inputmode="decimal" value="${esc(s.ha!==''&&s.ha!=null?s.ha:'')}" placeholder="${cfNum(+q.ha||0,1)}" oninput="cfSetSel(${q.id},'ha',this.value)" style="width:56px;padding:6px;font-size:14px;text-align:center;border:1.5px solid var(--borde);border-radius:8px"></div>
+    <div style="text-align:center;flex:0 0 auto"><div style="font-size:9.5px;color:var(--txt2)">dosis</div><input type="text" inputmode="decimal" value="${esc(s.dosis!==''&&s.dosis!=null?s.dosis:'')}" placeholder="${cfNum(cfDosisGlobal(), cfDosisGlobal()<10?1:0)}" oninput="cfSetSel(${q.id},'dosis',this.value)" style="width:60px;padding:6px;font-size:14px;text-align:center;border:1.5px solid var(--borde);border-radius:8px"></div>
+    ${esP?'':`<button onclick="cfSinCos(${q.id})" title="Marcar: tiene fruta sin cosechar" style="flex:0 0 auto;width:36px;height:36px;border-radius:9px;border:1.5px solid ${s.sincos?'var(--rojo)':'var(--borde)'};background:${s.sincos?'#ffebee':'#fff'};font-size:15px;cursor:pointer">${CF_ESPEMOJI[cfEspKey(q.especie)]||"🍏"}</button>`}
+  </div>`;
+}
+
+function cfConversionHTML(){
+  const pf=cfPF(), ph=cfProdHa(), uP=cfUProd(), uC=cfUConc(), per100=cfPer100(ph);
+  let txt;
+  if(isNaN(ph)||ph===0){ txt=`Ingresa la dosis (y el mojamiento) para ver las equivalencias.`; }
+  else { txt=`<b>${cfNum(ph,3)} ${uP}/ha</b>` + (isNaN(per100)?` <span class="muted">(pon mojamiento para 100 L)</span>`:` = <b>${cfNum(per100,per100<10?1:0)} ${uC}</b> = <b>${cfNum(per100/1000,3)} %</b>`); }
+  return `<div style="margin-top:10px;padding:9px 12px;background:#fff;border:1px dashed var(--p);border-radius:10px;font-size:13px">🔁 <b>Equivalencias de dosis:</b> ${txt}</div>`;
+}
+
+function cfAlertasHTML(r){
+  const pf=cfPF(); let h="";
+  const incl=D.cuarteles.filter(q=>{ const s=pf.sel[q.id]; return s&&s.on; });
+  const sinCos=incl.filter(q=>cfSelDe(q.id).sincos);
+  const porPl=incl.filter(q=>q.especie==="Por plantar");
+  if(sinCos.length) h+=`<div style="background:#ffebee;border-left:4px solid var(--rojo);color:#b3261e;padding:10px 12px;border-radius:8px;margin-bottom:8px;font-size:13px">🔴 <b>${sinCos.length}</b> cuartel(es) con fruta sin cosechar (${sinCos.map(q=>esc(q.nombre)).join(", ")}). Con carencia larga esa fruta arriesga rechazo por LMR — cosecha antes o exclúyelos.</div>`;
+  if(porPl.length) h+=`<div style="background:#fff8e1;border-left:4px solid var(--acc);color:#8a6d00;padding:10px 12px;border-radius:8px;margin-bottom:8px;font-size:13px">🟡 ${porPl.length} cuartel(es) "por plantar"/sin fruta incluidos — revisa si corresponde aplicar.</div>`;
+  return h;
+}
+
+function cfResumenHTML(){
+  const pf=cfPF(), r=cfCalc(), uP=cfUProd();
+  const fila=(k,v)=>`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px dashed rgba(0,0,0,.12)"><span style="font-size:13.5px">${k}</span><b style="white-space:nowrap">${v}</b></div>`;
+  const cuerpo =
+    fila("Producto neto (dosis × superficie)", `${cfQty(r.neto,uP)}`) +
+    fila(`Con margen de seguridad (${cfNum(cfP(pf.margen)||0,0)}%)`, `${cfQty(r.conM,uP)}`) +
+    fila(`Envases${pf.envase?` (${cfNum(cfP(pf.envase)||0,0)} ${uP} c/u)`:''}`, r.nEnv? `${r.nEnv} · comprar <b>${cfQty(r.compra,uP,0)}</b>` : "—") +
+    fila("Costo de compra", r.costoCompra>0?cfCLP(r.costoCompra):"—") +
+    fila("Costo teórico (sin redondeo)", r.costoTeorico>0?cfCLP(r.costoTeorico):"—") +
+    fila("Agua requerida", `${cfNum(r.agua,0)} L`) +
+    fila(`Estanques de ${cfNum(cfP(pf.estanque)||0,0)} L`, r.nEst? `${r.nEst}/pasada · ${cfQty(r.prodEst,uP)}/estanque · cubre ${cfNum(r.haEst,2)} ha` : "—");
+  const fc = r.fechaCosecha? fmtF(r.fechaCosecha) : "—";
+  return `${cfAlertasHTML(r)}
+    <h3 style="margin:0 0 8px">🧾 Cotización</h3>
+    ${cfPlagasSel().length?`<div style="font-size:13px;margin:-2px 0 8px">🎯 <b>Objetivo:</b> ${cfPlagasSel().map(p=>esc(p.n)).join(", ")}</div>`:""}
+    ${cuerpo}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:10px 0 2px"><span style="font-weight:800">🌱 Cosecha permitida</span><b style="color:var(--p);font-size:17px">${fc}</b></div>
+    ${cfCosechaResumenHTML()}
+    ${cfMixInsumosHTML()}
+    ${cfConversionHTML()}
+    <div class="muted" style="font-size:11px;margin-top:8px">Recordatorio: dosis y carencia según etiqueta SAG y exportadora · ojo abejas (no aplicar en flor) · EPP completo · incompatibilidades (ej. diazinón + cobre).</div>`;
+}
+
+/* --- Refresco en vivo (sin re-render de los inputs) --- */
+function cfLive(){
+  const k=document.getElementById("cfKpis"); if(k) k.innerHTML=cfKpisHTML();
+  const dh=document.getElementById("cfDoseHint"); if(dh) dh.innerHTML=cfDoseHint();
+  const pi=document.getElementById("cfProdInfo"); if(pi) pi.innerHTML=cfProdInfoHTML();
+  const r=document.getElementById("cfResumen"); if(r) r.innerHTML=cfResumenHTML();
+  D.cuarteles.forEach(q=>{ const c=document.getElementById("cfCell_"+q.id); if(c) c.innerHTML=cfCellTxt(q); });
+  cfFundos().forEach((f,i)=>{ const b=document.getElementById("cfFbar_"+i); if(b) b.innerHTML=cfFbarTxt(f); });
+  (cfPF().mezcla||[]).forEach(m=>{ const h=document.getElementById("cfMixHint_"+m.id); if(h) h.innerHTML=cfMixHint(m); });
+}
+
+/* --- Handlers --- */
+function cfSet(k,v){ cfPF()[k]=v; guardar(); cfLive(); }
+function cfSetSel(id,k,v){ const s=cfSelDe(id); s[k]=v; guardar(); cfLive(); }
+function cfIncluir(id,on){ cfSelDe(id).on=!!on; guardar(); render(); }
+function cfTodoFundo(f,on){ cfFundoStats(f).qs.forEach(q=>{ cfSelDe(q.id).on=!!on; }); guardar(); render(); }
+function cfToggleAcordeon(f){ const pf=cfPF(); pf.abiertos[f]=!pf.abiertos[f]; guardar(); render(); }
+function cfExpandir(on){ const pf=cfPF(); cfFundos().forEach(f=>pf.abiertos[f]=!!on); guardar(); render(); }
+function cfFiltro(k){ cfPF().filtro=k; guardar(); render(); }
+function cfUnidad(u){ const pf=cfPF(); pf.unidad=u; pf.unidadDosis = CF_UNID_PAR[pf.unidadDosis] || (u==="L"?"cc/100L":"g/100L"); guardar(); render(); }
+function cfUnidadDosis(ud){ cfPF().unidadDosis=ud; guardar(); render(); }
+function cfSinCos(id){ const s=cfSelDe(id); s.sincos=!s.sincos; guardar(); render(); }
+function cfReset(){ if(confirm("¿Limpiar la Calculadora Fito? Se borra el producto y la selección de cuarteles.")){ D.planFito=cfDefault(); guardar(); render(); } }
+
+/* ---------- Base de productos fitosanitarios (Calc Fito, Parte 2) ---------- */
+const CF_PTIPOS = ["all","Insecticida","Acaricida","Fungicida","Bactericida","Nematicida","Herbicida","Regulador de crecimiento","Fertilizante foliar","Bioestimulante","Coadyuvante","Otro"];
+function cfCatProd(){ if(!D.catalogos) D.catalogos={}; return D.catalogos.productosFito || (D.catalogos.productosFito=[]); }
+function cfPn(v){ const x=cfP(v); return isNaN(x)?null:x; }
+function cfProdMid(a,b){ if(a==null&&b==null) return ""; if(b==null) return a; if(a==null) return b; return Math.round(((a+b)/2)*100)/100; }
+function cfBadgeTipo(t){ return ({Insecticida:"b-rojo",Acaricida:"b-rojo",Fungicida:"b-verde",Bactericida:"b-verde",Nematicida:"b-verde",Herbicida:"b-gris"})[t]||"b-gris"; }
+
+function cfAbrirProductos(){
+  if(nav.cfPQ==null) nav.cfPQ=""; if(nav.cfPT==null) nav.cfPT="all";
+  document.getElementById("capaVisor").innerHTML = `
+  <div class="visor" style="background:var(--fondo)">
+    <div class="vh" style="background:linear-gradient(135deg,#123f24,#1e7a4c)">
+      <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
+      <div style="flex:1;color:#fff;font-weight:800">📋 Mis productos fitosanitarios</div>
+    </div>
+    <div style="flex:1;overflow:auto;-webkit-overflow-scrolling:touch">
+      <div style="max-width:700px;margin:0 auto;padding:12px 14px 40px">
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <input id="cfPBuscar" type="text" placeholder="Buscar producto, ingrediente o plaga…" value="${esc(nav.cfPQ)}" oninput="cfProdBuscar(this.value)" style="flex:1;padding:11px;font-size:15px;border:1.5px solid var(--borde);border-radius:10px">
+          <button class="btn chico" onclick="cfNuevoProdForm()">＋ Nuevo</button>
+        </div>
+        <div id="cfPNuevo"></div>
+        <div id="cfPChips" class="chips" style="margin-bottom:10px;flex-wrap:wrap">${cfPTipoChips()}</div>
+        <div id="cfPLista">${cfProductosListaHTML()}</div>
+      </div>
+    </div>
+  </div>`;
+}
+function cfPTipoChips(){
+  const cont={}; cfCatProd().forEach(p=>cont[p.t]=(cont[p.t]||0)+1);
+  return CF_PTIPOS.filter(t=>t==="all"||cont[t]).map(t=>`<button class="chip ${(nav.cfPT||'all')===t?'act':''}" onclick="cfProdTipo('${esc(t)}')">${t==="all"?"Todos ("+cfCatProd().length+")":esc(t)+" ("+cont[t]+")"}</button>`).join("");
+}
+function cfProductosListaHTML(){
+  const q=(nav.cfPQ||"").toLowerCase().trim(), tp=nav.cfPT||"all";
+  let L=cfCatProd().slice();
+  if(tp!=="all") L=L.filter(p=>p.t===tp);
+  if(q) L=L.filter(p=>((p.n+" "+(p.ia||"")+" "+(p.o||"")).toLowerCase().includes(q)));
+  L.sort((a,b)=>(a.n||"").localeCompare(b.n||""));
+  if(!L.length) return `<div class="muted" style="padding:10px">Sin resultados.</div>`;
+  return L.map(p=>{
+    const dosis = p.du? `${cfNum(p.dmin, (p.dmin!=null&&p.dmin<10)?1:0)}–${cfNum(p.dmax,(p.dmax!=null&&p.dmax<10)?1:0)} ${cfLabUnid(p.du)}` : (p.dtxt||"—");
+    return `<div class="item" style="cursor:default">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+        <div style="min-width:0;flex:1;cursor:pointer" onclick="cfPickProducto(${p.id})">
+          <div style="font-weight:800;font-size:15px">${esc(p.n)} <span class="badge ${cfBadgeTipo(p.t)}">${esc(p.t)}</span></div>
+          ${p.ia?`<div class="muted" style="font-size:12px">${esc(p.ia)}</div>`:''}
+          ${p.o?`<div style="font-size:12px;margin-top:2px">🎯 ${esc(p.o)}</div>`:''}
+          <div class="muted" style="font-size:11.5px;margin-top:3px">💧 ${dosis}${p.mtxt?` · moj ${esc(p.mtxt)}`:''} · carencia ${p.c!=null?p.c+' d':'—'}${p.r?` · reingreso ${p.r} d`:''}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;flex:0 0 auto">
+          <button class="btn chico" onclick="cfPickProducto(${p.id})">Usar</button>
+          <button class="btn sec chico" onclick="cfEditarProd(${p.id})" title="Editar">✎ Editar</button>
+          <button class="btn sec chico" onclick="cfBorrarProducto(${p.id})" title="Eliminar" style="color:var(--rojo)">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+function cfProdBuscar(v){ nav.cfPQ=v; const el=document.getElementById("cfPLista"); if(el) el.innerHTML=cfProductosListaHTML(); }
+function cfProdTipo(t){ nav.cfPT=t; const l=document.getElementById("cfPLista"); if(l) l.innerHTML=cfProductosListaHTML(); const c=document.getElementById("cfPChips"); if(c) c.innerHTML=cfPTipoChips(); }
+function cfPickProducto(id){
+  const p=cfCatProd().find(x=>x.id===id); if(!p) return;
+  if(nav.cfMixTarget){ cfMixFromProd(nav.cfMixTarget,p); nav.cfMixTarget=null; guardar(); cerrarVisor(); render(); return; }
+  const pf=cfPF();
+  pf.producto=p.n; pf.unidad=p.u||"kg";
+  if(p.du){ pf.unidadDosis=p.du; const d=cfProdMid(p.dmin,p.dmax); if(d!=="") pf.dosis=d; }
+  const mj=cfProdMid(p.mmin,p.mmax); if(mj!=="") pf.moj=mj;
+  if(p.c!=null) pf.carencia=p.c;
+  pf.carenciaEsp = (p.ce&&typeof p.ce==="object")? Object.assign({},p.ce) : {};
+  if(p.p) pf.precioU=p.p;
+  pf.prodId=id;
+  guardar(); cerrarVisor(); render();
+}
+function cfSetProducto(v){ const pf=cfPF(); pf.producto=v; pf.prodId=null; guardar(); cfLive(); }
+function cfProdInfoHTML(){
+  const pf=cfPF(); if(!pf.prodId) return "";
+  const p=cfCatProd().find(x=>x.id===pf.prodId); if(!p) return "";
+  const dosis = p.du? `${cfNum(p.dmin,(p.dmin!=null&&p.dmin<10)?1:0)}–${cfNum(p.dmax,(p.dmax!=null&&p.dmax<10)?1:0)} ${cfLabUnid(p.du)}` : (p.dtxt||"");
+  return `<div style="background:var(--pclaro);border:1px solid var(--borde);border-radius:10px;padding:8px 11px;font-size:12px;margin-bottom:10px">
+    <b>${esc(p.t)}</b>${p.ia?` · ${esc(p.ia)}`:''}${p.o?`<div style="margin-top:2px">🎯 ${esc(p.o)}</div>`:''}
+    <div class="muted" style="margin-top:2px">Rango etiqueta: <b>${dosis}</b>${p.mtxt?` · moj ${esc(p.mtxt)}`:''} · carencia ${p.c!=null?p.c+' d':'—'}. Ajusta la dosis dentro del rango.</div>
+  </div>`;
+}
+function cfProdFormHTML(p){
+  p=p||{};
+  const tipos=CF_PTIPOS.filter(t=>t!=="all");
+  const dus=[["g/100L","g/100 L"],["cc/100L","cc/100 L"],["kg/ha","kg/ha"],["L/ha","L/ha"],["g/ha","g/ha"],["cc/ha","cc/ha"],["%","%"]];
+  return `<div class="card" style="margin-bottom:10px">
+    <h3 style="margin:0 0 8px;font-size:15px">${p.id?"✎ Editar producto":"Nuevo producto"}</h3>
+    <input type="hidden" id="np_id" value="${esc(p.id!=null?p.id:'')}">
+    <label class="f">Nombre<input id="np_n" type="text" value="${esc(p.n||'')}" placeholder="Ej: Score 250 EC"></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="f" style="flex:1;min-width:150px">Tipo<select id="np_t">${tipos.map(t=>`<option ${p.t===t?'selected':''}>${t}</option>`).join("")}</select></label>
+      <label class="f" style="flex:1;min-width:120px">Unidad<select id="np_u"><option value="kg" ${p.u==='kg'?'selected':''}>Sólido (kg)</option><option value="L" ${p.u==='L'?'selected':''}>Líquido (L)</option></select></label>
+    </div>
+    <label class="f">Ingrediente activo<input id="np_ia" type="text" value="${esc(p.ia||'')}" placeholder="Ej: Difenoconazol 25%"></label>
+    <label class="f">Objetivo (para qué)<input id="np_o" type="text" value="${esc(p.o||'')}" placeholder="Ej: Oídio, botrytis"></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="f" style="flex:1;min-width:100px">Dosis desde<input id="np_dmin" type="text" inputmode="decimal" value="${esc(p.dmin!=null?p.dmin:'')}" placeholder="20"></label>
+      <label class="f" style="flex:1;min-width:100px">Dosis hasta<input id="np_dmax" type="text" inputmode="decimal" value="${esc(p.dmax!=null?p.dmax:'')}" placeholder="30"></label>
+      <label class="f" style="flex:1;min-width:130px">Unidad dosis<select id="np_du">${dus.map(([k,l])=>`<option value="${k}" ${p.du===k?'selected':''}>${l}</option>`).join("")}</select></label>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="f" style="flex:1;min-width:110px">Mojamiento desde<input id="np_mmin" type="text" inputmode="decimal" value="${esc(p.mmin!=null?p.mmin:'')}" placeholder="1000"></label>
+      <label class="f" style="flex:1;min-width:110px">Mojamiento hasta<input id="np_mmax" type="text" inputmode="decimal" value="${esc(p.mmax!=null?p.mmax:'')}" placeholder="1500"></label>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="f" style="flex:1;min-width:90px">Carencia (d)<input id="np_c" type="text" inputmode="numeric" value="${esc(p.c!=null?p.c:'')}" placeholder="14"></label>
+      <label class="f" style="flex:1;min-width:90px">Reingreso (d)<input id="np_r" type="text" inputmode="numeric" value="${esc(p.r!=null?p.r:'')}" placeholder="12"></label>
+      <label class="f" style="flex:1;min-width:100px">Precio ($/u)<input id="np_p" type="text" inputmode="numeric" value="${esc(p.p!=null?p.p:'')}" placeholder="0"></label>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn full" onclick="cfGuardarNuevoProd()">${p.id?"💾 Guardar cambios":"💾 Agregar a mi base"}</button>
+      ${p.id?`<button class="btn sec" onclick="var e=document.getElementById('cfPNuevo'); if(e) e.innerHTML='';">Cancelar</button>`:''}
+    </div>
+  </div>`;
+}
+function cfNuevoProdForm(){ const el=document.getElementById("cfPNuevo"); if(!el) return; if(el.innerHTML){ el.innerHTML=""; return; } el.innerHTML=cfProdFormHTML(null); }
+function cfEditarProd(id){ const el=document.getElementById("cfPNuevo"); if(!el) return; const p=cfCatProd().find(x=>x.id===id); el.innerHTML=cfProdFormHTML(p||null); if(el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"nearest"}); }
+function cfGuardarNuevoProd(){
+  const g=id=>{const e=document.getElementById(id);return e?e.value:"";};
+  const n=g("np_n").trim(); if(!n){ alert("Ponle un nombre al producto."); return; }
+  const idv=g("np_id"), cat=cfCatProd();
+  const datos={ n:n, t:g("np_t")||"Otro", ia:g("np_ia").trim(), o:g("np_o").trim(), u:g("np_u")||"kg", du:g("np_du")||"",
+    dmin:cfPn(g("np_dmin")), dmax:cfPn(g("np_dmax")), mmin:cfPn(g("np_mmin")), mmax:cfPn(g("np_mmax")),
+    c:cfPn(g("np_c")), r:cfPn(g("np_r")), p:cfPn(g("np_p"))||0 };
+  if(idv){ const p=cat.find(x=>String(x.id)===String(idv)); if(p) Object.assign(p,datos); }
+  else { const nid2=(cat.reduce((m,pp)=>Math.max(m,+pp.id||0),1000))+1; cat.push(Object.assign({id:nid2,dtxt:"",mtxt:""},datos)); }
+  guardar(); cfAbrirProductos();
+}
+function cfBorrarProducto(id){
+  if(!confirm("¿Eliminar este producto de tu base?")) return;
+  D.catalogos.productosFito = cfCatProd().filter(p=>p.id!==id);
+  guardar(); cfAbrirProductos();
+}
+
+/* ---------- Base de plagas + objetivo múltiple (Calc Fito, Parte 3) ---------- */
+const CF_PLTIPOS = ["all","Insecto","Ácaro","Hongo","Bacteria","Nematodo","Maleza","Fisiopatía"];
+const CF_PLEMOJI = {"Insecto":"🐛","Ácaro":"🕷️","Hongo":"🍄","Bacteria":"🦠","Nematodo":"🪱","Maleza":"🌿","Fisiopatía":"☀️"};
+function cfCatPlaga(){ if(!D.catalogos) D.catalogos={}; return D.catalogos.plagas || (D.catalogos.plagas=[]); }
+function cfBadgePlaga(t){ return ({Insecto:"b-rojo","Ácaro":"b-rojo",Hongo:"b-verde",Bacteria:"b-verde",Nematodo:"b-verde",Maleza:"b-gris"})[t]||"b-gris"; }
+function cfPlagasSel(){ const pf=cfPF(); if(!Array.isArray(pf.plagas)) pf.plagas = pf.plagaNombre?[{id:pf.plagaId,n:pf.plagaNombre,t:pf.plagaTipo}]:[]; return pf.plagas; }
+function cfPlagaEnLista(id){ return cfPlagasSel().some(x=>x.id===id); }
+function cfAddPlaga(id){ const p=cfCatPlaga().find(x=>x.id===id); if(!p) return false; const arr=cfPlagasSel(); if(!arr.some(x=>x.id===id)){ arr.push({id:p.id,n:p.n,t:p.t}); guardar(); return true; } return false; }
+function cfTogglePlaga(id){ const arr=cfPlagasSel(); if(arr.some(x=>x.id===id)){ const pf=cfPF(); pf.plagas=arr.filter(x=>x.id!==id); guardar(); } else { cfAddPlaga(id); } const l=document.getElementById("cfLLista"); if(l) l.innerHTML=cfPlagasListaHTML(); }
+function cfQuitarPlaga(id){ const pf=cfPF(); pf.plagas=cfPlagasSel().filter(x=>x.id!==id); guardar(); render(); }
+
+/* Bloque bajo el producto: chips de objetivos + input con autocompletar */
+function cfPlagaChipsHTML(){
+  const arr=cfPlagasSel();
+  if(!arr.length) return '<span class="muted" style="font-size:12.5px">Ninguna aún — escribe abajo o usa "📋 De la base".</span>';
+  return arr.map(p=>`<span style="display:inline-flex;align-items:center;gap:5px;background:var(--pclaro);border:1px solid var(--p);border-radius:16px;padding:4px 4px 4px 10px;font-size:12.5px;font-weight:600">${(CF_PLEMOJI[p.t]||"")} ${esc(p.n)} <button onclick="cfQuitarPlaga(${p.id})" title="Quitar" style="border:none;background:none;color:var(--rojo);cursor:pointer;font-size:14px;line-height:1;padding:0 3px">✕</button></span>`).join(" ");
+}
+function cfPlagaSelHTML(){
+  return `<div style="font-size:12px;font-weight:600;color:var(--txt2);margin-bottom:4px">🎯 Objetivo (plagas) — puedes agregar varias</div>
+    <div id="cfPlagaChips" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px">${cfPlagaChipsHTML()}</div>
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <div style="flex:1;position:relative">
+        <input id="cfPlagaInput" type="text" autocomplete="off" placeholder="Escribe para agregar una plaga…" oninput="cfPlagaAC(this.value)" onfocus="cfPlagaAC(this.value)" onblur="cfPlagaACHide()" style="display:block;width:100%;padding:10px;font-size:15px;border:1.5px solid var(--borde);border-radius:10px;box-sizing:border-box">
+        <div id="cfPlagaAC" style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:60;background:#fff;border:1.5px solid var(--borde);border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.16);max-height:260px;overflow-y:auto"></div>
+      </div>
+      <button class="btn sec chico" style="min-height:42px;white-space:nowrap" onclick="cfAbrirPlagas()">📋 De la base</button>
+    </div>`;
+}
+function cfPlagaAC(v){
+  const box=document.getElementById("cfPlagaAC"); if(!box) return;
+  const q=(v||"").toLowerCase().trim();
+  if(!q){ box.style.display="none"; box.innerHTML=""; return; }
+  let L=cfCatPlaga().filter(p=>((p.n+" "+(p.c||"")+" "+(p.cu||"")).toLowerCase().includes(q)));
+  L.sort((a,b)=>{const aw=(a.n||"").toLowerCase().startsWith(q)?0:1,bw=(b.n||"").toLowerCase().startsWith(q)?0:1;return aw-bw||(a.n||"").localeCompare(b.n||"");});
+  L=L.slice(0,10);
+  if(!L.length){ box.innerHTML=`<div class="muted" style="padding:10px 12px;font-size:12.5px">Sin coincidencias — usa "📋 De la base" o ＋ Nueva.</div>`; box.style.display="block"; return; }
+  box.innerHTML=L.map((p,i)=>{ const ya=cfPlagaEnLista(p.id); return `<div onmousedown="event.preventDefault()" onclick="cfPlagaACPick(${p.id})" style="padding:9px 12px;${i<L.length-1?'border-bottom:1px solid var(--borde);':''}cursor:pointer;${ya?'opacity:.5':''}" onmouseover="this.style.background='var(--pclaro)'" onmouseout="this.style.background='#fff'">
+      <div style="font-weight:700;font-size:14px">${(CF_PLEMOJI[p.t]||"")} ${esc(p.n)} <span class="badge ${cfBadgePlaga(p.t)}" style="font-size:10px">${esc(p.t)}</span>${ya?' <span class="muted" style="font-size:10px">✓ agregada</span>':''}</div>
+      ${p.c?`<div class="muted" style="font-size:11px;font-style:italic">${esc(p.c)}</div>`:''}
+    </div>`; }).join("");
+  box.style.display="block";
+}
+function cfPlagaACPick(id){
+  cfAddPlaga(id);
+  const inp=document.getElementById("cfPlagaInput"); if(inp) inp.value="";
+  const box=document.getElementById("cfPlagaAC"); if(box){ box.style.display="none"; box.innerHTML=""; }
+  const ch=document.getElementById("cfPlagaChips"); if(ch) ch.innerHTML=cfPlagaChipsHTML();
+  const r=document.getElementById("cfResumen"); if(r) r.innerHTML=cfResumenHTML();
+  if(inp) inp.focus();
+}
+function cfPlagaACHide(){ setTimeout(function(){ const box=document.getElementById("cfPlagaAC"); if(box) box.style.display="none"; }, 160); }
+
+/* Visor de la base de plagas (multi: agregar/quitar, no cierra al elegir) */
+function cfCerrarPlagas(){ cerrarVisor(); render(); }
+function cfAbrirPlagas(){
+  if(nav.cfLQ==null) nav.cfLQ=""; if(nav.cfLT==null) nav.cfLT="all";
+  document.getElementById("capaVisor").innerHTML = `
+  <div class="visor" style="background:var(--fondo)">
+    <div class="vh" style="background:linear-gradient(135deg,#123f24,#1e7a4c)">
+      <button class="btn sec chico" onclick="cfCerrarPlagas()">← Listo</button>
+      <div style="flex:1;color:#fff;font-weight:800">🎯 ¿Para qué plagas? (agrega varias)</div>
+    </div>
+    <div style="flex:1;overflow:auto;-webkit-overflow-scrolling:touch">
+      <div style="max-width:700px;margin:0 auto;padding:12px 14px 40px">
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <input id="cfLBuscar" type="text" placeholder="Buscar plaga, hongo, maleza o nombre científico…" value="${esc(nav.cfLQ)}" oninput="cfPlagaBuscar(this.value)" style="flex:1;padding:11px;font-size:15px;border:1.5px solid var(--borde);border-radius:10px">
+          <button class="btn chico" onclick="cfNuevaPlagaForm()">＋ Nueva</button>
+        </div>
+        <div id="cfLNueva"></div>
+        <div id="cfLChips" class="chips" style="margin-bottom:10px;flex-wrap:wrap">${cfPlagaTipoChips()}</div>
+        <div id="cfLLista">${cfPlagasListaHTML()}</div>
+      </div>
+    </div>
+  </div>`;
+}
+function cfPlagaTipoChips(){
+  const cont={}; cfCatPlaga().forEach(p=>cont[p.t]=(cont[p.t]||0)+1);
+  return CF_PLTIPOS.filter(t=>t==="all"||cont[t]).map(t=>`<button class="chip ${(nav.cfLT||'all')===t?'act':''}" onclick="cfPlagaTipo('${esc(t)}')">${t==="all"?"Todas ("+cfCatPlaga().length+")":(CF_PLEMOJI[t]||"")+" "+esc(t)+" ("+cont[t]+")"}</button>`).join("");
+}
+function cfPlagasListaHTML(){
+  const q=(nav.cfLQ||"").toLowerCase().trim(), tp=nav.cfLT||"all";
+  let L=cfCatPlaga().slice();
+  if(tp!=="all") L=L.filter(p=>p.t===tp);
+  if(q) L=L.filter(p=>((p.n+" "+(p.c||"")+" "+(p.cu||"")).toLowerCase().includes(q)));
+  L.sort((a,b)=>(a.n||"").localeCompare(b.n||""));
+  if(!L.length) return `<div class="muted" style="padding:10px">Sin resultados.</div>`;
+  return L.map(p=>{ const ya=cfPlagaEnLista(p.id); return `<div class="item" style="cursor:default;${ya?'border:1.5px solid var(--p);background:var(--pclaro)':''}">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+      <div style="min-width:0;flex:1;cursor:pointer" onclick="cfTogglePlaga(${p.id})">
+        <div style="font-weight:800;font-size:15px">${(CF_PLEMOJI[p.t]||"")} ${esc(p.n)} <span class="badge ${cfBadgePlaga(p.t)}">${esc(p.t)}</span></div>
+        ${p.c?`<div class="muted" style="font-size:12px;font-style:italic">${esc(p.c)}</div>`:''}
+        ${p.cu?`<div class="muted" style="font-size:11.5px;margin-top:2px">🌱 ${esc(p.cu)}</div>`:''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;flex:0 0 auto">
+        <button class="btn ${ya?'sec':''} chico" onclick="cfTogglePlaga(${p.id})">${ya?'✓ Agregada':'Agregar'}</button>
+        <button class="btn sec chico" onclick="cfBorrarPlaga(${p.id})" title="Eliminar de la base" style="color:var(--rojo)">✕</button>
+      </div>
+    </div>
+  </div>`; }).join("");
+}
+function cfPlagaBuscar(v){ nav.cfLQ=v; const el=document.getElementById("cfLLista"); if(el) el.innerHTML=cfPlagasListaHTML(); }
+function cfPlagaTipo(t){ nav.cfLT=t; const l=document.getElementById("cfLLista"); if(l) l.innerHTML=cfPlagasListaHTML(); const c=document.getElementById("cfLChips"); if(c) c.innerHTML=cfPlagaTipoChips(); }
+function cfNuevaPlagaForm(){
+  const el=document.getElementById("cfLNueva"); if(!el) return;
+  if(el.innerHTML){ el.innerHTML=""; return; }
+  el.innerHTML=`<div class="card" style="margin-bottom:10px">
+    <h3 style="margin:0 0 8px;font-size:15px">Nueva plaga</h3>
+    <label class="f">Nombre común<input id="nl_n" type="text" placeholder="Ej: Arañita roja"></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="f" style="flex:1;min-width:150px">Tipo<select id="nl_t">${CF_PLTIPOS.filter(t=>t!=="all").map(t=>`<option>${t}</option>`).join("")}</select></label>
+      <label class="f" style="flex:2;min-width:160px">Nombre científico<input id="nl_c" type="text" placeholder="Ej: Panonychus citri"></label>
+    </div>
+    <label class="f">Cultivos<input id="nl_cu" type="text" placeholder="Ej: Cítricos, paltos"></label>
+    <button class="btn full" onclick="cfGuardarNuevaPlaga()">💾 Agregar a mi base</button>
+  </div>`;
+}
+function cfGuardarNuevaPlaga(){
+  const g=id=>{const e=document.getElementById(id);return e?e.value.trim():"";};
+  const n=g("nl_n"); if(!n){ alert("Ponle un nombre a la plaga."); return; }
+  const cat=cfCatPlaga();
+  const nid2=(cat.reduce((m,p)=>Math.max(m,+p.id||0),2000))+1;
+  cat.push({id:nid2, n:n, t:g("nl_t")||"Insecto", c:g("nl_c"), cu:g("nl_cu")});
+  guardar(); cfAbrirPlagas();
+}
+function cfBorrarPlaga(id){ if(!confirm("¿Eliminar esta plaga de tu base?")) return; D.catalogos.plagas=cfCatPlaga().filter(p=>p.id!==id); const pf=cfPF(); pf.plagas=cfPlagasSel().filter(x=>x.id!==id); guardar(); cfAbrirPlagas(); }
+
+/* ---------- Autocompletar producto desde "Mi base" (Calc Fito) ---------- */
+function cfProdInput(v){ const pf=cfPF(); pf.producto=v; pf.prodId=null; guardar(); cfLive(); cfProdAC(v); }
+function cfProdAC(v){
+  const box=document.getElementById("cfProdAC"); if(!box) return;
+  const q=(v||"").toLowerCase().trim();
+  if(!q){ box.style.display="none"; box.innerHTML=""; return; }
+  let L=cfCatProd().filter(p=>((p.n+" "+(p.ia||"")+" "+(p.o||"")).toLowerCase().includes(q)));
+  L.sort((a,b)=>{ const aw=(a.n||"").toLowerCase().startsWith(q)?0:1, bw=(b.n||"").toLowerCase().startsWith(q)?0:1; return aw-bw || (a.n||"").localeCompare(b.n||""); });
+  L=L.slice(0,10);
+  if(!L.length){ box.innerHTML=`<div class="muted" style="padding:10px 12px;font-size:12.5px">Sin coincidencias en tu base — puedes escribirlo igual o tocar "📋 Mi base".</div>`; box.style.display="block"; return; }
+  box.innerHTML=L.map((p,i)=>`<div onmousedown="event.preventDefault()" onclick="cfACPick(${p.id})" style="padding:9px 12px;${i<L.length-1?'border-bottom:1px solid var(--borde);':''}cursor:pointer;transition:background .1s" onmouseover="this.style.background='var(--pclaro)'" onmouseout="this.style.background='#fff'">
+      <div style="font-weight:700;font-size:14px">${esc(p.n)} <span class="badge ${cfBadgeTipo(p.t)}" style="font-size:10px">${esc(p.t)}</span></div>
+      ${(p.ia||p.du)?`<div class="muted" style="font-size:11.5px">${esc(p.ia||"")}${(p.ia&&p.du)?" · ":""}${p.du?cfNum(p.dmin,(p.dmin!=null&&p.dmin<10)?1:0)+"–"+cfNum(p.dmax,(p.dmax!=null&&p.dmax<10)?1:0)+" "+cfLabUnid(p.du):""}</div>`:''}
+    </div>`).join("");
+  box.style.display="block";
+}
+function cfACPick(id){ const box=document.getElementById("cfProdAC"); if(box){ box.style.display="none"; box.innerHTML=""; } cfPickProducto(id); }
+function cfProdACHide(){ setTimeout(function(){ const box=document.getElementById("cfProdAC"); if(box) box.style.display="none"; }, 160); }
+
+/* ---------- Guardar como registro (historial por cuartel) + PDF (Calc Fito) ---------- */
+function cfIncluidos(){ const pf=cfPF(); return D.cuarteles.filter(q=>{ const s=pf.sel[q.id]; return s&&s.on; }); }
+
+function cfGuardarRegistro(){
+  const pf=cfPF(); const incl=cfIncluidos();
+  if(!(pf.producto||"").trim()){ alert("Escribe el producto antes de guardar."); return; }
+  if(!incl.length){ alert("Incluye al menos un cuartel para guardar la aplicación."); return; }
+  const r=cfCalc(), obj=cfPlagasSel().map(p=>p.n).join(", "), fcTxt=r.fechaCosecha?fmtF(r.fechaCosecha):"—";
+  abrirModal("💾 Guardar aplicación como registro", `
+    <div class="muted" style="font-size:13px;margin-bottom:8px">Se guardará <b>${esc(pf.producto)}</b> en <b>${incl.length}</b> cuartel(es) (${cfNum(r.haTot,1)} ha) como <b>planificación pendiente</b>, uno por cuartel. Luego, en <b>Registros</b>, confirmas cada cuartel el día que lo apliques (con su fecha real) y recién ahí queda oficial en el historial.</div>
+    <label class="f">Fecha de aplicación<input id="cfr_fecha" type="date" value="${esc(pf.fecha||hoy())}"></label>
+    <label class="f">Responsable (opcional)<input id="cfr_resp" type="text" placeholder="Ej: Manuel / jefe de cuadrilla"></label>
+    <div class="muted" style="font-size:12.5px">🎯 Objetivo: ${obj?esc(obj):'<i>sin especificar</i>'} · carencia ${parseInt(pf.carencia,10)||0} d · cosecha desde ${fcTxt}</div>
+  `, ()=>{
+    const fecha=((document.getElementById("cfr_fecha")||{}).value)||pf.fecha||hoy();
+    const _cur = incl.map(q=>q.fundo+"/"+q.nombre).sort().join(";");
+    const _sig = (pf.producto||"")+"|"+fecha+"|"+obj+"|"+_cur;
+    const _bat = {};
+    D.registros.forEach(x=>{ if(x.tipo!=="Aplicación") return; const k=x.aplId||("s|"+x.fecha+"|"+x.producto+"|"+x.objetivo); if(!_bat[k]) _bat[k]={p:x.producto,f:x.fecha,o:x.objetivo,c:[]}; _bat[k].c.push(x.fundo+"/"+x.cuartel); });
+    const _dup = Object.keys(_bat).some(k=>{ const b=_bat[k]; return ((b.p||"")+"|"+b.f+"|"+(b.o||"")+"|"+b.c.slice().sort().join(";"))===_sig; });
+    if(_dup && !confirm("⚠️ Ya guardaste una aplicación IDÉNTICA (mismo producto, fecha, objetivo y cuarteles).\nNo se puede aplicar dos veces lo mismo el mismo día en los mismos cuarteles.\n\n¿Guardar de todas formas?")) return false;
+    const resp=(((document.getElementById("cfr_resp")||{}).value)||"").trim();
+    const n=cfNapp(), moj=cfP(pf.moj)||0, precio=cfP(pf.precioU)||0, uP=cfUProd(), uLab=cfLabUnid(pf.unidadDosis);
+    const aplId="ap"+nid();
+    let cnt=0;
+    incl.forEach(q=>{
+      const ha=cfHaCuartel(q), rha=cfRowHa(q), prod=rha*ha*n, s=cfSelDe(q.id), carQ=cfCarenciaCuartel(q), fcQ=cfFechaCosechaCuartel(q);
+      const doseC=!isNaN(cfP(s.dosis))?cfP(s.dosis):cfDosisGlobal();
+      const dosisTxt=`${cfNum(doseC,doseC<10?2:0)} ${uLab} → ${cfQty(rha,uP)}/ha`;
+      const obs=`Sup ${cfNum(ha,2)} ha · producto ${cfQty(prod,uP)}`
+        +(precio>0?` · costo ${cfCLP(prod*precio)}`:"")
+        +(fcQ?` · cosecha desde ${fmtF(fcQ)}`:"")
+        +(n>1?` · ${n} aplic.`:"")+(resp?` · resp: ${resp}`:"");
+      D.registros.push({ id:nid(), aplId:aplId, estado:"pendiente", fechaPlan:fecha, tipo:"Aplicación", fecha:fecha, fundo:q.fundo, cuartel:q.nombre,
+        producto:pf.producto, dosis:dosisTxt, objetivo:obj, carencia:String(carQ||""),
+        mojamiento:String(moj||""), obs:obs, pin:"baja", gps:null, fotos:[], docs:[], audios:[] });
+      cnt++;
+    });
+    setTimeout(function(){ alert("✓ Guardé la planificación en "+cnt+" cuartel(es) como PENDIENTE.\nConfírmalos en Registros (botón ✓ Confirmar) a medida que los apliques."); }, 60);
+  }, "💾 Guardar "+incl.length+" registro(s)");
+}
+
+function cfPDFAlertas(){
+  const incl=cfIncluidos();
+  const sinCos=incl.filter(q=>cfSelDe(q.id).sincos), porPl=incl.filter(q=>q.especie==="Por plantar");
+  let h="";
+  if(sinCos.length) h+=`<div style="margin-top:12px;padding:8px 12px;border:1.5px solid #d64545;border-radius:8px;color:#b3261e;font-size:12.5px"><b>⚠ Fruta sin cosechar:</b> ${sinCos.map(q=>esc(q.nombre)).join(", ")}. No aplicar hasta cosechar (riesgo de rechazo por LMR).</div>`;
+  if(porPl.length) h+=`<div style="margin-top:8px;padding:8px 12px;border:1.5px solid #b58a00;border-radius:8px;color:#8a6d00;font-size:12.5px"><b>Nota:</b> incluye cuarteles por plantar/sin fruta: ${porPl.map(q=>esc(q.nombre)).join(", ")}.</div>`;
+  return h;
+}
+function cfPDF(){
+  const pf=cfPF(), incl=cfIncluidos(), r=cfCalc(), uP=cfUProd(), uC=cfUConc(), capP=cfP(pf.estanque)||0, mojP=cfP(pf.moj)||0;
+  const obj=cfPlagasSel().map(p=>p.n).join(", ");
+  const prod=pf.prodId? cfCatProd().find(x=>x.id===pf.prodId):null;
+  const per100=cfPer100(r.prodHa);
+  const filas=incl.slice().sort((a,b)=>(a.fundo||"").localeCompare(b.fundo||"")||(a.nombre||"").localeCompare(b.nombre||"")).map(q=>{
+    const ha=cfHaCuartel(q), rha=cfRowHa(q), pc=rha*ha*cfNapp(), s=cfSelDe(q.id), precio=cfP(pf.precioU)||0, nEstQ=(capP>0&&mojP>0)?Math.ceil(ha*mojP/capP):0;
+    const doseC=!isNaN(cfP(s.dosis))?cfP(s.dosis):cfDosisGlobal();
+    return `<tr><td>${esc(q.fundo)}</td><td>${esc(q.nombre)}</td><td>${esc(q.especie||"")}</td><td style="text-align:right">${cfNum(ha,2)}</td><td style="text-align:right">${cfNum(doseC,doseC<10?2:0)} ${esc(cfLabUnid(pf.unidadDosis))}</td><td style="text-align:right">${cfQty(pc,uP)}</td><td style="text-align:right">${nEstQ||"—"}</td><td style="text-align:right">${precio>0?cfCLP(pc*precio):"—"}</td><td style="text-align:right">${cfFechaCosechaCuartel(q)?fmtF(cfFechaCosechaCuartel(q)):"—"}</td></tr>`;
+  }).join("");
+  document.getElementById("capaVisor").innerHTML=`
+  <div class="visor inf-v" style="background:#e8e8e8">
+    <div class="vh no-print">
+      <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
+      <div style="flex:1;color:#fff;font-weight:800">📄 Planificación</div>
+      <button class="btn sec chico" onclick="cfPDFRedactarIA()">✨ Redactar con IA</button>
+      <button class="btn chico" onclick="descargarPDF('planificacion_fitosanitaria_'+hoy()+'.pdf')">🖨️ Guardar PDF</button>
+    </div>
+    <div class="inf-scroll" style="flex:1;overflow:auto">
+      <div class="informe">
+        <div style="display:flex;align-items:center;gap:10px;border-bottom:3px solid #1e7a4c;padding-bottom:10px;margin-bottom:12px">
+          <div style="font-size:30px">🧪</div>
+          <div><div style="font-size:20px;font-weight:800;color:#14532d">Planificación de aplicación fitosanitaria</div>
+          <div style="color:#555">${PROY?esc(PROY.nombre):"Total Fruit Curacaví"} · generado el ${fmtF(hoy())}</div></div>
+        </div>
+        <div id="cfPlanIA" class="no-print" style="margin-bottom:12px;color:#555;font-size:12.5px;background:#f3f7f2;border:1px dashed #1e7a4c;border-radius:8px;padding:9px 12px">✨ Toca <b>Redactar con IA</b> (arriba) para un resumen del plan, programa y recomendaciones bien redactados. Necesita tu clave de IA (Datos → 🤖 IA). El detalle con datos va más abajo y se imprime igual.</div>
+        <table class="t" style="margin-bottom:14px"><tbody>
+          <tr><td style="width:38%"><b>Producto</b></td><td>${esc(pf.producto||"—")}${prod?` <span style="color:#666">(${esc(prod.t)}${prod.ia?" · "+esc(prod.ia):""})</span>`:""}</td></tr>
+          <tr><td><b>Objetivo (plagas)</b></td><td>${obj?esc(obj):"—"}</td></tr>
+          <tr><td><b>Dosis</b></td><td>${cfNum(cfDosisGlobal(),cfDosisGlobal()<10?2:0)} ${esc(cfLabUnid(pf.unidadDosis))} = <b>${cfNum(r.prodHa,3)} ${uP}/ha</b>${isNaN(per100)?"":" ("+cfNum(per100,per100<10?1:0)+" "+uC+")"}</td></tr>
+          <tr><td><b>Mojamiento</b></td><td>${cfNum(cfP(pf.moj)||0,0)} L/ha · ${cfNapp()} aplicación(es)</td></tr>
+          <tr><td><b>Fecha de aplicación</b></td><td>${pf.fecha?fmtF(pf.fecha):"—"} · carencia ${parseInt(pf.carencia,10)||0} días</td></tr>
+          <tr><td><b>Cosecha permitida desde</b></td><td><b style="color:#14532d">${r.fechaCosecha?fmtF(r.fechaCosecha):"—"}</b></td></tr>
+        </tbody></table>
+        ${cfPDFEstanqueHTML()}
+        <h2 style="font-size:15px;color:#14532d;margin:6px 0">Cuarteles a tratar (${incl.length})</h2>
+        <table class="t"><thead><tr><th>Fundo</th><th>Cuartel</th><th>Especie</th><th style="text-align:right">Sup (ha)</th><th style="text-align:right">Dosis</th><th style="text-align:right">Producto</th><th style="text-align:right">Estanques</th><th style="text-align:right">Costo</th><th style="text-align:right">Cosecha</th></tr></thead>
+        <tbody>${filas||`<tr><td colspan="9" style="color:#888">Sin cuarteles incluidos.</td></tr>`}</tbody></table>
+        <table class="t" style="margin-top:14px"><tbody>
+          <tr><td style="width:55%"><b>Superficie total</b></td><td style="text-align:right">${cfNum(r.haTot,1)} ha · ${r.incl} cuarteles</td></tr>
+          <tr><td><b>Producto neto</b></td><td style="text-align:right">${cfQty(r.neto,uP)}</td></tr>
+          <tr><td><b>Con margen (${cfNum(cfP(pf.margen)||0,0)}%)</b></td><td style="text-align:right">${cfQty(r.conM,uP)}</td></tr>
+          <tr><td><b>A comprar (envases)</b></td><td style="text-align:right">${r.nEnv?r.nEnv+" × "+cfNum(cfP(pf.envase)||0,0)+" "+uP+" = "+cfNum(r.compra,0)+" "+uP:(r.conM>0?cfNum(r.conM,2)+" "+uP+" (define envase para redondear)":"—")}</td></tr>
+          <tr><td><b>Costo estimado</b></td><td style="text-align:right">${cfMezcla().length?cfCLP(cfCostoTotalMezcla())+" (mezcla)":(r.costoCompra>0?cfCLP(r.costoCompra):(r.costoTeorico>0?cfCLP(r.costoTeorico)+" (s/ envase)":"—"))}</td></tr>
+          <tr><td><b>Agua requerida</b></td><td style="text-align:right">${cfNum(r.agua,0)} L</td></tr>
+        </tbody></table>
+        ${cfPDFMixHTML()}
+        ${cfPDFAlertas()}
+        <div style="margin-top:22px;display:flex;gap:30px">
+          <div style="flex:1;border-top:1px solid #999;padding-top:4px;color:#555;font-size:12px">Plan preparado por</div>
+          <div style="flex:1;border-top:1px solid #999;padding-top:4px;color:#555;font-size:12px">Fecha / revisión</div>
+        </div>
+        <div style="margin-top:14px;color:#777;font-size:11px">Documento referencial. Verifica dosis, carencia y compatibilidades con la etiqueta SAG y la lista aprobada por la exportadora. Precauciones: EPP completo, no aplicar en flor (abejas), respetar incompatibilidades (ej. diazinón + cobre).</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Planificación redactada con IA (Calc Fito) ---------- */
+function cfPlanDataTxt(){
+  const pf=cfPF(), incl=cfIncluidos(), r=cfCalc(), uP=cfUProd();
+  const obj=cfPlagasSel().map(p=>p.n).join(", ")||"—";
+  const lineas=incl.slice().sort((a,b)=>(a.fundo||"").localeCompare(b.fundo||"")||(a.nombre||"").localeCompare(b.nombre||"")).map(q=>{
+    const ha=cfHaCuartel(q), rha=cfRowHa(q), pc=rha*ha*cfNapp(), f=cfFechaCosechaCuartel(q);
+    return `- ${q.fundo} / ${q.nombre} (${q.especie||"?"}): ${cfNum(ha,2)} ha, ${cfNum(pc,2)} ${uP}, carencia ${cfCarenciaCuartel(q)} d, cosecha desde ${f?fmtF(f):"—"}`;
+  }).join("\n");
+  return `PRODUCTO: ${pf.producto||"—"}
+OBJETIVO (plagas): ${obj}
+DOSIS: ${cfNum(cfDosisGlobal(),cfDosisGlobal()<10?2:0)} ${cfLabUnid(pf.unidadDosis)} = ${cfNum(r.prodHa,3)} ${uP}/ha
+MOJAMIENTO: ${cfNum(cfP(pf.moj)||0,0)} L/ha · N° repeticiones: ${cfNapp()} · Estanque: ${cfNum(cfP(pf.estanque)||0,0)} L (${r.nEst} estanques por pasada)
+FECHA DE APLICACION: ${pf.fecha?fmtF(pf.fecha):"—"}
+SUPERFICIE TOTAL: ${cfNum(r.haTot,1)} ha en ${r.incl} cuarteles
+INSUMOS A PREPARAR: neto ${cfNum(r.neto,2)} ${uP}, con margen ${cfNum(r.conM,2)} ${uP}, a comprar/preparar ${cfNum(r.compra,0)} ${uP}, agua ${cfNum(r.agua,0)} L${r.costoCompra>0?", costo estimado "+cfCLP(r.costoCompra):""}
+MEZCLA EN ESTANQUE: ${cfMezcla().length?cfMezcla().map(m=>(m.producto||"?")+" a "+cfNum(cfP(m.dosis)||0,2)+" "+cfLabUnid(m.unidadDosis)+" (carencia "+(parseInt(m.carencia,10)||0)+" d)").join("; "):"solo el producto principal"}
+CUARTELES:
+${lineas||"(sin cuarteles)"}`;
+}
+function cfSanea(html){
+  return String(html||"")
+    .replace(/<\s*(script|style)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,"")
+    .replace(/ on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,"")
+    .replace(/javascript:/gi,"");
+}
+async function cfPDFRedactarIA(){
+  const cont=document.getElementById("cfPlanIA"); if(!cont) return;
+  if(!(D.ia&&D.ia.key)){ alert("Para redactar el plan con IA, pega tu clave en Datos → 🤖 Inteligencia (IA). El plan con datos igual se imprime."); return; }
+  if(!cfIncluidos().length){ alert("Incluye al menos un cuartel para redactar el plan."); return; }
+  cont.classList.remove("no-print");
+  cont.style.background="#fff"; cont.style.border="none"; cont.style.color="#555"; cont.style.padding="0";
+  cont.innerHTML="✨ Redactando el plan con IA…";
+  const instr=`Eres un asesor agronomico fruticola en Chile (Total Fruit, Curacavi). Con los DATOS de esta PLANIFICACION de una aplicacion fitosanitaria, redacta un texto ordenado y profesional para el PLAN (no es una orden de compra ni de aplicacion). Estructura con subtitulos:
+1) Resumen del plan (3-4 frases).
+2) Programa sugerido (agrupa por fundo; si hay distintas fechas de cosecha por especie, menciona la logica).
+3) Consideraciones de cosecha por frutal (respeta las carencias por especie indicadas; senala la fecha mas tardia).
+4) Precauciones y buenas practicas (EPP, no aplicar en flor por abejas, incompatibilidades, respetar LMR y la lista de la exportadora).
+Reglas: Espanol de Chile, claro, ordenado y conciso. NO inventes datos, dosis ni carencias; usa SOLO lo entregado. Devuelve HTML simple usando SOLO las etiquetas <h3>, <p>, <ul>, <li>, <b> (sin estilos en linea, sin scripts, sin <html> ni <body>).
+
+DATOS:
+${cfPlanDataTxt()}`;
+  try{
+    let txt=(await iaLlamar([{text:instr}])).trim();
+    txt=txt.replace(/^```html/i,"").replace(/^```/,"").replace(/```$/,"").trim();
+    cont.innerHTML=cfSanea(txt)||"No se pudo redactar el plan.";
+  }catch(err){
+    cont.style.color="#b00020"; cont.classList.add("no-print");
+    cont.innerHTML="⚠️ "+(err.msg||err.message||"No se pudo redactar el plan");
+  }
+}
+
+/* ---------- Mezcla en estanque: varios productos (Fase C) ---------- */
+const CF_FORM_RE = [[/\b(wg|sg|wp|wdg|df|gr|pm)\b/i,1],[/\b(sc|cs|se|od|fs|zc|su)\b/i,2],[/\b(ew|me)\b/i,3],[/\b(ec|sl|as|ls)\b/i,4]];
+function cfMezcla(){ const pf=cfPF(); if(!Array.isArray(pf.mezcla)) pf.mezcla=[]; return pf.mezcla; }
+function cfMixFind(id){ return cfMezcla().find(m=>m.id===id); }
+function cfMixAgregar(){ const mz=cfMezcla(); const id=(mz.reduce((x,m)=>Math.max(x,m.id||0),0))+1; mz.push({id:id,producto:"",prodId:null,unidad:"L",unidadDosis:"cc/100L",dosis:"",precioU:"",envase:"",carencia:0}); guardar(); render(); }
+function cfMixDel(id){ const pf=cfPF(); pf.mezcla=cfMezcla().filter(m=>m.id!==id); guardar(); render(); }
+function cfMixSet(id,k,v){ const m=cfMixFind(id); if(!m) return; m[k]=v; if(k==="producto") m.prodId=null; guardar(); cfLive(); }
+function cfMixSetR(id,k,v){ const m=cfMixFind(id); if(!m) return; m[k]=v; if(k==="unidad"){ m.unidadDosis=CF_UNID_PAR[m.unidadDosis]||(v==="L"?"cc/100L":"g/100L"); } guardar(); render(); }
+function cfMixBase(id){ nav.cfMixTarget=id; cfAbrirProductos(); }
+function cfMixFromProd(mixId,prod){ const m=cfMixFind(mixId); if(!m||!prod) return; m.producto=prod.n; m.prodId=prod.id; m.unidad=prod.u||"L"; if(prod.du) m.unidadDosis=prod.du; const d=cfProdMid(prod.dmin,prod.dmax); if(d!=="") m.dosis=d; if(prod.p) m.precioU=prod.p; if(prod.c!=null) m.carencia=prod.c; }
+function cfMixCalc(){
+  const pf=cfPF(), r=cfCalc(), n=r.n, haTot=r.haTot, margen=(cfP(pf.margen)||0)/100, cap=cfP(pf.estanque)||0, moj=cfP(pf.moj)||0;
+  const out=[{nombre:pf.producto,uP:cfUProd(),prodHa:r.prodHa,neto:r.neto,conM:r.conM,compra:r.compra,est:r.prodEst,costo:r.costoCompra>0?r.costoCompra:r.costoTeorico,esP:true}];
+  cfMezcla().forEach(m=>{
+    let ph=cfProdHaDe(m.dosis,m.unidadDosis,moj); if(isNaN(ph)) ph=0;
+    const neto=ph*haTot*n, conM=neto*(1+margen), env=cfP(m.envase)||0, nEnv=(conM>0&&env>0)?Math.ceil(conM/env):0, compra=nEnv*env;
+    const precio=cfP(m.precioU)||0, costo=(compra>0?compra:conM)*precio, est=(moj>0)?(ph/moj)*cap:0;
+    out.push({nombre:m.producto,uP:m.unidad,prodHa:ph,neto:neto,conM:conM,compra:compra,est:est,costo:costo,esP:false});
+  });
+  return out;
+}
+function cfCostoTotalMezcla(){ return cfMixCalc().reduce((s,x)=>s+(x.costo||0),0); }
+function cfFormRank(nombre){ const s=nombre||""; if(/aceite|coadyuv|adheren|surfact|mojante|nonil|siliconad/i.test(s)) return 5; for(const par of CF_FORM_RE){ if(par[0].test(s)) return par[1]; } return 3; }
+function cfMezclaOrden(){ const pf=cfPF(); const all=[pf.producto].concat(cfMezcla().map(m=>m.producto)).filter(x=>(x||"").trim()); if(all.length<2) return null; return all.map(n=>({n:n,r:cfFormRank(n)})).sort((a,b)=>a.r-b.r); }
+function cfMezclaOrdenHTML(){ const ord=cfMezclaOrden(); if(!ord) return ""; return `<div style="margin-top:8px;padding:8px 11px;background:var(--pclaro);border-radius:8px;font-size:12px"><b>Orden de carga sugerido</b> (agitando siempre): ${ord.map((x,i)=>`${i+1}) ${esc(x.n)}`).join(" · ")}. Aceites y adyuvantes al final; micronutrientes al cierre. Ante dudas de compatibilidad, haz una prueba de jarra.</div>`; }
+function cfMixHint(m){
+  const moj=cfP(cfPF().moj)||0, cap=cfP(cfPF().estanque)||0, r=cfCalc();
+  let ph=cfProdHaDe(m.dosis,m.unidadDosis,moj);
+  if(isNaN(ph)) return `<span class="muted" style="font-weight:400">Ingresa la dosis.</span>`;
+  const tot=ph*r.haTot*cfNapp(), est=(moj>0)?(ph/moj)*cap:0;
+  return `≈ <b>${cfQty(ph,m.unidad,3)}/ha</b> · ${cfQty(tot,m.unidad)} total${(cap>0&&moj>0)?` · ${cfQty(est,m.unidad,3)}/estanque`:""}`;
+}
+function cfMixItemHTML(m){
+  const uds=(m.unidad==="L"?CF_UNID_LIQ:CF_UNID_SOL);
+  return `<div style="border:1px solid var(--borde);border-radius:10px;padding:10px;margin-bottom:8px">
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px">
+      <label class="f" style="flex:1;margin-bottom:0">Producto<input type="text" value="${esc(m.producto)}" placeholder="Ej: Ultraspray (aceite)" oninput="cfMixSet(${m.id},'producto',this.value)"></label>
+      <button class="btn sec chico" style="min-height:46px" onclick="cfMixBase(${m.id})">📋</button>
+      <button class="btn sec chico" style="min-height:46px;color:var(--rojo)" onclick="cfMixDel(${m.id})">✕</button>
+    </div>
+    <div class="chips" style="margin-bottom:8px"><button class="chip ${m.unidad==='kg'?'act':''}" onclick="cfMixSetR(${m.id},'unidad','kg')">Sólido</button><button class="chip ${m.unidad==='L'?'act':''}" onclick="cfMixSetR(${m.id},'unidad','L')">Líquido</button>${uds.map(([k,l])=>`<button class="chip ${m.unidadDosis===k?'act':''}" onclick="cfMixSetR(${m.id},'unidadDosis','${k}')">${l}</button>`).join("")}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="f" style="flex:1;min-width:90px">Dosis (${cfLabUnid(m.unidadDosis)})<input type="text" inputmode="decimal" value="${esc(m.dosis)}" placeholder="100" oninput="cfMixSet(${m.id},'dosis',this.value)"></label>
+      <label class="f" style="flex:1;min-width:90px">Precio ($/${m.unidad})<input type="text" inputmode="numeric" value="${esc(m.precioU)}" placeholder="0" oninput="cfMixSet(${m.id},'precioU',this.value)"></label>
+      <label class="f" style="flex:1;min-width:80px">Envase (${m.unidad})<input type="text" inputmode="decimal" value="${esc(m.envase)}" placeholder="—" oninput="cfMixSet(${m.id},'envase',this.value)"></label>
+      <label class="f" style="flex:1;min-width:80px">Carencia (d)<input type="text" inputmode="numeric" value="${esc(m.carencia)}" placeholder="0" oninput="cfMixSet(${m.id},'carencia',this.value)"></label>
+    </div>
+    <div class="muted" style="font-size:11.5px" id="cfMixHint_${m.id}">${cfMixHint(m)}</div>
+  </div>`;
+}
+function cfMezclaHTML(){
+  const mz=cfMezcla();
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3 style="margin:0">🧪 Mezcla en estanque</h3><button class="btn sec chico" onclick="cfMixAgregar()">＋ Agregar producto</button></div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">Otros productos en la misma bombada (ej. aceite adherente, un 2° insecticida). Comparten agua, mojamiento y estanque; la carencia usada es la <b>más larga</b>.</div>
+    ${mz.length? mz.map(m=>cfMixItemHTML(m)).join("") : '<div class="muted" style="font-size:12.5px">Solo el producto principal por ahora. Toca "＋ Agregar producto" para armar una mezcla.</div>'}
+    ${cfMezclaOrdenHTML()}
+  </div>`;
+}
+function cfMixInsumosHTML(){
+  if(!cfMezcla().length) return "";
+  const rows=cfMixCalc().map(x=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed rgba(0,0,0,.1);font-size:13px"><span>${esc(x.nombre||"—")}${x.esP?' <span class="badge b-verde" style="font-size:9px">principal</span>':''}</span><b style="white-space:nowrap">${cfQty(x.compra>0?x.compra:x.conM,x.uP)}${x.costo>0?" · "+cfCLP(x.costo):""}</b></div>`).join("");
+  const total=cfCostoTotalMezcla();
+  return `<div style="margin-top:12px"><div style="font-weight:800;margin-bottom:4px">🧪 Insumos de la mezcla</div>${rows}<div style="display:flex;justify-content:space-between;padding:6px 0 2px"><b>Costo total de la mezcla</b><b style="color:var(--p)">${total>0?cfCLP(total):"—"}</b></div>${cfMezclaOrdenHTML()}</div>`;
+}
+function cfPDFEstanqueHTML(){
+  const pf=cfPF(), cap=cfP(pf.estanque)||0, moj=cfP(pf.moj)||0;
+  if(!(cap>0)) return "";
+  const haCubre = moj>0? cap/moj : 0;
+  const prods=cfMixCalc().filter(x=>x.est>0);
+  const filas=prods.map(x=>`<tr><td>${esc(x.nombre||"—")}${x.esP?" (principal)":""}</td><td style="text-align:right">${cfQty(x.est,x.uP)}</td></tr>`).join("");
+  return `<h2 style="font-size:15px;color:#14532d;margin:14px 0 6px">Preparación por estanque (${cfNum(cap,0)} L)</h2>
+    <table class="t"><thead><tr><th>Producto</th><th style="text-align:right">Cantidad por estanque</th></tr></thead><tbody>${filas||`<tr><td colspan="2" style="color:#888">Ingresa dosis y mojamiento.</td></tr>`}</tbody></table>
+    <div style="margin-top:6px;font-size:12px;color:#444">Cada estanque de <b>${cfNum(cap,0)} L</b> cubre ~<b>${cfNum(haCubre,2)} ha</b> (mojamiento ${cfNum(moj,0)} L/ha). El N° de estanques para completar cada cuartel va en la columna <b>Estanques</b> de la tabla.</div>`;
+}
+function cfPDFMixHTML(){
+  if(!cfMezcla().length) return "";
+  const rows=cfMixCalc().map(x=>`<tr><td>${esc(x.nombre||"—")}${x.esP?" (principal)":""}</td><td style="text-align:right">${cfNum(x.prodHa,3)} ${x.uP}/ha</td><td style="text-align:right">${cfQty(x.conM,x.uP)}</td><td style="text-align:right">${x.compra>0?cfQty(x.compra,x.uP,0):"—"}</td><td style="text-align:right">${x.costo>0?cfCLP(x.costo):"—"}</td></tr>`).join("");
+  const ord=cfMezclaOrden();
+  return `<h2 style="font-size:15px;color:#14532d;margin:14px 0 6px">Mezcla en estanque</h2>
+    <table class="t"><thead><tr><th>Producto</th><th style="text-align:right">Dosis/ha</th><th style="text-align:right">Total (c/margen)</th><th style="text-align:right">A comprar</th><th style="text-align:right">Costo</th></tr></thead><tbody>${rows}</tbody></table>
+    ${ord?`<div style="margin-top:8px;font-size:12px;color:#444"><b>Orden de carga:</b> ${ord.map((x,i)=>(i+1)+") "+esc(x.n)).join(" · ")}. Aceites/adyuvantes al final; agitar siempre; jar test si hay dudas.</div>`:""}`;
+}
+
 /* ================== CALCULADORA DE TERRENO ================== */
 const CALC_TABS = [["aplic","🧪 Aplicación"],["cosecha","🍒 Cosecha"],["plant","🌿 Plantación"],["cuad","👷 Cuadrilla"]];
 function abrirCalc(tab){
@@ -3963,7 +5031,7 @@ function abrirAvances(){
       <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
       <div style="flex:1;color:#fff;font-weight:800;min-width:80px">📈 Avances</div>
       <button class="btn sec chico" onclick="iaAnalizarAvances()">✨ IA</button>
-      <button class="btn chico" onclick="window.print()">🖨️ PDF</button>
+      <button class="btn chico" onclick="descargarPDF('avances_'+hoy()+'.pdf')">🖨️ PDF</button>
     </div>
     <div class="no-print" style="background:#fff;border-bottom:1px solid var(--borde);padding:9px 14px">
       <div class="chips" style="flex-wrap:wrap;gap:6px">${perChips}</div>
