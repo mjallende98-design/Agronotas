@@ -4057,8 +4057,9 @@ function cfCalc(){
   const env=cfP(pf.envase)||0, nEnv=(conM>0&&env>0)?Math.ceil(conM/env):0, compra=nEnv*env;
   const precio=cfP(pf.precioU)||0, moj=cfP(pf.moj)||0, agua=haTot*moj*n;
   const cap=cfP(pf.estanque)||0, aguaPasada=haTot*moj, nEst=(cap>0&&aguaPasada>0)?Math.ceil(aguaPasada/cap):0, prodEst=(moj>0)?(cfProdHa()/moj)*cap:0, haEst=(moj>0)?cap/moj:0;
+  let nEstTot=0; if(cap>0&&moj>0){ D.cuarteles.forEach(q=>{ const s=pf.sel[q.id]; if(s&&s.on){ const ha=cfHaCuartel(q); if(ha>0) nEstTot+=Math.ceil(ha*moj/cap); } }); }
   const fc = fcMax || (pf.fecha? cfSumaDias(pf.fecha,pf.carencia) : "");
-  return {n,incl,haTot,prodHa:cfProdHa(),neto,conM,env,nEnv,compra,costoCompra:compra*precio,costoTeorico:neto*precio,agua,cap,nEst,prodEst,haEst,aguaPasada,fechaCosecha:fc};
+  return {n,incl,haTot,prodHa:cfProdHa(),neto,conM,env,nEnv,compra,costoCompra:compra*precio,costoTeorico:neto*precio,agua,cap,nEst,prodEst,haEst,aguaPasada,nEstTot,fechaCosecha:fc};
 }
 
 /* --- Estadística por fundo (aplica filtro por especie) --- */
@@ -4241,7 +4242,7 @@ function cfResumenHTML(){
     fila("Costo de compra", r.costoCompra>0?cfCLP(r.costoCompra):"—") +
     fila("Costo teórico (sin redondeo)", r.costoTeorico>0?cfCLP(r.costoTeorico):"—") +
     fila("Agua requerida", `${cfNum(r.agua,0)} L`) +
-    fila(`Estanques de ${cfNum(cfP(pf.estanque)||0,0)} L`, r.nEst? `${r.nEst}/pasada · ${cfQty(r.prodEst,uP)}/estanque · cubre ${cfNum(r.haEst,2)} ha` : "—");
+    fila(`Estanques de ${cfNum(cfP(pf.estanque)||0,0)} L`, r.nEstTot? `${cfNum(r.nEstTot,0)} bombadas en total${r.n>1?` (${cfNum(r.nEstTot*r.n,0)} con ${r.n} aplic.)`:""} · ${cfQty(r.prodEst,uP)}/estanque · cubre ${cfNum(r.haEst,2)} ha` : "—");
   const fc = r.fechaCosecha? fmtF(r.fechaCosecha) : "—";
   return `${cfAlertasHTML(r)}
     <h3 style="margin:0 0 8px">🧾 Cotización</h3>
@@ -4654,6 +4655,7 @@ function cfPDF(){
           <tr><td><b>A comprar (envases)</b></td><td style="text-align:right">${r.nEnv?r.nEnv+" × "+cfNum(cfP(pf.envase)||0,0)+" "+uP+" = "+cfNum(r.compra,0)+" "+uP:(r.conM>0?cfNum(r.conM,2)+" "+uP+" (define envase para redondear)":"—")}</td></tr>
           <tr><td><b>Costo estimado</b></td><td style="text-align:right">${cfMezcla().length?cfCLP(cfCostoTotalMezcla())+" (mezcla)":(r.costoCompra>0?cfCLP(r.costoCompra):(r.costoTeorico>0?cfCLP(r.costoTeorico)+" (s/ envase)":"—"))}</td></tr>
           <tr><td><b>Agua requerida</b></td><td style="text-align:right">${cfNum(r.agua,0)} L</td></tr>
+          <tr><td><b>Total de estanques (bombadas)</b></td><td style="text-align:right">${r.nEstTot?cfNum(r.nEstTot,0)+" bombadas"+(r.n>1?" · "+cfNum(r.nEstTot*r.n,0)+" con "+r.n+" aplic.":""):"—"}</td></tr>
         </tbody></table>
         ${cfPDFMixHTML()}
         ${cfPDFAlertas()}
