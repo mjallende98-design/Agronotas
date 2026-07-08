@@ -4650,9 +4650,6 @@ function cfPDF(){
         <tbody>${filas||`<tr><td colspan="9" style="color:#888">Sin cuarteles incluidos.</td></tr>`}</tbody></table>
         <table class="t" style="margin-top:14px"><tbody>
           <tr><td style="width:55%"><b>Superficie total</b></td><td style="text-align:right">${cfNum(r.haTot,1)} ha · ${r.incl} cuarteles</td></tr>
-          <tr><td><b>Producto neto</b></td><td style="text-align:right">${cfQty(r.neto,uP)}</td></tr>
-          <tr><td><b>Con margen (${cfNum(cfP(pf.margen)||0,0)}%)</b></td><td style="text-align:right">${cfQty(r.conM,uP)}</td></tr>
-          <tr><td><b>A comprar (envases)</b></td><td style="text-align:right">${r.nEnv?r.nEnv+" × "+cfNum(cfP(pf.envase)||0,0)+" "+uP+" = "+cfNum(r.compra,0)+" "+uP:(r.conM>0?cfNum(r.conM,2)+" "+uP+" (define envase para redondear)":"—")}</td></tr>
           <tr><td><b>Costo estimado</b></td><td style="text-align:right">${cfMezcla().length?cfCLP(cfCostoTotalMezcla())+" (mezcla)":(r.costoCompra>0?cfCLP(r.costoCompra):(r.costoTeorico>0?cfCLP(r.costoTeorico)+" (s/ envase)":"—"))}</td></tr>
           <tr><td><b>Agua requerida</b></td><td style="text-align:right">${cfNum(r.agua,0)} L</td></tr>
           <tr><td><b>Total de estanques (bombadas)</b></td><td style="text-align:right">${r.nEstTot?cfNum(r.nEstTot,0)+" bombadas"+(r.n>1?" · "+cfNum(r.nEstTot*r.n,0)+" con "+r.n+" aplic.":""):"—"}</td></tr>
@@ -4796,11 +4793,14 @@ function cfPDFEstanqueHTML(){
     <div style="margin-top:6px;font-size:12px;color:#444">Cada estanque de <b>${cfNum(cap,0)} L</b> cubre ~<b>${cfNum(haCubre,2)} ha</b> (mojamiento ${cfNum(moj,0)} L/ha). El N° de estanques para completar cada cuartel va en la columna <b>Estanques</b> de la tabla.</div>`;
 }
 function cfPDFMixHTML(){
-  if(!cfMezcla().length) return "";
-  const rows=cfMixCalc().map(x=>`<tr><td>${esc(x.nombre||"—")}${x.esP?" (principal)":""}</td><td style="text-align:right">${cfNum(x.prodHa,3)} ${x.uP}/ha</td><td style="text-align:right">${cfQty(x.conM,x.uP)}</td><td style="text-align:right">${x.compra>0?cfQty(x.compra,x.uP,0):"—"}</td><td style="text-align:right">${x.costo>0?cfCLP(x.costo):"—"}</td></tr>`).join("");
+  const prods=cfMixCalc().filter(x=>x.prodHa>0 || x.conM>0 || x.costo>0);
+  if(!prods.length) return "";
+  const rows=prods.map(x=>`<tr><td>${esc(x.nombre||"—")}${x.esP?" (principal)":""}</td><td style="text-align:right">${cfNum(x.prodHa,3)} ${x.uP}/ha</td><td style="text-align:right">${cfQty(x.neto,x.uP)}</td><td style="text-align:right">${cfQty(x.conM,x.uP)}</td><td style="text-align:right">${x.compra>0?cfQty(x.compra,x.uP,0):"—"}</td><td style="text-align:right">${x.costo>0?cfCLP(x.costo):"—"}</td></tr>`).join("");
+  const totCosto=cfCostoTotalMezcla();
+  const totRow=`<tr><td colspan="5" style="text-align:right"><b>Costo total</b></td><td style="text-align:right"><b>${totCosto>0?cfCLP(totCosto):"—"}</b></td></tr>`;
   const ord=cfMezclaOrden();
-  return `<h2 style="font-size:15px;color:#14532d;margin:14px 0 6px">Mezcla en estanque</h2>
-    <table class="t"><thead><tr><th>Producto</th><th style="text-align:right">Dosis/ha</th><th style="text-align:right">Total (c/margen)</th><th style="text-align:right">A comprar</th><th style="text-align:right">Costo</th></tr></thead><tbody>${rows}</tbody></table>
+  return `<h2 style="font-size:15px;color:#14532d;margin:14px 0 6px">Resumen de la aplicación</h2>
+    <table class="t"><thead><tr><th>Producto</th><th style="text-align:right">Dosis/ha</th><th style="text-align:right">Neto</th><th style="text-align:right">Con margen</th><th style="text-align:right">A comprar</th><th style="text-align:right">Costo</th></tr></thead><tbody>${rows}${totRow}</tbody></table>
     ${ord?`<div style="margin-top:8px;font-size:12px;color:#444"><b>Orden de carga:</b> ${ord.map((x,i)=>(i+1)+") "+esc(x.n)).join(" · ")}. Aceites/adyuvantes al final; agitar siempre; jar test si hay dudas.</div>`:""}`;
 }
 
