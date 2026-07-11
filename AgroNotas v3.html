@@ -111,6 +111,7 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
 .b-rojo{background:#ffebee; color:var(--rojo);}
 .b-azul{background:#e3f2fd; color:var(--azul);}
 .b-gris{background:#eceff1; color:var(--txt2);}
+.b-morado{background:#ede7f6; color:#5e35b1;}
 
 /* ===== Miniaturas de fotos ===== */
 .thumbs{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;}
@@ -509,9 +510,9 @@ function vPanel(){
   const haTot = D.cuarteles.reduce((s,q)=>s+(+q.ha||0),0);
   const haPlant = D.cuarteles.filter(q=>q.especie!=="Por plantar").reduce((s,q)=>s+(+q.ha||0),0);
   const hoyISO = hoy();
-  const pend = D.labores.filter(l=>l.estado!=="hecha");
+  const pend = D.labores.filter(l=>l.estado!=="hecha" && l.estado!=="finalizada");
   const atras = pend.filter(l=>l.estado==="pendiente" && (l.fecha2||l.fecha)<hoyISO);
-  const deHoy = D.labores.filter(l=>l.estado==="encurso" || ((l.estado==="pendiente"||l.estado==="hecha") && (l.fecha===hoyISO || (l.fecha2 && l.fecha<=hoyISO && hoyISO<=l.fecha2))));
+  const deHoy = D.labores.filter(l=>l.estado==="encurso" || ((l.estado==="pendiente"||l.estado==="hecha"||l.estado==="finalizada") && (l.fecha===hoyISO || (l.fecha2 && l.fecha<=hoyISO && hoyISO<=l.fecha2))));
   const sem = semanaDe(hoyISO);
   const deSemana = D.labores.filter(l=>l.fecha>=sem[0] && l.fecha<=sem[6]);
   const notasRec = [...D.notas].sort((a,b)=>b.fh.localeCompare(a.fh));
@@ -2057,7 +2058,8 @@ function badgeEstado(e){
   return {pendiente:`<span class="badge b-gris">Pendiente</span>`,
     encurso:`<span class="badge b-azul">En curso</span>`,
     pausada:`<span class="badge b-ambar">⏸ En pausa</span>`,
-    hecha:`<span class="badge b-verde">✓ Hecha</span>`}[e]||"";
+    hecha:`<span class="badge b-verde">✓ Hecha</span>`,
+    finalizada:`<span class="badge b-morado">🏁 Finalizada</span>`}[e]||"";
 }
 function filaLabor(l, mini){
   const atrasada = l.estado==="pendiente" && l.fecha<hoy();
@@ -2086,8 +2088,9 @@ function filaLabor(l, mini){
       ${l.estado==="pendiente"?`<button class="btn sec chico" onclick="event.stopPropagation();estadoLabor(${l.id},'encurso')">▶️ Iniciar</button>`:""}
       ${l.estado==="encurso"?`<button class="btn sec chico" onclick="event.stopPropagation();pausarLabor(${l.id})">⏸ Pausar</button>`:""}
       ${l.estado==="pausada"?`<button class="btn sec chico" onclick="event.stopPropagation();retomarLabor(${l.id})">▶️ Retomar hoy</button>`:""}
-      ${l.estado==="hecha"?`<button class="btn sec chico" onclick="event.stopPropagation();estadoLabor(${l.id},'encurso')">↩️ Reabrir</button>`:""}
-      ${l.estado!=="hecha"?`<button class="btn chico" onclick="event.stopPropagation();estadoLabor(${l.id},'hecha')">✅ Hecha</button>`:""}
+      ${(l.estado==="hecha"||l.estado==="finalizada")?`<button class="btn sec chico" onclick="event.stopPropagation();estadoLabor(${l.id},'encurso')">↩️ Reabrir</button>`:""}
+      ${(l.estado!=="hecha"&&l.estado!=="finalizada")?`<button class="btn chico" onclick="event.stopPropagation();estadoLabor(${l.id},'hecha')">✅ Hecha</button>`:""}
+      ${l.estado==="hecha"?`<button class="btn chico" style="background:#5e35b1" onclick="event.stopPropagation();estadoLabor(${l.id},'finalizada')">🏁 Finalizar</button>`:""}
     </div>
   </div>`;
 }
@@ -2125,7 +2128,7 @@ function formAvanceLabor(laborId, idx){
       total:(pago==="trato"? cant*val : pers*val), rend:(pers>0?cant/pers:0), obs:v("m_avobs")};
     if(idx!=null) l.avances[idx]=rec; else l.avances.push(rec);
     const hecho = l.avances.reduce((s,x)=>s+(+x.cantidad||0),0);
-    if((+l.meta||0)>0 && hecho>=+l.meta && l.estado!=="hecha"){ l.estado="hecha"; l.reanudar=""; }
+    if((+l.meta||0)>0 && hecho>=+l.meta && l.estado!=="hecha" && l.estado!=="finalizada"){ l.estado="hecha"; l.reanudar=""; }
     else if(l.estado==="pendiente"||l.estado==="pausada"){ l.estado="encurso"; l.reanudar=""; }
   });
   avanceCalc();
@@ -2151,11 +2154,11 @@ function verAvancesLabor(laborId){
   `, null, "Cerrar");
 }
 function planTerminadas(){
-  let ls = D.labores.filter(l=>l.estado==="hecha" && (!nav.filtroFundo||l.fundo===nav.filtroFundo));
+  let ls = D.labores.filter(l=>l.estado==="finalizada" && (!nav.filtroFundo||l.fundo===nav.filtroFundo));
   ls.sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"") || b.id-a.id);
-  if(!ls.length) return `<div class="vacio"><span class="ico">✅</span>Aún no hay labores terminadas.${nav.filtroFundo?" en "+esc(nav.filtroFundo):""}</div>`;
+  if(!ls.length) return `<div class="vacio"><span class="ico">🏁</span>Aún no hay labores finalizadas.${nav.filtroFundo?" en "+esc(nav.filtroFundo):""}<br>Cierra una labor Hecha con <b>🏁 Finalizar</b>.</div>`;
   const totCosto = ls.reduce((s,l)=>s+(l.avances||[]).reduce((t,a)=>t+(+a.total||0),0),0);
-  let h = `<div class="card" style="background:var(--pclaro);border:1px solid var(--p)"><div class="fila" style="justify-content:space-between;align-items:center"><b>✓ ${ls.length} labores terminadas${nav.filtroFundo?" · "+esc(nav.filtroFundo):""}</b><b style="color:var(--p2)">$${Math.round(totCosto).toLocaleString("es-CL")}</b></div>
+  let h = `<div class="card" style="background:var(--pclaro);border:1px solid var(--p)"><div class="fila" style="justify-content:space-between;align-items:center"><b>🏁 ${ls.length} labores finalizadas${nav.filtroFundo?" · "+esc(nav.filtroFundo):""}</b><b style="color:var(--p2)">$${Math.round(totCosto).toLocaleString("es-CL")}</b></div>
     <div class="muted" style="font-size:12px;margin-top:2px">Toca una para ver su detalle, o abre 📊 Análisis / PDF (en el Panel) para el resumen completo con gráficos.</div></div>`;
   h += ls.map(l=>filaLabor(l,true)).join("");
   return h;
@@ -2163,8 +2166,9 @@ function planTerminadas(){
 function vPlan(){
   const vista = nav.planVista || "sem";
   let h = chipsFundo();
+  h += `<button class="btn" style="width:100%;margin:2px 0 10px;padding:12px;font-size:15px" onclick="formParteDia('${vista==="dia"?(nav.diaSel||hoy()):hoy()}')">🧑‍🌾 Registrar parte del día</button>`;
   h += `<div class="chips" style="margin-bottom:8px">
-    ${[["dia","📄 Día"],["sem","📅 Semana"],["mes","🗓️ Mes"],["fin","✓ Terminadas"]].map(([id,lab])=>
+    ${[["dia","📄 Día"],["sem","📅 Semana"],["mes","🗓️ Mes"],["fin","🏁 Finalizadas"]].map(([id,lab])=>
       `<div class="chip ${vista===id?"act":""}" onclick="nav.planVista='${id}';render()">${lab}</div>`).join("")}
   </div>`;
   if(vista==="fin"){ h += planTerminadas(); }
@@ -2213,7 +2217,7 @@ function planSemana(){
       ${atras.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(l=>filaLabor(l,true)).join("")}</div>`;
   }
   for(const f of sem){
-    const del = laboresDe(f).sort((a,b)=>(a.estado==="hecha"?1:0)-(b.estado==="hecha"?1:0));
+    const del = laboresDe(f).sort((a,b)=>((a.estado==="hecha"||a.estado==="finalizada")?1:0)-((b.estado==="hecha"||b.estado==="finalizada")?1:0));
     h += `<div class="dia-h ${f===hoyISO?"hoy":""}">${f===hoyISO?"● Hoy":fmtDia(f)} <span class="fecha">${f===hoyISO?fmtDia(f):""}</span>
       <button class="btn sec chico" style="min-height:32px;padding:2px 12px;margin-left:auto" onclick="formLabor(null,'${f}')">+ labor</button></div>`;
     h += del.length? del.map(l=>filaLabor(l)).join("") : `<div class="muted" style="padding:2px 4px 6px">—</div>`;
@@ -2222,7 +2226,7 @@ function planSemana(){
 }
 function planDia(){
   const f = nav.diaSel || hoy();
-  const labs = laboresDe(f).sort((a,b)=>(a.estado==="hecha"?1:0)-(b.estado==="hecha"?1:0));
+  const labs = laboresDe(f).sort((a,b)=>((a.estado==="hecha"||a.estado==="finalizada")?1:0)-((b.estado==="hecha"||b.estado==="finalizada")?1:0));
   const nots = D.notas.filter(n=>(n.fh||"").slice(0,10)===f && (!nav.filtroFundo||n.fundo===nav.filtroFundo));
   const regs = D.registros.filter(r=>r.fecha===f && (!nav.filtroFundo||r.fundo===nav.filtroFundo));
   let h = `<div class="card"><div class="fila" style="justify-content:space-between">
@@ -2264,7 +2268,7 @@ function planMes(){
     const f = d.toISOString().slice(0,10);
     const enMes = d.getMonth()===me-1;
     const labs = laboresDe(f);
-    const pend = labs.filter(l=>l.estado!=="hecha").length;
+    const pend = labs.filter(l=>l.estado!=="hecha" && l.estado!=="finalizada").length;
     const nnots = D.notas.filter(n=>(n.fh||"").slice(0,10)===f && (!nav.filtroFundo||n.fundo===nav.filtroFundo)).length;
     h += `<div class="cal-cel ${enMes?"":"fuera"} ${f===hoyI?"hoy":""}" onclick="nav.planVista='dia';nav.diaSel='${f}';render()">
       <div class="cal-num">${d.getDate()}</div>
@@ -2327,7 +2331,7 @@ function formLabor(id, fechaSug, pre){
     ${campoF("m_unidad","Unidad de avance (plantas, hileras, kg…)","text",l?.unidad,'placeholder="plantas"')}
     ${campoF("m_meta","Meta / objetivo (editable)","text",l?.meta||"",'inputmode="decimal" placeholder="Auto o a mano · ajústala a lo real"')}
     ${campoF("m_resp","Responsable","text",l?.resp,'placeholder="Ej: Daniel Bosch"')}
-    ${l? selF("m_estado","Estado",["pendiente","encurso","pausada","hecha"],l.estado):""}
+    ${l? selF("m_estado","Estado",["pendiente","encurso","pausada","hecha","finalizada"],l.estado):""}
     ${l? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarLabor(${l.id})">🗑️ Eliminar labor</button>`:""}
   `, ()=>{
     if(!req("m_fecha","m_tipo","m_fundo")) return false;
@@ -2346,6 +2350,71 @@ function eliminarLabor(id){
   if(!confirm("¿Eliminar esta labor?")) return;
   D.labores = D.labores.filter(x=>x.id!==id);
   guardar(); cerrarModal(); render();
+}
+
+/* ================== PARTE DEL DÍA (cruce con el plan) ================== */
+function formParteDia(fechaSug, pre){
+  nav.parteLaborId=null; nav.avancePago="trato";
+  abrirModal("🧑‍🌾 Parte del día", `
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px">Anota lo que hiciste hoy. Si calza con una labor del plan (mismo cuartel y actividad) se suma como avance; si no, se crea una labor nueva. Sin doble registro.</div>
+    ${campoF("m_fecha","Fecha *","date", fechaSug||hoy())}
+    ${selF("m_tipo","Actividad (labor) *", tiposLabor(), pre&&pre.tipo, "— Elegir —")}
+    ${selF("m_fundo","Fundo *", fundosSel(), pre&&pre.fundo, "— Elegir fundo —")}
+    <label class="f">Cuartel<select id="m_cuartel"></select></label>
+    <div id="parteHint" style="margin:2px 0 8px"></div>
+    ${campoF("m_unidad","Unidad de avance (plantas, hileras, kg…)","text", pre&&pre.unidad, 'placeholder="plantas"')}
+    ${campoF("m_cantidad","Cantidad realizada *","text","",'inputmode="decimal" oninput="avanceCalc()"')}
+    ${campoF("m_personas","N° de personas","text","",'inputmode="decimal" oninput="avanceCalc()"')}
+    <div class="fila" style="margin:2px 0 8px">
+      <button type="button" class="chip act" id="pg_trato" onclick="avancePago('trato')">💵 A trato (por unidad)</button>
+      <button type="button" class="chip" id="pg_dia" onclick="avancePago('dia')">📅 Por día (jornal)</button>
+    </div>
+    ${campoF("m_valor","Valor ($) — por unidad si es trato, por persona/día si es por día","text","",'inputmode="numeric" oninput="avanceCalc()"')}
+    <div id="avanceTot" class="card" style="background:var(--pclaro);border:1px solid var(--p);padding:10px 12px;margin-bottom:8px"></div>
+    ${areaF("m_avobs","Observación (opcional)","")}
+  `, ()=>{
+    if(!req("m_fecha","m_tipo","m_fundo","m_cantidad")) return false;
+    const cn=x=>{ const y=parseFloat((v(x)||"").replace(/\./g,"").replace(",",".").replace(/[^0-9.\-]/g,"")); return isNaN(y)?0:y; };
+    const cant=cn("m_cantidad"), pers=cn("m_personas"), val=cn("m_valor"), pago=nav.avancePago||"trato";
+    const rec={fecha:v("m_fecha"), cantidad:cant, personas:pers, pago:pago, valor:val, total:(pago==="trato"?cant*val:pers*val), rend:(pers>0?cant/pers:0), obs:v("m_avobs")};
+    let l=null, creada=false;
+    if(nav.parteLaborId && nav.parteLaborId!=="nuevo") l=D.labores.find(x=>x.id===nav.parteLaborId);
+    if(!l){ l={id:nid(), estado:"encurso", avances:[], tipo:v("m_tipo"), fundo:v("m_fundo"), cuartel:v("m_cuartel"), fecha:v("m_fecha"), desc:"", resp:"", unidad:v("m_unidad")||"", meta:0}; D.labores.push(l); creada=true; }
+    l.avances=l.avances||[]; l.avances.push(rec);
+    if(v("m_unidad") && !l.unidad) l.unidad=v("m_unidad");
+    const hecho=l.avances.reduce((s,a)=>s+(+a.cantidad||0),0);
+    if((+l.meta||0)>0 && hecho>=+l.meta && l.estado!=="hecha" && l.estado!=="finalizada"){ l.estado="hecha"; l.reanudar=""; }
+    else if(l.estado==="pendiente"||l.estado==="pausada"){ l.estado="encurso"; l.reanudar=""; }
+    const _l=l, _c=creada; setTimeout(function(){ alert(_c? ("✓ Parte guardado. Creé la labor «"+_l.tipo+" · "+(_l.cuartel||_l.fundo)+"» y le sumé el avance.") : ("✓ Avance sumado a «"+_l.tipo+" · "+(_l.cuartel||_l.fundo)+"» del plan.")); }, 60);
+  }, "💾 Guardar parte");
+  document.getElementById("m_fundo").onchange = function(){ syncCuarteles(); parteMatch(); };
+  document.getElementById("m_cuartel").onchange = parteMatch;
+  document.getElementById("m_tipo").onchange = parteMatch;
+  syncCuarteles(pre&&pre.cuartel);
+  parteMatch(); avanceCalc();
+}
+function parteLaboresMatch(){
+  const fundo=v("m_fundo"), cuartel=v("m_cuartel")||"", tipo=(v("m_tipo")||"").trim().toLowerCase();
+  if(!fundo||!tipo) return [];
+  return D.labores.filter(function(l){ return l.estado!=="finalizada" && l.fundo===fundo && (l.cuartel||"")===cuartel && (l.tipo||"").trim().toLowerCase()===tipo; })
+    .sort(function(a,b){ return (b.fecha||"").localeCompare(a.fecha||""); });
+}
+function parteSel(id){ nav.parteLaborId=id; parteMatch(); }
+function parteMatch(){
+  const box=document.getElementById("parteHint"); if(!box) return;
+  const ms=parteLaboresMatch(); const ids=ms.map(function(l){return l.id;});
+  if(nav.parteLaborId && nav.parteLaborId!=="nuevo" && ids.indexOf(nav.parteLaborId)<0) nav.parteLaborId=null;
+  if(nav.parteLaborId==null) nav.parteLaborId = (ms.length===1? ms[0].id : (ms.length? null : "nuevo"));
+  let h="";
+  if(ms.length){
+    h += `<div class="muted" style="font-size:12px;margin-bottom:4px">🔗 Calza con el plan — ¿a cuál le sumo el avance?</div><div class="chips" style="flex-wrap:wrap;gap:6px">`;
+    h += ms.map(function(l){ const av=(l.avances||[]).reduce(function(s,a){return s+(+a.cantidad||0);},0); const sel=nav.parteLaborId===l.id; return `<button type="button" class="chip ${sel?"act":""}" onclick="parteSel(${l.id})">${esc(l.tipo)} · ${fmtF(l.fecha)} · ${num(av)}${l.meta?("/"+num(l.meta)):""}${l.unidad?(" "+esc(l.unidad)):""}</button>`; }).join("");
+    h += `<button type="button" class="chip ${nav.parteLaborId==="nuevo"?"act":""}" onclick="parteSel('nuevo')">➕ Crear labor nueva</button></div>`;
+  } else {
+    nav.parteLaborId="nuevo";
+    h += `<div class="muted" style="font-size:12px">Sin labor del plan que calce → se creará una <b>labor nueva</b> para esta fecha.</div>`;
+  }
+  box.innerHTML=h;
 }
 
 /* ================== REGISTROS TÉCNICOS ================== */
@@ -2427,6 +2496,7 @@ function regItemHTML(r){
       ${r.cuartel&&r.fundo?`<span class="muted" style="font-size:11px;white-space:nowrap">${esc(r.fundo)}</span>`:""}
     </div>
     ${r.dosis?`<div style="font-size:12px;margin-top:2px">${esc(r.dosis)}</div>`:""}
+    ${(r.mezcla&&r.mezcla.length)?`<div style="font-size:11.5px;margin-top:1px;color:var(--p2)">➕ mezcla: ${r.mezcla.map(mz=>esc(mz.n)+(mz.dosis?" ("+esc(mz.dosis)+")":"")).join(" · ")}</div>`:""}
     ${r.obs?`<div class="muted" style="font-size:11.5px;margin-top:1px">${esc(r.obs)}</div>`:""}
     ${r.estado?(r.estado==="pendiente"?`<div style="margin-top:4px" onclick="event.stopPropagation()"><span class="badge" style="background:#fff3e0;color:#b26a00">🕓 Pendiente</span> <button class="btn sec chico" onclick="regConfirmar(${r.id})">✓ Confirmar</button></div>`:`<div style="margin-top:4px"><span class="badge b-verde">✓ Aplicado${r.fechaReal?" "+fmtF(r.fechaReal):""}</span></div>`):""}
   </div>`;
@@ -2441,7 +2511,7 @@ function regBatchHTML(grp){
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:12px 14px;cursor:pointer" onclick="regTglB('${key}')">
       <div style="min-width:0;flex:1">
         <div style="font-weight:800;font-size:17px;line-height:1.2">${abierto?"▾ ":"▸ "}${esc(r0.producto||"—")}</div>
-        <div class="muted" style="font-size:12px;margin-top:3px">Aplicación · ${grp.length} cuarteles${fundos.length?" · "+esc(fundos.join(", ")):""}${r0.objetivo?" · 🎯 "+esc(r0.objetivo):""}</div>
+        <div class="muted" style="font-size:12px;margin-top:3px">Aplicación · ${grp.length} cuarteles${fundos.length?" · "+esc(fundos.join(", ")):""}${r0.objetivo?" · 🎯 "+esc(r0.objetivo):""}${(r0.mezcla&&r0.mezcla.length)?" · ➕ "+esc(r0.mezcla.map(mz=>mz.n).join(", ")):""}</div>
         <div class="muted" style="font-size:11.5px;margin-top:1px">${cuarteles.map(c=>esc(c)).join(" · ")}</div>
         ${(function(){var pen=grp.filter(function(x){return x.estado==="pendiente";}).length,apl=grp.filter(function(x){return x.estado==="aplicado";}).length;if(!pen&&!apl)return"";return `<div style="margin-top:5px" onclick="event.stopPropagation()">${pen?`<span class="badge" style="background:#fff3e0;color:#b26a00">🕓 ${pen} pendiente${pen>1?"s":""}</span> `:""}${apl?`<span class="badge b-verde">✓ ${apl} aplicado${apl>1?"s":""}</span> `:""}${pen?`<button class="btn sec chico" onclick="regConfirmarBatch('${esc(String(r0.aplId||regSig(r0)))}')">✓ Confirmar</button>`:""}</div>`;})()}
       </div>
@@ -2514,11 +2584,17 @@ function aplicExcelBlob(){
   const cols=[["Fecha plan",70],["Estado",80],["Fecha real",80],["Fundo",100],["Cuartel",140],["Especie",85],["Variedad",95],["Producto",125],["Dosis",155],["Objetivo",255],["Carencia (d)",78],["Mojamiento (L/ha)",100],["Superficie (ha)",90],["Producto total",105],["Costo",95],["Cosecha desde",95],["Responsable",120]];
   const numCols=new Set([10,11,12,13,14]);
   const m=(s,re)=>{ const x=String(s||"").match(re); return x?x[1]:""; };
-  const rows=lst.map(r=>{
+  const rows=[];
+  lst.forEach(r=>{
     const q=regCuartelInfo(r), obs=r.obs||"";
-    return [ fmtF(r.fecha), (r.estado==="aplicado"?"Aplicado":"Pendiente"), (r.fechaReal?fmtF(r.fechaReal):""),
-      r.fundo||"", r.cuartel||"", q.especie||"", q.variedad||"", r.producto||"", r.dosis||"", r.objetivo||"", r.carencia||"", r.mojamiento||"",
-      m(obs,/Sup ([\d.,]+) ha/), m(obs,/producto ([\d.,]+ ?[a-zA-Z]+)/), m(obs,/costo (\$[\d.]+)/), m(obs,/cosecha desde ([\d-]+)/), m(obs,/resp: (.+?)(?: ·|$)/) ];
+    const est=(r.estado==="aplicado"?"Aplicado":"Pendiente"), fr=(r.fechaReal?fmtF(r.fechaReal):"");
+    const sup=m(obs,/Sup ([\d.,]+) ha/), cos=m(obs,/cosecha desde ([\d-]+)/), rsp=m(obs,/resp: (.+?)(?: ·|$)/);
+    rows.push([ fmtF(r.fecha), est, fr, r.fundo||"", r.cuartel||"", q.especie||"", q.variedad||"", r.producto||"", r.dosis||"", r.objetivo||"", r.carencia||"", r.mojamiento||"",
+      sup, m(obs,/producto ([\d.,]+ ?[a-zA-Z]+)/), m(obs,/costo (\$[\d.]+)/), cos, rsp ]);
+    (r.mezcla||[]).forEach(mz=>{
+      rows.push([ fmtF(r.fecha), est, fr, r.fundo||"", r.cuartel||"", q.especie||"", q.variedad||"", "↳ "+(mz.n||""), mz.dosis||"", "(en mezcla)", (mz.carencia||""), r.mojamiento||"",
+        sup, (mz.total?cfQty(mz.total,mz.uP):""), (mz.costo>0?cfCLP(mz.costo):""), cos, rsp ]);
+    });
   });
   const e2=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const nC=cols.length;
@@ -2918,13 +2994,19 @@ function vDatos(){
   </div>`;
 
   h += `<div class="card"><h2>📤 Exportar para informes</h2>
+    <div class="fila" style="gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <span class="muted" style="font-size:12px">Rango labores (opcional):</span>
+      <input type="date" id="csvLabIni" style="padding:6px 8px;border:1.5px solid var(--borde);border-radius:8px;font-size:13px">
+      <span class="muted">a</span>
+      <input type="date" id="csvLabFin" style="padding:6px 8px;border:1.5px solid var(--borde);border-radius:8px;font-size:13px">
+    </div>
     <div class="fila">
       <button class="btn sec chico" onclick="csvExport('labores')">📅 Labores (CSV)</button>
       <button class="btn sec chico" onclick="csvExport('registros')">📋 Registros (CSV)</button>
       <button class="btn sec chico" onclick="csvExport('notas')">📝 Notas (CSV)</button>
       <button class="btn chico" onclick="abrirInforme()">🖨️ Informe semanal (PDF)</button>
     </div>
-    <div class="muted" style="margin-top:6px">Los CSV se abren directo en Excel para tus informes al directorio.</div></div>`;
+    <div class="muted" style="margin-top:6px">El CSV de Labores respeta el rango de fechas (vacío = todo) e incluye una fila de <b>TOTALES</b>. Los CSV se abren directo en Excel.</div></div>`;
 
   h += `<div class="card"><h2>💾 Respaldo</h2>
     <div class="fila">
@@ -3031,10 +3113,15 @@ function csvExport(que){
   const cel = x=>{ x = (x==null? "" : String(x)); return /[;"\n]/.test(x)? '"'+x.replace(/"/g,'""')+'"' : x; };
   let head = [], filas = [];
   if(que==="labores"){
+    const gi=id=>{const e=document.getElementById(id);return e?e.value:"";};
+    const ini=gi("csvLabIni"), fin=gi("csvLabFin");
+    const EST={pendiente:"Pendiente",encurso:"En curso",pausada:"En pausa",hecha:"Hecha",finalizada:"Finalizada"};
     head = ["Fecha","Término","Tipo","Fundo","Cuartel","Detalle","Responsable","Estado","Meta","Realizado","Unidad","Costo $","N° avances"];
-    filas = [...D.labores].sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""))
-      .map(l=>{ const av=l.avances||[]; const hecho=av.reduce((s,a)=>s+(+a.cantidad||0),0); const costo=av.reduce((s,a)=>s+(+a.total||0),0);
-        return [fmtF(l.fecha),fmtF(l.fecha2),l.tipo,l.fundo,l.cuartel,l.desc,l.resp,l.estado,(l.meta||""),(hecho||""),(l.unidad||""),(costo||""),(av.length||"")]; });
+    const lista=[...D.labores].filter(l=>{ const f0=l.fecha||"", f1=l.fecha2||l.fecha||""; if(ini && f1<ini) return false; if(fin && f0>fin) return false; return true; }).sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
+    let sumCosto=0, sumAv=0;
+    filas = lista.map(l=>{ const av=l.avances||[]; const hecho=av.reduce((s,a)=>s+(+a.cantidad||0),0); const costo=av.reduce((s,a)=>s+(+a.total||0),0); sumCosto+=costo; sumAv+=av.length;
+        return [fmtF(l.fecha),fmtF(l.fecha2),l.tipo,l.fundo,l.cuartel,l.desc,l.resp,(EST[l.estado]||l.estado),(l.meta||""),(hecho||""),(l.unidad||""),(costo||""),(av.length||"")]; });
+    filas.push(["","","TOTALES","","","","","","","","",Math.round(sumCosto),sumAv]);
   }else if(que==="registros"){
     const extras = [...new Set(Object.values(CAMPOS_REG).flat().map(c=>c[0]))];
     head = ["Fecha","Tipo","Fundo","Cuartel",...extras,"Observaciones"];
@@ -3109,12 +3196,12 @@ function abrirInforme(iniIso){
   const labs = D.labores.filter(l=>l.fecha<=fin && (l.fecha2||l.fecha)>=infIni).sort((a,b)=>a.fecha.localeCompare(b.fecha));
   const regs = D.registros.filter(r=>enSem(r.fecha)).sort((a,b)=>a.fecha.localeCompare(b.fecha));
   const nots = D.notas.filter(n=>enSem((n.fh||"").slice(0,10))).sort((a,b)=>a.fh.localeCompare(b.fh));
-  const atras = D.labores.filter(l=>l.estado!=="hecha" && l.fecha<infIni).length;
+  const atras = D.labores.filter(l=>l.estado!=="hecha" && l.estado!=="finalizada" && l.fecha<infIni).length;
   const lluvia = regs.filter(r=>r.tipo==="Lluvia").reduce((s,r)=>s+(+r.mm||0),0);
   const apls = regs.filter(r=>r.tipo==="Aplicación").length;
   const urg = nots.filter(n=>n.cat==="Urgente" && !n.resuelta).length;
-  const hechas = labs.filter(l=>l.estado==="hecha").length;
-  const est = {pendiente:"Pendiente", encurso:"En curso", hecha:"Hecha ✓"};
+  const hechas = labs.filter(l=>l.estado==="hecha"||l.estado==="finalizada").length;
+  const est = {pendiente:"Pendiente", encurso:"En curso", hecha:"Hecha ✓", finalizada:"Finalizada 🏁"};
   const fotos = [];
   for(const x of [...nots,...regs]) for(const f of (x.fotos||[])) if(fotos.length<9) fotos.push(f);
   const gReg={}; regs.forEach(r=>{ gReg[r.tipo]=(gReg[r.tipo]||0)+1; });
@@ -3479,9 +3566,9 @@ function vPanel(){
   const haTot = D.cuarteles.reduce((s,q)=>s+(+q.ha||0),0);
   const haPlant = D.cuarteles.filter(q=>q.especie!=="Por plantar").reduce((s,q)=>s+(+q.ha||0),0);
   const hoyISO = hoy();
-  const pend = D.labores.filter(l=>l.estado!=="hecha");
+  const pend = D.labores.filter(l=>l.estado!=="hecha" && l.estado!=="finalizada");
   const atras = pend.filter(l=>l.estado==="pendiente" && (l.fecha2||l.fecha)<hoyISO);
-  const deHoy = D.labores.filter(l=>l.estado==="encurso" || ((l.estado==="pendiente"||l.estado==="hecha") && (l.fecha===hoyISO || (l.fecha2 && l.fecha<=hoyISO && hoyISO<=l.fecha2))));
+  const deHoy = D.labores.filter(l=>l.estado==="encurso" || ((l.estado==="pendiente"||l.estado==="hecha"||l.estado==="finalizada") && (l.fecha===hoyISO || (l.fecha2 && l.fecha<=hoyISO && hoyISO<=l.fecha2))));
   const sem = semanaDe(hoyISO);
   const deSemana = D.labores.filter(l=>l.fecha>=sem[0] && l.fecha<=sem[6]);
   const notasRec = [...D.notas].sort((a,b)=>b.fh.localeCompare(a.fh));
@@ -3675,7 +3762,7 @@ function widgetHTML(w){
   if(w.tipo==="plan"){
     const sem = semanaDe(hoy());
     const labs = D.labores.filter(l=> (l.fecha>=sem[0] && l.fecha<=sem[6]) || (l.fecha2 && l.fecha<=sem[6] && l.fecha2>=sem[0]));
-    const hechas = labs.filter(l=>l.estado==="hecha").length;
+    const hechas = labs.filter(l=>l.estado==="hecha"||l.estado==="finalizada").length;
     const pct = labs.length? Math.round(hechas/labs.length*100) : 0;
     return widgetCard(w, `<div class="fila" style="align-items:center;gap:10px">
       <div style="flex:1;background:#eef1ec;border-radius:8px;height:16px"><div style="width:${pct}%;background:var(--p,#1e7a4c);height:16px;border-radius:8px"></div></div>
@@ -4593,8 +4680,9 @@ function cfGuardarRegistro(){
         +(precio>0?` · costo ${cfCLP(prod*precio)}`:"")
         +(fcQ?` · cosecha desde ${fmtF(fcQ)}`:"")
         +(n>1?` · ${n} aplic.`:"")+(resp?` · resp: ${resp}`:"");
+      const mezclaReg = cfMezcla().map(function(mm){ var mph=cfProdHaDe(mm.dosis,mm.unidadDosis,moj); if(isNaN(mph)) mph=0; var md=cfP(mm.dosis); var dtxt=(isNaN(md)?"":cfNum(md,md<10?2:0)+" "+cfLabUnid(mm.unidadDosis))+(mph>0?" → "+cfQty(mph,mm.unidad)+"/ha":""); return {n:mm.producto, dosis:dtxt, uP:mm.unidad, prodHa:mph, total:mph*ha*n, costo:mph*ha*n*(cfP(mm.precioU)||0), carencia:(parseInt(mm.carencia,10)||0)}; }).filter(function(mm){ return (mm.n||"").trim(); });
       D.registros.push({ id:nid(), aplId:aplId, estado:"pendiente", fechaPlan:fecha, tipo:"Aplicación", fecha:fecha, fundo:q.fundo, cuartel:q.nombre,
-        producto:pf.producto, dosis:dosisTxt, objetivo:obj, carencia:String(carQ||""),
+        producto:pf.producto, dosis:dosisTxt, objetivo:obj, carencia:String(carQ||""), mezcla:mezclaReg,
         mojamiento:String(moj||""), obs:obs, pin:"baja", gps:null, fotos:[], docs:[], audios:[] });
       cnt++;
     });
