@@ -187,7 +187,7 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
 .inf-kpis>div{flex:1;background:#f2f7f2;border:1px solid #d5e0d5;border-radius:8px;padding:10px;text-align:center;color:#444;font-size:12px}
 .inf-kpis b{display:block;font-size:19px;color:#14532d}
 .inf-alerta{background:#fff3e0;border:1px solid #ffb74d;border-radius:8px;padding:8px 12px;margin:8px 0;color:#7a4c00;font-weight:600}
-.inf-nota{border-left:3px solid #1e7a4c;background:#fafafa;padding:6px 10px;margin:6px 0;border-radius:0 6px 6px 0}
+.inf-nota{border-left:3px solid #1c7a44;background:#fafafa;padding:6px 10px;margin:6px 0;border-radius:0 6px 6px 0}
 .inf-vacio{color:#888;font-style:italic;margin:4px 0 10px}
 .inf-fotos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
 .inf-fotos img{width:100%;border-radius:6px;border:1px solid #ddd}
@@ -289,12 +289,7 @@ const DEF_TIPOS_REG = ["Aplicación","Riego","Fertilización","Fenología","Lluv
 const catsNota = ()=>D.catalogos.catsNota;
 const tiposLabor = ()=>D.catalogos.tiposLabor;
 const tiposReg = ()=>D.catalogos.tiposReg;
-const DEF_PLANTILLAS = [
-  {n:"🐛 Plaga", cat:"Plaga / Enfermedad", txt:"Presencia de "},
-  {n:"💧 Riego", cat:"Observación", txt:"Riego: revisar "},
-  {n:"🌱 Replante", cat:"Observación", txt:"Replante: "},
-  {n:"🛠️ Reparación", cat:"Observación", txt:"Reparar: "}
-];
+const DEF_PLANTILLAS = [];
 const plantillas = ()=>D.catalogos.plantillas;
 
 /* ================== ESTADO ================== */
@@ -314,7 +309,7 @@ function defaults(){
       portainjerto:q.pi, ha:q.ha, marco:q.d, anio:q.a})),
     notas:[], labores:[], registros:[],
     catalogos:{catsNota:[...DEF_CATS_NOTA], tiposLabor:[...DEF_TIPOS_LABOR], tiposReg:[...DEF_TIPOS_REG],
-      plantillas: DEF_PLANTILLAS.map(p=>({...p}))},
+      plantillas: DEF_PLANTILLAS.map(p=>({...p, items:[...(p.items||[])]}))},
     tablero:[],
     seq:1000
   };
@@ -326,6 +321,9 @@ function cargar(){
     // migraciones futuras: dar defaults a campos nuevos aquí (corren también en instalación nueva)
     D.cuarteles = D.cuarteles || []; D.notas = D.notas || [];
     D.labores = D.labores || []; D.registros = D.registros || [];
+    D.checklists = D.checklists || [];
+    D.checklists.forEach(function(l,i){ if(!Array.isArray(l.items)) l.items=[]; if(!l.color) l.color=CL_COLORS[i%CL_COLORS.length]; });
+    D.cosechaPesos = D.cosechaPesos || {};
     D.seq = D.seq || 1000;
     // migración v2: catálogos editables y adjuntos
     D.catalogos = D.catalogos || {};
@@ -334,7 +332,9 @@ function cargar(){
     D.catalogos.tiposReg = D.catalogos.tiposReg || [...DEF_TIPOS_REG];
     D.catalogos.tiposReg = D.catalogos.tiposReg.filter(t=>t!=="Avance"); // el avance ahora vive dentro de las labores del Plan
     D.labores.forEach(l=>{ l.avances = l.avances || []; }); // avances por labor
-    D.catalogos.plantillas = D.catalogos.plantillas || DEF_PLANTILLAS.map(p=>({...p}));
+    D.catalogos.plantillas = D.catalogos.plantillas || DEF_PLANTILLAS.map(p=>({...p, items:[...(p.items||[])]}));
+    D.catalogos.plantillas.forEach(p=>{ if(!Array.isArray(p.items)) p.items=[]; });
+    if(!D.catalogos.plClean2){ const _rm=["✅ Chequeo pre-aplicación","✅ Recorrido de cuartel","✅ Pre-cosecha","🐛 Plaga","💧 Riego","🌱 Replante","🛠️ Reparación"]; D.catalogos.plantillas=(D.catalogos.plantillas||[]).filter(p=>_rm.indexOf(p.n)<0); D.catalogos.plClean2=true; }
     D.catalogos.productosFito = D.catalogos.productosFito || SEED_PRODUCTOS_FITO.map(p=>({...p}));
     D.catalogos.plagas = D.catalogos.plagas || SEED_PLAGAS.map(p=>({...p}));
     D.tablero = D.tablero || [];
@@ -461,7 +461,7 @@ function abrirModal(titulo, html, onGuardar, txtBtn){
       <div class="mb">${html}</div>
       <div class="mf">
         <button class="btn sec" onclick="cerrarModal()">Cancelar</button>
-        <button class="btn" onclick="guardarModal()">${txtBtn||"💾 Guardar"}</button>
+        <button class="btn" onclick="guardarModal()">${txtBtn||ic("save")+" Guardar"}</button>
       </div>
     </div>
   </div>`;
@@ -476,6 +476,7 @@ async function guardarModal(){
 const TABS = [
   {id:"panel", ico:"🏠", lab:"Panel"},
   {id:"notas", ico:"📝", lab:"Notas"},
+  {id:"listas", ico:"✅", lab:"Listas"},
   {id:"plan", ico:"📅", lab:"Plan"},
   {id:"reg", ico:"📋", lab:"Registros"},
   {id:"tab", ico:"🗂️", lab:"Tablero"},
@@ -527,14 +528,14 @@ function vPanel(){
   </div>
   <div class="card" style="margin-top:12px">
     <div class="fila">
-      <button class="btn" style="flex:1" onclick="formNota()">📝 Nueva nota</button>
-      <button class="btn" style="flex:1;background:var(--azul)" onclick="formLabor()">📅 Nueva labor</button>
-      <button class="btn" style="flex:1;background:#6d4c41" onclick="formReg()">📋 Nuevo registro</button>
+      <button class="btn" style="flex:1" onclick="formNota()">${ic("note")} Nueva nota</button>
+      <button class="btn" style="flex:1;background:var(--azul)" onclick="formLabor()">${ic("calendar")} Nueva labor</button>
+      <button class="btn" style="flex:1;background:#6d4c41" onclick="formReg()">${ic("clipboard")} Nuevo registro</button>
     </div>
   </div>`;
 
   h += `<div class="card">
-    <h3>🔎 Pregúntale a tus datos <span class="badge b-azul">IA</span></h3>
+    <h3>${ic("search")} Pregúntale a tus datos <span class="badge b-azul">IA</span></h3>
     <div class="muted">Pregunta en lenguaje normal sobre tus notas, registros, labores y cuarteles. Necesita señal.</div>
     <div class="fila" style="margin-top:8px">
       <input id="iaBuscaQ" placeholder="Ej: ¿cuándo apliqué por última vez en San Joaquín?" style="flex:1;padding:11px;border:1.5px solid var(--borde);border-radius:10px;font-size:16px;min-width:150px" onkeydown="if(event.key==='Enter'){event.preventDefault();iaBuscar();}">
@@ -543,18 +544,18 @@ function vPanel(){
     <div id="iaBuscaR" style="margin-top:10px;white-space:pre-wrap;font-size:14.5px"></div>
   </div>`;
 
-  if(urg.length) h += `<div class="card" style="border-left:5px solid var(--rojo)">
-    <h3>🚨 Urgentes sin resolver (${urg.length})</h3>
+  if(urg.length) h += `<div class="card" style="border:1px solid #e2a9a4;background:#fdf0ef">
+    <h3>${ic("alert")} Urgentes sin resolver (${urg.length})</h3>
     ${urg.slice(0,5).map(n=>miniNota(n)).join("")}</div>`;
 
   const avisos = D.notas.filter(n=>n.aviso && n.aviso<=hoyISO);
   if(avisos.length) h += `<div class="card" style="border-left:5px solid #f9a825">
-    <h3>🔔 Recordatorios (${avisos.length})</h3>
+    <h3>${ic("bell")} Recordatorios (${avisos.length})</h3>
     ${avisos.sort((a,b)=>a.aviso.localeCompare(b.aviso)).map(n=>`<div class="fila" style="align-items:center">
       <div style="flex:1">${miniNota(n)}</div>
       <button class="btn sec chico" onclick="cerrarAviso(${n.id})">✓ Listo</button></div>`).join("")}</div>`;
 
-  h += `<div class="card"><h3>📅 Esta semana</h3>`;
+  h += `<div class="card"><h3>${ic("calendar")} Esta semana</h3>`;
   if(!deSemana.length) h += `<div class="muted">Sin labores planificadas. Toca 📅 Plan para agregar.</div>`;
   else{
     const porDia = {};
@@ -565,7 +566,7 @@ function vPanel(){
   }
   h += `</div>`;
 
-  h += `<div class="card"><h3>📝 Notas recientes</h3>`;
+  h += `<div class="card"><h3>${ic("note")} Notas recientes</h3>`;
   const rec = [...fijadas, ...notasRec.filter(n=>!n.fijada)].slice(0,5);
   h += rec.length? rec.map(n=>miniNota(n)).join("") : `<div class="muted">Aún no hay notas. Toca 📝 para crear la primera.</div>`;
   h += `</div>`;
@@ -573,7 +574,7 @@ function vPanel(){
 }
 function miniNota(n){
   return `<div class="item" style="box-shadow:none;border:1px solid var(--borde);padding:10px 12px" onclick="verNota(${n.id})">
-    <div class="tit" style="font-size:14px">${n.fijada?"📌 ":""}${badgeCat(n.cat)} ${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""}</div>
+    <div class="tit" style="font-size:14px">${n.fijada?ic("pin2")+" ":""}${badgeCat(n.cat)} ${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""}</div>
     ${n.titulo? `<div style="font-weight:700;font-size:13.5px;margin-top:2px">${esc(n.titulo)}</div>`:""}
     <div class="txt" style="margin-top:3px;font-size:13.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(n.texto)}</div>
     <div class="met">${fmtFH(n.fh)}${n.fotos.length?` · 📷 ${n.fotos.length}`:""}</div>
@@ -618,7 +619,7 @@ function notasListaHTML(){
   let h="";
   const fij=lst.filter(n=>n.fijada).sort((a,b)=>(b.fh||"").localeCompare(a.fh||""));
   const resto=lst.filter(n=>!n.fijada).sort((a,b)=>(b.fh||"").localeCompare(a.fh||""));
-  if(fij.length) h += notasSeccion("📌 Fijadas","fij",fij);
+  if(fij.length) h += notasSeccion(ic("pin2")+" Fijadas","fij",fij);
   const per=[]; const pidx={};
   resto.forEach(n=>{ const pk=regPeriodoKey((n.fh||"").slice(0,10),modo); if(pidx[pk]==null){pidx[pk]=per.length;per.push({k:pk,items:[]});} per[pidx[pk]].items.push(n); });
   per.forEach(p=>{ h += notasSeccion(regPeriodoLabel(p.k,modo), p.k, p.items); });
@@ -630,8 +631,8 @@ function filtrarNotasEnVivo(){
 function notaOcultar(id){ const n=D.notas.find(x=>x.id===id); if(!n) return; n.oculta=!n.oculta; guardar(); render(); }
 function tarjetaNota(n){
   const cab = `<div class="fila" style="justify-content:space-between;align-items:flex-start;gap:6px">
-      <div class="tit">${n.fijada?"📌 ":""}${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""}</div>
-      <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto">${n.oculta?`<span class="badge b-gris">🙈 Oculta</span>`:""}${badgeCat(n.cat)}<button onclick="event.stopPropagation();notaOcultar(${n.id})" title="${n.oculta?'Mostrar':'Ocultar'}" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0 2px;line-height:1">${n.oculta?"👁️":"🙈"}</button></div>
+      <div class="tit">${n.fijada?ic("pin2")+" ":""}${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""}</div>
+      <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto">${n.oculta?`<span class="badge b-gris">${ic("eyeOff")} Oculta</span>`:""}${badgeCat(n.cat)}<button onclick="event.stopPropagation();notaOcultar(${n.id})" title="${n.oculta?'Mostrar':'Ocultar'}" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0 2px;line-height:1">${n.oculta?ic("eye"):ic("eyeOff")}</button></div>
     </div>
     <div class="met">${fmtFH(n.fh)}${(n.audios&&n.audios.length)?" · 🎤 "+n.audios.length:""}${(n.check&&n.check.length)?` · ☑ ${n.check.filter(c=>c.ok).length}/${n.check.length}`:""}${n.gps?" · 📍":""}</div>`;
   if(n.oculta){
@@ -664,7 +665,7 @@ async function posNotas(){
     let h = "";
     for(const id of ids){
       const d = await fotoGet(id);
-      if(d) h += `<div class="aud-fila">🎤<audio controls preload="metadata" src="${d}"></audio></div>`;
+      if(d) h += `<div class="aud-fila">${ic("mic")}<audio controls preload="metadata" src="${d}"></audio></div>`;
     }
     div.innerHTML = h; div.removeAttribute("data-audios");
   }
@@ -680,7 +681,7 @@ function formNota(id){
   chkTmp = n? JSON.parse(JSON.stringify(n.check||[])) : [];
   gpsTmp = n? (n.gps||null) : null;
   gpsOn = n? !!n.gps : true; // nota nueva: con ubicación por defecto; el usuario puede apagarla
-  abrirModal(n?"Editar nota":"📝 Nueva nota", `
+  abrirModal(n?"Editar nota":ic("note")+" Nueva nota", `
     ${campoF("m_titulo","Título (opcional)","text",n?.titulo,'placeholder="Ej: Reunión proveedor, Novedad cuartel 3…"')}
     ${selF("m_fundo","Fundo *",fundosSel(),n?.fundo,"— Elegir fundo —")}
     ${bloqueCuarteles(n?.cuartel)}
@@ -689,7 +690,7 @@ function formNota(id){
     ${campoF("m_aviso","Recordatorio 🔔 (opcional: aparece en el Panel ese día)","date",n?.aviso)}
     <button type="button" class="btn sec chico" style="margin:-4px 0 10px" onclick="var e=document.getElementById('m_aviso'); e.value=''; e.blur();">✕ Quitar recordatorio</button>
     <label class="f" style="display:flex;align-items:center;gap:10px;font-size:15px">
-      <input type="checkbox" id="m_fijada" ${n?.fijada?"checked":""} style="width:24px;height:24px;min-height:0;margin:0"> 📌 Fijar arriba (importante)
+      <input type="checkbox" id="m_fijada" ${n?.fijada?"checked":""} style="width:24px;height:24px;min-height:0;margin:0"> ${ic("pin2")} Fijar arriba (importante)
     </label>
     <label class="f" style="margin-bottom:4px">Checklist (opcional)</label>
     <div id="chkLista"></div>
@@ -698,8 +699,8 @@ function formNota(id){
       <button class="btn sec chico" onclick="agregarChk()">＋ Ítem</button>
     </div>
     <div class="fila" style="margin-bottom:6px">
-      <button class="btn sec chico" id="btnGps" onclick="toggleGps()">📍 Con ubicación</button>
-      <button class="btn sec chico" onclick="elegirEnMapa()">🗺 Elegir en mapa</button>
+      <button class="btn sec chico" id="btnGps" onclick="toggleGps()">${ic("pin")} Con ubicación</button>
+      <button class="btn sec chico" onclick="elegirEnMapa()">${ic("map")} Elegir en mapa</button>
       <span class="muted" id="gpsInfo"></span>
     </div>
     <label class="f">Pin en el mapa (importancia visual)<select id="m_pin">
@@ -707,7 +708,7 @@ function formNota(id){
       <option value="normal" ${!n?.pin||n?.pin==="normal"?"selected":""}>Normal</option>
       <option value="baja" ${n?.pin==="baja"?"selected":""}>Discreta — pin chico</option></select></label>
     ${bloqueAdjuntos()}
-    ${n? `<button class="btn peligro chico" style="margin-top:14px" onclick="eliminarNota(${n.id})">🗑️ Eliminar nota</button>`:""}
+    ${n? `<button class="btn peligro chico" style="margin-top:14px" onclick="eliminarNota(${n.id})">${ic("trash")} Eliminar nota</button>`:""}
   `, async ()=>{
     if(!req("m_fundo","m_texto")) return false;
     if(n){
@@ -735,11 +736,11 @@ function formNota(id){
 /* --- Bloque de adjuntos reutilizable (notas y registros) --- */
 function bloqueAdjuntos(){
   return `<div class="fila" style="margin:6px 0">
-      <button class="btn sec chico" onclick="tomarFoto(true)">📷 Cámara</button>
-      <button class="btn sec chico" onclick="tomarFoto(false)">🖼️ Imagen</button>
-      <button class="btn sec chico" onclick="document.getElementById('inpDoc').click()">📎 PDF</button>
-      <button class="btn sec chico" id="btnGrabar" onclick="toggleGrabar()">🎤 Grabar</button>
-      <button class="btn sec chico" onclick="crearCroquis()">🎨 Croquis</button>
+      <button class="btn sec chico" onclick="tomarFoto(true)">${ic("camera")} Cámara</button>
+      <button class="btn sec chico" onclick="tomarFoto(false)">${ic("image")} Imagen</button>
+      <button class="btn sec chico" onclick="document.getElementById('inpDoc').click()">${ic("clip")} PDF</button>
+      <button class="btn sec chico" id="btnGrabar" onclick="toggleGrabar()">${ic("mic")} Grabar</button>
+      <button class="btn sec chico" onclick="crearCroquis()">${ic("shapes")} Croquis</button>
       <input type="file" id="inpCam" accept="image/*" capture="environment" hidden onchange="agregarFotos(this)">
       <input type="file" id="inpGal" accept="image/*" multiple hidden onchange="agregarFotos(this)">
       <input type="file" id="inpDoc" accept="application/pdf" multiple hidden onchange="agregarDocs(this)">
@@ -790,7 +791,7 @@ function pintarDocsTmp(){
 }
 async function quitarDocTmp(did){ docsTmp = docsTmp.filter(x=>x.id!==did); pintarDocsTmp(); }
 function chipsDocs(docs, editable){
-  return (docs||[]).map(dc=>`<div class="doc-chip" onclick="event.stopPropagation();abrirDoc('${dc.id}','${esc(dc.nombre)}')">📄 <span>${esc(dc.nombre)}</span>${editable?`<button class="qx" onclick="event.stopPropagation();quitarDocTmp('${dc.id}')">✕</button>`:""}</div>`).join("");
+  return (docs||[]).map(dc=>`<div class="doc-chip" onclick="event.stopPropagation();abrirDoc('${dc.id}','${esc(dc.nombre)}')">${ic("doc")} <span>${esc(dc.nombre)}</span>${editable?`<button class="qx" onclick="event.stopPropagation();quitarDocTmp('${dc.id}')">✕</button>`:""}</div>`).join("");
 }
 async function abrirDoc(id,nombre){
   const d = await fotoGet(id);
@@ -802,8 +803,8 @@ async function abrirDoc(id,nombre){
     <div class="vh">
       <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
       <div style="flex:1;color:#fff;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ${esc(nombre||"Documento")}</div>
-      <button class="btn chico" style="background:var(--azul)" onclick="iaInterpretarDoc('${id}','${esc(nombre||"Documento")}')">🔎 Interpretar</button>
-      <a class="btn chico" style="text-decoration:none" href="${url}" download="${esc(nombre||"documento.pdf")}">⬇️</a>
+      <button class="btn chico" style="background:var(--azul)" onclick="iaInterpretarDoc('${id}','${esc(nombre||"Documento")}')">${ic("search")} Interpretar</button>
+      <a class="btn chico" style="text-decoration:none" href="${url}" download="${esc(nombre||"documento.pdf")}">${ic("download")}</a>
     </div>
     <iframe src="${url}" style="flex:1;border:none;background:#fff"></iframe>
   </div>`;
@@ -825,7 +826,7 @@ async function toggleGrabar(){
       stream.getTracks().forEach(t=>t.stop());
       grab = null;
       const b = document.getElementById("btnGrabar");
-      if(b){ b.textContent="🎤 Grabar"; b.classList.remove("grabando"); }
+      if(b){ b.innerHTML=ic("mic")+" Grabar"; b.classList.remove("grabando"); }
       const blob = new Blob(trozos, {type: rec.mimeType || "audio/mp4"});
       if(blob.size > 15*1024*1024){ alert("Audio demasiado largo. Graba mensajes más cortos."); return; }
       const data = await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(blob); });
@@ -849,7 +850,7 @@ async function pintarAudiosTmp(){
   let h = "";
   for(const aid of audiosTmp){
     const d = await fotoGet(aid);
-    if(d) h += `<div class="aud-fila">🎤<audio controls preload="metadata" src="${d}"></audio><button class="btn sec chico" style="min-height:32px;padding:4px 9px" onclick="iaTranscribir('${aid}')">📝 Transcribir</button><button class="qx-cat" onclick="quitarAudioTmp('${aid}')">✕</button></div>`;
+    if(d) h += `<div class="aud-fila">${ic("mic")}<audio controls preload="metadata" src="${d}"></audio><button class="btn sec chico" style="min-height:32px;padding:4px 9px" onclick="iaTranscribir('${aid}')">${ic("note")} Transcribir</button><button class="qx-cat" onclick="quitarAudioTmp('${aid}')">✕</button></div>`;
   }
   cont.innerHTML = h;
 }
@@ -868,9 +869,9 @@ function crearCroquis(){
       <div style="flex:1;color:#fff;font-weight:700">Nuevo croquis · elige el fondo</div>
     </div>
     <div class="lienzo" style="flex-direction:column;gap:14px">
-      <button class="btn" style="min-width:260px" onclick="iniciarCroquis('blanco')">⬜ Hoja en blanco</button>
-      <button class="btn" style="min-width:260px" onclick="iniciarCroquis('grid')">📐 Cuadrícula</button>
-      <button class="btn" style="min-width:260px" onclick="iniciarCroquis('hileras')">🌳 Hileras de cuartel</button>
+      <button class="btn" style="min-width:260px" onclick="iniciarCroquis('blanco')">${ic("square")} Hoja en blanco</button>
+      <button class="btn" style="min-width:260px" onclick="iniciarCroquis('grid')">${ic("grid")} Cuadrícula</button>
+      <button class="btn" style="min-width:260px" onclick="iniciarCroquis('hileras')">${ic("tree")} Hileras de cuartel</button>
     </div>
   </div>`;
 }
@@ -896,13 +897,13 @@ async function abrirCroquisEd(fid, doc, nuevo){
     <div class="vh">
       <button class="btn sec chico" onclick="salirCroquis()">✕ Salir</button>
       <div style="flex:1"></div>
-      <button class="btn sec chico" onclick="cqZoomBtn(1.4)">➕</button>
-      <button class="btn sec chico" onclick="cqZoomBtn(1/1.4)">➖</button>
-      <button class="btn sec chico" id="cqMov" onclick="cqMover()">✋</button>
-      <button class="btn sec chico" id="cqZoom" style="display:none" onclick="cqZoomReset()">🔍</button>
+      <button class="btn sec chico" onclick="cqZoomBtn(1.4)">${ic("plus")}</button>
+      <button class="btn sec chico" onclick="cqZoomBtn(1/1.4)">${ic("minus")}</button>
+      <button class="btn sec chico" id="cqMov" onclick="cqMover()">${ic("move")}</button>
+      <button class="btn sec chico" id="cqZoom" style="display:none" onclick="cqZoomReset()">${ic("search")}</button>
       <button class="btn sec chico" onclick="deshacerCq()">↩️</button>
-      <button class="btn sec chico" id="cqDel" style="display:none" onclick="borrarSelCq()">🗑</button>
-      <button class="btn chico" onclick="guardarCq()">💾 Guardar</button>
+      <button class="btn sec chico" id="cqDel" style="display:none" onclick="borrarSelCq()">${ic("trash")}</button>
+      <button class="btn chico" onclick="guardarCq()">${ic("save")} Guardar</button>
     </div>
     <div class="lienzo" id="cqLienzo">
       <canvas id="cqBase" style="position:absolute"></canvas>
@@ -924,15 +925,15 @@ async function abrirCroquisEd(fid, doc, nuevo){
         `<button class="tool" onclick="setSelloCq('${s}',this)">${s}</button>`).join("")}
     </div>
     <div class="herr" id="cqHerr">
-      <button class="tool" data-t="sel" onclick="setToolCq('sel',this)">☝️</button>
-      <button class="tool act" data-t="lapiz" onclick="setToolCq('lapiz',this)">✏️</button>
-      <button class="tool" data-t="goma" onclick="setToolCq('goma',this)">🧽</button>
+      <button class="tool" data-t="sel" onclick="setToolCq('sel',this)">${ic("pointer")}</button>
+      <button class="tool act" data-t="lapiz" onclick="setToolCq('lapiz',this)">${ic("edit")}</button>
+      <button class="tool" data-t="goma" onclick="setToolCq('goma',this)">${ic("eraser")}</button>
       <button class="tool" data-t="flecha" onclick="setToolCq('flecha',this)">↗️</button>
-      <button class="tool" data-t="cota" onclick="setToolCq('cota',this)">📏</button>
-      <button class="tool" data-t="circ" onclick="setToolCq('circ',this)">⭕</button>
+      <button class="tool" data-t="cota" onclick="setToolCq('cota',this)">${ic("ruler")}</button>
+      <button class="tool" data-t="circ" onclick="setToolCq('circ',this)">${ic("circle")}</button>
       <button class="tool" data-t="rect" onclick="setToolCq('rect',this)">▭</button>
-      <button class="tool" data-t="txt" onclick="setToolCq('txt',this)">🔤</button>
-      <button class="tool" data-t="sello" onclick="setToolCq('sello',this);document.getElementById('cqSellos').style.display='flex'">🌳</button>
+      <button class="tool" data-t="txt" onclick="setToolCq('txt',this)">${ic("textT")}</button>
+      <button class="tool" data-t="sello" onclick="setToolCq('sello',this);document.getElementById('cqSellos').style.display='flex'">${ic("tree")}</button>
       <span style="width:8px"></span>
       ${["#e53935","#fdd835","#43a047","#1e88e5","#ffffff","#000000"].map((c,i)=>
         `<button class="col ${i===0?"act":""}" style="background:${c}" onclick="setColCq('${c}',this)"></button>`).join("")}
@@ -1575,14 +1576,14 @@ function pintarGps(){
   const b = document.getElementById("btnGps");
   if(b){
     b.className = gpsOn? "btn chico" : "btn sec chico";
-    b.textContent = gpsOn? "📍 Con ubicación" : "🚫 Sin ubicación";
+    b.innerHTML = gpsOn? ic("pin")+" Con ubicación" : ic("ban")+" Sin ubicación";
   }
   const info = document.getElementById("gpsInfo");
   if(!info) return;
   if(!gpsOn) info.innerHTML = `<span class="muted">no llevará ubicación (toca 🚫 para activarla)</span>`;
   else info.innerHTML = gpsTmp?
     `✓ ${gpsTmp.lat}, ${gpsTmp.lng}${gpsTmp.manual? ` <span class="muted">(elegida en el mapa)</span>`:""}${gpsTmp.acc?` <span class="muted">(±${gpsTmp.acc>1000? (gpsTmp.acc/1000).toFixed(1)+" km":gpsTmp.acc+" m"})</span>`:""}
-    &nbsp;<a href="${linkMapa(gpsTmp)}" target="_blank" style="font-weight:700">🗺️ Maps</a> &nbsp;<a href="${linkEarth(gpsTmp)}" target="_blank" style="font-weight:700">🌍 Earth</a>` : `<span class="muted">buscando señal…</span>`;
+    &nbsp;<a href="${linkMapa(gpsTmp)}" target="_blank" style="font-weight:700">${ic("map")} Maps</a> &nbsp;<a href="${linkEarth(gpsTmp)}" target="_blank" style="font-weight:700">${ic("globe")} Earth</a>` : `<span class="muted">buscando señal…</span>`;
 }
 function linkMapa(g){ return `https://maps.google.com/?q=${g.lat},${g.lng}`; }
 function linkEarth(g){ return `https://earth.google.com/web/search/${g.lat},${g.lng}/@${g.lat},${g.lng},400a,250d,35y,0h,0t,0r`; }
@@ -1622,7 +1623,7 @@ function iaCfg(){ const c = D.ia||{}; return {key:(c.key||"").trim(), modelo:(c.
 function iaVerClave(btn){
   const el = document.getElementById("ia_key"); if(!el) return;
   const ver = el.type==="password"; el.type = ver? "text" : "password";
-  if(btn) btn.textContent = ver? "🙈 Ocultar clave" : "👁 Ver clave";
+  if(btn) btn.innerHTML = ver? ic("eyeOff")+" Ocultar clave" : ic("eye")+" Ver clave";
 }
 function iaCargando(msg){
   let el = document.getElementById("iaCarga");
@@ -1642,7 +1643,7 @@ function iaPartes(instr, dataURLs){
 async function iaLlamar(partes, opts){
   opts = opts||{};
   const c = iaCfg();
-  if(!c.key) throw {msg:"Configura tu clave de IA en Datos → 🤖 Inteligencia (IA)."};
+  if(!c.key) throw {msg:"Configura tu clave de IA en Datos → Inteligencia (IA)."};
   if(navigator.onLine===false) throw {msg:"Sin señal. La IA necesita internet: guarda la foto y reinténtalo con conexión."};
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(c.modelo)}:generateContent?key=${encodeURIComponent(c.key)}`;
   const genCfg = {temperature: opts.temp!=null? opts.temp : 0.2};
@@ -1676,20 +1677,20 @@ function guardarIA(){
   D.ia = D.ia || {}; D.ia.key = v("ia_key"); D.ia.modelo = v("ia_modelo"); guardar();
   const e = document.getElementById("ia_estado");
   if(e) e.innerHTML = D.ia.key? "✓ Clave guardada. La identificación con IA está activa." : "Sin clave: la identificación con IA está apagada.";
-  alert("Listo, clave guardada. 🤖");
+  alert("Listo, clave guardada.");
 }
 async function probarIA(){
   D.ia = {key:v("ia_key"), modelo:v("ia_modelo")}; guardar();
   const est = document.getElementById("ia_estado"); if(est) est.textContent = "Probando conexión…";
   try{ await iaTexto("Responde solo con la palabra: ok");
     if(est) est.innerHTML = "✓ Conexión correcta con la IA.";
-    alert("✓ La IA respondió. Todo listo. 🤖");
+    alert("✓ La IA respondió. Todo listo.");
   }catch(err){ const m = err.msg||err.message||"No se pudo conectar";
     if(est) est.innerHTML = "⚠️ "+esc(m); alert("⚠️ "+m); }
 }
 /* --- Identificar plaga / enfermedad / maleza en una foto --- */
 async function iaIdentificar(fid){
-  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); cerrarVisor(); ir("datos"); return; }
+  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → Inteligencia (IA)."); cerrarVisor(); ir("datos"); return; }
   const du = await fotoGet(fid); if(!du){ alert("No encontré la foto."); return; }
   cerrarVisor();
   iaCargando("Identificando en la foto…");
@@ -1719,7 +1720,7 @@ function iaMostrarDiag(r){
     <div class="muted" style="margin-top:12px;border-top:1px solid var(--borde);padding-top:8px">⚠️ Es una <b>sugerencia</b> de IA para orientar tu monitoreo. Confírmala en terreno; no decidas aplicaciones solo con esto.</div>
   </div>`;
   window._iaDiag = iaDiagTexto(r);
-  abrirModal("🔬 Identificación con IA", cuerpo, ()=>{ iaCopiar(window._iaDiag); return false; }, "📋 Copiar");
+  abrirModal(ic("search")+" Identificación con IA", cuerpo, ()=>{ iaCopiar(window._iaDiag); return false; }, ic("clipboard")+" Copiar");
 }
 function iaDiagTexto(r){
   return `🔬 Identificación IA · AgroNotas\nTipo: ${r.tipo||"—"}\nNombre: ${r.nombre_comun||"—"}${r.nombre_cientifico? " ("+r.nombre_cientifico+")":""}\nConfianza: ${r.confianza||"—"}\nSíntomas: ${r.sintomas||"—"}\nQué monitorear: ${r.que_monitorear||"—"}\nManejo sugerido: ${r.recomendacion||"—"}\n⚠️ Sugerencia de IA, confirmar en terreno.`;
@@ -1730,7 +1731,7 @@ async function iaCopiar(t){
 }
 /* --- Escanear etiqueta / receta para autollenar una Aplicación --- */
 function iaEscanearEtiqueta(){
-  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); return; }
+  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → Inteligencia (IA)."); return; }
   const inp = document.createElement("input");
   inp.type = "file"; inp.accept = "image/*"; inp.setAttribute("capture","environment");
   inp.onchange = async ()=>{
@@ -1768,7 +1769,7 @@ function iaRellenarAplicacion(r){
 }
 /* --- Dictado: transcribir nota de voz --- */
 async function iaTranscribir(aid){
-  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); return; }
+  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → Inteligencia (IA)."); return; }
   const campo = document.getElementById("m_texto") || document.getElementById("m_obs");
   if(!campo){ alert("Abre la nota o el registro para volcar ahí la transcripción."); return; }
   const du = await fotoGet(aid); if(!du){ alert("No encontré el audio."); return; }
@@ -1784,7 +1785,7 @@ async function iaTranscribir(aid){
 }
 /* --- Leer / interpretar un documento (PDF o foto) --- */
 async function iaInterpretarDoc(id, nombre){
-  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); return; }
+  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → Inteligencia (IA)."); return; }
   const du = await fotoGet(id); if(!du){ alert("No encontré el documento."); return; }
   cerrarVisor();
   iaCargando("Leyendo el documento…");
@@ -1804,7 +1805,7 @@ function iaTextoModal(titulo, texto){
   window._iaTxt = texto;
   const cuerpo = `<div class="ia-diag" style="white-space:pre-wrap;font-size:15px;line-height:1.5">${esc(texto)}</div>
     <div class="muted" style="margin-top:12px;border-top:1px solid var(--borde);padding-top:8px">⚠️ Generado por IA. Revísalo y confírmalo antes de decidir.</div>`;
-  abrirModal(titulo, cuerpo, ()=>{ iaCopiar(window._iaTxt); return false; }, "📋 Copiar");
+  abrirModal(titulo, cuerpo, ()=>{ iaCopiar(window._iaTxt); return false; }, ic("clipboard")+" Copiar");
 }
 /* --- Buscador inteligente sobre mis datos --- */
 function iaContextoDatos(){
@@ -1827,7 +1828,7 @@ function iaContextoDatos(){
   return s;
 }
 async function iaBuscar(){
-  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); ir("datos"); return; }
+  if(!iaCfg().key){ alert("Primero pega tu clave de IA en Datos → Inteligencia (IA)."); ir("datos"); return; }
   const el = document.getElementById("iaBuscaQ");
   const pregunta = ((el&&el.value)||"").trim();
   const out = document.getElementById("iaBuscaR");
@@ -1866,7 +1867,7 @@ function barrasSVG(titulo, pares, color, fmt){
 }
 /* --- Resumen ejecutivo del informe (IA) --- */
 async function iaResumenInforme(){
-  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); return; }
+  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → Inteligencia (IA)."); return; }
   const cont = document.getElementById("infResumen"); if(!cont) return;
   cont.style.color="#555"; cont.textContent = "Redactando el resumen…";
   const instr = `Eres un jefe de campo frutícola en Chile. Con estos datos de la semana, redacta un RESUMEN EJECUTIVO breve (4 a 6 frases) para el directorio: qué se hizo, lo relevante (aplicaciones, urgencias, lluvia, atrasos) y 1 o 2 recomendaciones prudentes. Español de Chile, tono profesional y directo. No inventes datos.
@@ -1881,7 +1882,7 @@ ${window._infTxt||""}`;
 /* --- Ver nota --- */
 function verNota(id){
   const n = D.notas.find(x=>x.id===id); if(!n) return;
-  abrirModal(`${n.fijada?"📌 ":""}Nota · ${esc(n.fundo)}`, `
+  abrirModal(`${n.fijada?ic("pin2")+" ":""}Nota · ${esc(n.fundo)}`, `
     <div class="met" style="margin-bottom:6px">${badgeCat(n.cat)} &nbsp; ${fmtFH(n.fh)}${n.cuartel?" · Cuartel: <b>"+esc(n.cuartel)+"</b>":""}${n.aviso?` · 🔔 ${fmtF(n.aviso)}`:""}</div>
     ${n.titulo? `<div style="font-size:18px;font-weight:800;margin-bottom:6px">${esc(n.titulo)}</div>`:""}
     <div class="txt" style="font-size:16px;white-space:pre-wrap;word-break:break-word;line-height:1.5">${esc(n.texto)}</div>
@@ -1890,11 +1891,11 @@ function verNota(id){
     <div class="audios" data-audios="${(n.audios||[]).join(",")}"></div>
     ${(n.check&&n.check.length)? `<div style="margin-top:10px">${n.check.map((c,i)=>`<div class="chk-fila ${c.ok?"ok":""}"><input type="checkbox" ${c.ok?"checked":""} onchange="marcarChk(${n.id},${i},this.checked);this.parentElement.classList.toggle('ok',this.checked)"><span style="flex:1">${esc(c.t)}</span></div>`).join("")}</div>`:""}
     <div class="fila" style="margin-top:14px">
-      ${n.gps? `<a class="btn sec chico" style="text-decoration:none" href="${linkMapa(n.gps)}" target="_blank" onclick="event.stopPropagation()">🗺️ Maps</a>
-      <a class="btn sec chico" style="text-decoration:none" href="${linkEarth(n.gps)}" target="_blank" onclick="event.stopPropagation()">🌍 Earth</a>`:""}
-      <button class="btn sec chico" onclick="laborDesdeNota(${n.id})">📅 Crear labor</button>
-      <button class="btn sec chico" onclick="tarjetaDesdeNota(${n.id})">🗂️ Al tablero</button>
-      <button class="btn sec chico" onclick="compartirNota(${n.id})">📤 Compartir</button>
+      ${n.gps? `<a class="btn sec chico" style="text-decoration:none" href="${linkMapa(n.gps)}" target="_blank" onclick="event.stopPropagation()">${ic("map")} Maps</a>
+      <a class="btn sec chico" style="text-decoration:none" href="${linkEarth(n.gps)}" target="_blank" onclick="event.stopPropagation()">${ic("globe")} Earth</a>`:""}
+      <button class="btn sec chico" onclick="laborDesdeNota(${n.id})">${ic("calendar")} Crear labor</button>
+      <button class="btn sec chico" onclick="tarjetaDesdeNota(${n.id})">${ic("board")} Al tablero</button>
+      <button class="btn sec chico" onclick="compartirNota(${n.id})">${ic("share")} Compartir</button>
     </div>
     ${n.cat==="Urgente"? `<label class="f" style="display:flex;align-items:center;gap:10px;margin-top:14px;font-size:15px">
       <input type="checkbox" id="m_resuelta" ${n.resuelta?"checked":""} style="width:24px;height:24px;min-height:0;margin:0" onchange="marcarResuelta(${n.id},this.checked)"> ✅ Marcar como resuelta</label>`:""}
@@ -1908,8 +1909,10 @@ function notaPlantilla(i){
   formNota();
   const c = document.getElementById("m_cat");
   if(c && catsNota().includes(p.cat)) c.value = p.cat;
+  const tt = document.getElementById("m_titulo"); if(tt && !tt.value) tt.value = p.n||"";
   const t = document.getElementById("m_texto");
   if(t){ t.value = p.txt||""; t.focus(); try{ t.setSelectionRange(t.value.length,t.value.length); }catch(e){} }
+  chkTmp = (p.items||[]).map(it=>({t:it, ok:false})); pintarChk();
 }
 async function eliminarNota(id){
   if(!confirm("¿Eliminar esta nota y sus fotos? No se puede deshacer.")) return;
@@ -1931,9 +1934,9 @@ async function abrirVisor(fid){
     <div class="vh">
       <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
       <div style="flex:1"></div>
-      <button class="btn chico" style="background:var(--azul)" onclick="iaIdentificar('${fid}')">🔬 Identificar</button>
-      <button class="btn chico" style="background:var(--acc);color:#222" onclick="abrirEditor('${fid}')">✏️ Dibujar</button>
-      <button class="btn sec chico" onclick="descargarFoto('${fid}')">⬇️</button>
+      <button class="btn chico" style="background:var(--azul)" onclick="iaIdentificar('${fid}')">${ic("search")} Identificar</button>
+      <button class="btn chico" style="background:var(--acc);color:#222" onclick="abrirEditor('${fid}')">${ic("edit")} Dibujar</button>
+      <button class="btn sec chico" onclick="descargarFoto('${fid}')">${ic("download")}</button>
     </div>
     <div class="lienzo"><img class="full" src="${d}"></div>
   </div>`;
@@ -2083,14 +2086,14 @@ function filaLabor(l, mini){
     </div>`:""}
     ${l.estado==="pausada"?`<div class="fila" style="margin-top:6px;align-items:center;gap:6px;flex-wrap:wrap"><span class="muted" style="font-size:12px">⏸ Reanuda el</span><input type="date" value="${esc(l.reanudar||"")}" onclick="event.stopPropagation()" onchange="event.stopPropagation();setReanudar(${l.id},this.value)" style="padding:5px 8px;border:1.5px solid var(--borde);border-radius:8px;font-size:13px">${(l.reanudar && l.reanudar<=hoy())?`<span class="badge b-ambar">↩️ toca retomar</span>`:""}</div>`:""}
     <div class="fila" style="margin-top:8px;gap:8px;flex-wrap:wrap">
-      <button class="btn sec chico" onclick="event.stopPropagation();formAvanceLabor(${l.id})">➕ Avance</button>
-      ${av.length?`<button class="btn sec chico" onclick="event.stopPropagation();verAvancesLabor(${l.id})">📋 Avances (${av.length})</button>`:""}
+      <button class="btn sec chico" onclick="event.stopPropagation();formAvanceLabor(${l.id})">${ic("plus")} Avance</button>
+      ${av.length?`<button class="btn sec chico" onclick="event.stopPropagation();verAvancesLabor(${l.id})">${ic("clipboard")} Avances (${av.length})</button>`:""}
       ${l.estado==="pendiente"?`<button class="btn sec chico" onclick="event.stopPropagation();estadoLabor(${l.id},'encurso')">▶️ Iniciar</button>`:""}
       ${l.estado==="encurso"?`<button class="btn sec chico" onclick="event.stopPropagation();pausarLabor(${l.id})">⏸ Pausar</button>`:""}
       ${l.estado==="pausada"?`<button class="btn sec chico" onclick="event.stopPropagation();retomarLabor(${l.id})">▶️ Retomar hoy</button>`:""}
       ${(l.estado==="hecha"||l.estado==="finalizada")?`<button class="btn sec chico" onclick="event.stopPropagation();estadoLabor(${l.id},'encurso')">↩️ Reabrir</button>`:""}
-      ${(l.estado!=="hecha"&&l.estado!=="finalizada")?`<button class="btn chico" onclick="event.stopPropagation();estadoLabor(${l.id},'hecha')">✅ Hecha</button>`:""}
-      ${l.estado==="hecha"?`<button class="btn chico" style="background:#5e35b1" onclick="event.stopPropagation();estadoLabor(${l.id},'finalizada')">🏁 Finalizar</button>`:""}
+      ${(l.estado!=="hecha"&&l.estado!=="finalizada")?`<button class="btn chico" onclick="event.stopPropagation();estadoLabor(${l.id},'hecha')">${ic("checkCirc")} Hecha</button>`:""}
+      ${l.estado==="hecha"?`<button class="btn chico" style="background:#5e35b1" onclick="event.stopPropagation();estadoLabor(${l.id},'finalizada')">${ic("flag")} Finalizar</button>`:""}
     </div>
   </div>`;
 }
@@ -2113,13 +2116,13 @@ function formAvanceLabor(laborId, idx){
     ${campoF("m_cantidad","Cantidad realizada *"+(l.unidad?" ("+esc(l.unidad)+")":""),"text",a?.cantidad,'inputmode="decimal" oninput="avanceCalc()"')}
     ${campoF("m_personas","N° de personas","text",a?.personas,'inputmode="decimal" oninput="avanceCalc()"')}
     <div class="fila" style="margin:2px 0 8px">
-      <button type="button" class="chip ${pg==="trato"?"act":""}" id="pg_trato" onclick="avancePago('trato')">💵 A trato (por unidad)</button>
-      <button type="button" class="chip ${pg==="dia"?"act":""}" id="pg_dia" onclick="avancePago('dia')">📅 Por día (jornal)</button>
+      <button type="button" class="chip ${pg==="trato"?"act":""}" id="pg_trato" onclick="avancePago('trato')">${ic("money")} A trato (por unidad)</button>
+      <button type="button" class="chip ${pg==="dia"?"act":""}" id="pg_dia" onclick="avancePago('dia')">${ic("calendar")} Por día (jornal)</button>
     </div>
     ${campoF("m_valor","Valor ($) — por unidad si es trato, por persona/día si es por día","text",a?.valor,'inputmode="numeric" oninput="avanceCalc()"')}
     <div id="avanceTot" class="card" style="background:var(--pclaro);border:1px solid var(--p);padding:10px 12px;margin-bottom:8px"></div>
     ${areaF("m_avobs","Observación (opcional)",a?.obs)}
-    ${a!=null?`<button class="btn peligro chico" onclick="borrarAvance(${laborId},${idx})">🗑️ Eliminar avance</button>`:""}
+    ${a!=null?`<button class="btn peligro chico" onclick="borrarAvance(${laborId},${idx})">${ic("trash")} Eliminar avance</button>`:""}
   `, ()=>{
     if(!req("m_fecha","m_cantidad")) return false;
     const cn=x=>{ const y=parseFloat((v(x)||"").replace(/\./g,"").replace(",",".").replace(/[^0-9.\-]/g,"")); return isNaN(y)?0:y; };
@@ -2150,13 +2153,13 @@ function verAvancesLabor(laborId){
   abrirModal("📋 Avances · "+esc(l.tipo)+(l.cuartel?" · "+esc(l.cuartel):""), `
     <div class="card" style="background:var(--pclaro);border:1px solid var(--p)"><div class="fila" style="justify-content:space-between"><span>Avanzado: <b>${num(hecho)}${l.unidad?" "+esc(l.unidad):""}</b></span><b style="color:var(--p2)">$${Math.round(costo).toLocaleString("es-CL")}</b></div>${(+l.meta>0)?`<div class="fila" style="justify-content:space-between;margin-top:3px"><span class="muted">Meta ${num(+l.meta)} · restan ${num(Math.max(0,+l.meta-hecho))}</span><b style="color:var(--p2)">${Math.min(100,Math.round(hecho/(+l.meta)*100))}%</b></div><div style="background:#eef1ec;border-radius:6px;height:8px;margin-top:4px"><div style="width:${Math.min(100,Math.round(hecho/(+l.meta)*100))}%;background:var(--p);height:8px;border-radius:6px"></div></div>`:""}</div>
     ${filas||`<div class="muted">Aún no hay avances.</div>`}
-    <button class="btn full" style="margin-top:8px" onclick="cerrarModal();formAvanceLabor(${laborId})">➕ Agregar avance</button>
+    <button class="btn full" style="margin-top:8px" onclick="cerrarModal();formAvanceLabor(${laborId})">${ic("plus")} Agregar avance</button>
   `, null, "Cerrar");
 }
 function planTerminadas(){
   let ls = D.labores.filter(l=>l.estado==="finalizada" && (!nav.filtroFundo||l.fundo===nav.filtroFundo));
   ls.sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"") || b.id-a.id);
-  if(!ls.length) return `<div class="vacio"><span class="ico">🏁</span>Aún no hay labores finalizadas.${nav.filtroFundo?" en "+esc(nav.filtroFundo):""}<br>Cierra una labor Hecha con <b>🏁 Finalizar</b>.</div>`;
+  if(!ls.length) return `<div class="vacio"><span class="ico">🏁</span>Aún no hay labores finalizadas.${nav.filtroFundo?" en "+esc(nav.filtroFundo):""}<br>Cierra una labor Hecha con <b>${ic("flag")} Finalizar</b>.</div>`;
   const totCosto = ls.reduce((s,l)=>s+(l.avances||[]).reduce((t,a)=>t+(+a.total||0),0),0);
   let h = `<div class="card" style="background:var(--pclaro);border:1px solid var(--p)"><div class="fila" style="justify-content:space-between;align-items:center"><b>🏁 ${ls.length} labores finalizadas${nav.filtroFundo?" · "+esc(nav.filtroFundo):""}</b><b style="color:var(--p2)">$${Math.round(totCosto).toLocaleString("es-CL")}</b></div>
     <div class="muted" style="font-size:12px;margin-top:2px">Toca una para ver su detalle, o abre 📊 Análisis / PDF (en el Panel) para el resumen completo con gráficos.</div></div>`;
@@ -2166,7 +2169,7 @@ function planTerminadas(){
 function vPlan(){
   const vista = nav.planVista || "sem";
   let h = chipsFundo();
-  h += `<button class="btn" style="width:100%;margin:2px 0 10px;padding:12px;font-size:15px" onclick="formParteDia('${vista==="dia"?(nav.diaSel||hoy()):hoy()}')">🧑‍🌾 Registrar parte del día</button>`;
+  h += `<button class="btn" style="width:100%;margin:2px 0 10px;padding:12px;font-size:15px" onclick="formParteDia('${vista==="dia"?(nav.diaSel||hoy()):hoy()}')">${ic("clipboard")} Registrar parte del día</button>`;
   h += `<div class="chips" style="margin-bottom:8px">
     ${[["dia","📄 Día"],["sem","📅 Semana"],["mes","🗓️ Mes"],["fin","🏁 Finalizadas"]].map(([id,lab])=>
       `<div class="chip ${vista===id?"act":""}" onclick="nav.planVista='${id}';render()">${lab}</div>`).join("")}
@@ -2213,7 +2216,7 @@ function planSemana(){
   </div></div>`;
 
   if(atras.length && esActual){
-    h += `<div class="card" style="border-left:5px solid var(--rojo)"><h3>⚠️ Atrasadas (${atras.length})</h3>
+    h += `<div class="card" style="border:1px solid #e2a9a4;background:#fdf0ef"><h3>${ic("alert")} Atrasadas (${atras.length})</h3>
       ${atras.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(l=>filaLabor(l,true)).join("")}</div>`;
   }
   for(const f of sem){
@@ -2235,10 +2238,10 @@ function planDia(){
       ${f!==hoy()?`<div><button class="btn sec chico" style="min-height:30px;padding:2px 10px;font-size:12px" onclick="nav.diaSel=null;render()">Ir a hoy</button></div>`:""}</div>
     <button class="btn sec chico" onclick="moverDia(1)">›</button>
   </div></div>`;
-  h += `<div class="card"><h3>📅 Labores (${labs.length})</h3>` +
+  h += `<div class="card"><h3>${ic("calendar")} Labores (${labs.length})</h3>` +
     (labs.length? labs.map(l=>filaLabor(l)).join("") : `<div class="muted">Sin labores este día. Toca + para agregar.</div>`) + `</div>`;
-  if(nots.length) h += `<div class="card"><h3>📝 Notas del día (${nots.length})</h3>${nots.map(n=>miniNota(n)).join("")}</div>`;
-  if(regs.length) h += `<div class="card"><h3>📋 Registros del día (${regs.length})</h3>
+  if(nots.length) h += `<div class="card"><h3>${ic("note")} Notas del día (${nots.length})</h3>${nots.map(n=>miniNota(n)).join("")}</div>`;
+  if(regs.length) h += `<div class="card"><h3>${ic("clipboard")} Registros del día (${regs.length})</h3>
     ${regs.map(r=>`<div class="met" style="padding:4px 0;cursor:pointer" onclick="formReg(${r.id})">${icoReg(r.tipo)} <b>${esc(r.tipo)}</b> · ${esc(r.fundo)}${r.cuartel?" · "+esc(r.cuartel):""}</div>`).join("")}</div>`;
   return h;
 }
@@ -2309,8 +2312,8 @@ function laborInfo(){
   else if(mp) h+=` · ${Math.round(mp.densidad).toLocaleString("es-CL")} pl/ha · ~${Math.round(mp.total).toLocaleString("es-CL")} plantas <span class="muted">(teórico)</span>`;
   h+=`<div class="fila" style="gap:6px;margin-top:6px;flex-wrap:wrap">
     <span class="muted" style="align-self:center">Sugerir meta:</span>`;
-  if(plMeta>0) h+=`<button type="button" class="btn sec chico" onclick="laborSetMeta('plantas',${plMeta})">🌳 Por planta (${plMeta.toLocaleString("es-CL")})</button>`;
-  if(ha>0) h+=`<button type="button" class="btn sec chico" onclick="laborSetMeta('hectareas',${ha})">📐 Por superficie (${num(ha)} ha)</button>`;
+  if(plMeta>0) h+=`<button type="button" class="btn sec chico" onclick="laborSetMeta('plantas',${plMeta})">${ic("tree")} Por planta (${plMeta.toLocaleString("es-CL")})</button>`;
+  if(ha>0) h+=`<button type="button" class="btn sec chico" onclick="laborSetMeta('hectareas',${ha})">${ic("ruler")} Por superficie (${num(ha)} ha)</button>`;
   h+=`</div><div class="muted" style="font-size:11px;margin-top:4px">${plReal>0?"Plantas registradas en el cuartel.":"Teórico del marco — deja las plantas reales fijas en Datos → Cuarteles."} La meta es editable.</div></div>`;
   cont.innerHTML=h;
 }
@@ -2320,7 +2323,7 @@ function laborSetMeta(unidad, valor){
 }
 function formLabor(id, fechaSug, pre){
   const l = id? D.labores.find(x=>x.id===id) : null;
-  abrirModal(l?"Editar labor":"📅 Nueva labor", `
+  abrirModal(l?"Editar labor":ic("calendar")+" Nueva labor", `
     ${campoF("m_fecha","Fecha inicio *","date",l?.fecha||fechaSug||hoy())}
     ${campoF("m_fecha2","Fecha término (opcional)","date",l?.fecha2)}
     ${selF("m_tipo","Tipo de labor *",tiposLabor(),l?.tipo,"— Elegir —")}
@@ -2332,7 +2335,7 @@ function formLabor(id, fechaSug, pre){
     ${campoF("m_meta","Meta / objetivo (editable)","text",l?.meta||"",'inputmode="decimal" placeholder="Auto o a mano · ajústala a lo real"')}
     ${campoF("m_resp","Responsable","text",l?.resp,'placeholder="Ej: Daniel Bosch"')}
     ${l? selF("m_estado","Estado",["pendiente","encurso","pausada","hecha","finalizada"],l.estado):""}
-    ${l? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarLabor(${l.id})">🗑️ Eliminar labor</button>`:""}
+    ${l? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarLabor(${l.id})">${ic("trash")} Eliminar labor</button>`:""}
   `, ()=>{
     if(!req("m_fecha","m_tipo","m_fundo")) return false;
     if(v("m_fecha2") && v("m_fecha2")<v("m_fecha")){ alert("La fecha de término no puede ser anterior al inicio."); return false; }
@@ -2355,7 +2358,7 @@ function eliminarLabor(id){
 /* ================== PARTE DEL DÍA (cruce con el plan) ================== */
 function formParteDia(fechaSug, pre){
   nav.parteLaborId=null; nav.avancePago="trato";
-  abrirModal("🧑‍🌾 Parte del día", `
+  abrirModal(ic("clipboard")+" Parte del día", `
     <div class="muted" style="font-size:12.5px;margin-bottom:8px">Anota lo que hiciste hoy. Si calza con una labor del plan (mismo cuartel y actividad) se suma como avance; si no, se crea una labor nueva. Sin doble registro.</div>
     ${campoF("m_fecha","Fecha *","date", fechaSug||hoy())}
     ${selF("m_tipo","Actividad (labor) *", tiposLabor(), pre&&pre.tipo, "— Elegir —")}
@@ -2366,8 +2369,8 @@ function formParteDia(fechaSug, pre){
     ${campoF("m_cantidad","Cantidad realizada *","text","",'inputmode="decimal" oninput="avanceCalc()"')}
     ${campoF("m_personas","N° de personas","text","",'inputmode="decimal" oninput="avanceCalc()"')}
     <div class="fila" style="margin:2px 0 8px">
-      <button type="button" class="chip act" id="pg_trato" onclick="avancePago('trato')">💵 A trato (por unidad)</button>
-      <button type="button" class="chip" id="pg_dia" onclick="avancePago('dia')">📅 Por día (jornal)</button>
+      <button type="button" class="chip act" id="pg_trato" onclick="avancePago('trato')">${ic("money")} A trato (por unidad)</button>
+      <button type="button" class="chip" id="pg_dia" onclick="avancePago('dia')">${ic("calendar")} Por día (jornal)</button>
     </div>
     ${campoF("m_valor","Valor ($) — por unidad si es trato, por persona/día si es por día","text","",'inputmode="numeric" oninput="avanceCalc()"')}
     <div id="avanceTot" class="card" style="background:var(--pclaro);border:1px solid var(--p);padding:10px 12px;margin-bottom:8px"></div>
@@ -2386,7 +2389,7 @@ function formParteDia(fechaSug, pre){
     if((+l.meta||0)>0 && hecho>=+l.meta && l.estado!=="hecha" && l.estado!=="finalizada"){ l.estado="hecha"; l.reanudar=""; }
     else if(l.estado==="pendiente"||l.estado==="pausada"){ l.estado="encurso"; l.reanudar=""; }
     const _l=l, _c=creada; setTimeout(function(){ alert(_c? ("✓ Parte guardado. Creé la labor «"+_l.tipo+" · "+(_l.cuartel||_l.fundo)+"» y le sumé el avance.") : ("✓ Avance sumado a «"+_l.tipo+" · "+(_l.cuartel||_l.fundo)+"» del plan.")); }, 60);
-  }, "💾 Guardar parte");
+  }, ic("save")+" Guardar parte");
   document.getElementById("m_fundo").onchange = function(){ syncCuarteles(); parteMatch(); };
   document.getElementById("m_cuartel").onchange = parteMatch;
   document.getElementById("m_tipo").onchange = parteMatch;
@@ -2407,9 +2410,9 @@ function parteMatch(){
   if(nav.parteLaborId==null) nav.parteLaborId = (ms.length===1? ms[0].id : (ms.length? null : "nuevo"));
   let h="";
   if(ms.length){
-    h += `<div class="muted" style="font-size:12px;margin-bottom:4px">🔗 Calza con el plan — ¿a cuál le sumo el avance?</div><div class="chips" style="flex-wrap:wrap;gap:6px">`;
+    h += `<div class="muted" style="font-size:12px;margin-bottom:4px">${ic("link")} Calza con el plan — ¿a cuál le sumo el avance?</div><div class="chips" style="flex-wrap:wrap;gap:6px">`;
     h += ms.map(function(l){ const av=(l.avances||[]).reduce(function(s,a){return s+(+a.cantidad||0);},0); const sel=nav.parteLaborId===l.id; return `<button type="button" class="chip ${sel?"act":""}" onclick="parteSel(${l.id})">${esc(l.tipo)} · ${fmtF(l.fecha)} · ${num(av)}${l.meta?("/"+num(l.meta)):""}${l.unidad?(" "+esc(l.unidad)):""}</button>`; }).join("");
-    h += `<button type="button" class="chip ${nav.parteLaborId==="nuevo"?"act":""}" onclick="parteSel('nuevo')">➕ Crear labor nueva</button></div>`;
+    h += `<button type="button" class="chip ${nav.parteLaborId==="nuevo"?"act":""}" onclick="parteSel('nuevo')">${ic("plus")} Crear labor nueva</button></div>`;
   } else {
     nav.parteLaborId="nuevo";
     h += `<div class="muted" style="font-size:12px">Sin labor del plan que calce → se creará una <b>labor nueva</b> para esta fecha.</div>`;
@@ -2498,7 +2501,7 @@ function regItemHTML(r){
     ${r.dosis?`<div style="font-size:12px;margin-top:2px">${esc(r.dosis)}</div>`:""}
     ${(r.mezcla&&r.mezcla.length)?`<div style="font-size:11.5px;margin-top:1px;color:var(--p2)">➕ mezcla: ${r.mezcla.map(mz=>esc(mz.n)+(mz.dosis?" ("+esc(mz.dosis)+")":"")).join(" · ")}</div>`:""}
     ${r.obs?`<div class="muted" style="font-size:11.5px;margin-top:1px">${esc(r.obs)}</div>`:""}
-    ${r.estado?(r.estado==="pendiente"?`<div style="margin-top:4px" onclick="event.stopPropagation()"><span class="badge" style="background:#fff3e0;color:#b26a00">🕓 Pendiente</span> <button class="btn sec chico" onclick="regConfirmar(${r.id})">✓ Confirmar</button></div>`:`<div style="margin-top:4px"><span class="badge b-verde">✓ Aplicado${r.fechaReal?" "+fmtF(r.fechaReal):""}</span></div>`):""}
+    ${r.estado?(r.estado==="pendiente"?`<div style="margin-top:4px" onclick="event.stopPropagation()"><span class="badge" style="background:#fdf3d7;color:#7a5d0e">${ic("clock")} Pendiente</span> <button class="btn sec chico" onclick="regConfirmar(${r.id})">✓ Confirmar</button></div>`:`<div style="margin-top:4px"><span class="badge b-verde">✓ Aplicado${r.fechaReal?" "+fmtF(r.fechaReal):""}</span></div>`):""}
   </div>`;
 }
 function regBatchHTML(grp){
@@ -2511,13 +2514,13 @@ function regBatchHTML(grp){
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:12px 14px;cursor:pointer" onclick="regTglB('${key}')">
       <div style="min-width:0;flex:1">
         <div style="font-weight:800;font-size:17px;line-height:1.2">${abierto?"▾ ":"▸ "}${esc(r0.producto||"—")}</div>
-        <div class="muted" style="font-size:12px;margin-top:3px">Aplicación · ${grp.length} cuarteles${fundos.length?" · "+esc(fundos.join(", ")):""}${r0.objetivo?" · 🎯 "+esc(r0.objetivo):""}${(r0.mezcla&&r0.mezcla.length)?" · ➕ "+esc(r0.mezcla.map(mz=>mz.n).join(", ")):""}</div>
+        <div class="muted" style="font-size:12px;margin-top:3px">Aplicación · ${grp.length} cuarteles${fundos.length?" · "+esc(fundos.join(", ")):""}${r0.objetivo?" · "+ic("target")+" "+esc(r0.objetivo):""}${(r0.mezcla&&r0.mezcla.length)?" · "+ic("plus")+" "+esc(r0.mezcla.map(mz=>mz.n).join(", ")):""}</div>
         <div class="muted" style="font-size:11.5px;margin-top:1px">${cuarteles.map(c=>esc(c)).join(" · ")}</div>
-        ${(function(){var pen=grp.filter(function(x){return x.estado==="pendiente";}).length,apl=grp.filter(function(x){return x.estado==="aplicado";}).length;if(!pen&&!apl)return"";return `<div style="margin-top:5px" onclick="event.stopPropagation()">${pen?`<span class="badge" style="background:#fff3e0;color:#b26a00">🕓 ${pen} pendiente${pen>1?"s":""}</span> `:""}${apl?`<span class="badge b-verde">✓ ${apl} aplicado${apl>1?"s":""}</span> `:""}${pen?`<button class="btn sec chico" onclick="regConfirmarBatch('${esc(String(r0.aplId||regSig(r0)))}')">✓ Confirmar</button>`:""}</div>`;})()}
+        ${(function(){var pen=grp.filter(function(x){return x.estado==="pendiente";}).length,apl=grp.filter(function(x){return x.estado==="aplicado";}).length;if(!pen&&!apl)return"";return `<div style="margin-top:5px" onclick="event.stopPropagation()">${pen?`<span class="badge" style="background:#fdf3d7;color:#7a5d0e">${ic("clock")} ${pen} pendiente${pen>1?"s":""}</span> `:""}${apl?`<span class="badge b-verde">✓ ${apl} aplicado${apl>1?"s":""}</span> `:""}${pen?`<button class="btn sec chico" onclick="regConfirmarBatch('${esc(String(r0.aplId||regSig(r0)))}')">✓ Confirmar</button>`:""}</div>`;})()}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 0 auto" onclick="event.stopPropagation()">
         <span class="badge b-gris">${fmtF(r0.fecha)}</span>
-        <button class="btn sec chico" onclick="regBorrarBatch('${esc(String(r0.aplId||regSig(r0)))}')" title="Eliminar esta aplicación" style="color:var(--rojo)">🗑️</button>
+        <button class="btn sec chico" onclick="regBorrarBatch('${esc(String(r0.aplId||regSig(r0)))}')" title="Eliminar esta aplicación" style="color:var(--rojo)">${ic("trash")}</button>
       </div>
     </div>
     ${abierto? `<div style="padding:2px 10px 8px;background:#fafafa">${regBatchInner(grp)}</div>` : ""}
@@ -2551,7 +2554,7 @@ function vAplic(){
   const modo = nav.regAgr||"mes";
   let h = `<div class="fila" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
     <div class="muted" style="font-size:12.5px">📒 Cuaderno de aplicaciones — se planifican en <b>Calc Fito</b> y se confirman al aplicar.</div>
-    <div style="display:flex;gap:6px"><button class="btn sec chico" onclick="exportarAplicExcel()">⬇️ Excel</button><button class="btn sec chico" onclick="enviarAplicExcel()">📧 Enviar</button></div>
+    <div style="display:flex;gap:6px"><button class="btn sec chico" onclick="exportarAplicExcel()">${ic("download")} Excel</button><button class="btn sec chico" onclick="enviarAplicExcel()">${ic("mail")} Enviar</button></div>
   </div>`;
   h += chipsFundo();
   h += `<div class="chips" style="margin-bottom:6px"><span class="muted" style="align-self:center;font-size:12px;margin-right:2px">Agrupar por:</span>${[["dia","Día"],["semana","Semana"],["mes","Mes"]].map(([k,l])=>`<div class="chip ${modo===k?"act":""}" onclick="nav.regAgr='${k}';render()">${l}</div>`).join("")}</div>`;
@@ -2643,7 +2646,7 @@ async function enviarAplicExcel(){
   alert("Tu dispositivo no dejó compartir directo, así que descargué el archivo. Adjúntalo al correo desde la app Archivos.");
 }
 
-function icoReg(t){ return {"Aplicación":"🧪","Riego":"💧","Fertilización":"🌱","Fenología":"🌸","Lluvia":"🌧️","Avance":"📊","Otro":"📄"}[t]||"📄"; }
+function icoReg(t){ return {"Aplicación":ic("flask"),"Riego":ic("drop"),"Fertilización":ic("sprout"),"Fenología":ic("flower"),"Lluvia":ic("rain"),"Avance":ic("chart"),"Otro":ic("doc")}[t]||ic("doc"); }
 function tarjetaReg(r){
   const det = (CAMPOS_REG[r.tipo]||[]).map(([k,lab])=>r[k]?`<b>${lab.replace(" *","").split(" (")[0]}:</b> ${esc(r[k])}`:"").filter(Boolean).join(" · ");
   return `<div class="item" onclick="formReg(${r.id})">
@@ -2652,7 +2655,7 @@ function tarjetaReg(r){
       <span class="badge b-gris">${fmtF(r.fecha)}</span>
     </div>
     ${det?`<div class="txt" style="font-size:13.5px;margin-top:4px">${det}</div>`:""}
-    ${r.estado?(r.estado==="pendiente"?`<div style="margin-top:5px" onclick="event.stopPropagation()"><span class="badge" style="background:#fff3e0;color:#b26a00">🕓 Pendiente</span> <button class="btn sec chico" onclick="regConfirmar(${r.id})">✓ Confirmar aplicado</button></div>`:`<div style="margin-top:5px"><span class="badge b-verde">✓ Aplicado${r.fechaReal?" "+fmtF(r.fechaReal):""}</span></div>`):""}
+    ${r.estado?(r.estado==="pendiente"?`<div style="margin-top:5px" onclick="event.stopPropagation()"><span class="badge" style="background:#fdf3d7;color:#7a5d0e">${ic("clock")} Pendiente</span> <button class="btn sec chico" onclick="regConfirmar(${r.id})">✓ Confirmar aplicado</button></div>`:`<div style="margin-top:5px"><span class="badge b-verde">✓ Aplicado${r.fechaReal?" "+fmtF(r.fechaReal):""}</span></div>`):""}
     ${r.obs?`<div class="met" style="margin-top:3px">${esc(r.obs)}</div>`:""}
     ${(r.fotos&&r.fotos.length)? `<div class="thumbs" data-fotos="${r.fotos.join(",")}"></div>`:""}
     ${(r.docs&&r.docs.length)? `<div class="docs">${chipsDocs(r.docs)}</div>`:""}
@@ -2666,7 +2669,7 @@ function formReg(id){
   audiosTmp = r? [...(r.audios||[])] : [];
   gpsTmp = r? (r.gps||null) : null;
   gpsOn = r? !!r.gps : false; // registros: sin ubicación por defecto, se activa si se quiere
-  abrirModal(r?"Editar registro":"📋 Nuevo registro", `
+  abrirModal(r?"Editar registro":ic("clipboard")+" Nuevo registro", `
     ${selF("m_tipo","Tipo de registro *",tiposReg(),r?.tipo||nav.regTipo,"— Elegir —")}
     ${campoF("m_fecha","Fecha *","date",r?.fecha||hoy())}
     ${selF("m_fundo","Fundo *",fundosSel(),r?.fundo,"— Elegir fundo —")}
@@ -2674,8 +2677,8 @@ function formReg(id){
     <div id="camposTipo"></div>
     ${areaF("m_obs","Observaciones",r?.obs)}
     <div class="fila" style="margin-bottom:6px">
-      <button class="btn sec chico" id="btnGps" onclick="toggleGps()">📍 Con ubicación</button>
-      <button class="btn sec chico" onclick="elegirEnMapa()">🗺 Elegir en mapa</button>
+      <button class="btn sec chico" id="btnGps" onclick="toggleGps()">${ic("pin")} Con ubicación</button>
+      <button class="btn sec chico" onclick="elegirEnMapa()">${ic("map")} Elegir en mapa</button>
       <span class="muted" id="gpsInfo"></span>
     </div>
     <label class="f">Pin en el mapa (importancia visual)<select id="m_pin">
@@ -2683,7 +2686,7 @@ function formReg(id){
       <option value="normal" ${r?.pin==="normal"?"selected":""}>Normal</option>
       <option value="baja" ${!r?.pin||r?.pin==="baja"?"selected":""}>Discreta — pin chico</option></select></label>
     ${bloqueAdjuntos()}
-    ${r? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarReg(${r.id})">🗑️ Eliminar registro</button>`:""}
+    ${r? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarReg(${r.id})">${ic("trash")} Eliminar registro</button>`:""}
   `, async ()=>{
     if(!req("m_tipo","m_fecha","m_fundo")) return false;
     const tipo = v("m_tipo");
@@ -2711,7 +2714,7 @@ function formReg(id){
     const t = v("m_tipo");
     const campos = (CAMPOS_REG[t]||[]).map(([k,lab,tp])=>campoF("m_"+k,lab,tp,r?.[k],tp==="number"?'inputmode="decimal"':"")).join("");
     const scan = (t==="Aplicación"||t==="Fertilización")
-      ? `<button type="button" class="btn sec chico" style="margin:2px 0 12px" onclick="iaEscanearEtiqueta()">📷 Escanear etiqueta / receta con IA</button>` : "";
+      ? `<button type="button" class="btn sec chico" style="margin:2px 0 12px" onclick="iaEscanearEtiqueta()">${ic("camera")} Escanear etiqueta / receta con IA</button>` : "";
     document.getElementById("camposTipo").innerHTML = scan + campos;
   };
   document.getElementById("m_tipo").addEventListener("change",pintaCampos);
@@ -2757,7 +2760,7 @@ function vTab(){
   let lst = D.tablero;
   if(nav.filtroFundo) lst = lst.filter(t=>t.fundo===nav.filtroFundo);
   let h = chipsFundo();
-  h += `<div class="muted" style="margin-bottom:8px">Apuntes de reorganización por fundo. Muévelos con ◀ ▶ o tócalos para editar. Desde una nota: "🗂️ Al tablero".</div>`;
+  h += `<div class="muted" style="margin-bottom:8px">Apuntes de reorganización por fundo. Muévelos con ◀ ▶ o tócalos para editar. Desde una nota: ic("board")+" Al tablero".</div>`;
   h += `<div class="tab-cols">`;
   for(const [id,tit] of TAB_COLS){
     const cards = lst.filter(t=>t.col===id).sort((a,b)=>b.id-a.id);
@@ -2781,7 +2784,7 @@ function formTarjeta(id, col){
     ${selF("m_fundo","Fundo *",fundosSel(),t?.fundo||nav.filtroFundo,"— Elegir fundo —")}
     ${areaF("m_txt","Apunte *",t?.txt,"Ej: pasar el sector 3 a goteros dobles, arreglar el camino de la entrada…")}
     ${selF("m_col","Columna",TAB_COLS.map(c=>c[0]),t?.col||col||"Ideas")}
-    ${t? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarTarjeta(${t.id})">🗑️ Eliminar tarjeta</button>`:""}
+    ${t? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarTarjeta(${t.id})">${ic("trash")} Eliminar tarjeta</button>`:""}
   `, ()=>{
     if(!req("m_fundo","m_txt")) return false;
     const o = {fundo:v("m_fundo"), txt:v("m_txt"), col:v("m_col")};
@@ -2885,7 +2888,7 @@ function resumenSuperficie(){
   }
   const vars = Object.entries(por).sort((a,b)=>b[1].tot-a[1].tot);
   const totF = {}; for(const f of fs) totF[f] = cuartelesDe(f).reduce((s,q)=>s+(+q.ha||0),0);
-  return `<div class="card"><h2>📊 Superficie por variedad</h2>
+  return `<div class="card"><h2>${ic("chart")} Superficie por variedad</h2>
     <div class="muted" style="margin-bottom:8px">${D.cuarteles.length} cuarteles · <b>${num(totHa)} ha</b> en total. Se actualiza solo al editar cuarteles.</div>
     <div style="overflow-x:auto"><table class="t">
       <tr><th>Variedad</th>${fs.map(f=>`<th style="text-align:right">${esc(f)}</th>`).join("")}<th style="text-align:right">Total ha</th><th style="text-align:right">%</th></tr>
@@ -2902,45 +2905,45 @@ function resumenSuperficie(){
 }
 function vDatos(){
   let h = resumenSuperficie();
-  h += `<div class="card"><h2>🏡 Fundos</h2>
+  h += `<div class="card"><h2>${ic("home")} Fundos</h2>
     <div class="muted">Ordenan notas, registros, plan y mapa. Puedes crear fundos sin cuarteles (ej: Oficina, Bodega general).</div>
     <div class="chips" style="margin-top:10px;flex-wrap:wrap">${fundos().map((f,i)=>{
       const nq = cuartelesDe(f).length;
       return `<div class="chip act" style="display:inline-flex;align-items:center;gap:7px">${esc(f)}
         <span style="opacity:.75;font-weight:400">${nq? "· "+nq+" cuarteles":"· sin cuarteles"}</span>
-        <button class="qx-cat" onclick="renombrarFundo(${i})">✏️</button>
+        <button class="qx-cat" onclick="renombrarFundo(${i})">${ic("edit")}</button>
         <button class="qx-cat" onclick="eliminarFundo(${i})">✕</button></div>`;
     }).join("")}</div>
     <button class="btn sec chico" style="margin-top:10px" onclick="agregarFundo()">＋ Agregar fundo</button></div>`;
-  h += `<div class="card"><h2>👥 Proyecto</h2>
+  h += `<div class="card"><h2>${ic("users")} Proyecto</h2>
     <div class="muted">Estás trabajando en <b>${PROY? esc(PROY.nombre) : "—"}</b>${PROY&&PROY.sub? " · "+esc(PROY.sub):""}. Cada proyecto guarda sus propios datos, fotos y mapa por separado.</div>
-    <button class="btn sec chico" style="margin-top:8px" onclick="salirProyecto()">🔄 Cambiar de proyecto</button>
+    <button class="btn sec chico" style="margin-top:8px" onclick="salirProyecto()">${ic("refresh")} Cambiar de proyecto</button>
   </div>`;
-  h += `<div class="card"><h2>🔗 GesAgro</h2>
+  h += `<div class="card"><h2>${ic("link")} GesAgro</h2>
     <div class="muted">Importa el respaldo JSON de GesAgro para ver acá el 🚦 semáforo de carencias de cosecha (agrégalo como widget en el Panel). Re-importa cada vez que registres aplicaciones nuevas allá.</div>
     <div class="fila" style="margin-top:8px">
-      <button class="btn sec chico" onclick="document.getElementById('inpGes').click()">📥 Importar respaldo de GesAgro</button>
+      <button class="btn sec chico" onclick="document.getElementById('inpGes').click()">${ic("upload")} Importar respaldo de GesAgro</button>
       <input type="file" id="inpGes" accept="application/json,.json" style="display:none" onchange="importarGesAgro(this)">
       ${D.gesagro? `<button class="btn peligro chico" onclick="quitarGesAgro()">✕ Quitar</button>`:""}
     </div>
     ${D.gesagro? `<div class="muted" style="margin-top:6px">✓ Importado el ${fmtF(D.gesagro.importado)} · ${D.gesagro.regFito.length} aplicaciones · ${D.gesagro.cuarteles.length} cuarteles · ${D.gesagro.productos.length} productos</div>`:""}
   </div>`;
-  h += `<div class="card"><h2>🤖 Inteligencia (IA)</h2>
-    <div class="muted">Activa <b>🔬 Identificar</b> en las fotos (plaga, enfermedad, maleza o deficiencia) y <b>📷 Escanear etiqueta</b> en los registros de Aplicación. Funciona con Google Gemini: necesitas una clave gratuita y señal a internet.</div>
+  h += `<div class="card"><h2>${ic("ai")} Inteligencia (IA)</h2>
+    <div class="muted">Activa <b>${ic("search")} Identificar</b> en las fotos (plaga, enfermedad, maleza o deficiencia) y <b>${ic("camera")} Escanear etiqueta</b> en los registros de Aplicación. Funciona con Google Gemini: necesitas una clave gratuita y señal a internet.</div>
     <label class="f" style="margin-top:8px">Clave API de Gemini
       <input id="ia_key" type="password" value="${esc((D.ia&&D.ia.key)||"")}" placeholder="Pega aquí tu API key" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-    <button type="button" class="btn sec chico" style="margin:-4px 0 10px" onclick="iaVerClave(this)">👁 Ver clave</button>
+    <button type="button" class="btn sec chico" style="margin:-4px 0 10px" onclick="iaVerClave(this)">${ic("eye")} Ver clave</button>
     <label class="f">Modelo <span class="muted">(avanzado, opcional)</span>
       <input id="ia_modelo" type="text" value="${esc((D.ia&&D.ia.modelo)||"")}" placeholder="gemini-2.5-flash" autocapitalize="off" spellcheck="false"></label>
     <div class="fila" style="flex-wrap:wrap">
-      <button class="btn chico" onclick="guardarIA()">💾 Guardar clave</button>
-      <button class="btn sec chico" onclick="probarIA()">🔌 Probar conexión</button>
-      <a class="btn sec chico" style="text-decoration:none" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">🔑 Obtener clave gratis</a>
+      <button class="btn chico" onclick="guardarIA()">${ic("save")} Guardar clave</button>
+      <button class="btn sec chico" onclick="probarIA()">${ic("plug")} Probar conexión</button>
+      <a class="btn sec chico" style="text-decoration:none" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">${ic("key")} Obtener clave gratis</a>
     </div>
     <div class="muted" id="ia_estado" style="margin-top:6px">${(D.ia&&D.ia.key)? "✓ Clave guardada. La identificación con IA está activa." : "Sin clave: la identificación con IA está apagada."}</div>
     <div class="muted" style="margin-top:6px"><b>Consejo:</b> crea la clave en Google AI Studio y, si quieres, restríngela por “referente HTTP” a tu sitio (mjallende98-design.github.io). La IA es una <b>sugerencia</b> que tú confirmas; no decidas aplicaciones solo con ella.</div>
   </div>`;
-  h += `<div class="card"><h2>🌳 Cuarteles por fundo</h2><div class="muted" style="margin-bottom:8px">Toca un cuartel para editarlo.</div>`;
+  h += `<div class="card"><h2>${ic("tree")} Cuarteles por fundo</h2><div class="muted" style="margin-bottom:8px">Toca un cuartel para editarlo.</div>`;
   for(const f of fundos()){
     const qs = cuartelesDe(f);
     if(!qs.length) continue; // fundos sin cuarteles (ej: Oficina) no ocupan espacio aquí
@@ -2955,28 +2958,30 @@ function vDatos(){
   }
   h += `<button class="btn sec" style="margin-top:14px" onclick="formCuartel()">＋ Agregar cuartel</button></div>`;
 
-  h += `<div class="card"><h2>🏷️ Personalizar catálogos</h2>
+  h += `<div class="card"><h2>${ic("tag")} Personalizar catálogos</h2>
     <div class="muted">Agrega o quita opciones. Lo ya guardado con un nombre antiguo se conserva.</div>
     ${bloqueCat("catsNota","Categorías de nota")}
     ${bloqueCat("tiposLabor","Tipos de labor")}
     ${bloqueCat("tiposReg","Tipos de registro")}
   </div>`;
 
-  h += `<div class="card"><h2>⚡ Plantillas de nota rápida</h2>
-    <div class="muted">Botones de un toque en Notas: crean la nota con categoría y texto listos. Edítalas a tu gusto.</div>
+  h += `<div class="card"><h2>${ic("bolt")} Plantillas de nota rápida</h2>
+    <div class="muted">Botones de un toque en Notas: crean la nota con categoría, texto y <b>checklist</b> listos — sirven como listas maestras reutilizables. Edítalas a tu gusto.</div>
     ${plantillas().map((p,i)=>`<div class="fila" style="margin-top:6px;align-items:center">
       <div class="chip act">${esc(p.n)}</div>
-      <div class="muted" style="flex:1">${esc(p.cat)}${p.txt?` · "${esc(p.txt)}…"`:""}</div>
+      <div class="muted" style="flex:1">${esc(p.cat)}${(p.items&&p.items.length)?` · ☑ ${p.items.length} ítems`:(p.txt?` · "${esc(p.txt)}…"`:"")}</div>
+      <button class="btn sec chico" onclick="editarPlantilla(${i})">✏️</button>
       <button class="qx-cat" onclick="quitarPlantilla(${i})">✕</button></div>`).join("")}
     <div class="grid2" style="margin-top:10px">
       ${campoF("pl_n","Nombre (con emoji)","text","",'placeholder="🚜 Maquinaria"')}
       ${selF("pl_cat","Categoría",catsNota(),"Observación")}
     </div>
     ${campoF("pl_txt","Texto inicial (opcional)","text","",'placeholder="Revisar "')}
+    ${areaF("pl_items","Ítems del checklist (uno por línea, opcional)","","Un ítem por línea")}
     <button class="btn sec chico" onclick="agregarPlantilla()">＋ Agregar plantilla</button>
   </div>`;
 
-  h += `<div class="card"><h2>🌦️ Zona del clima y la lluvia</h2>
+  h += `<div class="card"><h2>${ic("cloud")} Zona del clima y la lluvia</h2>
     <div class="muted">De esta ubicación salen el pronóstico del Panel, la lluvia acumulada y la alerta de helada. Sin señal, se usan tus registros de lluvia.</div>
     <div class="grid2" style="margin-top:8px">
       ${campoF("ll_nom","Nombre de la zona","text",D.lluviaLoc? (D.lluviaLoc.nom||"") : "",'placeholder="Ej: San Joaquín, Curacaví…"')}
@@ -2984,16 +2989,16 @@ function vDatos(){
       ${campoF("ll_lng","Longitud","text",D.lluviaLoc?D.lluviaLoc.lng:"",'inputmode="decimal" placeholder="-71.13850"')}
     </div>
     <div class="fila" style="flex-wrap:wrap">
-      <button class="btn sec chico" onclick="usarCuracavi()">🍊 Usar Curacaví</button>
-      <button class="btn sec chico" onclick="lluviaGPS()">📍 Usar mi ubicación actual</button>
-      <button class="btn chico" onclick="guardarLluviaLoc()">💾 Guardar</button>
+      <button class="btn sec chico" onclick="usarCuracavi()">${ic("pin")} Usar Curacaví</button>
+      <button class="btn sec chico" onclick="lluviaGPS()">${ic("pin")} Usar mi ubicación actual</button>
+      <button class="btn chico" onclick="guardarLluviaLoc()">${ic("save")} Guardar</button>
     </div>
     ${(D.zonas&&D.zonas.length)? `<div class="chips" style="margin-top:10px;flex-wrap:wrap">${D.zonas.map((z,i)=>
-      `<div class="chip ${D.lluviaLoc&&D.lluviaLoc.nom===z.nom?"act":""}" onclick="usarZona(${i})">📍 ${esc(z.nom)} <button class="qx-cat" onclick="event.stopPropagation();quitarZona(${i})">✕</button></div>`).join("")}</div>`:""}
+      `<div class="chip ${D.lluviaLoc&&D.lluviaLoc.nom===z.nom?"act":""}" onclick="usarZona(${i})">${ic("pin")} ${esc(z.nom)} <button class="qx-cat" onclick="event.stopPropagation();quitarZona(${i})">✕</button></div>`).join("")}</div>`:""}
     ${D.lluviaLoc? `<div class="muted" style="margin-top:6px">✓ Zona actual: <b>${esc(zonaClima())}</b> (${D.lluviaLoc.lat}, ${D.lluviaLoc.lng})</div>` : `<div class="muted" style="margin-top:6px">✓ Zona actual: <b>Curacaví</b> (por defecto)</div>`}
   </div>`;
 
-  h += `<div class="card"><h2>📤 Exportar para informes</h2>
+  h += `<div class="card"><h2>${ic("download")} Exportar para informes</h2>
     <div class="fila" style="gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
       <span class="muted" style="font-size:12px">Rango labores (opcional):</span>
       <input type="date" id="csvLabIni" style="padding:6px 8px;border:1.5px solid var(--borde);border-radius:8px;font-size:13px">
@@ -3001,24 +3006,24 @@ function vDatos(){
       <input type="date" id="csvLabFin" style="padding:6px 8px;border:1.5px solid var(--borde);border-radius:8px;font-size:13px">
     </div>
     <div class="fila">
-      <button class="btn sec chico" onclick="csvExport('labores')">📅 Labores (CSV)</button>
-      <button class="btn sec chico" onclick="csvExport('registros')">📋 Registros (CSV)</button>
-      <button class="btn sec chico" onclick="csvExport('notas')">📝 Notas (CSV)</button>
-      <button class="btn chico" onclick="abrirInforme()">🖨️ Informe semanal (PDF)</button>
+      <button class="btn sec chico" onclick="csvExport('labores')">${ic("calendar")} Labores (CSV)</button>
+      <button class="btn sec chico" onclick="csvExport('registros')">${ic("clipboard")} Registros (CSV)</button>
+      <button class="btn sec chico" onclick="csvExport('notas')">${ic("note")} Notas (CSV)</button>
+      <button class="btn chico" onclick="abrirInforme()">${ic("print")} Informe semanal (PDF)</button>
     </div>
     <div class="muted" style="margin-top:6px">El CSV de Labores respeta el rango de fechas (vacío = todo) e incluye una fila de <b>TOTALES</b>. Los CSV se abren directo en Excel.</div></div>`;
 
-  h += `<div class="card"><h2>💾 Respaldo</h2>
+  h += `<div class="card"><h2>${ic("save")} Respaldo</h2>
     <div class="fila">
-      <button class="btn" onclick="respaldar()">⬇️ Descargar respaldo completo</button>
-      <button class="btn sec" onclick="document.getElementById('inpRest').click()">⬆️ Restaurar respaldo</button>
+      <button class="btn" onclick="respaldar()">${ic("download")} Descargar respaldo completo</button>
+      <button class="btn sec" onclick="document.getElementById('inpRest').click()">${ic("upload")} Restaurar respaldo</button>
       <input type="file" id="inpRest" accept=".json" hidden onchange="restaurar(this)">
     </div>
     <div class="muted" style="margin-top:8px">El respaldo incluye notas, labores, registros, cuarteles y todas las fotos.
     <b>Consejo:</b> descarga uno cada semana y guárdalo en iCloud o Drive.</div>
-    <button class="btn peligro chico" style="margin-top:14px" onclick="borrarTodo()">🗑️ Borrar todos los datos</button></div>`;
+    <button class="btn peligro chico" style="margin-top:14px" onclick="borrarTodo()">${ic("trash")} Borrar todos los datos</button></div>`;
 
-  h += `<div class="card"><h2>📲 Instalar en el iPad</h2>
+  h += `<div class="card"><h2>${ic("device")} Instalar en el iPad</h2>
     <div style="font-size:14.5px;line-height:1.6">
     1. Abre esta página en <b>Safari</b> del iPad.<br>
     2. Toca el botón <b>Compartir</b> (□↑) y elige <b>"Añadir a pantalla de inicio"</b>.<br>
@@ -3046,9 +3051,9 @@ function formCuartel(id){
       ${campoF("m_anio","Año de plantación","number",q?.anio,'inputmode="numeric"')}
       ${campoF("m_plantas","Plantas (reales)","number",q?.plantas,'inputmode="numeric" placeholder="cantidad real"')}
     </div>
-    <button type="button" class="btn sec chico" style="margin-bottom:6px" onclick="cuartelCalcPlantas()">🌳 Calcular plantas del marco</button>
+    <button type="button" class="btn sec chico" style="margin-bottom:6px" onclick="cuartelCalcPlantas()">${ic("tree")} Calcular plantas del marco</button>
     <div class="muted" style="font-size:11.5px;margin-bottom:8px">Este número se usa como meta al podar/ralear. Calcúlalo del marco y ajústalo a lo real (plantas arrancadas o muertas). Queda guardado en el cuartel.</div>
-    ${q? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarCuartel(${q.id})">🗑️ Eliminar cuartel</button>`:""}
+    ${q? `<button class="btn peligro chico" style="margin-top:10px" onclick="eliminarCuartel(${q.id})">${ic("trash")} Eliminar cuartel</button>`:""}
   `, ()=>{
     if(!req("m_fundo","m_nombre")) return false;
     if(v("m_fundo")==="__nuevo"){ alert("Elige o crea el fundo primero."); return false; }
@@ -3099,9 +3104,23 @@ function quitarCat(clave,i){
 function agregarPlantilla(){
   const n = v("pl_n"), cat = v("pl_cat");
   const el = document.getElementById("pl_txt"), txt = el? el.value : "";
+  const ie = document.getElementById("pl_items"), items = (ie? ie.value : "").split("\n").map(s=>s.trim()).filter(Boolean);
   if(!n){ alert("Ponle nombre a la plantilla (idealmente con un emoji)."); return; }
-  D.catalogos.plantillas.push({n, cat, txt});
+  D.catalogos.plantillas.push({n, cat, txt, items});
   guardar(); render();
+}
+function editarPlantilla(i){
+  const p = plantillas()[i]; if(!p) return;
+  abrirModal("✏️ Editar plantilla", `
+    ${campoF("ep_n","Nombre (con emoji)","text",p.n)}
+    ${selF("ep_cat","Categoría",catsNota(),p.cat)}
+    ${campoF("ep_txt","Texto inicial (opcional)","text",p.txt||"")}
+    ${areaF("ep_items","Ítems del checklist (uno por línea)",(p.items||[]).join("\n"),"Un ítem por línea")}
+  `, ()=>{
+    if(!v("ep_n")){ alert("Ponle nombre a la plantilla."); return false; }
+    p.n=v("ep_n"); p.cat=v("ep_cat"); p.txt=v("ep_txt");
+    p.items=(v("ep_items")||"").split("\n").map(s=>s.trim()).filter(Boolean);
+  }, "💾 Guardar");
 }
 function quitarPlantilla(i){
   if(!confirm(`¿Quitar la plantilla "${D.catalogos.plantillas[i].n}"?`)) return;
@@ -3216,7 +3235,7 @@ function abrirInforme(iniIso){
       <div style="color:#fff;font-size:13.5px">${fmtF(infIni)} – ${fmtF(fin)}</div>
       <button class="btn sec chico" onclick="infMover(1)">▶</button>
       <div style="flex:1"></div>
-      <button class="btn chico" onclick="descargarPDF('informe_semanal_'+hoy()+'.pdf')">🖨️ Guardar PDF</button>
+      <button class="btn chico" onclick="descargarPDF('informe_semanal_'+hoy()+'.pdf')">${ic("print")} Guardar PDF</button>
     </div>
     <div class="no-print" style="text-align:center;color:#999;font-size:12.5px;padding:4px;background:#000">Toca ✕ para ocultar del PDF lo que no quieras mostrar · al cambiar de semana se restaura todo</div>
     <div class="inf-scroll" style="flex:1;overflow:auto">
@@ -3226,9 +3245,9 @@ function abrirInforme(iniIso){
           <div><div style="font-size:21px;font-weight:800;color:#14532d">Informe semanal — ${PROY? esc(PROY.nombre) : ""}</div>
           <div style="color:#555">Semana del ${fmtF(infIni)} al ${fmtF(fin)} · generado el ${fmtF(hoy())}</div></div>
         </div>
-        <div class="inf-sec"><h2>✨ Resumen ejecutivo <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
-          <div id="infResumen" class="muted">Aún sin resumen. Toca "✨ Redactar con IA" para generarlo, o quita esta sección con la ✕.</div>
-          <button class="btn sec chico no-print" style="margin-top:8px" onclick="iaResumenInforme()">✨ Redactar con IA</button>
+        <div class="inf-sec"><h2>${ic("ai")} Resumen ejecutivo <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
+          <div id="infResumen" class="muted">Aún sin resumen. Toca ic("ai")+" Redactar con IA" para generarlo, o quita esta sección con la ✕.</div>
+          <button class="btn sec chico no-print" style="margin-top:8px" onclick="iaResumenInforme()">${ic("ai")} Redactar con IA</button>
         </div>
         <div class="inf-kpis">
           <div><b>${hechas}/${labs.length}</b>Labores hechas</div>
@@ -3237,23 +3256,23 @@ function abrirInforme(iniIso){
           <div><b>${nots.length}</b>Notas${urg?` (${urg} urgentes)`:""}</div>
         </div>
         ${atras? `<div class="inf-alerta">⚠️ ${atras} labor${atras>1?"es":""} de semanas anteriores sin completar</div>`:""}
-        <div class="inf-sec"><h2>📊 Resumen gráfico <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
+        <div class="inf-sec"><h2>${ic("chart")} Resumen gráfico <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
         ${(Object.keys(gReg).length||Object.keys(gLab).length||Object.keys(gNot).length)? `<div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-end">
           ${barrasSVG("Registros por tipo", Object.entries(gReg), "#1e7a4c")}
           ${barrasSVG("Labores por estado", Object.entries(gLab), "#2563eb")}
           ${barrasSVG("Notas por categoría", Object.entries(gNot), "#b45309")}
         </div>` : `<div class="inf-vacio">Sin datos para graficar esta semana.</div>`}</div>
-        <div class="inf-sec"><h2>📅 Labores de la semana <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
+        <div class="inf-sec"><h2>${ic("calendar")} Labores de la semana <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
         ${labs.length? `<table><tr><th>Fecha</th><th>Labor</th><th>Fundo</th><th>Cuartel</th><th>Responsable</th><th>Estado</th><th class="no-print" style="border:none;background:none"></th></tr>
           ${labs.map(l=>`<tr><td>${fmtF(l.fecha)}${l.fecha2?` → ${fmtF(l.fecha2)}`:""}</td><td>${esc(l.tipo)}${l.desc?` — <span style="color:#555">${esc(l.desc)}</span>`:""}</td><td>${esc(l.fundo)}</td><td>${esc(l.cuartel)}</td><td>${esc(l.resp)}</td><td>${est[l.estado]||esc(l.estado)}</td><td class="no-print" style="border:none"><button class="inf-x" onclick="this.closest('tr').remove()">✕</button></td></tr>`).join("")}</table>` : `<div class="inf-vacio">Sin labores registradas esta semana.</div>`}</div>
-        <div class="inf-sec"><h2>📋 Registros técnicos <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
+        <div class="inf-sec"><h2>${ic("clipboard")} Registros técnicos <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
         ${regs.length? `<table><tr><th>Fecha</th><th>Tipo</th><th>Fundo</th><th>Cuartel</th><th>Detalle</th><th class="no-print" style="border:none;background:none"></th></tr>
           ${regs.map(r=>{
             const det = (CAMPOS_REG[r.tipo]||[]).map(([k,lab])=>r[k]?`${lab.replace(" *","").split(" (")[0]}: ${esc(r[k])}`:"").filter(Boolean).join(" · ");
             return `<tr><td>${fmtF(r.fecha)}</td><td>${icoReg(r.tipo)} ${esc(r.tipo)}</td><td>${esc(r.fundo)}</td><td>${esc(r.cuartel)}</td><td>${det}${r.obs?`${det?" · ":""}${esc(r.obs)}`:""}</td><td class="no-print" style="border:none"><button class="inf-x" onclick="this.closest('tr').remove()">✕</button></td></tr>`;}).join("")}</table>` : `<div class="inf-vacio">Sin registros esta semana.</div>`}</div>
-        <div class="inf-sec"><h2>📝 Notas de terreno <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
-        ${nots.length? nots.map(n=>`<div class="inf-nota"><button class="inf-x no-print" style="float:right" onclick="this.closest('.inf-nota').remove()">✕</button>${n.cat==="Urgente"?"🔴 ":""}${n.fijada?"📌 ":""}<b>${fmtFH(n.fh)}</b> · ${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""} · <i>${esc(n.cat)}</i><br>${n.titulo?`<b>${esc(n.titulo)}</b><br>`:""}${esc(n.texto)}</div>`).join("") : `<div class="inf-vacio">Sin notas esta semana.</div>`}</div>
-        ${fotos.length? `<div class="inf-sec"><h2>📷 Fotos de la semana <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2><div class="inf-fotos">${fotos.map(f=>`<div style="position:relative"><img id="inf_${f}"><button class="inf-x no-print" style="position:absolute;top:4px;right:4px" onclick="this.parentElement.remove()">✕</button></div>`).join("")}</div></div>`:""}
+        <div class="inf-sec"><h2>${ic("note")} Notas de terreno <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2>
+        ${nots.length? nots.map(n=>`<div class="inf-nota"><button class="inf-x no-print" style="float:right" onclick="this.closest('.inf-nota').remove()">✕</button>${n.cat==="Urgente"?"🔴 ":""}${n.fijada?ic("pin2")+" ":""}<b>${fmtFH(n.fh)}</b> · ${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""} · <i>${esc(n.cat)}</i><br>${n.titulo?`<b>${esc(n.titulo)}</b><br>`:""}${esc(n.texto)}</div>`).join("") : `<div class="inf-vacio">Sin notas esta semana.</div>`}</div>
+        ${fotos.length? `<div class="inf-sec"><h2>${ic("camera")} Fotos de la semana <button class="inf-x no-print" onclick="this.closest('.inf-sec').remove()">✕ sección</button></h2><div class="inf-fotos">${fotos.map(f=>`<div style="position:relative"><img id="inf_${f}"><button class="inf-x no-print" style="position:absolute;top:4px;right:4px" onclick="this.parentElement.remove()">✕</button></div>`).join("")}</div></div>`:""}
         <div style="margin-top:18px;padding-top:8px;border-top:1px solid #ccc;color:#777;font-size:11.5px">Generado con AgroNotas · ${PROY? esc(PROY.nombre) : ""}</div>
       </div>
     </div>
@@ -3412,11 +3431,12 @@ function salirProyecto(){
 <style>
 /* ================== REDISEÑO 6a — Cítrico ================== */
 :root{
-  --p:#3b8c25; --p2:#2e6b1e; --pclaro:#e9f2e4; --acc:#e97409; --urg:#e97409;
-  --rojo:#c2452d; --azul:#3268a8;
-  --fondo:#f4f4f3; --card:#ffffff; --txt:#1d1f1d; --txt2:#7a7d79; --borde:#e6e6e4;
-  --som:0 1px 2px rgba(0,0,0,.04);
-  --som2:0 10px 30px rgba(0,0,0,.18);
+  --p:#1c7a44; --p2:#14532d; --pclaro:#e7f3eb; --acc:#b58e2f; --urg:#b45309;
+  --rojo:#b3261e; --azul:#2c6e91; --ambar:#e09f3e;
+  --fondo:#f4f6f3; --card:#ffffff; --txt:#1f2430; --txt2:#68707c; --borde:#e2e6e1;
+  --som:0 1px 2px rgba(15,40,25,.06), 0 1px 1px rgba(15,40,25,.04);
+  --som2:0 10px 28px rgba(15,40,25,.16);
+  --foco:rgba(46,158,98,.28);
   --rad:14px; --rail:92px;
 }
 body{padding-bottom:28px; padding-left:calc(var(--rail) + env(safe-area-inset-left));}
@@ -3425,7 +3445,7 @@ body{padding-bottom:28px; padding-left:calc(var(--rail) + env(safe-area-inset-le
 .topbar{position:static; background:none; box-shadow:none; color:var(--txt);
   padding:calc(14px + env(safe-area-inset-top)) 18px 4px; align-items:center;}
 .topbar .marca{display:none;}
-.topbar h1{font-size:23px; font-weight:700; letter-spacing:-.4px; color:var(--txt); white-space:normal;}
+.topbar h1{font-size:23px; font-weight:700; letter-spacing:-.4px; color:var(--p2); white-space:normal;}
 .topbar .sub{display:block; color:var(--txt2); opacity:1; font-size:13px; margin-top:2px; font-weight:500;}
 .topbar .acciones{display:flex; gap:8px; flex:0 0 auto; flex-wrap:wrap; justify-content:flex-end;}
 
@@ -3446,32 +3466,32 @@ body{padding-bottom:28px; padding-left:calc(var(--rail) + env(safe-area-inset-le
 
 /* Botones planos */
 .btn{background:var(--p); box-shadow:none; border-radius:10px;}
-.btn.sec{background:#fff; border:1px solid #dcdcda; color:var(--txt);}
+.btn.sec{background:#fff; border:1px solid #bcd1c2; color:var(--p2);}
 .btn.peligro{background:var(--rojo); border:none;}
-.btn-fab{background:var(--p); bottom:24px; box-shadow:0 6px 20px rgba(59,140,37,.4);}
+.btn-fab{background:var(--p); bottom:24px; box-shadow:0 6px 20px rgba(20,83,45,.35);}
 
 /* Chips y KPI */
-.chip.act{background:#1d1f1d; border-color:#1d1f1d; box-shadow:none;}
+.chip.act{background:var(--p); border-color:var(--p); box-shadow:none;}
 .kpi{border-top:1px solid var(--borde); text-align:left; padding:13px 16px;}
-.kpi .num{color:var(--txt); font-size:24px;}
+.kpi .num{color:var(--p2); font-size:24px;}
 .kpi.rojo{border-top-color:var(--borde);} .kpi.rojo .num{color:var(--urg);}
-.kpi.azul{border-top-color:var(--borde);} .kpi.azul .num{color:var(--txt);}
-.kpi.acc{border-top-color:var(--borde);} .kpi.acc .num{color:var(--txt);}
-.kpi{border-top-color:var(--borde);} .kpi .num{color:var(--txt);}
-.b-rojo{background:#fdeee0; color:#c05f10;}
+.kpi.azul{border-top-color:var(--borde);} .kpi.azul .num{color:var(--p2);}
+.kpi.acc{border-top-color:var(--borde);} .kpi.acc .num{color:var(--p2);}
+.kpi{border-top-color:var(--borde);} .kpi .num{color:var(--p2);}
+.b-rojo{background:#fadcda; color:#7e211c;}
 .card,.item{box-shadow:var(--som);}
 .cal-cel.hoy{border-color:var(--p);}
 .informe h2{color:var(--p2);}
 
 /* Widgets del panel */
-.w-tit{font-size:11px; font-weight:700; letter-spacing:.8px; color:#a8aaa6;
+.w-tit{font-size:11.5px; font-weight:700; letter-spacing:.8px; color:var(--txt2);
   margin-bottom:8px; text-transform:uppercase;}
 .g2p{display:grid; grid-template-columns:1.35fr 1fr; gap:12px; margin-bottom:14px;}
 .gmapa{display:grid; grid-template-columns:1.75fr 1fr; gap:12px; margin-bottom:14px; align-items:start;}
 .gmapa .card{margin-bottom:0;}
 .g2p .card{margin-bottom:0;}
-.urgente-card{display:flex; align-items:center; gap:12px; background:#fff;
-  border:1px solid #f3ceac; border-left:4px solid var(--urg); border-radius:12px;
+.urgente-card{display:flex; align-items:center; gap:12px; background:#fdf0ef;
+  border:1px solid #e2a9a4; border-radius:12px;
   padding:11px 16px; margin-bottom:14px; cursor:pointer;}
 .mapa-wrap{position:relative; isolation:isolate; z-index:0;}
 #mapaPanel{height:400px; border-radius:10px; border:1px solid var(--borde); background:#e8ebe6; position:relative; z-index:0; isolation:isolate;}
@@ -3488,12 +3508,12 @@ body{padding-bottom:28px; padding-left:calc(var(--rail) + env(safe-area-inset-le
 .pin-div{background:none!important; border:none!important;}
 .mapa-dibbar{position:absolute; left:14px; right:14px; bottom:16px; z-index:2; display:none; gap:8px; align-items:center; overflow-x:auto; background:rgba(24,26,23,.93); border-radius:14px; padding:9px 10px; -webkit-overflow-scrolling:touch;}
 .mapa-dibbar .mtool{flex:0 0 auto; min-width:42px; height:42px; border-radius:10px; border:2px solid transparent; background:#3a3d36; color:#fff; font-size:19px;}
-.mapa-dibbar .mtool.act{border-color:#e9a03c; background:#4a4d40;}
+.mapa-dibbar .mtool.act{border-color:#b58e2f; background:#4a4d40;}
 .mapa-dibbar .mcol{flex:0 0 auto; width:34px; height:34px; border-radius:50%; border:2.5px solid transparent;}
 .mapa-dibbar .mcol.act{border-color:#fff; box-shadow:0 0 0 2px rgba(0,0,0,.5);}
 .mapa-med{position:absolute; left:14px; top:54px; z-index:2; background:rgba(255,255,255,.97); border-radius:12px; padding:10px 12px; box-shadow:0 2px 14px rgba(0,0,0,.35); font-size:13px; max-width:270px; user-select:none; -webkit-user-select:none;}
 .mapa-med .mtab{border:none; background:#eef0ec; border-radius:8px; padding:5px 10px; font-size:12px; font-weight:700; color:#555;}
-.mapa-med .mtab.act{background:#1e7a4c; color:#fff;}
+.mapa-med .mtab.act{background:var(--p); color:#fff;}
 .mapa-med select{padding:3px 6px; border:1px solid #d4d7d2; border-radius:7px; font-size:12px; background:#fff; min-height:0;}
 .mapa-med td{padding:3px 4px; white-space:nowrap;}
 .noti-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px; margin-bottom:16px;}
@@ -3510,6 +3530,22 @@ html{-webkit-tap-highlight-color:rgba(30,122,76,.12);}
   padding:2px 6px; border-radius:5px; color:var(--txt2); max-width:88%;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 .leaflet-container{font-family:inherit;}
+
+/* ===== Pulido GesAgro (07-2026): iconos SVG de un trazo + detalles ===== */
+.i{width:1.05em;height:1.05em;flex:none;vertical-align:-.16em;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+h2 .i,h3 .i{width:1.1em;height:1.1em;stroke-width:1.8;vertical-align:-.15em}
+.w-tit .i{width:1.35em;height:1.35em;stroke-width:1.9;vertical-align:-.32em;margin-right:2px}
+.btn .i{width:1.1em;height:1.1em}
+.herr .tool .i,.mtool .i{width:22px;height:22px}
+body{font-variant-numeric:tabular-nums}
+h2,h3{color:var(--p2);letter-spacing:-.01em}
+.badge{border-radius:20px}
+.b-verde{background:#ddf0e2;color:#176136}
+.b-ambar{background:#fdf3d7;color:#7a5d0e}
+.b-azul{background:#dcebfa;color:#1c5687}
+.b-gris{background:#eceff1;color:#565d66}
+label.f input:focus,label.f select:focus,label.f textarea:focus{border-color:var(--p);box-shadow:0 0 0 3px var(--foco)}
+.btn:focus-visible,.chip:focus-visible,.tabbar button:focus-visible{outline:3px solid var(--foco);outline-offset:1px}
 
 /* iPad vertical: una columna */
 @media(max-width:1000px){
@@ -3532,29 +3568,114 @@ const ICO = {
   noti:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="14" height="13" rx="2"></rect><path d="M6.5 8h7M6.5 11h7M6.5 14h4"></path></svg>',
   calcfito:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 3h4M8.5 3v4.5L5 14.2A1.6 1.6 0 0 0 6.4 16.6h7.2A1.6 1.6 0 0 0 15 14.2L11.5 7.5V3"></path><path d="M7.2 12.6h5.6"></path></svg>',
   aplic:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4.5" y="3" width="11" height="14" rx="1.5"></rect><path d="M4.5 6.5h11M8 3v14"></path></svg>',
-  marca:'<svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="#e97409" stroke-width="1.8"><circle cx="10" cy="11.5" r="5.5"></circle><path d="M10 6V3.5M10 3.5c1.8-1 3.5-.5 3.5-.5s-.3 1.9-2 2.5"></path></svg>',
+  marca:'<svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="#b58e2f" stroke-width="1.8"><circle cx="10" cy="11.5" r="5.5"></circle><path d="M10 6V3.5M10 3.5c1.8-1 3.5-.5 3.5-.5s-.3 1.9-2 2.5"></path></svg>',
   panel:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="5.5" height="5.5" rx="1.3"></rect><rect x="11" y="3.5" width="5.5" height="5.5" rx="1.3"></rect><rect x="3.5" y="11" width="5.5" height="5.5" rx="1.3"></rect><rect x="11" y="11" width="5.5" height="5.5" rx="1.3"></rect></svg>',
   notas:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="12" height="14" rx="2"></rect><path d="M7 7.5h6M7 10.5h6M7 13.5h3.5"></path></svg>',
+  listas:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 6l1.5 1.5L7.5 4"></path><path d="M4 12l1.5 1.5L7.5 10"></path><path d="M10.5 6h6M10.5 12h6"></path></svg>',
   plan:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4.5" width="14" height="12" rx="2"></rect><path d="M3 8.5h14M7 3v3M13 3v3"></path></svg>',
   reg:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3.5" width="12" height="13.5" rx="2"></rect><path d="M7 8h6M7 11h6M7 14h4"></path></svg>',
   tab:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.2" y="4" width="3.8" height="12" rx="1"></rect><rect x="8.1" y="4" width="3.8" height="8" rx="1"></rect><rect x="13" y="4" width="3.8" height="10" rx="1"></rect></svg>',
   datos:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 6.5h13"></path><circle cx="8" cy="6.5" r="2"></circle><path d="M3.5 13.5h13"></path><circle cx="13" cy="13.5" r="2"></circle></svg>'
 };
 
+/* Iconos SVG de un trazo (pulido GesAgro): heredan el color del texto */
+const IKO={
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  minus:'<path d="M5 12h14"/>',
+  trash:'<path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v5M14 11v5"/>',
+  edit:'<path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M14.5 7.5l2 2"/>',
+  save:'<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3"/><path d="M8 21v-6h8v6"/>',
+  download:'<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 20h16"/>',
+  upload:'<path d="M12 16V4"/><path d="M8 8l4-4 4 4"/><path d="M4 20h16"/>',
+  print:'<path d="M7 8V3h10v5"/><path d="M5 8h14v8h-3"/><path d="M8 16v5h8v-5"/><path d="M8 16H5"/>',
+  calendar:'<rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  user:'<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
+  users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M17 14.5a6 6 0 0 1 4 5.5"/>',
+  search:'<circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/>',
+  db:'<ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"/>',
+  folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  clipboard:'<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9.5 4V3h5v1"/><path d="M9.5 10h5M9.5 14h5"/>',
+  basket:'<path d="M4 9h16l-1.5 11h-13z"/><path d="M8.5 9 11 3M15.5 9 13 3"/>',
+  sprout:'<path d="M12 21v-9"/><path d="M12 13c0-3.3 2.2-6 6-6 0 3.9-2.7 6-6 6z"/><path d="M12 16c0-2.8-1.9-5-5-5 0 3.3 2.2 5 5 5z"/>',
+  leaf:'<path d="M4 20C4 10 10.5 4 20 4c0 9.5-6 16-16 16z"/><path d="M4 20c4-6 8-9 12-11"/>',
+  alert:'<path d="M12 4 2.8 20h18.4z"/><path d="M12 10v4M12 17.2v.1"/>',
+  check:'<path d="M5 12.5 10 17.5 19 7"/>',
+  checkCirc:'<circle cx="12" cy="12" r="8.5"/><path d="M8 12.2l2.6 2.6L16 9.5"/>',
+  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5.2l3.2 2"/>',
+  package:'<path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/>',
+  bolt:'<path d="M13 3 5 13.5h6L11 21l8-10.5h-6z"/>',
+  info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.1"/>',
+  chart:'<path d="M4 20h16"/><path d="M7 20v-6M12 20V7M17 20v-9"/>',
+  chartUp:'<path d="M3.5 17.5 9 12l3.5 3.5L20.5 7.5"/><path d="M15.5 7.5h5v5"/>',
+  image:'<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l4.5-4.5 3.5 3.5 3-3L20 17"/>',
+  globe:'<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.2 2.4 3.4 5.4 3.4 8.5S14.2 18.1 12 20.5c-2.2-2.4-3.4-5.4-3.4-8.5S9.8 5.9 12 3.5z"/>',
+  note:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h4"/>',
+  doc:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+  ruler:'<rect x="2.5" y="8.5" width="19" height="7" rx="1.5"/><path d="M7 8.5v3M11 8.5v4M15 8.5v3M19 8.5v4"/>',
+  calc:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8"/><path d="M9 12h.1M12 12h.1M15 12h.1M9 16h.1M12 16h.1M15 16h.1"/>',
+  list:'<path d="M4 6h16M4 12h16M4 18h16"/>',
+  home:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>',
+  bell:'<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.7 2.5H4.3z"/><path d="M10.2 21a2 2 0 0 0 3.6 0"/>',
+  camera:'<rect x="3.5" y="7" width="17" height="13" rx="2"/><path d="M8.5 7l1.6-2.5h3.8L15.5 7"/><circle cx="12" cy="13.2" r="3.2"/>',
+  mic:'<rect x="9" y="3" width="6" height="11.5" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/><path d="M12 18v3M9.5 21h5"/>',
+  mail:'<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3.5 7.5l8.5 5.7 8.5-5.7"/>',
+  eye:'<path d="M2.5 12S6 6.3 12 6.3 21.5 12 21.5 12 18 17.7 12 17.7 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.7"/>',
+  eyeOff:'<path d="M4 4l16 16"/><path d="M9.3 5.5A9.6 9.6 0 0 1 12 5.2c6 0 9.5 6.8 9.5 6.8a17.6 17.6 0 0 1-3.1 3.9M6.3 6.4C4 8.1 2.5 12 2.5 12S6 18.8 12 18.8a9 9 0 0 0 3.8-.8"/>',
+  pin:'<path d="M12 21.5S5.5 15.6 5.5 10.7a6.5 6.5 0 0 1 13 0c0 4.9-6.5 10.8-6.5 10.8z"/><circle cx="12" cy="10.5" r="2.4"/>',
+  pin2:'<path d="M12 17v5"/><path d="M9.5 3.5h5L14 10l3 3.5H7L10 10z"/>',
+  map:'<path d="M3.5 6.2 9 4.2l6 2 5.5-2v13.6L15 19.8l-6-2-5.5 2z"/><path d="M9 4.2v13.6M15 6.2v13.6"/>',
+  layers:'<path d="M12 3.5 21 8.2l-9 4.7-9-4.7z"/><path d="M4 12.4l8 4.2 8-4.2M4 16.4l8 4.2 8-4.2"/>',
+  board:'<rect x="3.5" y="4" width="4.9" height="14" rx="1"/><rect x="9.8" y="4" width="4.9" height="9" rx="1"/><rect x="16.1" y="4" width="4.9" height="12" rx="1"/>',
+  shapes:'<circle cx="8.5" cy="8.5" r="4.5"/><rect x="12.5" y="12.5" width="8" height="8" rx="1.2"/>',
+  target:'<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="3"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5"/>',
+  ai:'<path d="M12 3.5 13.9 8.6 19 10.5l-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>',
+  share:'<circle cx="6" cy="12" r="2.6"/><circle cx="17.5" cy="5.5" r="2.6"/><circle cx="17.5" cy="18.5" r="2.6"/><path d="M8.4 10.7l6.8-3.9M8.4 13.3l6.8 3.9"/>',
+  flask:'<path d="M9.5 3h5M10 3v5.5L4.8 17.6a2.2 2.2 0 0 0 2 3.2h10.4a2.2 2.2 0 0 0 2-3.2L14 8.5V3"/><path d="M7.8 14.5h8.4"/>',
+  money:'<rect x="2.5" y="6.5" width="19" height="11" rx="2"/><circle cx="12" cy="12" r="2.7"/><path d="M6 9.8v.1M18 14.2v.1"/>',
+  flag:'<path d="M6 21.5V3.5"/><path d="M6 4.5h11.5L15 8.25l2.5 3.75H6"/>',
+  star:'<path d="M12 3.5l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.9l6-.9z"/>',
+  cloud:'<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"/>',
+  rain:'<path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.24"/><path d="M16 14v6M8 14v6M12 16v6"/>',
+  flower:'<circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="5.8" r="2.8"/><circle cx="17.4" cy="9" r="2.8"/><circle cx="15.4" cy="16.4" r="2.8"/><circle cx="8.6" cy="16.4" r="2.8"/><circle cx="6.6" cy="9" r="2.8"/>',
+  drop:'<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>',
+  clip:'<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  mountain:'<path d="m8 3 4 8 5-5 5 15H2L8 3z"/>',
+  compass:'<circle cx="12" cy="12" r="8.5"/><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/>',
+  expand:'<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
+  refresh:'<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>',
+  key:'<circle cx="7.5" cy="15.5" r="3.5"/><path d="m10.5 12.5 9-9"/><path d="m15.5 7.5 3 3 3-3-3-3"/>',
+  plug:'<path d="M9 2.5v5M15 2.5v5"/><path d="M6 7.5h12v3.5a6 6 0 0 1-12 0z"/><path d="M12 17v4.5"/>',
+  device:'<rect x="4" y="2.5" width="16" height="19" rx="2"/><path d="M10.5 18.5h3"/>',
+  tag:'<path d="M3 11V3h8l10 10-8 8z"/><circle cx="7.5" cy="7.5" r="1.3"/>',
+  link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  news:'<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 8.5h6M7 12h10M7 15.5h10M16.5 8.5H17"/>',
+  receipt:'<path d="M6 2.5h12V21l-2-1.4-2 1.4-2-1.4L10 21l-2-1.4L6 21z"/><path d="M9.5 7.5h5M9.5 11h5M9.5 14.5h3"/>',
+  pointer:'<path d="m3 11 19-9-9 19-2-8z"/>',
+  eraser:'<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
+  textT:'<path d="M5 6.5V4.5h14v2M12 4.5v15M9 19.5h6"/>',
+  circle:'<circle cx="12" cy="12" r="7.5"/>',
+  square:'<rect x="4.5" y="4.5" width="15" height="15" rx="1.5"/>',
+  grid:'<rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="M4 12h16M12 4v16"/>',
+  move:'<path d="M12 2.5v19M2.5 12h19"/><path d="M9 5.5 12 2.5l3 3M9 18.5l3 3 3-3M5.5 9l-3 3 3 3M18.5 9l3 3-3 3"/>',
+  tree:'<path d="M12 21.5V15"/><path d="M12 3a6.8 6.8 0 0 1 6.8 6.8c0 3.7-3 6.2-6.8 6.2s-6.8-2.5-6.8-6.2A6.8 6.8 0 0 1 12 3z"/>'
+};
+const ic=n=>'<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+(IKO[n]||'')+'</svg>';
+
 function render(){
-  const t = {panel:"Panel", notas:"Notas de terreno", plan:"Planificación", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", datos:"Datos y ajustes"}[nav.tab];
+  const t = {panel:"Panel", notas:"Notas de terreno", listas:"Mis listas", plan:"Planificación", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", datos:"Datos y ajustes"}[nav.tab];
   document.getElementById("topbar").innerHTML =
     `<div style="flex:1;min-width:180px"><h1>${t}<span class="sub">${PROY? esc(PROY.nombre) : "AgroNotas"} · ${fmtF(hoy())}</span></h1></div>
     <div class="acciones">
-      <button class="btn" onclick="formNota()">＋ Nota</button>
-      <button class="btn sec" onclick="formLabor()">＋ Labor</button>
-      <button class="btn sec" onclick="formReg()">＋ Registro</button>
-      <button class="btn sec" onclick="abrirCalc()">🧮 Calc</button>
+      <button class="btn" onclick="formNota()">${ic("plus")} Nota</button>
+      <button class="btn sec" onclick="formLabor()">${ic("plus")} Labor</button>
+      <button class="btn sec" onclick="formReg()">${ic("plus")} Registro</button>
+      <button class="btn sec" onclick="abrirCalc()">${ic("calc")} Calc</button>
     </div>`;
   document.getElementById("tabbar").innerHTML =
     `<div class="marca-r">${ICO.marca}</div>` +
     TABS.map(x=>`${x.id==="datos"?'<button class="esp"></button>':""}<button class="${nav.tab===x.id?"act":""}" onclick="ir('${x.id}')">${ICO[x.id]||""}${x.lab}</button>`).join("");
-  const vistas = {panel:vPanel, notas:vNotas, plan:vPlan, reg:vReg, tab:vTab, noti:vNoticias, calcfito:vCalcFito, aplic:vAplic, datos:vDatos};
+  const vistas = {panel:vPanel, notas:vNotas, listas:vListas, plan:vPlan, reg:vReg, tab:vTab, noti:vNoticias, calcfito:vCalcFito, aplic:vAplic, datos:vDatos};
   document.getElementById("app").innerHTML = vistas[nav.tab]();
   if(nav.tab!=="panel" && geoWatch){ navigator.geolocation.clearWatch(geoWatch); geoWatch = null; } // ahorra batería fuera del mapa
   const posrender = {notas:posNotas, panel:posPanel, reg:posNotas, noti:posNoticias}[nav.tab];
@@ -3562,6 +3683,65 @@ function render(){
 }
 
 /* ---------- PANEL ---------- */
+/* ================== MIS LISTAS (pestaña propia) ================== */
+const CL_COLORS = ["#2e7d32","#00796b","#1565c0","#b26a00","#6d4c41","#5e35b1","#c62828","#455a64"];
+function clLists(){ D.checklists = D.checklists || []; return D.checklists; }
+function clActiva(){ const L=clLists(); if(!L.length) return null; let a=L.find(x=>x.id===nav.clActiva); if(!a){ a=L[0]; nav.clActiva=a.id; } return a; }
+function clColorDe(l){ return (l&&l.color) || CL_COLORS[0]; }
+function vListas(){ return `<div id="clView">${clViewHTML()}</div>`; }
+function clViewHTML(){
+  const L=clLists(), a=clActiva();
+  let h=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">`;
+  h+=L.map(function(l){ const p=(l.items||[]).filter(function(i){return !i.ok;}).length; const act=a&&a.id===l.id; const c=clColorDe(l); return `<button type="button" onclick="clSel(${l.id})" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:22px;border:2px solid ${c};background:${act?c:'#fff'};color:${act?'#fff':'var(--txt)'};font-weight:700;font-size:15px;cursor:pointer">${esc(l.nombre)}${p?`<span style="min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;border-radius:10px;background:${act?'rgba(255,255,255,.28)':c};color:#fff;font-size:12px">${p}</span>`:""}</button>`; }).join("");
+  h+=`<button type="button" onclick="clNueva()" style="padding:10px 16px;border-radius:22px;border:2px dashed var(--borde);background:#fff;color:var(--txt2);font-weight:700;font-size:15px;cursor:pointer">＋ Nueva lista</button></div>`;
+  if(!L.length) return h+`<div class="vacio"><span class="ico">🗒️</span>Crea tu primera lista para anotar pendientes o ideas y tenerlas siempre a mano.</div>`;
+  const c=clColorDe(a), items=a.items||[], done=items.filter(function(i){return i.ok;}).length, tot=items.length, pct=tot?Math.round(done/tot*100):0;
+  h+=`<div class="card" style="border-top:5px solid ${c};padding-top:14px">`;
+  h+=`<div class="fila" style="justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-weight:800;font-size:21px">${esc(a.nombre)}</div><div style="display:flex;gap:6px"><button class="btn sec chico" onclick="clRename(${a.id})">✏️</button><button class="btn sec chico" style="color:var(--rojo)" onclick="clDelLista(${a.id})">🗑️</button></div></div>`;
+  h+=`<div style="display:flex;gap:8px;margin-bottom:10px">`+CL_COLORS.map(function(cc){ return `<button type="button" onclick="clColor(${a.id},'${cc}')" style="width:24px;height:24px;border-radius:50%;background:${cc};border:${a.color===cc?'3px solid #263238':'2px solid #fff'};box-shadow:0 0 0 1px #cfd8d3;cursor:pointer"></button>`; }).join("")+`</div>`;
+  h+=`<div style="height:9px;background:#eef1ec;border-radius:6px;overflow:hidden;margin-bottom:4px"><div style="width:${pct}%;height:100%;background:${c};transition:width .25s"></div></div>`;
+  h+=`<div class="muted" style="font-size:12.5px;margin-bottom:12px">${done}/${tot} hechas${(tot>0&&done===tot)?" · ¡lista lista! 🎉":""}</div>`;
+  h+=`<div style="display:flex;gap:8px;margin-bottom:12px"><input id="clNuevo" placeholder="Anota algo y aprieta Enter…" style="flex:1;padding:14px 15px;border:1.5px solid var(--borde);border-radius:13px;font-size:16px" onkeydown="if(event.key==='Enter'){event.preventDefault();clAdd();}"><button type="button" onclick="clAdd()" style="width:52px;height:52px;flex:0 0 auto;border-radius:13px;border:none;background:${c};color:#fff;font-size:26px;line-height:1;cursor:pointer">＋</button></div>`;
+  const pend=items.map(function(it,i){return {it:it,i:i};}).filter(function(x){return !x.it.ok;});
+  const hechas=items.map(function(it,i){return {it:it,i:i};}).filter(function(x){return x.it.ok;});
+  if(!items.length) h+=`<div class="muted" style="font-size:13.5px;padding:8px 0">Lista vacía. Escribe arriba para agregar el primer pendiente.</div>`;
+  h+=pend.map(function(x,idx){ return clItemHTML(a,x,idx>0); }).join("");
+  if(hechas.length){
+    nav.clHechas=nav.clHechas||{}; const ab=nav.clHechas[a.id]===true;
+    h+=`<div class="fila" style="justify-content:space-between;align-items:center;margin-top:10px;padding-top:6px;border-top:1px solid #eef1ec"><button type="button" onclick="clHechasTgl(${a.id})" style="border:none;background:none;font-weight:700;font-size:13px;color:var(--txt2);cursor:pointer">${ab?"▾":"▸"} Hechas (${hechas.length})</button><button class="btn sec chico" onclick="clLimpiar(${a.id})">🧹 Vaciar hechas</button></div>`;
+    if(ab) h+=hechas.map(function(x){ return clItemHTML(a,x,false); }).join("");
+  }
+  h+=`</div>`;
+  return h;
+}
+function clItemHTML(l,x,canUp){
+  const it=x.it, i=x.i, c=clColorDe(l);
+  if(nav.clEdit && nav.clEdit.id===l.id && nav.clEdit.i===i){
+    return `<div style="display:flex;gap:8px;align-items:center;padding:8px 0"><input id="clEditInp" value="${esc(it.t)}" style="flex:1;padding:12px;border:2px solid ${c};border-radius:11px;font-size:16px" onkeydown="if(event.key==='Enter'){event.preventDefault();clEditSave(${l.id},${i},this.value);}else if(event.key==='Escape'){clEditCancel();}"><button type="button" class="btn chico" style="background:${c}" onclick="clEditSave(${l.id},${i},document.getElementById('clEditInp').value)">OK</button></div>`;
+  }
+  return `<div style="display:flex;align-items:center;gap:13px;padding:13px 2px;border-bottom:1px solid #eef1ec;${it.ok?'opacity:.5':''}">
+    <input type="checkbox" ${it.ok?"checked":""} onchange="clToggle(${l.id},${i})" style="width:27px;height:27px;flex:0 0 auto;accent-color:${c};cursor:pointer">
+    <span onclick="clEditStart(${l.id},${i})" style="flex:1;font-size:16.5px;line-height:1.25;cursor:text;${it.ok?'text-decoration:line-through':''}">${esc(it.t)}</span>
+    ${canUp?`<button type="button" onclick="clUp(${l.id},${i})" title="Subir" style="border:none;background:none;font-size:19px;color:var(--txt2);cursor:pointer;padding:2px 5px">↑</button>`:""}
+    <button type="button" onclick="clDel(${l.id},${i})" title="Borrar" style="border:none;background:none;font-size:18px;color:#c62828;cursor:pointer;padding:2px 5px">✕</button>
+  </div>`;
+}
+function clRefresh(foc){ const c=document.getElementById("clView"); if(c){ c.innerHTML=clViewHTML(); if(foc){ const inp=document.getElementById("clNuevo"); if(inp) inp.focus(); } } }
+function clSel(id){ nav.clActiva=id; nav.clEdit=null; clRefresh(false); }
+function clAdd(){ const a=clActiva(); if(!a) return; const inp=document.getElementById("clNuevo"); const t=(inp?inp.value:"").trim(); if(!t) return; a.items=a.items||[]; a.items.push({t:t, ok:false}); guardar(); clRefresh(true); }
+function clToggle(id,i){ const l=clLists().find(function(x){return x.id===id;}); if(l&&l.items&&l.items[i]){ l.items[i].ok=!l.items[i].ok; guardar(); clRefresh(false); } }
+function clDel(id,i){ const l=clLists().find(function(x){return x.id===id;}); if(l&&l.items){ l.items.splice(i,1); guardar(); clRefresh(false); } }
+function clUp(id,i){ const l=clLists().find(function(x){return x.id===id;}); if(!l||!l.items||!l.items[i]) return; let j=i-1; while(j>=0 && l.items[j].ok) j--; if(j<0) return; const t=l.items.splice(i,1)[0]; l.items.splice(j,0,t); guardar(); clRefresh(false); }
+function clEditStart(id,i){ nav.clEdit={id:id,i:i}; clRefresh(false); const inp=document.getElementById("clEditInp"); if(inp){ inp.focus(); try{ inp.setSelectionRange(inp.value.length,inp.value.length); }catch(e){} } }
+function clEditCancel(){ nav.clEdit=null; clRefresh(false); }
+function clEditSave(id,i,val){ const l=clLists().find(function(x){return x.id===id;}); const t=(val||"").trim(); if(l&&l.items&&l.items[i]){ if(t) l.items[i].t=t; else l.items.splice(i,1); } nav.clEdit=null; guardar(); clRefresh(false); }
+function clLimpiar(id){ const l=clLists().find(function(x){return x.id===id;}); if(!l) return; if(!confirm("¿Vaciar los ítems ya hechos de esta lista?")) return; l.items=(l.items||[]).filter(function(i){return !i.ok;}); guardar(); clRefresh(false); }
+function clHechasTgl(id){ nav.clHechas=nav.clHechas||{}; nav.clHechas[id]=!nav.clHechas[id]; clRefresh(false); }
+function clNueva(){ abrirModal("＋ Nueva lista", campoF("cl_nom","Nombre de la lista","text","",'placeholder="Ej: Comprar, Arreglar, Ideas"'), function(){ const n=(v("cl_nom")||"").trim(); if(!n){ alert("Ponle un nombre a la lista."); return false; } const id=nid(); const color=CL_COLORS[clLists().length % CL_COLORS.length]; clLists().push({id:id, nombre:n, color:color, items:[]}); nav.clActiva=id; }, "Crear"); }
+function clRename(id){ const l=clLists().find(function(x){return x.id===id;}); if(!l) return; abrirModal("✏️ Renombrar lista", campoF("cl_nom","Nombre","text",l.nombre), function(){ const n=(v("cl_nom")||"").trim(); if(!n){ alert("Ponle un nombre."); return false; } l.nombre=n; }, "Guardar"); }
+function clColor(id,color){ const l=clLists().find(function(x){return x.id===id;}); if(l){ l.color=color; guardar(); clRefresh(false); } }
+function clDelLista(id){ const l=clLists().find(function(x){return x.id===id;}); if(!l) return; if(!confirm('¿Borrar la lista "'+l.nombre+'" y todos sus ítems?')) return; D.checklists=clLists().filter(function(x){return x.id!==id;}); nav.clActiva=null; nav.clEdit=null; guardar(); render(); }
+
 function vPanel(){
   const haTot = D.cuarteles.reduce((s,q)=>s+(+q.ha||0),0);
   const haPlant = D.cuarteles.filter(q=>q.especie!=="Por plantar").reduce((s,q)=>s+(+q.ha||0),0);
@@ -3590,8 +3770,8 @@ function vPanel(){
 
   /* Recordatorios */
   const avisos = D.notas.filter(n=>n.aviso && n.aviso<=hoyISO);
-  if(avisos.length) h += `<div class="card" style="border-left:4px solid var(--acc)">
-    <div class="w-tit">🔔 Recordatorios (${avisos.length})</div>
+  if(avisos.length) h += `<div class="card" style="border:1px solid #e2c07a;background:#fdf8ec">
+    <div class="w-tit">${ic("bell")} Recordatorios (${avisos.length})</div>
     ${avisos.sort((a,b)=>a.aviso.localeCompare(b.aviso)).map(n=>`<div class="fila" style="align-items:center">
       <div style="flex:1">${miniNota(n)}</div>
       <button class="btn sec chico" onclick="cerrarAviso(${n.id})">✓ Listo</button></div>`).join("")}</div>`;
@@ -3611,7 +3791,7 @@ function vPanel(){
 
   /* Pregúntale a tus datos (IA) */
   h += `<div class="card">
-    <div class="w-tit">🔎 Pregúntale a tus datos <span class="badge b-azul">IA</span></div>
+    <div class="w-tit">${ic("search")} Pregúntale a tus datos <span class="badge b-azul">IA</span></div>
     <div class="muted">Pregunta en lenguaje normal sobre tus notas, registros, labores y cuarteles. Necesita señal.</div>
     <div class="fila" style="margin-top:8px">
       <input id="iaBuscaQ" placeholder="Ej: ¿cuándo apliqué por última vez en San Joaquín?" style="flex:1;padding:11px;border:1.5px solid var(--borde);border-radius:10px;font-size:16px;min-width:150px" onkeydown="if(event.key==='Enter'){event.preventDefault();iaBuscar();}">
@@ -3639,7 +3819,7 @@ function vPanel(){
   h += panelAvances();
 
   /* Semana + notas recientes */
-  let hSem = `<div class="card"><div class="w-tit">📅 Esta semana</div>`;
+  let hSem = `<div class="card"><div class="w-tit">${ic("calendar")} Esta semana</div>`;
   if(!deSemana.length) hSem += `<div class="muted">Sin labores planificadas. Toca Plan para agregar.</div>`;
   else{
     const porDia = {};
@@ -3649,7 +3829,7 @@ function vPanel(){
       ${porDia[f].map(l=>filaLabor(l,true)).join("")}`).join("");
   }
   hSem += `</div>`;
-  let hNot = `<div class="card"><div class="w-tit">📝 Notas recientes</div>`;
+  let hNot = `<div class="card"><div class="w-tit">${ic("note")} Notas recientes</div>`;
   const rec = [...fijadas, ...notasRec.filter(n=>!n.fijada)].slice(0,5);
   hNot += rec.length? rec.map(n=>miniNota(n)).join("") : `<div class="muted">Aún no hay notas. Toca ＋ Nota para crear la primera.</div>`;
   hNot += `</div>`;
@@ -3689,7 +3869,7 @@ function widgetHTML(w){
   }
   if(w.tipo==="fijadas"){
     const f = D.notas.filter(n=>n.fijada);
-    return widgetCard(w, f.length? f.slice(0,5).map(n=>miniNota(n)).join("") : `<div class="muted">No hay notas fijadas.</div>`, `📌 Fijadas (${f.length})`);
+    return widgetCard(w, f.length? f.slice(0,5).map(n=>miniNota(n)).join("") : `<div class="muted">No hay notas fijadas.</div>`, `${ic("pin2")} Fijadas (${f.length})`);
   }
   if(w.tipo==="lluvia"){
     const anio = w.anio || (new Date()).getFullYear();
@@ -3699,11 +3879,11 @@ function widgetHTML(w){
           <button class="btn sec chico" style="min-height:32px;padding:3px 11px" onclick="lluviaAnio(${w.id},-1)">◀</button>
           <b style="font-size:16px;min-width:44px;text-align:center">${anio}</b>
           <button class="btn sec chico" style="min-height:32px;padding:3px 11px" onclick="lluviaAnio(${w.id},1)">▶</button>
-          <button class="btn sec chico" style="min-height:32px;padding:3px 12px" onclick="lluviaZona(${w.id})">📍 ${esc(locNom)} ▾</button>
+          <button class="btn sec chico" style="min-height:32px;padding:3px 12px" onclick="lluviaZona(${w.id})">${ic("pin")} ${esc(locNom)} ▾</button>
         </div>
         <div class="fila" style="gap:6px">
-          <button class="btn sec chico" style="min-height:32px;padding:3px 11px" onclick="lluviaOficialIA(${w.id})">🔎 Oficial</button>
-          <button class="btn chico" style="min-height:32px;padding:3px 12px;background:var(--azul)" onclick="lluviaAnalizar(${w.id})">☁️ Analizar</button>
+          <button class="btn sec chico" style="min-height:32px;padding:3px 11px" onclick="lluviaOficialIA(${w.id})">${ic("search")} Oficial</button>
+          <button class="btn chico" style="min-height:32px;padding:3px 12px;background:var(--azul)" onclick="lluviaAnalizar(${w.id})">${ic("cloud")} Analizar</button>
         </div>
       </div>
       <div id="wLluvia_${w.id}" class="muted" style="font-size:12px">cargando lluvia…</div>
@@ -3719,7 +3899,7 @@ function widgetHTML(w){
       <div style="flex:0 0 110px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(k)}</div>
       <div style="flex:1;background:#eef1ec;border-radius:5px"><div style="width:${Math.round(ha/mx*100)}%;background:var(--p,#1e7a4c);border-radius:5px;height:12px"></div></div>
       <div style="flex:0 0 62px;text-align:right;font-size:12px;font-weight:700">${num(ha)} ha</div></div>`).join("");
-    return widgetCard(w, h||`<div class="muted">Sin cuarteles aún.</div>`, "📊 Superficie por variedad");
+    return widgetCard(w, h||`<div class="muted">Sin cuarteles aún.</div>`, ic("chart")+" Superficie por variedad");
   }
   if(w.tipo==="helada"){
     return widgetCard(w, `<div id="wHelada_${w.id}" class="muted">consultando pronóstico…</div>`, `❄️ Alerta de helada (bajo ${num(w.um??0)}°C)`);
@@ -3732,15 +3912,15 @@ function widgetHTML(w){
   }
   if(w.tipo==="rapidos"){
     return widgetCard(w, `<div class="fila" style="gap:8px;flex-wrap:wrap">
-      <button class="btn sec chico" onclick="formNota()">📝 Nota</button>
-      <button class="btn sec chico" onclick="formReg()">📋 Registro</button>
-      <button class="btn sec chico" onclick="formLabor()">📅 Labor</button>
-      <button class="btn sec chico" onclick="ir('datos')">🌳 Datos</button>
-      <button class="btn sec chico" onclick="ir('tab')">🗂 Tablero</button>
+      <button class="btn sec chico" onclick="formNota()">${ic("note")} Nota</button>
+      <button class="btn sec chico" onclick="formReg()">${ic("clipboard")} Registro</button>
+      <button class="btn sec chico" onclick="formLabor()">${ic("calendar")} Labor</button>
+      <button class="btn sec chico" onclick="ir('datos')">${ic("tree")} Datos</button>
+      <button class="btn sec chico" onclick="ir('tab')">${ic("board")} Tablero</button>
     </div>`, "⚡ Accesos rápidos");
   }
   if(w.tipo==="carencias"){
-    if(!D.gesagro) return widgetCard(w, `<div class="muted">Importa el respaldo de GesAgro en <b>Datos → 🔗 GesAgro</b> para ver el semáforo.</div>`, "🚦 Carencias de cosecha");
+    if(!D.gesagro) return widgetCard(w, `<div class="muted">Importa el respaldo de GesAgro en <b>Datos → ${ic("link")} GesAgro</b> para ver el semáforo.</div>`, "🚦 Carencias de cosecha");
     const g = D.gesagro, hoyI = hoy();
     const sumaD = (f,n)=>{ const d = new Date(f+"T12:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
     const carDe = (pr,esp)=>{ const ce = (pr&&pr.carenciaEsp)||{}; return (esp && ce[esp]!=null && ce[esp]!=="")? +ce[esp] : ((pr&&+pr.carencia)||0); };
@@ -3789,7 +3969,7 @@ function widgetHTML(w){
       dias===null? "Nunca has descargado un respaldo desde esta app 😬" :
       dias===0? "Respaldo descargado hoy ✅" :
       `Último respaldo hace ${dias} día${dias===1?"":"s"}${rojo?" — ¡toca hacer uno!":" ✅"}`}</div>
-      <button class="btn sec chico" style="margin-top:8px" onclick="ir('datos')">📦 Ir a Datos</button>`, "💾 Respaldo");
+      <button class="btn sec chico" style="margin-top:8px" onclick="ir('datos')">${ic("package")} Ir a Datos</button>`, ic("save")+" Respaldo");
   }
   if(w.tipo==="registros"){
     const d=new Date(); d.setDate(d.getDate()-90); const desde=d.toISOString().slice(0,10);
@@ -3822,9 +4002,9 @@ function agregarWidget(){
     <label class="f">Tipo de widget<select id="w_tipo" onchange="wCfgSync()">
       <option value="checklist">✅ Checklists pendientes</option>
       <option value="urgentes">🔥 Urgencias abiertas</option>
-      <option value="fijadas">📌 Notas fijadas</option>
+      <option value="fijadas">Notas fijadas</option>
       <option value="lluvia">🌧 Lluvia por mes (gráfico)</option>
-      <option value="variedades">📊 Superficie por variedad</option>
+      <option value="variedades">${ic("chart")} Superficie por variedad</option>
       <option value="helada">❄️ Alerta de helada (pronóstico)</option>
       <option value="cuenta">⏳ Cuenta regresiva a una fecha</option>
       <option value="rapidos">⚡ Accesos rápidos</option>
@@ -3943,7 +4123,7 @@ async function cargarLluviaWidgets(){
     cont.innerHTML = `<div style="display:flex;gap:4px;align-items:flex-end;border-bottom:1px solid var(--borde);padding-bottom:6px">${barras}</div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px">
         <div><span style="font-size:20px;font-weight:800;color:var(--azul,#2563eb);font-variant-numeric:tabular-nums">${num(tot)}</span> <span class="muted" style="font-size:11px">mm en ${anio}</span></div>
-        <div class="muted" style="font-size:10.5px;text-align:right;line-height:1.4">📍 ${esc(locNom)}<br>${fuente||"sin datos"}${faltan?` · faltan ${faltan} m. sin dato`:""}</div>
+        <div class="muted" style="font-size:10.5px;text-align:right;line-height:1.4">${ic("pin")} ${esc(locNom)}<br>${fuente||"sin datos"}${faltan?` · faltan ${faltan} m. sin dato`:""}</div>
       </div>`;
     LL_RT[w.id].ll = {anio, datos, tot, fuente, locNom};
   }
@@ -3957,7 +4137,7 @@ function lluviaAnio(id, delta){
   guardar(); render();
 }
 async function lluviaAnalizar(id){
-  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); ir("datos"); return; }
+  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → Inteligencia (IA)."); ir("datos"); return; }
   const out = document.getElementById("wLluviaIA_"+id); if(!out) return;
   const ll = (LL_RT[id]||{}).ll;
   if(!ll || !ll.datos){ out.style.color="var(--txt2)"; out.textContent = "Espera a que cargue la lluvia y reintenta."; return; }
@@ -3970,14 +4150,14 @@ async function lluviaAnalizar(id){
 }
 function lluviaZona(id){
   const def = {nom:zonaClima(), lat:(D.lluviaLoc||LOC_DEF).lat, lng:(D.lluviaLoc||LOC_DEF).lng};
-  const chipDef = `<button class="btn sec chico" style="margin:3px" onclick="lluviaSetZona(${id}, ${def.lat}, ${def.lng}, '${esc((def.nom||"").replace(/['"\\]/g,""))}')">📍 ${esc(def.nom)} · clima</button>`;
-  const favs = (D.zonas||[]).map((z,i)=>{ const nn=(z.nom||"").replace(/['"\\]/g,""); return `<span class="chip act" style="margin:3px;display:inline-flex;align-items:center;gap:6px"><span style="cursor:pointer" onclick="lluviaSetZona(${id}, ${z.lat}, ${z.lng}, '${esc(nn)}')">⭐ ${esc(z.nom)}</span><button class="qx-cat" onclick="event.stopPropagation();lluviaQuitarFav(${id}, ${i})">✕</button></span>`; }).join("");
+  const chipDef = `<button class="btn sec chico" style="margin:3px" onclick="lluviaSetZona(${id}, ${def.lat}, ${def.lng}, '${esc((def.nom||"").replace(/['"\\]/g,""))}')">${ic("pin")} ${esc(def.nom)} · clima</button>`;
+  const favs = (D.zonas||[]).map((z,i)=>{ const nn=(z.nom||"").replace(/['"\\]/g,""); return `<span class="chip act" style="margin:3px;display:inline-flex;align-items:center;gap:6px"><span style="cursor:pointer" onclick="lluviaSetZona(${id}, ${z.lat}, ${z.lng}, '${esc(nn)}')">${ic("star")} ${esc(z.nom)}</span><button class="qx-cat" onclick="event.stopPropagation();lluviaQuitarFav(${id}, ${i})">✕</button></span>`; }).join("");
   abrirModal("📍 Localidad de la lluvia", `
     <div class="muted">Elige una zona o un favorito ⭐, o busca cualquier localidad y guárdala como favorita.</div>
     <div style="margin:10px 0;display:flex;flex-wrap:wrap;align-items:center">${chipDef}${favs}</div>
     <label class="f">Buscar localidad
       <input id="llq" placeholder="Ej: Ovalle, Curicó, Los Ángeles…" autocapitalize="words" onkeydown="if(event.key==='Enter'){event.preventDefault();lluviaBuscarLoc(${id});}"></label>
-    <button class="btn sec chico" onclick="lluviaBuscarLoc(${id})">🔎 Buscar</button>
+    <button class="btn sec chico" onclick="lluviaBuscarLoc(${id})">${ic("search")} Buscar</button>
     <div id="llres" style="margin-top:10px"></div>
   `, null, "Cerrar");
 }
@@ -4002,8 +4182,8 @@ async function lluviaBuscarLoc(id){
       const nn = (r.name||"").replace(/['"\\]/g,"");
       const et = [r.name, r.admin1, r.country].filter(Boolean).join(", ");
       return `<div class="fila" style="gap:6px;margin:5px 0;align-items:center">
-        <button class="btn sec chico" style="flex:1;text-align:left;justify-content:flex-start" onclick="lluviaSetZona(${id}, ${r.latitude}, ${r.longitude}, '${esc(nn)}')">📍 ${esc(et)}</button>
-        <button class="btn sec chico" title="Guardar como favorita" onclick="lluviaFav(${id}, ${r.latitude}, ${r.longitude}, '${esc(nn)}')">⭐</button>
+        <button class="btn sec chico" style="flex:1;text-align:left;justify-content:flex-start" onclick="lluviaSetZona(${id}, ${r.latitude}, ${r.longitude}, '${esc(nn)}')">${ic("pin")} ${esc(et)}</button>
+        <button class="btn sec chico" title="Guardar como favorita" onclick="lluviaFav(${id}, ${r.latitude}, ${r.longitude}, '${esc(nn)}')">${ic("star")}</button>
       </div>`;
     }).join("");
   }catch(e){ res.innerHTML = `<div class="muted">No se pudo buscar. Reintenta.</div>`; }
@@ -4023,7 +4203,7 @@ function lluviaQuitarFav(id, i){
 }
 async function iaBuscarWeb(prompt){
   const c = iaCfg();
-  if(!c.key) throw {msg:"Configura tu clave de IA en Datos → 🤖 Inteligencia (IA)."};
+  if(!c.key) throw {msg:"Configura tu clave de IA en Datos → Inteligencia (IA)."};
   if(navigator.onLine===false) throw {msg:"Sin señal. La búsqueda web necesita internet."};
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(c.modelo)}:generateContent?key=${encodeURIComponent(c.key)}`;
   let resp;
@@ -4031,7 +4211,7 @@ async function iaBuscarWeb(prompt){
   catch(e){ throw {msg:"No se pudo conectar. Revisa tu señal."}; }
   if(!resp.ok){
     let det=""; try{ det=(await resp.json())?.error?.message||""; }catch(_){}
-    if(resp.status===400 && /billing|grounding|search|precondition|tool/i.test(det)) throw {msg:"La búsqueda web (grounding) necesita activar facturación en tu proyecto de Google AI Studio. Con el plan gratis puedes usar ☁️ Analizar, pero no 🔎 Oficial."};
+    if(resp.status===400 && /billing|grounding|search|precondition|tool/i.test(det)) throw {msg:"La búsqueda web (grounding) necesita activar facturación en tu proyecto de Google AI Studio. Con el plan gratis puedes usar Analizar, pero no la búsqueda Oficial."};
     if(resp.status===429) throw {msg:"Cuota agotada, intenta más tarde."};
     throw {msg:"Error "+resp.status+(det?": "+det:"")};
   }
@@ -4043,7 +4223,7 @@ async function iaBuscarWeb(prompt){
   return {text, fuentes};
 }
 async function lluviaOficialIA(id){
-  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); ir("datos"); return; }
+  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → Inteligencia (IA)."); ir("datos"); return; }
   const w = (D.widgets||[]).find(x=>x.id===id); if(!w) return;
   const out = document.getElementById("wLluviaIA_"+id); if(!out) return;
   const ll = (LL_RT[id]||{}).ll || {};
@@ -4064,7 +4244,11 @@ Valores en mm. Usa null en los meses sin dato oficial claro. NO inventes cifras:
       guardar();
       const con = meses.filter(x=>x!=null).length;
       out.style.color="var(--txt)";
-      out.textContent = `✓ Datos oficiales cargados en el gráfico${o.estacion?" · est. "+o.estacion:""} — ${con}/12 meses con dato.${(r.fuentes&&r.fuentes.length)? "\n📚 "+r.fuentes.join(" · ") : ""}\n(Referencial de búsqueda web; confírmalo en la fuente.)`;
+      if(con===0){
+        out.textContent = `No encontré datos oficiales para ${anio} (0 de 12 meses). El gráfico sigue mostrando la ESTIMACIÓN de Open-Meteo, que puede exagerar meses puntuales.\nLo más fiel a tu campo: anota los mm de tu pluviómetro en Registros → Lluvia y el gráfico los toma como oficial.${(r.fuentes&&r.fuentes.length)? "\n📚 "+r.fuentes.join(" · ") : ""}`;
+      } else {
+        out.textContent = `✓ Cargué ${con} de 12 meses con dato oficial${o.estacion?" · est. "+o.estacion:""}.${con<12?" Los "+(12-con)+" meses sin dato oficial quedan en 0 (no se rellenan con la estimación)." : ""}${(r.fuentes&&r.fuentes.length)? "\n📚 "+r.fuentes.join(" · ") : ""}\n(Referencial de búsqueda web; confírmalo en la fuente.)`;
+      }
       cargarLluviaWidgets();
     } else {
       out.style.color="var(--txt)";
@@ -4179,8 +4363,8 @@ function vCalcFito(){
     <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
       <div><b style="font-size:17px">🧪 Calculadora Fito</b><div class="muted" style="font-size:12px">Planifica y cotiza una aplicación por cuartel.</div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn chico" onclick="cfGuardarRegistro()">💾 Guardar</button>
-        <button class="btn sec chico" onclick="cfPDF()">📄 Plan</button>
+        <button class="btn chico" onclick="cfGuardarRegistro()">${ic("save")} Guardar</button>
+        <button class="btn sec chico" onclick="cfPDF()">${ic("doc")} Plan</button>
         <button class="btn sec chico" onclick="cfExpandir(true)">Expandir</button>
         <button class="btn sec chico" onclick="cfExpandir(false)">Contraer</button>
         <button class="btn sec chico" onclick="cfReset()">Limpiar</button>
@@ -4197,7 +4381,7 @@ function vCalcFito(){
           <input id="cfProdInput" type="text" autocomplete="off" value="${esc(pf.producto)}" placeholder="Ej: Diazinon 40 WP" oninput="cfProdInput(this.value)" onfocus="cfProdAC(this.value)" onblur="cfProdACHide()" style="display:block;width:100%;padding:12px;font-size:16px;border:1.5px solid var(--borde);border-radius:10px;background:#fff;color:var(--txt);box-sizing:border-box">
           <div id="cfProdAC" style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:60;background:#fff;border:1.5px solid var(--borde);border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.16);max-height:280px;overflow-y:auto"></div>
         </div>
-        <button class="btn sec chico" style="min-height:46px;white-space:nowrap" onclick="cfAbrirProductos()">📋 Mi base</button>
+        <button class="btn sec chico" style="min-height:46px;white-space:nowrap" onclick="cfAbrirProductos()">${ic("clipboard")} Mi base</button>
       </div>
       <div id="cfProdInfo">${cfProdInfoHTML()}</div>
       <div id="cfPlagaSel" style="margin-bottom:12px">${cfPlagaSelHTML()}</div>
@@ -4332,8 +4516,8 @@ function cfResumenHTML(){
     fila(`Estanques de ${cfNum(cfP(pf.estanque)||0,0)} L`, r.nEstTot? `${cfNum(r.nEstTot,0)} bombadas en total${r.n>1?` (${cfNum(r.nEstTot*r.n,0)} con ${r.n} aplic.)`:""} · ${cfQty(r.prodEst,uP)}/estanque · cubre ${cfNum(r.haEst,2)} ha` : "—");
   const fc = r.fechaCosecha? fmtF(r.fechaCosecha) : "—";
   return `${cfAlertasHTML(r)}
-    <h3 style="margin:0 0 8px">🧾 Cotización</h3>
-    ${cfPlagasSel().length?`<div style="font-size:13px;margin:-2px 0 8px">🎯 <b>Objetivo:</b> ${cfPlagasSel().map(p=>esc(p.n)).join(", ")}</div>`:""}
+    <h3 style="margin:0 0 8px">${ic("receipt")} Cotización</h3>
+    ${cfPlagasSel().length?`<div style="font-size:13px;margin:-2px 0 8px">${ic("target")} <b>Objetivo:</b> ${cfPlagasSel().map(p=>esc(p.n)).join(", ")}</div>`:""}
     ${cuerpo}
     <div style="display:flex;justify-content:space-between;align-items:baseline;padding:10px 0 2px"><span style="font-weight:800">🌱 Cosecha permitida</span><b style="color:var(--p);font-size:17px">${fc}</b></div>
     ${cfCosechaResumenHTML()}
@@ -4412,12 +4596,12 @@ function cfProductosListaHTML(){
         <div style="min-width:0;flex:1;cursor:pointer" onclick="cfPickProducto(${p.id})">
           <div style="font-weight:800;font-size:15px">${esc(p.n)} <span class="badge ${cfBadgeTipo(p.t)}">${esc(p.t)}</span></div>
           ${p.ia?`<div class="muted" style="font-size:12px">${esc(p.ia)}</div>`:''}
-          ${p.o?`<div style="font-size:12px;margin-top:2px">🎯 ${esc(p.o)}</div>`:''}
+          ${p.o?`<div style="font-size:12px;margin-top:2px">${ic("target")} ${esc(p.o)}</div>`:''}
           <div class="muted" style="font-size:11.5px;margin-top:3px">💧 ${dosis}${p.mtxt?` · moj ${esc(p.mtxt)}`:''} · carencia ${p.c!=null?p.c+' d':'—'}${p.r?` · reingreso ${p.r} d`:''}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;flex:0 0 auto">
           <button class="btn chico" onclick="cfPickProducto(${p.id})">Usar</button>
-          <button class="btn sec chico" onclick="cfEditarProd(${p.id})" title="Editar">✎ Editar</button>
+          <button class="btn sec chico" onclick="cfEditarProd(${p.id})" title="Editar">${ic("edit")} Editar</button>
           <button class="btn sec chico" onclick="cfBorrarProducto(${p.id})" title="Eliminar" style="color:var(--rojo)">✕</button>
         </div>
       </div>
@@ -4445,7 +4629,7 @@ function cfProdInfoHTML(){
   const p=cfCatProd().find(x=>x.id===pf.prodId); if(!p) return "";
   const dosis = p.du? `${cfNum(p.dmin,(p.dmin!=null&&p.dmin<10)?1:0)}–${cfNum(p.dmax,(p.dmax!=null&&p.dmax<10)?1:0)} ${cfLabUnid(p.du)}` : (p.dtxt||"");
   return `<div style="background:var(--pclaro);border:1px solid var(--borde);border-radius:10px;padding:8px 11px;font-size:12px;margin-bottom:10px">
-    <b>${esc(p.t)}</b>${p.ia?` · ${esc(p.ia)}`:''}${p.o?`<div style="margin-top:2px">🎯 ${esc(p.o)}</div>`:''}
+    <b>${esc(p.t)}</b>${p.ia?` · ${esc(p.ia)}`:''}${p.o?`<div style="margin-top:2px">${ic("target")} ${esc(p.o)}</div>`:''}
     <div class="muted" style="margin-top:2px">Rango etiqueta: <b>${dosis}</b>${p.mtxt?` · moj ${esc(p.mtxt)}`:''} · carencia ${p.c!=null?p.c+' d':'—'}. Ajusta la dosis dentro del rango.</div>
   </div>`;
 }
@@ -4454,7 +4638,7 @@ function cfProdFormHTML(p){
   const tipos=CF_PTIPOS.filter(t=>t!=="all");
   const dus=[["g/100L","g/100 L"],["cc/100L","cc/100 L"],["kg/ha","kg/ha"],["L/ha","L/ha"],["g/ha","g/ha"],["cc/ha","cc/ha"],["%","%"]];
   return `<div class="card" style="margin-bottom:10px">
-    <h3 style="margin:0 0 8px;font-size:15px">${p.id?"✎ Editar producto":"Nuevo producto"}</h3>
+    <h3 style="margin:0 0 8px;font-size:15px">${p.id?ic("edit")+" Editar producto":"Nuevo producto"}</h3>
     <input type="hidden" id="np_id" value="${esc(p.id!=null?p.id:'')}">
     <label class="f">Nombre<input id="np_n" type="text" value="${esc(p.n||'')}" placeholder="Ej: Score 250 EC"></label>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -4478,7 +4662,7 @@ function cfProdFormHTML(p){
       <label class="f" style="flex:1;min-width:100px">Precio ($/u)<input id="np_p" type="text" inputmode="numeric" value="${esc(p.p!=null?p.p:'')}" placeholder="0"></label>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn full" onclick="cfGuardarNuevoProd()">${p.id?"💾 Guardar cambios":"💾 Agregar a mi base"}</button>
+      <button class="btn full" onclick="cfGuardarNuevoProd()">${p.id?ic("save")+" Guardar cambios":ic("save")+" Agregar a mi base"}</button>
       ${p.id?`<button class="btn sec" onclick="var e=document.getElementById('cfPNuevo'); if(e) e.innerHTML='';">Cancelar</button>`:''}
     </div>
   </div>`;
@@ -4516,18 +4700,18 @@ function cfQuitarPlaga(id){ const pf=cfPF(); pf.plagas=cfPlagasSel().filter(x=>x
 /* Bloque bajo el producto: chips de objetivos + input con autocompletar */
 function cfPlagaChipsHTML(){
   const arr=cfPlagasSel();
-  if(!arr.length) return '<span class="muted" style="font-size:12.5px">Ninguna aún — escribe abajo o usa "📋 De la base".</span>';
+  if(!arr.length) return '<span class="muted" style="font-size:12.5px">Ninguna aún — escribe abajo o usa ic("clipboard")+" De la base".</span>';
   return arr.map(p=>`<span style="display:inline-flex;align-items:center;gap:5px;background:var(--pclaro);border:1px solid var(--p);border-radius:16px;padding:4px 4px 4px 10px;font-size:12.5px;font-weight:600">${(CF_PLEMOJI[p.t]||"")} ${esc(p.n)} <button onclick="cfQuitarPlaga(${p.id})" title="Quitar" style="border:none;background:none;color:var(--rojo);cursor:pointer;font-size:14px;line-height:1;padding:0 3px">✕</button></span>`).join(" ");
 }
 function cfPlagaSelHTML(){
-  return `<div style="font-size:12px;font-weight:600;color:var(--txt2);margin-bottom:4px">🎯 Objetivo (plagas) — puedes agregar varias</div>
+  return `<div style="font-size:12px;font-weight:600;color:var(--txt2);margin-bottom:4px">${ic("target")} Objetivo (plagas) — puedes agregar varias</div>
     <div id="cfPlagaChips" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px">${cfPlagaChipsHTML()}</div>
     <div style="display:flex;gap:8px;align-items:flex-start">
       <div style="flex:1;position:relative">
         <input id="cfPlagaInput" type="text" autocomplete="off" placeholder="Escribe para agregar una plaga…" oninput="cfPlagaAC(this.value)" onfocus="cfPlagaAC(this.value)" onblur="cfPlagaACHide()" style="display:block;width:100%;padding:10px;font-size:15px;border:1.5px solid var(--borde);border-radius:10px;box-sizing:border-box">
         <div id="cfPlagaAC" style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:60;background:#fff;border:1.5px solid var(--borde);border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.16);max-height:260px;overflow-y:auto"></div>
       </div>
-      <button class="btn sec chico" style="min-height:42px;white-space:nowrap" onclick="cfAbrirPlagas()">📋 De la base</button>
+      <button class="btn sec chico" style="min-height:42px;white-space:nowrap" onclick="cfAbrirPlagas()">${ic("clipboard")} De la base</button>
     </div>`;
 }
 function cfPlagaAC(v){
@@ -4537,7 +4721,7 @@ function cfPlagaAC(v){
   let L=cfCatPlaga().filter(p=>((p.n+" "+(p.c||"")+" "+(p.cu||"")).toLowerCase().includes(q)));
   L.sort((a,b)=>{const aw=(a.n||"").toLowerCase().startsWith(q)?0:1,bw=(b.n||"").toLowerCase().startsWith(q)?0:1;return aw-bw||(a.n||"").localeCompare(b.n||"");});
   L=L.slice(0,10);
-  if(!L.length){ box.innerHTML=`<div class="muted" style="padding:10px 12px;font-size:12.5px">Sin coincidencias — usa "📋 De la base" o ＋ Nueva.</div>`; box.style.display="block"; return; }
+  if(!L.length){ box.innerHTML=`<div class="muted" style="padding:10px 12px;font-size:12.5px">Sin coincidencias — usa ic("clipboard")+" De la base" o ＋ Nueva.</div>`; box.style.display="block"; return; }
   box.innerHTML=L.map((p,i)=>{ const ya=cfPlagaEnLista(p.id); return `<div onmousedown="event.preventDefault()" onclick="cfPlagaACPick(${p.id})" style="padding:9px 12px;${i<L.length-1?'border-bottom:1px solid var(--borde);':''}cursor:pointer;${ya?'opacity:.5':''}" onmouseover="this.style.background='var(--pclaro)'" onmouseout="this.style.background='#fff'">
       <div style="font-weight:700;font-size:14px">${(CF_PLEMOJI[p.t]||"")} ${esc(p.n)} <span class="badge ${cfBadgePlaga(p.t)}" style="font-size:10px">${esc(p.t)}</span>${ya?' <span class="muted" style="font-size:10px">✓ agregada</span>':''}</div>
       ${p.c?`<div class="muted" style="font-size:11px;font-style:italic">${esc(p.c)}</div>`:''}
@@ -4562,7 +4746,7 @@ function cfAbrirPlagas(){
   <div class="visor" style="background:var(--fondo)">
     <div class="vh" style="background:linear-gradient(135deg,#123f24,#1e7a4c)">
       <button class="btn sec chico" onclick="cfCerrarPlagas()">← Listo</button>
-      <div style="flex:1;color:#fff;font-weight:800">🎯 ¿Para qué plagas? (agrega varias)</div>
+      <div style="flex:1;color:#fff;font-weight:800">${ic("target")} ¿Para qué plagas? (agrega varias)</div>
     </div>
     <div style="flex:1;overflow:auto;-webkit-overflow-scrolling:touch">
       <div style="max-width:700px;margin:0 auto;padding:12px 14px 40px">
@@ -4615,7 +4799,7 @@ function cfNuevaPlagaForm(){
       <label class="f" style="flex:2;min-width:160px">Nombre científico<input id="nl_c" type="text" placeholder="Ej: Panonychus citri"></label>
     </div>
     <label class="f">Cultivos<input id="nl_cu" type="text" placeholder="Ej: Cítricos, paltos"></label>
-    <button class="btn full" onclick="cfGuardarNuevaPlaga()">💾 Agregar a mi base</button>
+    <button class="btn full" onclick="cfGuardarNuevaPlaga()">${ic("save")} Agregar a mi base</button>
   </div>`;
 }
 function cfGuardarNuevaPlaga(){
@@ -4637,7 +4821,7 @@ function cfProdAC(v){
   let L=cfCatProd().filter(p=>((p.n+" "+(p.ia||"")+" "+(p.o||"")).toLowerCase().includes(q)));
   L.sort((a,b)=>{ const aw=(a.n||"").toLowerCase().startsWith(q)?0:1, bw=(b.n||"").toLowerCase().startsWith(q)?0:1; return aw-bw || (a.n||"").localeCompare(b.n||""); });
   L=L.slice(0,10);
-  if(!L.length){ box.innerHTML=`<div class="muted" style="padding:10px 12px;font-size:12.5px">Sin coincidencias en tu base — puedes escribirlo igual o tocar "📋 Mi base".</div>`; box.style.display="block"; return; }
+  if(!L.length){ box.innerHTML=`<div class="muted" style="padding:10px 12px;font-size:12.5px">Sin coincidencias en tu base — puedes escribirlo igual o tocar ic("clipboard")+" Mi base".</div>`; box.style.display="block"; return; }
   box.innerHTML=L.map((p,i)=>`<div onmousedown="event.preventDefault()" onclick="cfACPick(${p.id})" style="padding:9px 12px;${i<L.length-1?'border-bottom:1px solid var(--borde);':''}cursor:pointer;transition:background .1s" onmouseover="this.style.background='var(--pclaro)'" onmouseout="this.style.background='#fff'">
       <div style="font-weight:700;font-size:14px">${esc(p.n)} <span class="badge ${cfBadgeTipo(p.t)}" style="font-size:10px">${esc(p.t)}</span></div>
       ${(p.ia||p.du)?`<div class="muted" style="font-size:11.5px">${esc(p.ia||"")}${(p.ia&&p.du)?" · ":""}${p.du?cfNum(p.dmin,(p.dmin!=null&&p.dmin<10)?1:0)+"–"+cfNum(p.dmax,(p.dmax!=null&&p.dmax<10)?1:0)+" "+cfLabUnid(p.du):""}</div>`:''}
@@ -4655,11 +4839,11 @@ function cfGuardarRegistro(){
   if(!(pf.producto||"").trim()){ alert("Escribe el producto antes de guardar."); return; }
   if(!incl.length){ alert("Incluye al menos un cuartel para guardar la aplicación."); return; }
   const r=cfCalc(), obj=cfPlagasSel().map(p=>p.n).join(", "), fcTxt=r.fechaCosecha?fmtF(r.fechaCosecha):"—";
-  abrirModal("💾 Guardar aplicación como registro", `
+  abrirModal(ic("save")+" Guardar aplicación como registro", `
     <div class="muted" style="font-size:13px;margin-bottom:8px">Se guardará <b>${esc(pf.producto)}</b> en <b>${incl.length}</b> cuartel(es) (${cfNum(r.haTot,1)} ha) como <b>planificación pendiente</b>, uno por cuartel. Luego, en <b>Registros</b>, confirmas cada cuartel el día que lo apliques (con su fecha real) y recién ahí queda oficial en el historial.</div>
     <label class="f">Fecha de aplicación<input id="cfr_fecha" type="date" value="${esc(pf.fecha||hoy())}"></label>
     <label class="f">Responsable (opcional)<input id="cfr_resp" type="text" placeholder="Ej: Manuel / jefe de cuadrilla"></label>
-    <div class="muted" style="font-size:12.5px">🎯 Objetivo: ${obj?esc(obj):'<i>sin especificar</i>'} · carencia ${parseInt(pf.carencia,10)||0} d · cosecha desde ${fcTxt}</div>
+    <div class="muted" style="font-size:12.5px">${ic("target")} Objetivo: ${obj?esc(obj):'<i>sin especificar</i>'} · carencia ${parseInt(pf.carencia,10)||0} d · cosecha desde ${fcTxt}</div>
   `, ()=>{
     const fecha=((document.getElementById("cfr_fecha")||{}).value)||pf.fecha||hoy();
     const _cur = incl.map(q=>q.fundo+"/"+q.nombre).sort().join(";");
@@ -4687,7 +4871,7 @@ function cfGuardarRegistro(){
       cnt++;
     });
     setTimeout(function(){ alert("✓ Guardé la planificación en "+cnt+" cuartel(es) como PENDIENTE.\nConfírmalos en Registros (botón ✓ Confirmar) a medida que los apliques."); }, 60);
-  }, "💾 Guardar "+incl.length+" registro(s)");
+  }, ic("save")+" Guardar "+incl.length+" registro(s)");
 }
 
 function cfPDFAlertas(){
@@ -4713,8 +4897,8 @@ function cfPDF(){
     <div class="vh no-print">
       <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
       <div style="flex:1;color:#fff;font-weight:800">📄 Planificación</div>
-      <button class="btn sec chico" onclick="cfPDFRedactarIA()">✨ Redactar con IA</button>
-      <button class="btn chico" onclick="descargarPDF('planificacion_fitosanitaria_'+hoy()+'.pdf')">🖨️ Guardar PDF</button>
+      <button class="btn sec chico" onclick="cfPDFRedactarIA()">${ic("ai")} Redactar con IA</button>
+      <button class="btn chico" onclick="descargarPDF('planificacion_fitosanitaria_'+hoy()+'.pdf')">${ic("print")} Guardar PDF</button>
     </div>
     <div class="inf-scroll" style="flex:1;overflow:auto">
       <div class="informe">
@@ -4723,7 +4907,7 @@ function cfPDF(){
           <div><div style="font-size:20px;font-weight:800;color:#14532d">Planificación de aplicación fitosanitaria</div>
           <div style="color:#555">${PROY?esc(PROY.nombre):"Total Fruit Curacaví"} · generado el ${fmtF(hoy())}</div></div>
         </div>
-        <div id="cfPlanIA" class="no-print" style="margin-bottom:12px;color:#555;font-size:12.5px;background:#f3f7f2;border:1px dashed #1e7a4c;border-radius:8px;padding:9px 12px">✨ Toca <b>Redactar con IA</b> (arriba) para un resumen del plan, programa y recomendaciones bien redactados. Necesita tu clave de IA (Datos → 🤖 IA). El detalle con datos va más abajo y se imprime igual.</div>
+        <div id="cfPlanIA" class="no-print" style="margin-bottom:12px;color:#555;font-size:12.5px;background:#f3f7f2;border:1px dashed #1c7a44;border-radius:8px;padding:9px 12px">${ic("ai")} Toca <b>Redactar con IA</b> (arriba) para un resumen del plan, programa y recomendaciones bien redactados. Necesita tu clave de IA (Datos → IA). El detalle con datos va más abajo y se imprime igual.</div>
         <table class="t" style="margin-bottom:14px"><tbody>
           <tr><td style="width:38%"><b>Producto</b></td><td>${esc(pf.producto||"—")}${prod?` <span style="color:#666">(${esc(prod.t)}${prod.ia?" · "+esc(prod.ia):""})</span>`:""}</td></tr>
           <tr><td><b>Objetivo (plagas)</b></td><td>${obj?esc(obj):"—"}</td></tr>
@@ -4781,7 +4965,7 @@ function cfSanea(html){
 }
 async function cfPDFRedactarIA(){
   const cont=document.getElementById("cfPlanIA"); if(!cont) return;
-  if(!(D.ia&&D.ia.key)){ alert("Para redactar el plan con IA, pega tu clave en Datos → 🤖 Inteligencia (IA). El plan con datos igual se imprime."); return; }
+  if(!(D.ia&&D.ia.key)){ alert("Para redactar el plan con IA, pega tu clave en Datos → Inteligencia (IA). El plan con datos igual se imprime."); return; }
   if(!cfIncluidos().length){ alert("Incluye al menos un cuartel para redactar el plan."); return; }
   cont.classList.remove("no-print");
   cont.style.background="#fff"; cont.style.border="none"; cont.style.color="#555"; cont.style.padding="0";
@@ -4842,7 +5026,7 @@ function cfMixItemHTML(m){
   return `<div style="border:1px solid var(--borde);border-radius:10px;padding:10px;margin-bottom:8px">
     <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px">
       <label class="f" style="flex:1;margin-bottom:0">Producto<input type="text" value="${esc(m.producto)}" placeholder="Ej: Ultraspray (aceite)" oninput="cfMixSet(${m.id},'producto',this.value)"></label>
-      <button class="btn sec chico" style="min-height:46px" onclick="cfMixBase(${m.id})">📋</button>
+      <button class="btn sec chico" style="min-height:46px" onclick="cfMixBase(${m.id})">${ic("clipboard")}</button>
       <button class="btn sec chico" style="min-height:46px;color:var(--rojo)" onclick="cfMixDel(${m.id})">✕</button>
     </div>
     <div class="chips" style="margin-bottom:8px"><button class="chip ${m.unidad==='kg'?'act':''}" onclick="cfMixSetR(${m.id},'unidad','kg')">Sólido</button><button class="chip ${m.unidad==='L'?'act':''}" onclick="cfMixSetR(${m.id},'unidad','L')">Líquido</button>${uds.map(([k,l])=>`<button class="chip ${m.unidadDosis===k?'act':''}" onclick="cfMixSetR(${m.id},'unidadDosis','${k}')">${l}</button>`).join("")}</div>
@@ -4858,7 +5042,7 @@ function cfMixItemHTML(m){
 function cfMezclaHTML(){
   const mz=cfMezcla();
   return `<div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3 style="margin:0">🧪 Mezcla en estanque</h3><button class="btn sec chico" onclick="cfMixAgregar()">＋ Agregar producto</button></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3 style="margin:0">${ic("flask")} Mezcla en estanque</h3><button class="btn sec chico" onclick="cfMixAgregar()">${ic("plus")} Agregar producto</button></div>
     <div class="muted" style="font-size:12px;margin-bottom:8px">Otros productos en la misma bombada (ej. aceite adherente, un 2° insecticida). Comparten agua, mojamiento y estanque; la carencia usada es la <b>más larga</b>.</div>
     ${mz.length? mz.map(m=>cfMixItemHTML(m)).join("") : '<div class="muted" style="font-size:12.5px">Solo el producto principal por ahora. Toca "＋ Agregar producto" para armar una mezcla.</div>'}
     ${cfMezclaOrdenHTML()}
@@ -4893,9 +5077,10 @@ function cfPDFMixHTML(){
 }
 
 /* ================== CALCULADORA DE TERRENO ================== */
-const CALC_TABS = [["aplic","🧪 Aplicación"],["cosecha","🍒 Cosecha"],["plant","🌿 Plantación"],["cuad","👷 Cuadrilla"]];
+const CALC_TABS = [["cosecha","🍒 Cosecha"],["plant","🌿 Plantación"],["cuad","👷 Cuadrilla"]];
 function abrirCalc(tab){
-  nav.calcTab = tab || nav.calcTab || "aplic";
+  nav.calcTab = tab || nav.calcTab || "cosecha";
+  if(nav.calcTab==="aplic") nav.calcTab="cosecha";
   const chips = CALC_TABS.map(([id,lab])=>`<button class="chip ${nav.calcTab===id?"act":""}" onclick="abrirCalc('${id}')">${lab}</button>`).join("");
   const form = ({aplic:calcFormAplic, cosecha:calcFormCosecha, plant:calcFormPlant, cuad:calcFormCuad}[nav.calcTab]||(()=>""))();
   document.getElementById("capaVisor").innerHTML = `
@@ -4929,7 +5114,7 @@ function calcR(lab,val,unit,big){
   return `<div class="fila" style="justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px dashed rgba(0,0,0,.12)"><span style="font-size:13.5px">${lab}</span><b style="font-size:${big?18:15}px;color:var(--p2);white-space:nowrap">${n}${unit?` <span style="font-size:11px;font-weight:400;color:var(--txt2)">${esc(unit)}</span>`:""}</b></div>`;
 }
 /* --- Plantación --- */
-function calcFormPlant(){ return `<h3 style="margin-top:0">🌿 Plantación / densidad</h3>
+function calcFormPlant(){ return `<h3 style="margin-top:0">${ic("sprout")} Plantación / densidad</h3>
   ${calcInput("p_a","Distancia entre hileras (m)","5")}
   ${calcInput("p_b","Distancia sobre la hilera (m)","2")}
   ${calcInput("p_ha","Superficie (ha)","1")}`; }
@@ -4943,20 +5128,58 @@ function calcPlant(){
   return h;
 }
 /* --- Cosecha --- */
-function calcFormCosecha(){ return `<h3 style="margin-top:0">🍒 Cosecha / producción</h3>
-  ${calcInput("c_kgpl","Kilos por planta (kg)","25")}
-  ${calcInput("c_dens","Plantas por hectárea","1000")}
-  ${calcInput("c_ha","Superficie (ha)","1")}
-  ${calcInput("c_bin","Kilos por bin","400 · bin de campo ~350–450")}
-  ${calcInput("c_caja","Kilos por caja (opcional)","8.2")}`; }
+function calcFormCosecha(){
+  const esp=nav.calcEspecie||"Naranja";
+  const especies=["Naranja","Limón","Pomelo","Cerezo","Otro"];
+  const p=(D.cosechaPesos&&D.cosechaPesos[esp])||{};
+  const chips=especies.map(e=>`<button type="button" class="chip ${e===esp?"act":""}" onclick="cosechaEsp('${e}')">${e}</button>`).join("");
+  return `<h3 style="margin-top:0">${ic("basket")} Cosecha / producción</h3>
+  <label class="f" style="margin-bottom:4px">Especie</label>
+  <div class="chips" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">${chips}</div>
+  <div class="grid2">
+    <label class="f">Kg por balde<input id="c_balde" type="text" inputmode="decimal" placeholder="ej: 20" value="${esc(p.balde!=null?p.balde:"")}" oninput="cosechaPeso('balde',this.value)"></label>
+    <label class="f">Kg por bin<input id="c_bin" type="text" inputmode="decimal" placeholder="ej: 400" value="${esc(p.bin!=null?p.bin:"")}" oninput="cosechaPeso('bin',this.value)"></label>
+  </div>
+  <div class="muted" style="font-size:11.5px;margin:-2px 0 10px">Los kg por balde y por bin se guardan para <b>${esc(esp)}</b> y se cargan solos al elegir la especie.</div>
+  <div style="font-weight:700;margin:6px 0 2px;font-size:13px">Cuánto vas a cosechar</div>
+  ${calcInput("c_totkg","Producción total a cosechar (kg)","si la sabes; si no, estímala abajo")}
+  ${calcInput("c_kgpl","· Kilos por planta (kg)","25")}
+  ${calcInput("c_dens","· Plantas por hectárea","1000")}
+  ${calcInput("c_ha","· Superficie (ha)","1")}
+  <div style="font-weight:700;margin:10px 0 2px;font-size:13px">Rendimiento de la cuadrilla</div>
+  ${calcInput("c_baldesp","Baldes por persona al día","ej: 60")}
+  ${calcInput("c_pers","N° de personas","ej: 8")}
+  <div style="font-weight:700;margin:10px 0 2px;font-size:13px">Pago (por kilo)</div>
+  ${calcInput("c_valkg","Valor por kilo ($/kg)","ej: 120")}`;
+}
+function cosechaEsp(esp){ nav.calcEspecie=esp; abrirCalc("cosecha"); }
+function cosechaPeso(which,val){ const esp=nav.calcEspecie||"Naranja"; D.cosechaPesos=D.cosechaPesos||{}; D.cosechaPesos[esp]=D.cosechaPesos[esp]||{}; D.cosechaPesos[esp][which]=val; guardar(); calcRun(); }
 function calcCosecha(){
-  const kgpl=cval("c_kgpl"),dens=cval("c_dens"),ha=cval("c_ha"),bin=cval("c_bin"),caja=cval("c_caja");
+  const balde=cval("c_balde"), bin=cval("c_bin"), totkg=cval("c_totkg");
+  const kgpl=cval("c_kgpl"), dens=cval("c_dens"), ha=cval("c_ha");
   const kgha=(kgpl>0&&dens>0)?kgpl*dens:NaN;
-  const tot=(!isNaN(kgha)&&ha>0)?kgha*ha:NaN;
-  const bins=(!isNaN(tot)&&bin>0)?tot/bin:NaN;
-  const cajas=(!isNaN(tot)&&caja>0)?tot/caja:NaN;
-  let h=`<h3 style="margin-top:0">Resultado</h3>${calcR("Rendimiento",kgha,"kg/ha",true)}${calcR("Producción total",tot,"kg",true)}${calcR("Bins estimados",bins,"bins")}${calcR("Cajas estimadas",cajas,"cajas")}`;
-  if(isNaN(kgha)) h+=`<div class="muted">Ingresa kg por planta y plantas/ha (la densidad la sacas en la pestaña Plantación).</div>`;
+  const estim=(!isNaN(kgha)&&ha>0)?kgha*ha:NaN;
+  const total=(totkg>0)?totkg:estim;
+  const baldesp=cval("c_baldesp"), pers=cval("c_pers"), valkg=cval("c_valkg");
+  const kgPersDia=(baldesp>0&&balde>0)?baldesp*balde:NaN;
+  const kgDia=(!isNaN(kgPersDia)&&pers>0)?kgPersDia*pers:NaN;
+  const totBaldes=(!isNaN(total)&&balde>0)?total/balde:NaN;
+  const totBins=(!isNaN(total)&&bin>0)?total/bin:NaN;
+  const baldesPorBin=(bin>0&&balde>0)?bin/balde:NaN;
+  const dias=(!isNaN(total)&&kgDia>0)?total/kgDia:NaN;
+  const jornadas=(!isNaN(total)&&kgPersDia>0)?total/kgPersDia:NaN;
+  const baldesDia=(!isNaN(kgDia)&&balde>0)?kgDia/balde:NaN;
+  const binsDia=(!isNaN(kgDia)&&bin>0)?kgDia/bin:NaN;
+  const pagoTot=(!isNaN(total)&&valkg>0)?total*valkg:NaN;
+  const pagoDia=(!isNaN(kgDia)&&valkg>0)?kgDia*valkg:NaN;
+  const pagoR=(lab,val)=> (val!=null&&!isNaN(val)&&isFinite(val))? `<div class="fila" style="justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px dashed rgba(0,0,0,.12)"><span style="font-size:13.5px">${lab}</span><b style="font-size:16px;color:var(--p2);white-space:nowrap">${cfCLP(val)}</b></div>` : "";
+  let h=`<h3 style="margin-top:0">Resultado</h3>`;
+  h+=calcR("Producción total",total,"kg",true)+calcR("· en baldes",totBaldes,"baldes")+calcR("· en bins",totBins,"bins")+calcR("Baldes por bin",baldesPorBin,"baldes/bin");
+  h+=calcR("Cosecha por día",kgDia,"kg/día",true)+calcR("· baldes por día",baldesDia,"baldes/día")+calcR("· bins por día",binsDia,"bins/día");
+  h+=calcR("Días de cosecha",dias,"días")+calcR("Jornadas (persona-día)",jornadas,"jornadas");
+  h+=pagoR("Pago total",pagoTot)+pagoR("Pago por día",pagoDia);
+  if(isNaN(total)) h+=`<div class="muted" style="font-size:12px;margin-top:6px">Ingresa la producción total en kg, o estímala con kg/planta, plantas/ha y superficie.</div>`;
+  else if(isNaN(kgDia)) h+=`<div class="muted" style="font-size:12px;margin-top:6px">Para días y jornadas: pon kg por balde, baldes por persona al día y N° de personas.</div>`;
   return h;
 }
 /* --- Aplicación --- */
@@ -4971,7 +5194,7 @@ function calcSetU(u){
 }
 function calcFormAplic(){
   const u=nav.calcDosisU||"100L";
-  return `<h3 style="margin-top:0">🧪 Aplicación fitosanitaria</h3>
+  return `<h3 style="margin-top:0">${ic("flask")} Aplicación fitosanitaria</h3>
   ${calcInput("a_dosis","Dosis del producto","110")}
   <div class="fila" style="margin:-4px 0 6px">
     <button id="a_u100" class="chip ${u==="100L"?"act":""}" onclick="calcSetU('100L')">por 100 L</button>
@@ -5021,7 +5244,7 @@ function calcAplic(){
     <div class="muted" style="font-size:11px;margin-top:6px">Las unidades (g, cc, mL, kg, L) son las mismas que pusiste en la dosis.</div>`;
 }
 /* --- Cuadrilla --- */
-function calcFormCuad(){ return `<h3 style="margin-top:0">👷 Cuadrilla / rendimiento</h3>
+function calcFormCuad(){ return `<h3 style="margin-top:0">${ic("users")} Cuadrilla / rendimiento</h3>
   ${calcInput("q_tot","Total a realizar (plantas, ha, bins, kg…)","5000")}
   ${calcInput("q_pers","Nº de personas","10")}
   ${calcInput("q_rend","Rendimiento por persona al día","60")}
@@ -5098,8 +5321,8 @@ function panelAvances(){
     <div class="kpi"><div class="num" style="font-size:20px">${num(k.cant)}</div><div class="lab">realizado${uni?" ("+esc(uni)+")":""}</div></div>`:"");
   return `<div class="card">
     <div class="fila" style="justify-content:space-between;align-items:center">
-      <div class="w-tit" style="margin:0">📊 Avance realizado · ${per}</div>
-      <button class="btn sec chico" onclick="abrirAvances()">📈 Análisis / PDF</button>
+      <div class="w-tit" style="margin:0">${ic("chart")} Avance realizado · ${per}</div>
+      <button class="btn sec chico" onclick="abrirAvances()">${ic("chartUp")} Análisis / PDF</button>
     </div>
     <div class="${mono?"grid4":"grid2"}" style="margin:10px 0 6px">${kpis}</div>
     ${lines}
@@ -5120,8 +5343,8 @@ function abrirAvances(){
     <div class="vh no-print" style="background:linear-gradient(135deg,#123f24,#1e7a4c)">
       <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
       <div style="flex:1;color:#fff;font-weight:800;min-width:80px">📈 Avances</div>
-      <button class="btn sec chico" onclick="iaAnalizarAvances()">✨ IA</button>
-      <button class="btn chico" onclick="descargarPDF('avances_'+hoy()+'.pdf')">🖨️ PDF</button>
+      <button class="btn sec chico" onclick="iaAnalizarAvances()">${ic("ai")} IA</button>
+      <button class="btn chico" onclick="descargarPDF('avances_'+hoy()+'.pdf')">${ic("print")} PDF</button>
     </div>
     <div class="no-print" style="background:#fff;border-bottom:1px solid var(--borde);padding:9px 14px">
       <div class="chips" style="flex-wrap:wrap;gap:6px">${perChips}</div>
@@ -5164,7 +5387,7 @@ function avBody(){
     const d1=dias[dias.length-1], d0=dias[dias.length-2];
     const k1=avKpis(a.filter(x=>x.fecha===d1)), k0=avKpis(a.filter(x=>x.fecha===d0));
     const row=(lab,c,p,fmt,inv)=>`<tr><td>${lab}</td><td style="text-align:right">${fmt(p)}</td><td style="text-align:right">${fmt(c)}</td><td style="text-align:right">${avDelta(c,p,inv)}</td></tr>`;
-    cmp=`<div class="inf-sec"><h2>📊 Último día vs anterior · ${fmtF(d1)} vs ${fmtF(d0)}</h2>
+    cmp=`<div class="inf-sec"><h2>${ic("chart")} Último día vs anterior · ${fmtF(d1)} vs ${fmtF(d0)}</h2>
       <table><tr><th>Indicador</th><th style="text-align:right">${fmtF(d0)}</th><th style="text-align:right">${fmtF(d1)}</th><th style="text-align:right">Cambio</th></tr>
       ${row("$ pagado",Math.round(k1.total),Math.round(k0.total),v=>"$"+mil(v),false)}
       ${row("Prom. por persona",Math.round(k1.ganaPers),Math.round(k0.ganaPers),v=>"$"+mil(v),false)}
@@ -5175,7 +5398,7 @@ function avBody(){
   }
   const gh={}; a.forEach(x=>{ const key=x.fundo+"||"+x.tipo+"||"+(x.cuartel||""); (gh[key]=gh[key]||{fundo:x.fundo,tipo:x.tipo,cuartel:x.cuartel,t:0}); gh[key].t+=(+x.total||0); });
   const filasHa = Object.values(gh).map(x=>({fundo:x.fundo,tipo:x.tipo,cuartel:x.cuartel,t:x.t,ha:haDe(x.fundo,x.cuartel)})).sort((p,q)=>(p.fundo||"").localeCompare(q.fundo||"")||q.t-p.t);
-  const seccionHa = `<div class="inf-sec"><h2>💰 Costo por hectárea (por labor y fundo)</h2>
+  const seccionHa = `<div class="inf-sec"><h2>${ic("money")} Costo por hectárea (por labor y fundo)</h2>
     <table><tr><th>Fundo</th><th>Labor</th><th>Cuartel</th><th style="text-align:right">ha</th><th style="text-align:right">$ total</th><th style="text-align:right">$/ha</th></tr>
     ${filasHa.map(x=>`<tr><td>${esc(x.fundo||"")}</td><td>${esc(x.tipo)}</td><td>${esc(x.cuartel||"—")}</td><td style="text-align:right">${x.ha?num(x.ha):"—"}</td><td style="text-align:right">$${mil(x.t)}</td><td style="text-align:right">${x.ha?"<b>$"+mil(x.t/x.ha)+"</b>":"—"}</td></tr>`).join("")}
     </table><div class="muted" style="font-size:11px">Superficie tomada del catálogo de cuarteles. "—" = cuartel sin ha registrada.</div></div>`;
@@ -5195,7 +5418,7 @@ function avBody(){
     </div>
     <div id="avIAres"></div>
     ${cmp}
-    <div class="inf-sec"><h2>📈 Gráficos</h2>
+    <div class="inf-sec"><h2>${ic("chartUp")} Gráficos</h2>
       <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-end">
         ${barrasSVG("$ por día", chTot, "#1e7a4c", kMoney)}
         ${barrasSVG("Prom. por persona ($/día)", chGana, "#2563eb", kMoney)}
@@ -5204,22 +5427,22 @@ function avBody(){
       </div>
     </div>
     ${seccionHa}
-    <div class="inf-sec"><h2>📋 Detalle</h2>
+    <div class="inf-sec"><h2>${ic("clipboard")} Detalle</h2>
       <table><tr><th>Fecha</th><th>Labor</th><th>Fundo · Cuartel</th><th style="text-align:right">Cant.</th><th style="text-align:right">Pers.</th><th style="text-align:right">$ total</th><th style="text-align:right">$/pers</th></tr>
       ${a.slice().sort((x,y)=>(y.fecha||"").localeCompare(x.fecha||"")).map(x=>`<tr><td>${fmtF(x.fecha)}</td><td>${esc(x.tipo)}</td><td>${esc(x.fundo||"")}${x.cuartel?" · "+esc(x.cuartel):""}</td><td style="text-align:right">${num(x.cantidad)}${x.unidad?" "+esc(x.unidad):""}</td><td style="text-align:right">${x.personas||""}</td><td style="text-align:right">$${mil(x.total||0)}</td><td style="text-align:right">${x.personas&&x.total?"$"+mil(x.total/x.personas):""}</td></tr>`).join("")}
       </table></div>`;
 }
 async function iaAnalizarAvances(){
-  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → 🤖 Inteligencia (IA)."); return; }
+  if(!iaCfg().key){ alert("Pega tu clave de IA en Datos → Inteligencia (IA)."); return; }
   const out=document.getElementById("avIAres"); if(!out) return;
-  out.innerHTML=`<div class="inf-sec"><h2>✨ Análisis IA</h2><div class="muted">Analizando…</div></div>`;
+  out.innerHTML=`<div class="inf-sec"><h2>${ic("ai")} Análisis IA</h2><div class="muted">Analizando…</div></div>`;
   const a=avFiltrar(); const k=avKpis(a);
   const pd={}; a.forEach(x=>{ pd[x.fecha]=pd[x.fecha]||{t:0,c:0,p:0}; pd[x.fecha].t+=(+x.total||0); pd[x.fecha].c+=(+x.cantidad||0); pd[x.fecha].p+=(+x.personas||0); });
   const serie=Object.keys(pd).sort().map(d=>`${d}: ${Math.round(pd[d].c)} u, ${pd[d].p} pers-dia, $${Math.round(pd[d].t)}, rend ${pd[d].p>0?Math.round(pd[d].c/pd[d].p):0}/pers, gana $${pd[d].p>0?Math.round(pd[d].t/pd[d].p):0}/pers`).join("\n");
   const instr=`Eres jefe de campo frutícola en Chile. Analiza el avance de "${nav.avLabor||"labores"}" en ${nav.avFundo||"todos los fundos"}${nav.avCuartel?" (cuartel "+nav.avCuartel+")":""}. Datos por día:\n${serie}\nTotales: $${Math.round(k.total)}, ${Math.round(k.cant)} unidades, ${k.persDia} personas-día, rendimiento ${Math.round(k.rend)}/persona, gana $${Math.round(k.ganaPers)}/persona, costo por unidad $${Math.round(k.costoU)}.\nEn 3 a 5 frases: la tendencia (rendimiento, costo, ritmo), compara el último día con el anterior (subió o bajó y una posible causa), y 1-2 recomendaciones prácticas. Español de Chile, directo. No inventes cifras.`;
   try{ const txt=(await iaLlamar([{text:instr}])).trim();
-    out.innerHTML=`<div class="inf-sec"><h2>✨ Análisis IA</h2><div style="white-space:pre-wrap;line-height:1.5">${esc(txt||"Sin análisis.")}</div><div class="muted" style="font-size:11px;margin-top:6px">Generado por IA — referencial.</div></div>`;
-  }catch(err){ out.innerHTML=`<div class="inf-sec"><h2>✨ Análisis IA</h2><div style="color:#b00">⚠️ ${esc(err.msg||err.message||"No se pudo analizar")}</div></div>`; }
+    out.innerHTML=`<div class="inf-sec"><h2>${ic("ai")} Análisis IA</h2><div style="white-space:pre-wrap;line-height:1.5">${esc(txt||"Sin análisis.")}</div><div class="muted" style="font-size:11px;margin-top:6px">Generado por IA — referencial.</div></div>`;
+  }catch(err){ out.innerHTML=`<div class="inf-sec"><h2>${ic("ai")} Análisis IA</h2><div style="color:#b00">⚠️ ${esc(err.msg||err.message||"No se pudo analizar")}</div></div>`; }
 }
 function posPanel(){
   posNotas();
@@ -5346,18 +5569,18 @@ function mapaHerrDef(){
   const online = !!window.L && !!mapaP;
   const rot = online && !!mapaP.setBearing;
   el.innerHTML = `
-    <button class="btn sec chico" onclick="mapaFull()">${full?"✕ Salir":"⛶ Pantalla completa"}</button>
+    <button class="btn sec chico" onclick="mapaFull()">${full?"✕ Salir":ic("expand")+" Pantalla completa"}</button>
     ${online? `
-    <button class="btn sec chico" onclick="mapaCapaCiclo()">🗺 ${(MAPA_CAPAS[D.mapaCapa||"sat"]||MAPA_CAPAS.sat).lab}</button>
+    <button class="btn sec chico" onclick="mapaCapaCiclo()">${ic("layers")} ${(MAPA_CAPAS[D.mapaCapa||"sat"]||MAPA_CAPAS.sat).lab}</button>
     ${rot? `<div class="fila" style="gap:6px">
       <button class="btn sec chico" onclick="mapaGirar(-15)">↺</button>
       <button class="btn sec chico" onclick="mapaGirar(15)">↻</button>
-      <button class="btn sec chico" onclick="mapaNorte()">🧭 Norte</button>
+      <button class="btn sec chico" onclick="mapaNorte()">${ic("compass")} Norte</button>
     </div>`:""}
-    <button class="btn ${seguirPos?"":"sec"} chico" onclick="mapaSeguir()">📍 ${seguirPos?"Siguiéndote":"Mi ubicación"}</button>
-    <button class="btn sec chico" onclick="mapaDibujo()">✏️ Marcar / dibujar</button>
-    <button class="btn sec chico" onclick="mapaMedirDirecto()"><span style="font-size:11px;opacity:.7">📐</span> Medir</button>
-    ${D.mapoly.length? `<button class="btn sec chico" onclick="mapaTogglePoly()">${nav.polyOff?"👁 Mostrar áreas":"🙈 Ocultar áreas"}</button>`:""}`:""}`;
+    <button class="btn ${seguirPos?"":"sec"} chico" onclick="mapaSeguir()">${ic("pin")} ${seguirPos?"Siguiéndote":"Mi ubicación"}</button>
+    <button class="btn sec chico" onclick="mapaDibujo()">${ic("edit")} Marcar / dibujar</button>
+    <button class="btn sec chico" onclick="mapaMedirDirecto()">${ic("ruler")} Medir</button>
+    ${D.mapoly.length? `<button class="btn sec chico" onclick="mapaTogglePoly()">${nav.polyOff?ic("eye")+" Mostrar áreas":ic("eyeOff")+" Ocultar áreas"}</button>`:""}`:""}`;
 }
 function mapaMedirDirecto(){ // atajo: entra directo a la regla de medición
   if(!mapaP || dibP) return;
@@ -5453,7 +5676,7 @@ function elegirEnMapa(){
     <div class="vh">
       <button class="btn sec chico" onclick="cerrarPick()">✕ Cancelar</button>
       <div style="flex:1;color:#fff;font-weight:700;text-align:center;font-size:14.5px">Toca el punto exacto</div>
-      <button class="btn chico" onclick="usarPick()">✔ Usar ubicación</button>
+      <button class="btn chico" onclick="usarPick()">${ic("check")} Usar ubicación</button>
     </div>
     <div class="lienzo" id="pickMapa"></div>
   </div>`;
@@ -5651,7 +5874,7 @@ function mapolyInfo(id){
         <tr><th>Marco</th><td>${esc(q.marco||"—")}</td></tr>
         <tr><th>Año plantación</th><td>${esc(q.anio||"—")}</td></tr>
       </table>
-      <button class="btn sec chico" style="margin-top:10px" onclick="formCuartel(${q.id})">✏️ Editar en Datos</button>
+      <button class="btn sec chico" style="margin-top:10px" onclick="formCuartel(${q.id})">${ic("edit")} Editar en Datos</button>
     `, null, "Listo");
     return;
   }
@@ -5768,12 +5991,12 @@ function mapaHerrDib(){
   el.innerHTML = `
     <div class="mapa-hint">${m==="rect"? "Toca el mapa esquina por esquina · arrastra un punto para ajustarlo" : mv? "Mueve o acerca el mapa con los dedos" : "El Pencil dibuja · 1 dedo mueve el mapa y 2 dedos acercan (sin Pencil, el dedo dibuja y 2 dedos mueven)"}</div>
     <div class="fila" style="gap:6px">
-      <button class="btn ${m==="rect"?"":"sec"} chico" onclick="mapaModo('rect')">📏 Rectas</button>
-      <button class="btn ${m==="libre"?"":"sec"} chico" onclick="mapaModo('libre')">✏️ Mano alzada</button>
+      <button class="btn ${m==="rect"?"":"sec"} chico" onclick="mapaModo('rect')">${ic("ruler")} Rectas</button>
+      <button class="btn ${m==="libre"?"":"sec"} chico" onclick="mapaModo('libre')">${ic("edit")} Mano alzada</button>
     </div>
-    ${m==="libre"? `<button class="btn ${mv?"":"sec"} chico" onclick="mapaMover()">${mv?"✏️ Volver a dibujar":"✋ Mover el mapa"}</button>`:""}
+    ${m==="libre"? `<button class="btn ${mv?"":"sec"} chico" onclick="mapaMover()">${mv?ic("edit")+" Volver a dibujar":ic("move")+" Mover el mapa"}</button>`:""}
     <button class="btn sec chico" onclick="mapaDibAtras()">↩️ Deshacer</button>
-    <button class="btn chico" onclick="mapaDibFin()">✔ Terminar</button>
+    <button class="btn chico" onclick="mapaDibFin()">${ic("check")} Terminar</button>
     <button class="btn sec chico" onclick="mapaDibCancel()">✕ Cancelar</button>`;
   pintarDibBar();
   pintarMedPanel();
@@ -5906,7 +6129,7 @@ function pintarMedPanel(){
     <div class="muted" style="font-size:11px;margin:6px 0">${ayuda}</div>
     <div class="fila" style="gap:6px">
       ${(t==="linea"||t==="ruta") && pts.length>=2 && !rel && !dibP.medRelC?
-        `<button class="btn sec chico" style="min-height:30px;padding:3px 12px;font-size:12px" onclick="mapaMedRelieve()">⛰ Con relieve</button>`:""}
+        `<button class="btn sec chico" style="min-height:30px;padding:3px 12px;font-size:12px" onclick="mapaMedRelieve()">${ic("mountain")} Con relieve</button>`:""}
       <button class="btn sec chico" style="min-height:30px;padding:3px 12px;font-size:12px" onclick="mapaMedBorrar()">Borrar</button>
     </div>`;
   // posición recordada + arrastre desde el título
@@ -6263,7 +6486,7 @@ function mapaDibFin(){
     D.mapoly.push(o);
     mapaDibCancel();
     return true;
-  }, "💾 Guardar");
+  }, ic("save")+" Guardar");
   mpSyncLink();
 }
 /* enlaza el área con el catálogo de Datos (fundo → cuartel) */
@@ -6403,12 +6626,12 @@ function vNoticias(){
   let h = `<div class="card">
     <div class="fila" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <div>
-        <h2 style="margin:0">🗞 El Diario Frutícola</h2>
+        <h2 style="margin:0">${ic("news")} El Diario Frutícola</h2>
         <div class="muted" id="notiEstado" style="margin-top:2px">${N?
           `Edición del ${fmtF(N.act.slice(0,10))} · ${N.act.slice(11,16)} h · ${N.fuOk||0}/${N.fuTot||NOTI_FUENTES.length} fuentes · se lee sin internet` :
-          "Toca 🔄 Actualizar con internet para armar tu primera edición."}</div>
+          "Toca Actualizar (con internet) para armar tu primera edición."}</div>
       </div>
-      <button class="btn chico" onclick="actualizarNoticias()">🔄 Actualizar</button>
+      <button class="btn chico" onclick="actualizarNoticias()">${ic("refresh")} Actualizar</button>
     </div>
   </div>`;
   if(!N) return h;
