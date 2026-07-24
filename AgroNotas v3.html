@@ -5503,17 +5503,20 @@ function posPanel(){
 /* Gesto tipo Google Earth: doble-toque y arrastrar (un dedo o lápiz) = zoom dinámico */
 function activarZoomGesto(map){
   const cont = map.getContainer();
-  let lastT=0, lx=0, ly=0, active=0, ready=false, dtz=false, sy=0, sz=0, ctr=null, pid=null;
+  let lastT=0, lx=0, ly=0, active=0, ready=false, dtz=false, sy=0, sz=0, pid=null;
+  let cp=null, ctr=null, zEnd=0, mapPane=null, panePos=null, baseT="";
   function reenable(){ try{ if(map.dragging && !map.dragging.enabled()) map.dragging.enable(); }catch(_){} }
+  function clearPrev(){ if(mapPane){ mapPane.style.transform=baseT; mapPane.style.transformOrigin=""; mapPane=null; } }
   cont.addEventListener("pointerdown", function(e){
     if(e.pointerType==="mouse") return;
     active++;
-    if(active>1){ ready=false; dtz=false; pid=null; reenable(); return; }
+    if(active>1){ if(dtz){ clearPrev(); } ready=false; dtz=false; pid=null; reenable(); return; }
     const now=Date.now();
     if(now-lastT<320 && Math.abs(e.clientX-lx)<40 && Math.abs(e.clientY-ly)<40){
-      ready=true; pid=e.pointerId; sy=e.clientY; sz=map.getZoom();
+      ready=true; pid=e.pointerId; sy=e.clientY; sz=map.getZoom(); zEnd=sz;
       const r=cont.getBoundingClientRect();
-      try{ ctr=map.containerPointToLatLng(L.point(e.clientX-r.left, e.clientY-r.top)); }catch(_){ ctr=map.getCenter(); }
+      cp=L.point(e.clientX-r.left, e.clientY-r.top);
+      try{ ctr=map.containerPointToLatLng(cp); }catch(_){ ctr=map.getCenter(); }
       try{ map.dragging.disable(); }catch(_){}
     }
     lastT=now; lx=e.clientX; ly=e.clientY;
@@ -5521,14 +5524,30 @@ function activarZoomGesto(map){
   cont.addEventListener("pointermove", function(e){
     if(!ready || e.pointerId!==pid || active>1) return;
     const dy=sy-e.clientY;
-    if(!dtz){ if(Math.abs(dy)<8) return; dtz=true; try{ cont.setPointerCapture(pid); }catch(_){} }
+    if(!dtz){
+      if(Math.abs(dy)<8) return;
+      dtz=true;
+      try{ cont.setPointerCapture(pid); }catch(_){}
+      try{ if(map._stop) map._stop(); }catch(_){}
+      mapPane=map.getPanes().mapPane;
+      panePos=L.DomUtil.getPosition(mapPane)||L.point(0,0);
+      baseT=mapPane.style.transform||"";
+    }
     e.preventDefault();
-    const z=Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), sz + dy/110));
-    map.setZoomAround(ctr, z, {animate:false});
+    let z=sz + dy/110;
+    z=Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), z));
+    zEnd=z;
+    const scl=Math.pow(2, z-sz);
+    if(mapPane){ mapPane.style.transformOrigin=(cp.x-panePos.x)+"px "+(cp.y-panePos.y)+"px"; mapPane.style.transform=baseT+" scale("+scl+")"; }
   }, {passive:false});
   function end(e){
     if(e.pointerType!=="mouse") active=Math.max(0, active-1);
-    if(pid!==null && (e.pointerId===pid || e.type==="pointercancel")){ ready=false; dtz=false; pid=null; setTimeout(reenable, 20); }
+    if(pid!==null && (e.pointerId===pid || e.type==="pointercancel")){
+      const wasDtz=dtz;
+      clearPrev();
+      if(wasDtz){ try{ map.setZoomAround(ctr, zEnd, {animate:false}); }catch(_){} }
+      ready=false; dtz=false; pid=null; setTimeout(reenable, 20);
+    }
   }
   cont.addEventListener("pointerup", end);
   cont.addEventListener("pointercancel", end);
