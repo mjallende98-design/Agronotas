@@ -5503,17 +5503,19 @@ function posPanel(){
 /* Gesto tipo Google Earth: doble-toque y arrastrar (un dedo o lápiz) = zoom dinámico */
 function activarZoomGesto(map){
   const cont = map.getContainer();
-  let lastT=0, lx=0, ly=0, active=0, ready=false, dtz=false, sy=0, sz=0, pid=null;
-  let cp=null, ctr=null, zEnd=0, mapPane=null, panePos=null, baseT="";
+  let lastT=0, lx=0, ly=0, active=0, ready=false, dtz=false, sy=0, sz=0, pid=null, cp=null, ctr=null, zEnd=0, zCenter=null;
   function reenable(){ try{ if(map.dragging && !map.dragging.enabled()) map.dragging.enable(); }catch(_){} }
-  function clearPrev(){ if(mapPane){ mapPane.style.transform=baseT; mapPane.style.transformOrigin=""; mapPane=null; } }
+  function settle(){
+    try{ map._animatingZoom=false; }catch(_){}
+    if(zCenter){ try{ map._resetView(zCenter, zEnd); }catch(_){ try{ map.setView(zCenter, zEnd, {animate:false}); }catch(e){} } }
+  }
   cont.addEventListener("pointerdown", function(e){
     if(e.pointerType==="mouse") return;
     active++;
-    if(active>1){ if(dtz){ clearPrev(); } ready=false; dtz=false; pid=null; reenable(); return; }
+    if(active>1){ if(dtz){ settle(); } ready=false; dtz=false; pid=null; reenable(); return; }
     const now=Date.now();
     if(now-lastT<320 && Math.abs(e.clientX-lx)<40 && Math.abs(e.clientY-ly)<40){
-      ready=true; pid=e.pointerId; sy=e.clientY; sz=map.getZoom(); zEnd=sz;
+      ready=true; pid=e.pointerId; sy=e.clientY; sz=map.getZoom(); zEnd=sz; zCenter=map.getCenter();
       const r=cont.getBoundingClientRect();
       cp=L.point(e.clientX-r.left, e.clientY-r.top);
       try{ ctr=map.containerPointToLatLng(cp); }catch(_){ ctr=map.getCenter(); }
@@ -5524,29 +5526,23 @@ function activarZoomGesto(map){
   cont.addEventListener("pointermove", function(e){
     if(!ready || e.pointerId!==pid || active>1) return;
     const dy=sy-e.clientY;
-    if(!dtz){
-      if(Math.abs(dy)<8) return;
-      dtz=true;
-      try{ cont.setPointerCapture(pid); }catch(_){}
-      try{ if(map._stop) map._stop(); }catch(_){}
-      mapPane=map.getPanes().mapPane;
-      panePos=L.DomUtil.getPosition(mapPane)||L.point(0,0);
-      baseT=mapPane.style.transform||"";
-    }
+    if(!dtz){ if(Math.abs(dy)<8) return; dtz=true; try{ cont.setPointerCapture(pid); }catch(_){} try{ if(map._stop) map._stop(); }catch(_){} try{ map._animatingZoom=true; }catch(_){} }
     e.preventDefault();
     let z=sz + dy/110;
-    z=Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), z));
+    z=(map._limitZoom? map._limitZoom(z) : Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), z)));
     zEnd=z;
-    const scl=Math.pow(2, z-sz);
-    if(mapPane){ mapPane.style.transformOrigin=(cp.x-panePos.x)+"px "+(cp.y-panePos.y)+"px"; mapPane.style.transform=baseT+" scale("+scl+")"; }
+    try{
+      const half=map.getSize().divideBy(2);
+      zCenter=map.unproject(map.project(ctr, z).subtract(cp).add(half), z);
+      map._move(zCenter, z, {pinch:true, round:false});
+    }catch(_){}
   }, {passive:false});
   function end(e){
     if(e.pointerType!=="mouse") active=Math.max(0, active-1);
     if(pid!==null && (e.pointerId===pid || e.type==="pointercancel")){
-      const wasDtz=dtz;
-      clearPrev();
-      if(wasDtz){ try{ map.setZoomAround(ctr, zEnd, {animate:false}); }catch(_){} }
-      ready=false; dtz=false; pid=null; setTimeout(reenable, 20);
+      const w=dtz; ready=false; dtz=false; pid=null;
+      if(w) settle();
+      setTimeout(reenable, 20);
     }
   }
   cont.addEventListener("pointerup", end);
