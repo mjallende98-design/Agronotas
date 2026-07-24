@@ -340,7 +340,7 @@ function cargar(){
     D.tablero = D.tablero || [];
     D.lluviaLoc = D.lluviaLoc || null;
     D.mapoly = D.mapoly || []; // polígonos de fundos y cuarteles dibujados en el mapa
-    D.mapaCapa = D.mapaCapa || "sat"; // capa del mapa: sat / híbrido / relieve
+    D.mapaCapa = D.mapaCapa || "gsat"; // capa del mapa: gsat / híbrido / relieve
     D.fundos = D.fundos || [...new Set(D.cuarteles.map(q=>q.fundo))]; // catálogo de fundos (permite fundos sin cuarteles)
     D.widgets = D.widgets || []; // widgets configurables del panel
     D.gesagro = D.gesagro || null; // extracto importado del respaldo de GesAgro (carencias)
@@ -350,7 +350,7 @@ function cargar(){
     D.climaCache = D.climaCache || null; // último pronóstico guardado para verlo sin señal
     D.zonas = D.zonas || []; // zonas de clima guardadas por el usuario (presets)
     D.ia = D.ia || {key:"", modelo:""}; // ajustes de IA (identificar fotos y escanear etiquetas)
-    D.notas.forEach(n=>{ n.titulo = n.titulo || ""; n.docs = n.docs || []; n.audios = n.audios || []; n.check = n.check || []; });
+    D.notas.forEach(n=>{ n.titulo = n.titulo || ""; n.docs = n.docs || []; n.audios = n.audios || []; n.check = n.check || []; if(!Array.isArray(n.pins)) n.pins = n.gps?[n.gps]:[]; });
     D.registros.forEach(r=>{ r.fotos = r.fotos || []; r.docs = r.docs || []; r.audios = r.audios || []; });
     D.registros.forEach(r=>{ if(r.tipo==="Aplicación" && !r.estado) r.estado="pendiente"; });
     if(!raw) guardar(); // primera vez: deja guardados los defaults ya migrados
@@ -548,7 +548,7 @@ function vPanel(){
     <h3>${ic("alert")} Urgentes sin resolver (${urg.length})</h3>
     ${urg.slice(0,5).map(n=>miniNota(n)).join("")}</div>`;
 
-  const avisos = D.notas.filter(n=>n.aviso && n.aviso<=hoyISO);
+  const avisos = D.notas.filter(n=>n.aviso && n.aviso<=hoyISO && (!n.avisoFin || hoyISO<=n.avisoFin));
   if(avisos.length) h += `<div class="card" style="border-left:5px solid #f9a825">
     <h3>${ic("bell")} Recordatorios (${avisos.length})</h3>
     ${avisos.sort((a,b)=>a.aviso.localeCompare(b.aviso)).map(n=>`<div class="fila" style="align-items:center">
@@ -619,7 +619,7 @@ function notasListaHTML(){
   let h="";
   const fij=lst.filter(n=>n.fijada).sort((a,b)=>(b.fh||"").localeCompare(a.fh||""));
   const resto=lst.filter(n=>!n.fijada).sort((a,b)=>(b.fh||"").localeCompare(a.fh||""));
-  if(fij.length) h += notasSeccion(ic("pin2")+" Fijadas","fij",fij);
+  if(fij.length) h += notasSeccion("📌 Fijadas","fij",fij);
   const per=[]; const pidx={};
   resto.forEach(n=>{ const pk=regPeriodoKey((n.fh||"").slice(0,10),modo); if(pidx[pk]==null){pidx[pk]=per.length;per.push({k:pk,items:[]});} per[pidx[pk]].items.push(n); });
   per.forEach(p=>{ h += notasSeccion(regPeriodoLabel(p.k,modo), p.k, p.items); });
@@ -634,7 +634,7 @@ function tarjetaNota(n){
       <div class="tit">${n.fijada?ic("pin2")+" ":""}${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""}</div>
       <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto">${n.oculta?`<span class="badge b-gris">${ic("eyeOff")} Oculta</span>`:""}${badgeCat(n.cat)}<button onclick="event.stopPropagation();notaOcultar(${n.id})" title="${n.oculta?'Mostrar':'Ocultar'}" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0 2px;line-height:1">${n.oculta?ic("eye"):ic("eyeOff")}</button></div>
     </div>
-    <div class="met">${fmtFH(n.fh)}${(n.audios&&n.audios.length)?" · 🎤 "+n.audios.length:""}${(n.check&&n.check.length)?` · ☑ ${n.check.filter(c=>c.ok).length}/${n.check.length}`:""}${n.gps?" · 📍":""}</div>`;
+    <div class="met">${fmtFH(n.fh)}${(n.audios&&n.audios.length)?" · 🎤 "+n.audios.length:""}${(n.check&&n.check.length)?` · ☑ ${n.check.filter(c=>c.ok).length}/${n.check.length}`:""}${(n.pins&&n.pins.length)?" · 📍"+(n.pins.length>1?" "+n.pins.length:""):(n.gps?" · 📍":"")}</div>`;
   if(n.oculta){
     return `<div class="item" style="cursor:default">
     ${cab}
@@ -680,6 +680,7 @@ function formNota(id){
   audiosTmp = n? [...(n.audios||[])] : [];
   chkTmp = n? JSON.parse(JSON.stringify(n.check||[])) : [];
   gpsTmp = n? (n.gps||null) : null;
+  pinsTmp = n? ((Array.isArray(n.pins)&&n.pins.length)? n.pins.map(p=>Object.assign({},p)) : (n.gps?[Object.assign({},n.gps)]:[])) : [];
   gpsOn = n? !!n.gps : true; // nota nueva: con ubicación por defecto; el usuario puede apagarla
   abrirModal(n?"Editar nota":ic("note")+" Nueva nota", `
     ${campoF("m_titulo","Título (opcional)","text",n?.titulo,'placeholder="Ej: Reunión proveedor, Novedad cuartel 3…"')}
@@ -687,8 +688,12 @@ function formNota(id){
     ${bloqueCuarteles(n?.cuartel)}
     ${selF("m_cat","Categoría",catsNota(),n?.cat||"Observación")}
     ${areaF("m_texto","Nota *",n?.texto,"Escribe aquí lo observado…")}
-    ${campoF("m_aviso","Recordatorio 🔔 (opcional: aparece en el Panel ese día)","date",n?.aviso)}
-    <button type="button" class="btn sec chico" style="margin:-4px 0 10px" onclick="var e=document.getElementById('m_aviso'); e.value=''; e.blur();">✕ Quitar recordatorio</button>
+    <label class="f" style="margin-bottom:4px">Recordatorio 🔔 (opcional · aparece en el Panel dentro del rango)</label>
+    <div class="grid2">
+      ${campoF("m_aviso","Desde","date",n?.aviso)}
+      ${campoF("m_avisoFin","Hasta (opcional)","date",n?.avisoFin)}
+    </div>
+    <button type="button" class="btn sec chico" style="margin:-4px 0 10px" onclick="document.getElementById('m_aviso').value='';document.getElementById('m_avisoFin').value='';">✕ Quitar recordatorio</button>
     <label class="f" style="display:flex;align-items:center;gap:10px;font-size:15px">
       <input type="checkbox" id="m_fijada" ${n?.fijada?"checked":""} style="width:24px;height:24px;min-height:0;margin:0"> ${ic("pin2")} Fijar arriba (importante)
     </label>
@@ -698,10 +703,11 @@ function formNota(id){
       <input id="chkNuevo" placeholder="Nuevo ítem… (ej: revisar válvula 3)" style="flex:1;padding:10px;border:1.5px solid var(--borde);border-radius:10px;font-size:16px;min-width:150px" onkeydown="if(event.key==='Enter'){event.preventDefault();agregarChk();}">
       <button class="btn sec chico" onclick="agregarChk()">＋ Ítem</button>
     </div>
+    <label class="f" style="margin-bottom:4px">Ubicaciones 📍 (puedes agregar varias)</label>
+    <div id="notaPins"></div>
     <div class="fila" style="margin-bottom:6px">
-      <button class="btn sec chico" id="btnGps" onclick="toggleGps()">${ic("pin")} Con ubicación</button>
-      <button class="btn sec chico" onclick="elegirEnMapa()">${ic("map")} Elegir en mapa</button>
-      <span class="muted" id="gpsInfo"></span>
+      <button type="button" class="btn sec chico" onclick="notaPinGPS()">${ic("pin")} Mi ubicación</button>
+      <button type="button" class="btn sec chico" onclick="notaPinMapa()">${ic("map")} Elegir en mapa</button>
     </div>
     <label class="f">Pin en el mapa (importancia visual)<select id="m_pin">
       <option value="alta" ${n?.pin==="alta"?"selected":""}>🔴 Alta — pin grande, resalta</option>
@@ -717,12 +723,12 @@ function formNota(id){
       for(const dc of (n.docs||[])) if(!docsTmp.some(x=>x.id===dc.id)) await fotoDel(dc.id);
       for(const aid of (n.audios||[])) if(!audiosTmp.includes(aid)) await fotoDel(aid);
       Object.assign(n,{titulo:v("m_titulo"),fundo:v("m_fundo"),cuartel:cuartelesElegidos(),cat:v("m_cat"),texto:v("m_texto"),
-        aviso:v("m_aviso"), fijada:document.getElementById("m_fijada").checked, fotos:[...fotosTmp], docs:[...docsTmp],
-        audios:[...audiosTmp], check:[...chkTmp], gps:gpsTmp, pin:v("m_pin")});
+        aviso:v("m_aviso"), avisoFin:v("m_avisoFin"), fijada:document.getElementById("m_fijada").checked, fotos:[...fotosTmp], docs:[...docsTmp],
+        audios:[...audiosTmp], check:[...chkTmp], pins:pinsTmp.slice(), gps:(pinsTmp[0]||null), pin:v("m_pin")});
     }else{
       D.notas.push({id:nid(), fh:ahora(), titulo:v("m_titulo"), fundo:v("m_fundo"), cuartel:cuartelesElegidos(), cat:v("m_cat"),
-        texto:v("m_texto"), aviso:v("m_aviso"), fijada:document.getElementById("m_fijada").checked,
-        fotos:[...fotosTmp], docs:[...docsTmp], audios:[...audiosTmp], check:[...chkTmp], gps:gpsTmp, pin:v("m_pin"), resuelta:false});
+        texto:v("m_texto"), aviso:v("m_aviso"), avisoFin:v("m_avisoFin"), fijada:document.getElementById("m_fijada").checked,
+        fotos:[...fotosTmp], docs:[...docsTmp], audios:[...audiosTmp], check:[...chkTmp], pins:pinsTmp.slice(), gps:(pinsTmp[0]||null), pin:v("m_pin"), resuelta:false});
     }
   });
   document.getElementById("m_fundo").onchange = ()=>{ cuartsTmp=[]; pintarCuartsTmp(); syncCuarteles(); };
@@ -730,7 +736,7 @@ function formNota(id){
   pintarCuartsTmp();
   pintarAdjuntos();
   pintarChk();
-  pintarGps();
+  pintarNotaPins();
   if(!n && gpsOn) capturarGPS(true); // nota nueva: intenta capturar ubicación sin molestar
 }
 /* --- Bloque de adjuntos reutilizable (notas y registros) --- */
@@ -1555,6 +1561,8 @@ function marcarChk(id,i,val){
 
 /* --- GPS --- */
 let gpsTmp = null;
+let pinsTmp = [];
+let pickModo = "single";
 let gpsOn = true; // el usuario elige si la nota/registro lleva ubicación
 function toggleGps(){
   gpsOn = !gpsOn;
@@ -1587,6 +1595,19 @@ function pintarGps(){
 }
 function linkMapa(g){ return `https://maps.google.com/?q=${g.lat},${g.lng}`; }
 function linkEarth(g){ return `https://earth.google.com/web/search/${g.lat},${g.lng}/@${g.lat},${g.lng},400a,250d,35y,0h,0t,0r`; }
+function pintarNotaPins(){
+  const c=document.getElementById("notaPins"); if(!c) return;
+  if(!pinsTmp.length){ c.innerHTML=`<div class="muted" style="font-size:12px;margin:2px 0 6px">Sin ubicación. Agrégala con los botones de abajo (puedes poner varias).</div>`; return; }
+  c.innerHTML = pinsTmp.map(function(g,i){ return `<div class="fila" style="align-items:center;gap:8px;margin-bottom:5px;font-size:12.5px"><span style="flex:1">📍 ${g.lat}, ${g.lng}${g.manual?' <span class="muted">(mapa)</span>':(g.acc?` <span class="muted">(±${g.acc>1000?(g.acc/1000).toFixed(1)+" km":g.acc+" m"})</span>`:'')}</span><a href="${linkMapa(g)}" target="_blank" style="font-weight:700">${ic("map")}</a><a href="${linkEarth(g)}" target="_blank" style="font-weight:700">${ic("globe")}</a><button type="button" class="qx-cat" onclick="notaPinDel(${i})">✕</button></div>`; }).join("");
+}
+function notaPinDel(i){ pinsTmp.splice(i,1); pintarNotaPins(); }
+function notaPinGPS(){
+  if(!navigator.geolocation){ alert("Este dispositivo no entrega ubicación."); return; }
+  const c=document.getElementById("notaPins"); if(c) c.insertAdjacentHTML("afterbegin", `<div class="muted" id="_pinBusca" style="font-size:12px">buscando señal…</div>`);
+  navigator.geolocation.getCurrentPosition(function(p){ pinsTmp.push({lat:+p.coords.latitude.toFixed(6), lng:+p.coords.longitude.toFixed(6), acc:Math.round(p.coords.accuracy||0)}); pintarNotaPins(); },
+    function(e){ const b=document.getElementById("_pinBusca"); if(b) b.textContent="sin señal GPS"; }, {enableHighAccuracy:true, timeout:8000, maximumAge:60000});
+}
+function notaPinMapa(){ elegirEnMapa("pin"); }
 
 /* --- Compartir y crear labor desde una nota --- */
 function laborDesdeNota(id){
@@ -1598,7 +1619,7 @@ async function compartirNota(id){
   const n = D.notas.find(x=>x.id===id); if(!n) return;
   let txt = `📝 AgroNotas — ${n.fundo}${n.cuartel?" · "+n.cuartel:""}\n${n.cat} · ${fmtFH(n.fh)}\n\n${n.texto}`;
   if(n.check && n.check.length) txt += "\n\n" + n.check.map(c=>(c.ok?"☑":"☐")+" "+c.t).join("\n");
-  if(n.gps) txt += "\n\n📍 " + linkMapa(n.gps);
+  const _pins=(n.pins&&n.pins.length)?n.pins:(n.gps?[n.gps]:[]); if(_pins.length) txt += "\n\n" + _pins.map(function(g){return "📍 "+linkMapa(g);}).join("\n");
   if(navigator.share){ try{ await navigator.share({title:"Nota AgroNotas", text:txt}); }catch(e){} }
   else if(navigator.clipboard){ await navigator.clipboard.writeText(txt); alert("Nota copiada al portapapeles 📋. Pégala en WhatsApp o correo."); }
 }
@@ -1883,7 +1904,7 @@ ${window._infTxt||""}`;
 function verNota(id){
   const n = D.notas.find(x=>x.id===id); if(!n) return;
   abrirModal(`${n.fijada?ic("pin2")+" ":""}Nota · ${esc(n.fundo)}`, `
-    <div class="met" style="margin-bottom:6px">${badgeCat(n.cat)} &nbsp; ${fmtFH(n.fh)}${n.cuartel?" · Cuartel: <b>"+esc(n.cuartel)+"</b>":""}${n.aviso?` · 🔔 ${fmtF(n.aviso)}`:""}</div>
+    <div class="met" style="margin-bottom:6px">${badgeCat(n.cat)} &nbsp; ${fmtFH(n.fh)}${n.cuartel?" · Cuartel: <b>"+esc(n.cuartel)+"</b>":""}${n.aviso?` · 🔔 ${fmtF(n.aviso)}${n.avisoFin?"–"+fmtF(n.avisoFin):""}`:""}</div>
     ${n.titulo? `<div style="font-size:18px;font-weight:800;margin-bottom:6px">${esc(n.titulo)}</div>`:""}
     <div class="txt" style="font-size:16px;white-space:pre-wrap;word-break:break-word;line-height:1.5">${esc(n.texto)}</div>
     <div class="thumbs" data-fotos="${n.fotos.join(",")}" style="margin-top:12px"></div>
@@ -1891,8 +1912,7 @@ function verNota(id){
     <div class="audios" data-audios="${(n.audios||[]).join(",")}"></div>
     ${(n.check&&n.check.length)? `<div style="margin-top:10px">${n.check.map((c,i)=>`<div class="chk-fila ${c.ok?"ok":""}"><input type="checkbox" ${c.ok?"checked":""} onchange="marcarChk(${n.id},${i},this.checked);this.parentElement.classList.toggle('ok',this.checked)"><span style="flex:1">${esc(c.t)}</span></div>`).join("")}</div>`:""}
     <div class="fila" style="margin-top:14px">
-      ${n.gps? `<a class="btn sec chico" style="text-decoration:none" href="${linkMapa(n.gps)}" target="_blank" onclick="event.stopPropagation()">${ic("map")} Maps</a>
-      <a class="btn sec chico" style="text-decoration:none" href="${linkEarth(n.gps)}" target="_blank" onclick="event.stopPropagation()">${ic("globe")} Earth</a>`:""}
+      ${((n.pins&&n.pins.length)?n.pins:(n.gps?[n.gps]:[])).map(function(g,i){return `<a class="btn sec chico" style="text-decoration:none" href="${linkMapa(g)}" target="_blank" onclick="event.stopPropagation()">${ic("map")} Maps${(n.pins&&n.pins.length>1)?" "+(i+1):""}</a> <a class="btn sec chico" style="text-decoration:none" href="${linkEarth(g)}" target="_blank" onclick="event.stopPropagation()">${ic("globe")} Earth</a>`;}).join(" ")}
       <button class="btn sec chico" onclick="laborDesdeNota(${n.id})">${ic("calendar")} Crear labor</button>
       <button class="btn sec chico" onclick="tarjetaDesdeNota(${n.id})">${ic("board")} Al tablero</button>
       <button class="btn sec chico" onclick="compartirNota(${n.id})">${ic("share")} Compartir</button>
@@ -1903,7 +1923,7 @@ function verNota(id){
   posNotas();
 }
 function marcarResuelta(id,val){ const n=D.notas.find(x=>x.id===id); if(n){ n.resuelta=val; guardar(); } }
-function cerrarAviso(id){ const n=D.notas.find(x=>x.id===id); if(n){ n.aviso=""; guardar(); render(); } }
+function cerrarAviso(id){ const n=D.notas.find(x=>x.id===id); if(n){ n.aviso=""; n.avisoFin=""; guardar(); render(); } }
 function notaPlantilla(i){
   const p = plantillas()[i]; if(!p) return;
   formNota();
@@ -3149,7 +3169,7 @@ function csvExport(que){
   }else{
     head = ["Fecha y hora","Fundo","Cuartel","Categoría","Nota","Fijada","Resuelta","GPS"];
     filas = [...D.notas].sort((a,b)=>(a.fh||"").localeCompare(b.fh||""))
-      .map(n=>[fmtFH(n.fh),n.fundo,n.cuartel,n.cat,n.texto,n.fijada?"sí":"",n.resuelta?"sí":"",n.gps?`${n.gps.lat}, ${n.gps.lng}`:""]);
+      .map(n=>[fmtFH(n.fh),n.fundo,n.cuartel,n.cat,n.texto,n.fijada?"sí":"",n.resuelta?"sí":"",((n.pins&&n.pins.length)?n.pins:(n.gps?[n.gps]:[])).map(function(g){return g.lat+", "+g.lng;}).join(" | ")]);
   }
   const csv = "﻿" + [head,...filas].map(f=>f.map(cel).join(sep)).join("\r\n");
   const a = document.createElement("a");
@@ -3722,6 +3742,7 @@ function clItemHTML(l,x,canUp){
   return `<div style="display:flex;align-items:center;gap:13px;padding:13px 2px;border-bottom:1px solid #eef1ec;${it.ok?'opacity:.5':''}">
     <input type="checkbox" ${it.ok?"checked":""} onchange="clToggle(${l.id},${i})" style="width:27px;height:27px;flex:0 0 auto;accent-color:${c};cursor:pointer">
     <span onclick="clEditStart(${l.id},${i})" style="flex:1;font-size:16.5px;line-height:1.25;cursor:text;${it.ok?'text-decoration:line-through':''}">${esc(it.t)}</span>
+    ${(clLists().length>1)?`<button type="button" onclick="clMover(${l.id},${i})" title="Mover a otra lista" style="border:none;background:none;font-size:17px;color:var(--txt2);cursor:pointer;padding:2px 5px">⇄</button>`:""}
     ${canUp?`<button type="button" onclick="clUp(${l.id},${i})" title="Subir" style="border:none;background:none;font-size:19px;color:var(--txt2);cursor:pointer;padding:2px 5px">↑</button>`:""}
     <button type="button" onclick="clDel(${l.id},${i})" title="Borrar" style="border:none;background:none;font-size:18px;color:#c62828;cursor:pointer;padding:2px 5px">✕</button>
   </div>`;
@@ -3740,6 +3761,8 @@ function clHechasTgl(id){ nav.clHechas=nav.clHechas||{}; nav.clHechas[id]=!nav.c
 function clNueva(){ abrirModal("＋ Nueva lista", campoF("cl_nom","Nombre de la lista","text","",'placeholder="Ej: Comprar, Arreglar, Ideas"'), function(){ const n=(v("cl_nom")||"").trim(); if(!n){ alert("Ponle un nombre a la lista."); return false; } const id=nid(); const color=CL_COLORS[clLists().length % CL_COLORS.length]; clLists().push({id:id, nombre:n, color:color, items:[]}); nav.clActiva=id; }, "Crear"); }
 function clRename(id){ const l=clLists().find(function(x){return x.id===id;}); if(!l) return; abrirModal("✏️ Renombrar lista", campoF("cl_nom","Nombre","text",l.nombre), function(){ const n=(v("cl_nom")||"").trim(); if(!n){ alert("Ponle un nombre."); return false; } l.nombre=n; }, "Guardar"); }
 function clColor(id,color){ const l=clLists().find(function(x){return x.id===id;}); if(l){ l.color=color; guardar(); clRefresh(false); } }
+function clMover(id,i){ const l=clLists().find(function(x){return x.id===id;}); if(!l||!l.items||!l.items[i]) return; const otras=clLists().filter(function(x){return x.id!==id;}); if(!otras.length){ alert("No hay otra lista. Crea una primero con ＋ Nueva lista."); return; } const it=l.items[i]; abrirModal("⇄ Mover a otra lista", `<div class="muted" style="margin-bottom:10px">Mover «${esc(it.t)}» a:</div>`+otras.map(function(x){ return `<button type="button" class="btn full" style="margin-bottom:8px;background:${clColorDe(x)}" onclick="clMoverA(${id},${i},${x.id})">${esc(x.nombre)}</button>`; }).join(""), null, "Cancelar"); }
+function clMoverA(fromId,i,toId){ const from=clLists().find(function(x){return x.id===fromId;}), to=clLists().find(function(x){return x.id===toId;}); if(!from||!to||!from.items||!from.items[i]) return; const it=from.items.splice(i,1)[0]; to.items=to.items||[]; to.items.push(it); nav.clEdit=null; guardar(); cerrarModal(); render(); }
 function clDelLista(id){ const l=clLists().find(function(x){return x.id===id;}); if(!l) return; if(!confirm('¿Borrar la lista "'+l.nombre+'" y todos sus ítems?')) return; D.checklists=clLists().filter(function(x){return x.id!==id;}); nav.clActiva=null; nav.clEdit=null; guardar(); render(); }
 
 function vPanel(){
@@ -3769,7 +3792,7 @@ function vPanel(){
   }
 
   /* Recordatorios */
-  const avisos = D.notas.filter(n=>n.aviso && n.aviso<=hoyISO);
+  const avisos = D.notas.filter(n=>n.aviso && n.aviso<=hoyISO && (!n.avisoFin || hoyISO<=n.avisoFin));
   if(avisos.length) h += `<div class="card" style="border:1px solid #e2c07a;background:#fdf8ec">
     <div class="w-tit">${ic("bell")} Recordatorios (${avisos.length})</div>
     ${avisos.sort((a,b)=>a.aviso.localeCompare(b.aviso)).map(n=>`<div class="fila" style="align-items:center">
@@ -4522,6 +4545,7 @@ function cfResumenHTML(){
     <div style="display:flex;justify-content:space-between;align-items:baseline;padding:10px 0 2px"><span style="font-weight:800">🌱 Cosecha permitida</span><b style="color:var(--p);font-size:17px">${fc}</b></div>
     ${cfCosechaResumenHTML()}
     ${cfMixInsumosHTML()}
+    ${cfParcialHTML()}
     ${cfConversionHTML()}
     <div class="muted" style="font-size:11px;margin-top:8px">Recordatorio: dosis y carencia según etiqueta SAG y exportadora · ojo abejas (no aplicar en flor) · EPP completo · incompatibilidades (ej. diazinón + cobre).</div>`;
 }
@@ -4890,7 +4914,10 @@ function cfPDF(){
   const filas=incl.slice().sort((a,b)=>(a.fundo||"").localeCompare(b.fundo||"")||(a.nombre||"").localeCompare(b.nombre||"")).map(q=>{
     const ha=cfHaCuartel(q), rha=cfRowHa(q), pc=rha*ha*cfNapp(), s=cfSelDe(q.id), precio=cfP(pf.precioU)||0, nEstQ=(capP>0&&mojP>0)?Math.ceil(ha*mojP/capP):0;
     const doseC=!isNaN(cfP(s.dosis))?cfP(s.dosis):cfDosisGlobal();
-    return `<tr><td>${esc(q.fundo)}</td><td>${esc(q.nombre)}</td><td>${esc(q.especie||"")}</td><td style="text-align:right">${cfNum(ha,2)}</td><td style="text-align:right">${cfNum(doseC,doseC<10?2:0)} ${esc(cfLabUnid(pf.unidadDosis))}</td><td style="text-align:right">${cfQty(pc,uP)}</td><td style="text-align:right">${nEstQ||"—"}</td><td style="text-align:right">${precio>0?cfCLP(pc*precio):"—"}</td><td style="text-align:right">${cfFechaCosechaCuartel(q)?fmtF(cfFechaCosechaCuartel(q)):"—"}</td></tr>`;
+    let _row = `<tr><td>${esc(q.fundo)}</td><td>${esc(q.nombre)}</td><td>${esc(q.especie||"")}</td><td style="text-align:right">${cfNum(ha,2)}</td><td style="text-align:right">${cfNum(doseC,doseC<10?2:0)} ${esc(cfLabUnid(pf.unidadDosis))}</td><td style="text-align:right">${cfQty(pc,uP)}</td><td style="text-align:right">${nEstQ||"—"}</td><td style="text-align:right">${precio>0?cfCLP(pc*precio):"—"}</td><td style="text-align:right">${cfFechaCosechaCuartel(q)?fmtF(cfFechaCosechaCuartel(q)):"—"}</td></tr>`;
+    const _moj=cfP(pf.moj)||0, _napp=cfNapp();
+    cfMezcla().forEach(function(m){ if(!(m.producto||"").trim()) return; let _mph=cfProdHaDe(m.dosis,m.unidadDosis,_moj); if(isNaN(_mph)) _mph=0; const _mtot=_mph*ha*_napp, _mpr=cfP(m.precioU)||0, _md=cfP(m.dosis), _mdtxt=(isNaN(_md)?"":cfNum(_md,_md<10?2:0)+" "+cfLabUnid(m.unidadDosis)); _row += `<tr style="background:#f7faf7;color:#555;font-size:12px"><td></td><td>↳ ${esc(m.producto)}</td><td></td><td></td><td style="text-align:right">${_mdtxt}</td><td style="text-align:right">${cfQty(_mtot,m.unidad)}</td><td></td><td style="text-align:right">${_mpr>0?cfCLP(_mtot*_mpr):"—"}</td><td></td></tr>`; });
+    return _row;
   }).join("");
   document.getElementById("capaVisor").innerHTML=`
   <div class="visor inf-v" style="background:#e8e8e8">
@@ -4917,9 +4944,11 @@ function cfPDF(){
           <tr><td><b>Cosecha permitida desde</b></td><td><b style="color:#14532d">${r.fechaCosecha?fmtF(r.fechaCosecha):"—"}</b></td></tr>
         </tbody></table>
         ${cfPDFEstanqueHTML()}
+        ${cfParcialHTML()}
         <h2 style="font-size:15px;color:#14532d;margin:6px 0">Cuarteles a tratar (${incl.length})</h2>
         <table class="t"><thead><tr><th>Fundo</th><th>Cuartel</th><th>Especie</th><th style="text-align:right">Sup (ha)</th><th style="text-align:right">Dosis</th><th style="text-align:right">Producto</th><th style="text-align:right">Estanques</th><th style="text-align:right">Costo</th><th style="text-align:right">Cosecha</th></tr></thead>
         <tbody>${filas||`<tr><td colspan="9" style="color:#888">Sin cuarteles incluidos.</td></tr>`}</tbody></table>
+        ${cfMezcla().length?`<div class="muted" style="font-size:11px;margin:3px 0 8px">Las filas con ↳ son los otros productos de la mezcla en el estanque, con su dosis y cantidad por cuartel.</div>`:""}
         <table class="t" style="margin-top:14px"><tbody>
           <tr><td style="width:55%"><b>Superficie total</b></td><td style="text-align:right">${cfNum(r.haTot,1)} ha · ${r.incl} cuarteles</td></tr>
           <tr><td><b>Costo estimado</b></td><td style="text-align:right">${cfMezcla().length?cfCLP(cfCostoTotalMezcla())+" (mezcla)":(r.costoCompra>0?cfCLP(r.costoCompra):(r.costoTeorico>0?cfCLP(r.costoTeorico)+" (s/ envase)":"—"))}</td></tr>
@@ -5053,6 +5082,24 @@ function cfMixInsumosHTML(){
   const rows=cfMixCalc().map(x=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed rgba(0,0,0,.1);font-size:13px"><span>${esc(x.nombre||"—")}${x.esP?' <span class="badge b-verde" style="font-size:9px">principal</span>':''}</span><b style="white-space:nowrap">${cfQty(x.compra>0?x.compra:x.conM,x.uP)}${x.costo>0?" · "+cfCLP(x.costo):""}</b></div>`).join("");
   const total=cfCostoTotalMezcla();
   return `<div style="margin-top:12px"><div style="font-weight:800;margin-bottom:4px">🧪 Insumos de la mezcla</div>${rows}<div style="display:flex;justify-content:space-between;padding:6px 0 2px"><b>Costo total de la mezcla</b><b style="color:var(--p)">${total>0?cfCLP(total):"—"}</b></div>${cfMezclaOrdenHTML()}</div>`;
+}
+function cfParcialHTML(){
+  const pf=cfPF(), cap=cfP(pf.estanque)||0, moj=cfP(pf.moj)||0;
+  if(!(cap>0)||!(moj>0)) return "";
+  const prods=cfMixCalc().filter(function(x){return x.est>0;});
+  if(!prods.length) return "";
+  const incl=cfIncluidos(); if(!incl.length) return "";
+  let filas="";
+  incl.forEach(function(q){
+    const ha=cfHaCuartel(q); if(!(ha>0)) return;
+    const aguaC=ha*moj, full=Math.floor(aguaC/cap+1e-6), rem=aguaC-full*cap, parcial=rem>1;
+    let det;
+    if(!parcial){ det='<span style="color:#2e7d32">'+full+' estanque(s) justo(s), sin sobra</span>'; }
+    else { const f=rem/cap; const pt=prods.map(function(x){ return esc(x.nombre||"—")+" <b>"+cfQty(x.est*f,x.uP)+"</b>"; }).join(" · "); det=full+' lleno(s) + <b style="color:#e97409">1 parcial de '+cfNum(rem,0)+' L</b> → '+pt; }
+    filas+='<div style="padding:6px 0;border-bottom:1px dashed rgba(0,0,0,.12);font-size:12.5px"><b>'+esc(q.fundo)+' · '+esc(q.nombre)+'</b> <span class="muted">('+cfNum(aguaC/cap,2)+' estanques)</span><br>'+det+'</div>';
+  });
+  if(!filas) return "";
+  return '<div style="margin-top:12px"><div style="font-weight:800;margin-bottom:4px">🪣 Último estanque por cuartel (para no desperdiciar)</div>'+filas+'<div class="muted" style="font-size:11px;margin-top:5px">El último estanque de cada cuartel se llena solo con esos litros y su producto proporcional; así no preparas de más.</div></div>';
 }
 function cfPDFEstanqueHTML(){
   const pf=cfPF(), cap=cfP(pf.estanque)||0, moj=cfP(pf.moj)||0;
@@ -5453,6 +5500,39 @@ function posPanel(){
   cargarLluviaWidgets();
 }
 
+/* Gesto tipo Google Earth: doble-toque y arrastrar (un dedo o lápiz) = zoom dinámico */
+function activarZoomGesto(map){
+  const cont = map.getContainer();
+  let lastT=0, lx=0, ly=0, active=0, ready=false, dtz=false, sy=0, sz=0, ctr=null, pid=null;
+  function reenable(){ try{ if(map.dragging && !map.dragging.enabled()) map.dragging.enable(); }catch(_){} }
+  cont.addEventListener("pointerdown", function(e){
+    if(e.pointerType==="mouse") return;
+    active++;
+    if(active>1){ ready=false; dtz=false; pid=null; reenable(); return; }
+    const now=Date.now();
+    if(now-lastT<320 && Math.abs(e.clientX-lx)<40 && Math.abs(e.clientY-ly)<40){
+      ready=true; pid=e.pointerId; sy=e.clientY; sz=map.getZoom();
+      const r=cont.getBoundingClientRect();
+      try{ ctr=map.containerPointToLatLng(L.point(e.clientX-r.left, e.clientY-r.top)); }catch(_){ ctr=map.getCenter(); }
+      try{ map.dragging.disable(); }catch(_){}
+    }
+    lastT=now; lx=e.clientX; ly=e.clientY;
+  }, {passive:false});
+  cont.addEventListener("pointermove", function(e){
+    if(!ready || e.pointerId!==pid || active>1) return;
+    const dy=sy-e.clientY;
+    if(!dtz){ if(Math.abs(dy)<8) return; dtz=true; try{ cont.setPointerCapture(pid); }catch(_){} }
+    e.preventDefault();
+    const z=Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), sz + dy/110));
+    map.setZoomAround(ctr, z, {animate:false});
+  }, {passive:false});
+  function end(e){
+    if(e.pointerType!=="mouse") active=Math.max(0, active-1);
+    if(pid!==null && (e.pointerId===pid || e.type==="pointercancel")){ ready=false; dtz=false; pid=null; setTimeout(reenable, 20); }
+  }
+  cont.addEventListener("pointerup", end);
+  cont.addEventListener("pointercancel", end);
+}
 /* ---------- Mapa satelital con pins de notas GPS ---------- */
 function initMapa(){
   const el = document.getElementById("mapaPanel");
@@ -5463,25 +5543,29 @@ function initMapa(){
     const rot = !!(L.Map.prototype.setBearing); // plugin de rotación cargado
     let mp;
     try{
-      mp = L.map(el, Object.assign({zoomControl:true, attributionControl:false},
+      mp = L.map(el, Object.assign({zoomControl:true, attributionControl:false, zoomSnap:0},
         rot? {rotate:true, touchRotate:true, rotateControl:false} : {}));
     }catch(err){ // si el plugin de rotación falla en este navegador, mapa sin rotación
       try{ delete el._leaflet_id; }catch(x){}
       el.innerHTML = "";
-      mp = L.map(el, {zoomControl:true, attributionControl:false});
+      mp = L.map(el, {zoomControl:true, attributionControl:false, zoomSnap:0});
     }
     mp.setView([loc.lat, loc.lng], 13);
     mapaP = mp;
+    try{ activarZoomGesto(mp); }catch(_){}
     mapaTiles = [];
     aplicarCapa();
+    try{ ortoAplicar(); }catch(_){}
     const colCat = c => c==="Urgente"? "#e97409" : c==="Plaga / Enfermedad"? "#c9a20e" : c==="Riego"? "#3268a8" : "#3b8c25";
     const pts = [];
     for(const n of D.notas){
-      if(!n.gps) continue;
-      pts.push([n.gps.lat, n.gps.lng]);
-      L.marker([n.gps.lat, n.gps.lng], {icon: pinIcono(colCat(n.cat), n.pin || (n.cat==="Urgente"?"alta":"normal"))})
-        .addTo(mp)
-        .bindPopup(`<b>${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""}</b><br>${esc(n.texto).slice(0,80)}${n.texto.length>80?"…":""}<br><a href="#" onclick="verNota(${n.id});return false" style="color:#3b8c25;font-weight:700">Abrir nota →</a>`);
+      const _pins=(n.pins&&n.pins.length)?n.pins:(n.gps?[n.gps]:[]);
+      for(const g of _pins){
+        pts.push([g.lat, g.lng]);
+        L.marker([g.lat, g.lng], {icon: pinIcono(colCat(n.cat), n.pin || (n.cat==="Urgente"?"alta":"normal"))})
+          .addTo(mp)
+          .bindPopup(`<b>${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""}</b><br>${esc(n.texto).slice(0,80)}${n.texto.length>80?"…":""}<br><a href="#" onclick="verNota(${n.id});return false" style="color:#3b8c25;font-weight:700">Abrir nota →</a>`);
+      }
     }
     for(const r of D.registros){
       if(!r.gps) continue;
@@ -5549,12 +5633,28 @@ const MAPA_CAPAS = {
     "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"]},
   topo: {lab:"Relieve", mz:19, urls:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"]}
 };
+const ORTOFOTOS = [
+  {id:"ss", nombre:"Santa Sara (dron)", url:"santa_sara_orto.webp", bounds:[[-33.4491855,-71.0287557],[-33.4407686,-71.0149978]]}
+];
+let capaOrto=null;
+function ortoAplicar(){
+  if(!mapaP) return;
+  if(capaOrto){ try{mapaP.removeLayer(capaOrto);}catch(e){} capaOrto=null; }
+  if(!D.ortoOn) return;
+  capaOrto=L.layerGroup();
+  const op=(D.ortoOp==null?0.85:+D.ortoOp);
+  ORTOFOTOS.forEach(function(o){ if(o.url&&o.bounds){ try{ L.imageOverlay(o.url,o.bounds,{opacity:op, interactive:false}).addTo(capaOrto); }catch(e){} } });
+  capaOrto.addTo(mapaP);
+}
+function ortoToggle(){ D.ortoOn=!D.ortoOn; guardar(); ortoAplicar(); mapaHerrDef(); if(D.ortoOn&&mapaP&&ORTOFOTOS[0]){ try{ mapaP.fitBounds(ORTOFOTOS[0].bounds,{padding:[24,24]}); }catch(e){} } }
+function ortoSetOp(v){ D.ortoOp=+v; guardar(); if(capaOrto) capaOrto.eachLayer(function(l){ if(l.setOpacity) l.setOpacity(+v); }); }
 function aplicarCapa(){
   if(!mapaP || !window.L) return;
   for(const t of mapaTiles) mapaP.removeLayer(t);
   const c = MAPA_CAPAS[D.mapaCapa||"gsat"] || MAPA_CAPAS.gsat;
-  mapaTiles = c.urls.map(u=>L.tileLayer(u,{maxZoom:c.mz||19, maxNativeZoom:c.mz||19}).addTo(mapaP));
+  mapaTiles = c.urls.map(u=>L.tileLayer(u,{maxNativeZoom:(c.mz||19), maxZoom:(c.mz||19)+2, detectRetina:true}).addTo(mapaP));
 }
+function mapaVerEarth(){ if(!mapaP) return; const c=mapaP.getCenter(); window.open(linkEarth({lat:+c.lat.toFixed(6), lng:+c.lng.toFixed(6)}), "_blank"); }
 function mapaCapaCiclo(){
   const ks = Object.keys(MAPA_CAPAS);
   D.mapaCapa = ks[(ks.indexOf(D.mapaCapa||"sat")+1)%ks.length];
@@ -5571,7 +5671,9 @@ function mapaHerrDef(){
   el.innerHTML = `
     <button class="btn sec chico" onclick="mapaFull()">${full?"✕ Salir":ic("expand")+" Pantalla completa"}</button>
     ${online? `
-    <button class="btn sec chico" onclick="mapaCapaCiclo()">${ic("layers")} ${(MAPA_CAPAS[D.mapaCapa||"sat"]||MAPA_CAPAS.sat).lab}</button>
+    <button class="btn sec chico" onclick="mapaCapaCiclo()">${ic("layers")} ${(MAPA_CAPAS[D.mapaCapa||"gsat"]||MAPA_CAPAS.gsat).lab}</button>
+    <button class="btn sec chico" onclick="mapaVerEarth()">${ic("globe")} Google Earth</button>
+    ${(typeof ORTOFOTOS!=="undefined"&&ORTOFOTOS.length)?`<button class="btn ${D.ortoOn?"":"sec"} chico" onclick="ortoToggle()">🛰️ Ortofoto</button>${D.ortoOn?`<div class="fila" style="gap:8px;align-items:center;pointer-events:auto;background:#fff;padding:5px 11px;border-radius:9px;box-shadow:0 2px 10px rgba(0,0,0,.35)"><span class="muted" style="font-size:11px">Opac.</span><input type="range" min="0.2" max="1" step="0.05" value="${D.ortoOp==null?0.85:D.ortoOp}" oninput="ortoSetOp(this.value)" onpointerdown="event.stopPropagation()" style="width:96px;pointer-events:auto;touch-action:none"></div>`:""}`:""}
     ${rot? `<div class="fila" style="gap:6px">
       <button class="btn sec chico" onclick="mapaGirar(-15)">↺</button>
       <button class="btn sec chico" onclick="mapaGirar(15)">↻</button>
@@ -5668,7 +5770,8 @@ function pinIcono(col, tam){
 }
 /* elegir la ubicación tocando un mapa (cuando el GPS anda flojo) */
 let pickMp = null, pickLL = null;
-function elegirEnMapa(){
+function elegirEnMapa(modo){
+  pickModo = modo||"single";
   if(!window.L){ alert("Para elegir en el mapa necesitas internet. Cuando tengas señal, vuelve a intentarlo."); return; }
   const base = gpsTmp || ultimaPos || D.lluviaLoc || LOC_DEF;
   document.getElementById("capaVisor").innerHTML = `
@@ -5683,7 +5786,7 @@ function elegirEnMapa(){
   pickLL = gpsTmp? Object.assign({}, gpsTmp) : null;
   const mp = L.map(document.getElementById("pickMapa"),{zoomControl:true, attributionControl:false})
     .setView([base.lat, base.lng], (gpsTmp||ultimaPos)? 16 : 14);
-  (MAPA_CAPAS[D.mapaCapa||"sat"]||MAPA_CAPAS.sat).urls.forEach(u=>L.tileLayer(u,{maxZoom:19}).addTo(mp));
+  (MAPA_CAPAS[D.mapaCapa||"gsat"]||MAPA_CAPAS.gsat).urls.forEach(u=>L.tileLayer(u,{maxNativeZoom:19, maxZoom:21, detectRetina:true}).addTo(mp));
   for(const p of D.mapoly){ // tus fundos y cuarteles como referencia
     const st = estiloDe(p);
     const opts = {color:st.col, weight:st.g, dashArray:st.seg?"7 7":null, fillColor:st.fc||st.col,
@@ -5706,6 +5809,7 @@ function elegirEnMapa(){
 function cerrarPick(){ pickMp = null; document.getElementById("capaVisor").innerHTML = ""; }
 function usarPick(){
   if(!pickLL){ alert("Toca el mapa en el punto donde quieres fijar la ubicación."); return; }
+  if(pickModo==="pin"){ pinsTmp.push(Object.assign({},pickLL)); pickModo="single"; cerrarPick(); pintarNotaPins(); return; }
   gpsTmp = pickLL; gpsOn = true;
   cerrarPick(); pintarGps();
 }
@@ -5853,10 +5957,28 @@ function pintarPoligonos(sinTocar){
       <br>📐 ${p.forma==="linea"? "largo "+fmtDist(geoDist(p.pts)) : `<b>${fmtArea(geoArea(p.pts))}</b> · borde ${fmtDist(geoDist(p.pts.concat([p.pts[0]])))}`}
       <br>${(q || p.tipo==="Fundo")? `<a href="#" onclick="mapolyInfo(${p.id});return false" style="color:#1e6091;font-weight:700">ℹ️ Info</a> &nbsp; `:""}<a href="#" onclick="mapolyEstilo(${p.id});return false" style="color:#7b4bd6;font-weight:700">🎨 Estilo</a> &nbsp;
       <a href="#" onclick="mapolyRen(${p.id});return false" style="color:#3b8c25;font-weight:700">✏️ Nombre</a> &nbsp;
+      <a href="#" onclick="mapolyEdit(${p.id});return false" style="color:#e97409;font-weight:700">📐 Forma</a> &nbsp;
       <a href="#" onclick="mapolyDel(${p.id});return false" style="color:#c62828;font-weight:700">🗑 Eliminar</a>`);
     capa.addTo(capaPoly);
   }
   capaPoly.addTo(mapaP);
+}
+/* --- Editar la forma de un polígono/línea (reusa el modo Rectas, con puntos arrastrables) --- */
+function mapolyEdit(id){
+  const p = D.mapoly.find(function(x){return x.id===id;}); if(!p||!mapaP) return;
+  if(dibP){ alert("Termina o cancela el dibujo actual antes de editar otra forma."); return; }
+  if(p.forma==="texto"){ alert("El texto se mueve arrastrándolo directamente sobre el mapa."); return; }
+  mapaP.closePopup();
+  dibP = {modo:"rect", mover:false, dib:false, pid:null, pidTipo:null,
+    pts: p.pts.map(function(x){return x.slice();}), marcas: p.pts.map(function(_,i){return i;}),
+    herr:"lapiz", col:"#e53935", g:4, ts:20, sello:"🌳", trazos:[], textos:[], orden:[],
+    pen:false, ptrs:new Map(), gesto:null, formaA:null, tmpShape:null,
+    medir:[], medTipo:"ruta", medLin:null, editId:id,
+    capa:L.layerGroup().addTo(mapaP)};
+  pintarPoligonos(true);
+  const mb = document.querySelector("#mapaCard .mapa-btns"); if(mb) mb.style.display="none";
+  mapaHerrDib();
+  mapaDibPintar();
 }
 /* ℹ️ información desde el catálogo de Datos */
 function mapolyInfo(id){
@@ -6452,6 +6574,7 @@ function mapaDibCancel(){
 }
 function mapaDibFin(){
   if(!dibP) return;
+  if(dibP.editId){ const _p=D.mapoly.find(function(x){return x.id===dibP.editId;}); const _min=(_p&&_p.forma==="linea")?2:3; if(dibP.pts.length<_min){ alert("Necesitas al menos "+_min+" puntos."); return; } if(_p){ _p.pts=dibP.pts.slice(); guardar(); } mapaDibCancel(); return; }
   const esLibre = dibP.modo==="libre";
   const pts = esLibre? dibP.trazos.flatMap(t=>t.pts) : dibP.pts.slice();
   if(pts.length<2 && !(esLibre && dibP.textos.length)){ alert("Dibuja o marca algo en el mapa primero."); return; }
@@ -6520,6 +6643,28 @@ function zonaClima(){ // nombre de la zona de la que vienen clima y lluvia
   const l = D.lluviaLoc;
   return l? (l.nom || (l.lat + ", " + l.lng)) : "Curacaví";
 }
+async function climaYR(loc){
+  const r = await fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${(+loc.lat).toFixed(4)}&lon=${(+loc.lng).toFixed(4)}`);
+  if(!r.ok) throw new Error("YR "+r.status);
+  const j = await r.json();
+  const ts = (j.properties && j.properties.timeseries) || [];
+  if(!ts.length) throw new Error("YR vacío");
+  const key = function(d){ const dt=new Date(d); return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0"); };
+  const days = {}; let curTemp=null;
+  ts.forEach(function(e){
+    const k=key(e.time);
+    if(!days[k]) days[k]={min:Infinity, max:-Infinity, pp:0};
+    const det=e.data && e.data.instant && e.data.instant.details;
+    if(det && typeof det.air_temperature==="number"){ if(det.air_temperature<days[k].min) days[k].min=det.air_temperature; if(det.air_temperature>days[k].max) days[k].max=det.air_temperature; if(curTemp===null) curTemp=det.air_temperature; }
+    const h1=e.data && e.data.next_1_hours, h6=e.data && e.data.next_6_hours;
+    if(h1 && h1.details && typeof h1.details.precipitation_amount==="number") days[k].pp+=h1.details.precipitation_amount;
+    else if(h6 && h6.details && typeof h6.details.precipitation_amount==="number") days[k].pp+=h6.details.precipitation_amount;
+  });
+  const ks=Object.keys(days).sort(), time=[],mn=[],mx=[],pp=[];
+  ks.slice(0,9).forEach(function(k){ const d=days[k]; time.push(k); mn.push(isFinite(d.min)?d.min:0); mx.push(isFinite(d.max)?d.max:0); pp.push(Math.round(d.pp*10)/10); });
+  if(!time.length) throw new Error("YR sin días");
+  return { current:{temperature_2m:(curTemp!=null?curTemp:(mx[0]||0))}, daily:{time:time, temperature_2m_min:mn, temperature_2m_max:mx, precipitation_sum:pp}, fuente:"YR" };
+}
 async function cargarClima(){
   const el = document.getElementById("climaW");
   if(!el) return;
@@ -6536,36 +6681,40 @@ async function cargarClima(){
     }
     return;
   }
-  if(C && C.act && (Date.now() - new Date(C.act).getTime()) < 2*3600*1000) return; // fresco (<2 h): no consultar de nuevo
+  if(C && C.v===2 && C.act && (Date.now() - new Date(C.act).getTime()) < 2*3600*1000) return; // fresco (<2 h) y formato nuevo
   const loc = D.lluviaLoc || LOC_DEF;
   try{
-    const [f,m] = await Promise.all([
-      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}&current=temperature_2m&daily=temperature_2m_min,temperature_2m_max,precipitation_sum&timezone=auto&forecast_days=4`).then(r=>r.json()),
-      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}&daily=precipitation_sum&timezone=auto&start_date=${mes1}&end_date=${hoy()}`).then(r=>r.json())
-    ]);
+    let f;
+    try{ f = await climaYR(loc); }
+    catch(_yr){ f = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}&current=temperature_2m&daily=temperature_2m_min,temperature_2m_max,precipitation_sum&timezone=auto&forecast_days=10`).then(r=>r.json()); f.fuente="Open-Meteo"; }
+    const m = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}&daily=precipitation_sum&timezone=auto&start_date=${mes1}&end_date=${hoy()}`).then(r=>r.json());
     const d = f.daily;
     const tAct = Math.round(f.current.temperature_2m);
     const ppHoy = +d.precipitation_sum[0]||0;
-    const acum = ((m.daily && m.daily.precipitation_sum)||[]).reduce((s,x)=>s+(+x||0),0);
+    const _regLl = D.registros.filter(r=>r.tipo==="Lluvia" && (r.fecha||"")>=mes1 && (r.fecha||"")<=hoy());
+    const _accReg = _regLl.reduce((s,r)=>s+(+r.mm||0),0);
+    const _usaReg = _regLl.length>0;
+    const acum = _usaReg? _accReg : ((m.daily && m.daily.precipitation_sum)||[]).reduce((s,x)=>s+(+x||0),0);
+    const _acumLab = _usaReg? "medido" : "estimado";
     const DS = ["DO","LU","MA","MI","JU","VI","SÁ"];
     let cols = "";
-    for(let i=1;i<4 && i<d.time.length;i++){
+    for(let i=1;i<d.time.length;i++){
       const dt = new Date(d.time[i]+"T12:00:00");
       const pp = +d.precipitation_sum[i]||0;
-      cols += `<div style="text-align:center"><div style="font-size:10.5px;font-weight:700;color:#a8aaa6">${DS[dt.getDay()]}</div>
+      cols += `<div style="flex:0 0 auto;min-width:46px;text-align:center"><div style="font-size:10px;font-weight:700;color:#a8aaa6">${DS[dt.getDay()]} ${dt.getDate()}</div>
         <div style="font-size:12px;font-weight:700;color:var(--txt)">${Math.round(d.temperature_2m_min[i])}°/${Math.round(d.temperature_2m_max[i])}°</div>
-        <div style="font-size:10.5px;${pp?"color:var(--azul);font-weight:600":"color:#c5c7c3"}">${pp? num(pp)+" mm":"—"}</div></div>`;
+        <div style="font-size:10px;${pp?"color:var(--azul);font-weight:600":"color:#c5c7c3"}">${pp? num(pp)+" mm":"—"}</div></div>`;
     }
     const html = `<div style="display:flex;align-items:center;gap:12px;font-variant-numeric:tabular-nums">
       <div style="flex:0 0 auto"><span style="font-size:24px;font-weight:700;color:var(--txt)">${tAct}°</span>
         <div style="font-size:11px;color:var(--txt2)"><span style="color:var(--azul);font-weight:600">↓${Math.round(d.temperature_2m_min[0])}°</span> <span style="color:var(--urg);font-weight:600">↑${Math.round(d.temperature_2m_max[0])}°</span>${ppHoy?` · ${num(ppHoy)} mm hoy`:""}</div></div>
-      <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr)">${cols}</div>
+      <div style="flex:1;min-width:0;display:flex;gap:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px">${cols}</div>
       <div style="flex:0 0 auto;border-left:1px solid #eef0ec;padding-left:12px;text-align:center">
         <div style="font-size:15px;font-weight:700;color:var(--azul)">${num(acum)} mm</div>
-        <div style="font-size:10px;color:var(--txt2)">${MESES[new Date().getMonth()]} acum.</div></div>
-    </div>`;
+        <div style="font-size:10px;color:var(--txt2)">${MESES[new Date().getMonth()]} acum. <span style="color:${_usaReg?'var(--p)':'#b9bcb7'}">(${_acumLab})</span></div></div>
+    </div><div style="font-size:9px;color:#b9bcb7;text-align:right;margin-top:2px">fuente: ${esc(f.fuente||"Open-Meteo")}</div>`;
     el.innerHTML = html;
-    D.climaCache = {act: ahora(), html}; // queda guardado para verlo sin señal
+    D.climaCache = {v:2, act: ahora(), html}; // queda guardado para verlo sin señal
     guardar();
   }catch(e){
     if(!C || !C.html){ // solo si no había nada guardado que mostrar
