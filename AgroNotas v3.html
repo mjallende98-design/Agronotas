@@ -914,6 +914,12 @@ async function abrirCroquisEd(fid, doc, nuevo){
     <div class="lienzo" id="cqLienzo">
       <canvas id="cqBase" style="position:absolute"></canvas>
       <canvas id="cqTmp" style="position:absolute"></canvas>
+      <div id="cqPoliBar" style="display:none;position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:5;background:rgba(20,22,20,.92);color:#fff;padding:7px 9px;border-radius:12px;box-shadow:0 3px 14px rgba(0,0,0,.4);align-items:center;gap:7px;font-size:12.5px">
+        <span id="cqPoliInfo" style="opacity:.92;padding:0 4px">Toca para marcar puntos</span>
+        <button class="btn sec chico" onclick="cqPoliUndo()" style="padding:4px 8px">↶ Punto</button>
+        <button class="btn sec chico" onclick="cqPoliCancel(true)" style="padding:4px 8px">✕</button>
+        <button class="btn chico" onclick="cqPoliCerrar()" style="padding:4px 10px">✓ Cerrar</button>
+      </div>
     </div>
     <div class="herr" id="cqCotaBar" style="display:none">
       <span style="color:#bbb;font-size:13.5px;flex:0 0 auto">Medida:</span>
@@ -938,6 +944,7 @@ async function abrirCroquisEd(fid, doc, nuevo){
       <button class="tool" data-t="cota" onclick="setToolCq('cota',this)">${ic("ruler")}</button>
       <button class="tool" data-t="circ" onclick="setToolCq('circ',this)">${ic("circle")}</button>
       <button class="tool" data-t="rect" onclick="setToolCq('rect',this)">▭</button>
+      <button class="tool" data-t="poli" onclick="setToolCq('poli',this)"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12,3 21,9.5 17.5,21 6.5,21 3,9.5"/></svg></button>
       <button class="tool" data-t="txt" onclick="setToolCq('txt',this)">${ic("textT")}</button>
       <button class="tool" data-t="sello" onclick="setToolCq('sello',this);document.getElementById('cqSellos').style.display='flex'">${ic("tree")}</button>
       <span style="width:8px"></span>
@@ -956,7 +963,7 @@ async function abrirCroquisEd(fid, doc, nuevo){
   cq = {fid, nuevo:!!nuevo, fondo:doc.fondo||{tipo:"blanco",n:0}, objs:doc.objs||[],
     W, H, img,
     tool:"lapiz", col:"#e53935", g:8, sello:"🌳", sel:-1, pila:[],
-    base, tmp, lz, dib:false, p0:null, pts:null, mov:false, movio:false,
+    base, tmp, lz, dib:false, p0:null, pts:null, mov:false, movio:false, poly:null,
     zoom:1, ox:0, oy:0, kb:1, ptrs:new Map(), gesto:null, mover:false, pan:null, panId:null,
     mc:document.createElement("canvas").getContext("2d")};
   ajustarCq(); pintarCq();
@@ -1045,6 +1052,7 @@ function cqXY(e){
   return {x:(e.clientX-r.left)*cq.W/r.width, y:(e.clientY-r.top)*cq.H/r.height};
 }
 function setToolCq(t,btn){
+  if(cq.poly) cqPoliCancel(false);
   cq.tool=t; cq.sel=-1; pintarSelCq();
   if(t!=="sello") document.getElementById("cqSellos").style.display="none";
   document.querySelectorAll("#cqHerr .tool[data-t]").forEach(b=>b.classList.remove("act"));
@@ -1138,6 +1146,15 @@ function cqObj(c,o){
       c.restore(); c.textAlign="left"; c.fillStyle=o.col;
     }
   }else if(o.t==="rect"){ c.strokeRect(o.x,o.y,o.w,o.h); }
+  else if(o.t==="poli"){
+    if(o.pts && o.pts.length){
+      c.beginPath(); c.moveTo(o.pts[0][0],o.pts[0][1]);
+      for(let i=1;i<o.pts.length;i++) c.lineTo(o.pts[i][0],o.pts[i][1]);
+      c.closePath();
+      c.save(); c.globalAlpha=0.18; c.fill(); c.restore();
+      c.stroke();
+    }
+  }
   else if(o.t==="circ"){ c.beginPath(); c.ellipse(o.cx,o.cy,o.rx||1,o.ry||1,0,0,7); c.stroke(); }
   else if(o.t==="txt" || o.t==="sello"){
     const es = o.t==="txt";
@@ -1157,7 +1174,7 @@ function pintarCq(){
   pintarSelCq();
 }
 function cqBBox(o){
-  if(o.t==="lapiz"){
+  if(o.t==="lapiz" || o.t==="poli"){
     let x1=1e9,y1=1e9,x2=-1e9,y2=-1e9;
     for(const p of o.pts){ x1=Math.min(x1,p[0]); y1=Math.min(y1,p[1]); x2=Math.max(x2,p[0]); y2=Math.max(y2,p[1]); }
     return {x:x1,y:y1,w:x2-x1,h:y2-y1};
@@ -1199,6 +1216,11 @@ function cqTiradores(o){ // puntos de agarre segun el tipo de objeto
     const b = cqBBox(o);
     return [{x:b.x,y:b.y,k:"e0"},{x:b.x+b.w,y:b.y,k:"e1"},
             {x:b.x,y:b.y+b.h,k:"e2"},{x:b.x+b.w,y:b.y+b.h,k:"e3"}];
+  }
+  if(o.t==="poli"){
+    const hs = o.pts.map((p,i)=>({x:p[0],y:p[1],k:"v"+i}));
+    const bb = cqBBox(o); hs.push({x:bb.x+bb.w+14,y:bb.y+bb.h+14,k:"esc"});
+    return hs;
   }
   const b = cqBBox(o);
   const ts = [{x:b.x+b.w+14,y:b.y+b.h+14,k:"esc"}];
@@ -1269,6 +1291,8 @@ function cqDown(e){
         }else if(t.k==="rot"){
           const b = cqBBox(cq.objs[cq.sel]);
           cq.han = {k:"rot", fx:b.x+b.w/2, fy:b.y+b.h/2};
+        }else if(t.k[0]==="v"){
+          cq.han = {k:t.k, vi:parseInt(t.k.slice(1),10)};
         }else{
           const op = {e0:"e3",e3:"e0",e1:"e2",e2:"e1",p1:"p2",p2:"p1"}[t.k];
           const f = ts.find(x=>x.k===op);
@@ -1320,6 +1344,7 @@ function cqMove(e){
   if(cq.tool==="sel"){
     if(cq.han && cq.sel>=0){
       const o = cq.objs[cq.sel], k = cq.han.k, fx = cq.han.fx, fy = cq.han.fy;
+      if(k[0]==="v" && o.t==="poli"){ o.pts[cq.han.vi][0]=Math.round(p.x); o.pts[cq.han.vi][1]=Math.round(p.y); pintarCq(); return; }
       if(k==="rot"){
         let r = Math.atan2(p.y-fy, p.x-fx) + Math.PI/2;
         for(const m of [0,Math.PI/2,Math.PI,-Math.PI/2,Math.PI/4,-Math.PI/4,3*Math.PI/4,-3*Math.PI/4])
@@ -1355,6 +1380,8 @@ function cqMove(e){
     const c=cq.tmp.getContext("2d");
     c.clearRect(0,0,cq.W,cq.H);
     cqObj(c,{t:"lapiz",pts:cq.pts,col:cq.col,g:cq.g});
+  }else if(cq.tool==="poli"){
+    cqPoliPreview(p);
   }else if(cq.tool==="flecha"||cq.tool==="cota"||cq.tool==="rect"||cq.tool==="circ"){
     const c=cq.tmp.getContext("2d");
     c.clearRect(0,0,cq.W,cq.H);
@@ -1374,6 +1401,7 @@ function cqUp(e){
   if(!cq.dib) return;
   cq.dib=false;
   const p = cqXY(e);
+  if(cq.tool==="poli"){ cqPoliTap(p); return; }
   if(cq.tool==="goma"){ cq.tmp.getContext("2d").clearRect(0,0,cq.W,cq.H); return; }
   if(cq.tool==="sel"){
     if(cq.res || cq.han){ cq.res=null; cq.han=null; cq.mov=false; return; } // fin del cambio de tamaño
@@ -1424,7 +1452,7 @@ function cqForma(t,a,p){
 function cqEscalar(o0,b,kx,ky){ // devuelve una copia de o0 escalada desde la esquina superior izquierda de su caja
   const o = JSON.parse(JSON.stringify(o0));
   const X = x=>b.x+(x-b.x)*kx, Y = y=>b.y+(y-b.y)*ky, k = Math.max(kx,ky);
-  if(o.t==="lapiz"){ for(const p of o.pts){ p[0]=X(p[0]); p[1]=Y(p[1]); if(p[2]) p[2]=Math.max(2,p[2]*k); } }
+  if(o.t==="lapiz" || o.t==="poli"){ for(const p of o.pts){ p[0]=X(p[0]); p[1]=Y(p[1]); if(p[2]) p[2]=Math.max(2,p[2]*k); } }
   else if(o.t==="linea"||o.t==="flecha"||o.t==="cota"){
     o.x1=X(o.x1); o.y1=Y(o.y1); o.x2=X(o.x2); o.y2=Y(o.y2);
     if(o.ts) o.ts = Math.max(14,Math.round(o.ts*k));
@@ -1435,10 +1463,84 @@ function cqEscalar(o0,b,kx,ky){ // devuelve una copia de o0 escalada desde la es
   return o;
 }
 function cqTrasladar(o,dx,dy){
-  if(o.t==="lapiz"){ for(const p of o.pts){ p[0]+=dx; p[1]+=dy; } }
+  if(o.t==="lapiz" || o.t==="poli"){ for(const p of o.pts){ p[0]+=dx; p[1]+=dy; } }
   else if(o.t==="linea"||o.t==="flecha"||o.t==="cota"){ o.x1+=dx; o.y1+=dy; o.x2+=dx; o.y2+=dy; }
   else if(o.t==="circ"){ o.cx+=dx; o.cy+=dy; }
   else { o.x+=dx; o.y+=dy; }
+}
+/* --- Polígono paso a paso (estilo Google Earth): toca para marcar vértices, toca el 1° o ✓ para cerrar --- */
+function cqPoliUmbral(){ // 22 px de pantalla → px de imagen
+  const r = cq.tmp.getBoundingClientRect();
+  return 22 * cq.W / Math.max(1, r.width);
+}
+function cqPoliTap(p){
+  if(!cq.poly) cq.poly = [];
+  if(cq.poly.length>=3){
+    const f = cq.poly[0];
+    if(Math.hypot(p.x-f[0], p.y-f[1]) < cqPoliUmbral()){ cqPoliCerrar(); return; }
+  }
+  cq.poly.push([Math.round(p.x), Math.round(p.y)]);
+  cqPoliPreview(); cqPoliBar();
+}
+function cqPoliPreview(cur){
+  const c = cq.tmp.getContext("2d");
+  c.clearRect(0,0,cq.W,cq.H);
+  if(!cq.poly || !cq.poly.length){ return; }
+  const pts = cq.poly;
+  if(pts.length>=3){ // relleno tenue al ir cerrando
+    c.beginPath(); c.moveTo(pts[0][0],pts[0][1]);
+    for(let i=1;i<pts.length;i++) c.lineTo(pts[i][0],pts[i][1]);
+    c.closePath();
+    c.save(); c.globalAlpha=0.15; c.fillStyle=cq.col; c.fill(); c.restore();
+  }
+  c.strokeStyle=cq.col; c.lineWidth=cq.g||8; c.lineCap="round"; c.lineJoin="round";
+  c.beginPath(); c.moveTo(pts[0][0],pts[0][1]);
+  for(let i=1;i<pts.length;i++) c.lineTo(pts[i][0],pts[i][1]);
+  c.stroke();
+  if(cur){ // línea elástica hasta el dedo/lápiz
+    c.save(); c.setLineDash([10,8]); c.globalAlpha=0.8; c.lineWidth=Math.max(2,(cq.g||8)*0.6);
+    c.beginPath(); c.moveTo(pts[pts.length-1][0],pts[pts.length-1][1]); c.lineTo(cur.x,cur.y);
+    if(pts.length>=3){ c.moveTo(cur.x,cur.y); c.lineTo(pts[0][0],pts[0][1]); }
+    c.stroke(); c.restore();
+  }
+  const R = Math.max(7, (cq.g||8)*1.1); // vértices
+  for(let i=0;i<pts.length;i++){
+    c.beginPath(); c.arc(pts[i][0],pts[i][1], i===0?R+3:R, 0,7);
+    c.fillStyle="#fff"; c.fill();
+    c.lineWidth=3; c.strokeStyle = i===0? "#43a047" : cq.col; c.stroke();
+  }
+}
+function cqPoliBar(){
+  const bar = document.getElementById("cqPoliBar"); if(!bar) return;
+  const n = cq.poly? cq.poly.length : 0;
+  bar.style.display = n>0? "flex" : "none";
+  const info = document.getElementById("cqPoliInfo");
+  if(info) info.textContent = n<3? (n+" punto"+(n===1?"":"s")+" · marca al menos 3") : (n+" puntos · toca el 1° o ✓ para cerrar");
+}
+function cqPoliUndo(){
+  if(!cq.poly || !cq.poly.length) return;
+  cq.poly.pop();
+  if(!cq.poly.length){ cqPoliCancel(true); return; }
+  cqPoliPreview(); cqPoliBar();
+}
+function cqPoliCancel(pintar){
+  cq.poly = null;
+  const bar = document.getElementById("cqPoliBar"); if(bar) bar.style.display="none";
+  if(cq.tmp) cq.tmp.getContext("2d").clearRect(0,0,cq.W,cq.H);
+  if(pintar) pintarCq();
+}
+function cqPoliCerrar(){
+  if(!cq.poly || cq.poly.length<3) return;
+  snapCq();
+  cq.objs.push({t:"poli", pts:cq.poly.slice(), col:cq.col, g:cq.g});
+  cq.poly = null;
+  const bar = document.getElementById("cqPoliBar"); if(bar) bar.style.display="none";
+  cq.tmp.getContext("2d").clearRect(0,0,cq.W,cq.H);
+  cq.sel = cq.objs.length-1;
+  cq.tool = "sel";
+  document.querySelectorAll("#cqHerr .tool[data-t]").forEach(b=>b.classList.remove("act"));
+  const sb = document.querySelector('#cqHerr .tool[data-t="sel"]'); if(sb) sb.classList.add("act");
+  pintarCq();
 }
 /* --- goma: borra fino (corta trazos) o elimina el objeto tocado --- */
 function cqCercaSeg(p,x1,y1,x2,y2,d){
@@ -1472,6 +1574,8 @@ function cqBorrarEn(p){
                cqCercaSeg(p,x2,y2,o.x,y2,r+g)||cqCercaSeg(p,o.x,y2,o.x,o.y,r+g);
       }else if(o.t==="circ"){
         toca = Math.abs(Math.hypot((p.x-o.cx)/o.rx,(p.y-o.cy)/o.ry)-1) < (r+g)/Math.max(10,Math.min(o.rx,o.ry));
+      }else if(o.t==="poli"){
+        for(let k=0;k<o.pts.length;k++){ const a=o.pts[k], b=o.pts[(k+1)%o.pts.length]; if(cqCercaSeg(p,a[0],a[1],b[0],b[1],r+g)){ toca=true; break; } }
       }else{ // texto y sello: por su caja
         const b = cqBBox(o);
         toca = p.x>=b.x-6 && p.x<=b.x+b.w+6 && p.y>=b.y-6 && p.y<=b.y+b.h+6;
@@ -1520,6 +1624,7 @@ function cqReconocer(pts){
 /* --- guardar y salir --- */
 async function guardarCq(){
   if(!cq) return;
+  if(cq.poly){ if(cq.poly.length>=3) cqPoliCerrar(); else cqPoliCancel(false); }
   const c = document.createElement("canvas"); c.width=cq.W; c.height=cq.H;
   const x = c.getContext("2d");
   cqFondo(x);
@@ -5649,19 +5754,32 @@ const MAPA_CAPAS = {
   topo: {lab:"Relieve", mz:19, urls:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"]}
 };
 const ORTOFOTOS = [
-  {id:"ss", nombre:"Santa Sara (dron)", url:"santa_sara_orto.webp", bounds:[[-33.4491855,-71.0287557],[-33.4407686,-71.0149978]]}
+  {id:"ss", nombre:"Santa Sara (dron)", corto:"Santa Sara", url:"santa_sara_orto.webp", bounds:[[-33.4491855,-71.0287557],[-33.4407686,-71.0149978]]},
+  {id:"cv", nombre:"Cuesta Vieja · San Joaquín (dron)", corto:"Cuesta Vieja", url:"cuesta_vieja_orto.webp", bounds:[[-33.4704085,-71.0234294],[-33.4617603,-71.0156350]]}
 ];
-let capaOrto=null;
+let capaOrto=null, ortoAbierto=false;
+function ortoVisible(id){
+  if(D.ortoVis===undefined || D.ortoVis===null){ D.ortoVis={}; if(D.ortoOn) ORTOFOTOS.forEach(function(o){ D.ortoVis[o.id]=true; }); }
+  return !!D.ortoVis[id];
+}
+function ortoAnyOn(){ return ORTOFOTOS.some(function(o){ return ortoVisible(o.id); }); }
 function ortoAplicar(){
   if(!mapaP) return;
   if(capaOrto){ try{mapaP.removeLayer(capaOrto);}catch(e){} capaOrto=null; }
-  if(!D.ortoOn) return;
+  if(!ortoAnyOn()) return;
   capaOrto=L.layerGroup();
   const op=(D.ortoOp==null?0.85:+D.ortoOp);
-  ORTOFOTOS.forEach(function(o){ if(o.url&&o.bounds){ try{ L.imageOverlay(o.url,o.bounds,{opacity:op, interactive:false}).addTo(capaOrto); }catch(e){} } });
+  ORTOFOTOS.forEach(function(o){ if(ortoVisible(o.id) && o.url && o.bounds){ try{ L.imageOverlay(o.url,o.bounds,{opacity:op, interactive:false}).addTo(capaOrto); }catch(e){} } });
   capaOrto.addTo(mapaP);
 }
-function ortoToggle(){ D.ortoOn=!D.ortoOn; guardar(); ortoAplicar(); mapaHerrDef(); if(D.ortoOn&&mapaP&&ORTOFOTOS[0]){ try{ mapaP.fitBounds(ORTOFOTOS[0].bounds,{padding:[24,24]}); }catch(e){} } }
+function ortoPanelTgl(){ ortoAbierto=!ortoAbierto; mapaHerrDef(); }
+function ortoToggleId(id){
+  ortoVisible(id);
+  D.ortoVis[id]=!D.ortoVis[id];
+  D.ortoOn=ortoAnyOn();
+  guardar(); ortoAplicar(); mapaHerrDef();
+  if(D.ortoVis[id]){ const o=ORTOFOTOS.find(function(x){return x.id===id;}); if(o&&mapaP){ try{ mapaP.fitBounds(o.bounds,{padding:[24,24]}); }catch(e){} } }
+}
 function ortoSetOp(v){ D.ortoOp=+v; guardar(); if(capaOrto) capaOrto.eachLayer(function(l){ if(l.setOpacity) l.setOpacity(+v); }); }
 function aplicarCapa(){
   if(!mapaP || !window.L) return;
@@ -5688,7 +5806,7 @@ function mapaHerrDef(){
     ${online? `
     <button class="btn sec chico" onclick="mapaCapaCiclo()">${ic("layers")} ${(MAPA_CAPAS[D.mapaCapa||"gsat"]||MAPA_CAPAS.gsat).lab}</button>
     <button class="btn sec chico" onclick="mapaVerEarth()">${ic("globe")} Google Earth</button>
-    ${(typeof ORTOFOTOS!=="undefined"&&ORTOFOTOS.length)?`<button class="btn ${D.ortoOn?"":"sec"} chico" onclick="ortoToggle()">🛰️ Ortofoto</button>${D.ortoOn?`<div class="fila" style="gap:8px;align-items:center;pointer-events:auto;background:#fff;padding:5px 11px;border-radius:9px;box-shadow:0 2px 10px rgba(0,0,0,.35)"><span class="muted" style="font-size:11px">Opac.</span><input type="range" min="0.2" max="1" step="0.05" value="${D.ortoOp==null?0.85:D.ortoOp}" oninput="ortoSetOp(this.value)" onpointerdown="event.stopPropagation()" style="width:96px;pointer-events:auto;touch-action:none"></div>`:""}`:""}
+    ${(typeof ORTOFOTOS!=="undefined"&&ORTOFOTOS.length)?`<button class="btn ${ortoAnyOn()?"":"sec"} chico" onclick="ortoPanelTgl()">🛰️ Ortofoto ${ortoAbierto?"▾":"▸"}</button>${ortoAbierto?`<div style="pointer-events:auto;background:#fff;padding:8px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:6px;align-items:stretch">${ORTOFOTOS.map(function(o){return `<button class="btn ${ortoVisible(o.id)?"":"sec"} chico" onclick="ortoToggleId('${o.id}')">${ortoVisible(o.id)?"✓ ":""}${o.corto||o.nombre}</button>`;}).join("")}${ortoAnyOn()?`<div class="fila" style="gap:8px;align-items:center;justify-content:center"><span class="muted" style="font-size:11px">Opac.</span><input type="range" min="0.2" max="1" step="0.05" value="${D.ortoOp==null?0.85:D.ortoOp}" oninput="ortoSetOp(this.value)" onpointerdown="event.stopPropagation()" style="width:110px;touch-action:none"></div>`:""}</div>`:""}`:""}
     ${rot? `<div class="fila" style="gap:6px">
       <button class="btn sec chico" onclick="mapaGirar(-15)">↺</button>
       <button class="btn sec chico" onclick="mapaGirar(15)">↻</button>
