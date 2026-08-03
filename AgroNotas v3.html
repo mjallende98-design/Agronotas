@@ -7770,7 +7770,32 @@ function gtColTipoDef(t){ const ts=tiposLabor(), i=ts.indexOf(t);
   return GT_PAL[h%GT_PAL.length]; }
 function gtColTipo(t){ const a=gtAj(); return (a.colTipo && a.colTipo[t]) || gtColTipoDef(t); }
 function gtEspecies(){ return [...new Set(D.cuarteles.map(q=>q.especie).filter(Boolean))].sort(); }
-function gtColEspDef(e){ const es=gtEspecies(), i=es.indexOf(e); return i>=0? GT_PALE[i%GT_PALE.length] : "#94A3B8"; }
+/* El color de cada frutal se parece a la fruta: cereza roja, naranja anaranjada,
+   limon amarillo, pomelo rosado. Si aparece una especie nueva, cae en la paleta. */
+const GT_ESP_COL = {
+  "cerezo":"#C62037", "cereza":"#C62037", "guindo":"#C62037",
+  "naranjo":"#E8720C", "naranja":"#E8720C",
+  "limonero":"#E3B505", "limon":"#E3B505", "limones":"#E3B505",
+  "pomelo":"#E86A92", "toronja":"#E86A92",
+  "por plantar":"#2D6A4F", "sin plantar":"#2D6A4F", "por replantar":"#2D6A4F",
+  "mandarino":"#F4923B", "mandarina":"#F4923B", "clementina":"#F4923B", "tangerino":"#F4923B",
+  "palto":"#4A7C2F", "palta":"#4A7C2F",
+  "nogal":"#8B6F47", "almendro":"#B08968",
+  "vid":"#6A4C93", "uva":"#6A4C93", "parron":"#6A4C93",
+  "ciruelo":"#7B2D5E", "damasco":"#E0803C",
+  "duraznero":"#F09A5B", "durazno":"#F09A5B", "nectarino":"#EF7A54",
+  "manzano":"#A62C2B", "manzana":"#A62C2B",
+  "peral":"#9CAF44", "membrillo":"#C9A227",
+  "olivo":"#6B7F3E", "kiwi":"#7FB069", "arandano":"#3D5A80",
+  "granado":"#9E2A2B", "higuera":"#7D5BA6", "castano":"#8C6239"
+};
+function gtColEspDef(e){
+  const k = gtNorm(e).trim();
+  if(GT_ESP_COL[k]) return GT_ESP_COL[k];
+  for(const n in GT_ESP_COL){ if(k.indexOf(n)>=0) return GT_ESP_COL[n]; } // "limonero eureka" -> limonero
+  const es=gtEspecies(), i=es.indexOf(e);
+  return i>=0? GT_PALE[i%GT_PALE.length] : "#94A3B8";
+}
 function gtColEsp(e){ const a=gtAj(); return (a.colEsp && a.colEsp[e]) || gtColEspDef(e); }
 function gtColEstado(k){ const a=gtAj(); return (a.colEst && a.colEst[k]) || (GT_EST[k]||GT_EST.pendiente).c; }
 function gtColEje(s){ const a=gtAj(); s=String(s||"—");
@@ -8207,6 +8232,22 @@ function gtBorrarGrupo(gid){
   D.labores=D.labores.filter(x=>x.gid!==gid); guardar(); cerrarModal(); render();
 }
 
+/* aviso breve y no bloqueante (en el iPad el PDF pasa por la hoja para compartir) */
+function gtAviso(msg, ms){
+  try{
+    let e = document.getElementById("gtAviso");
+    if(!e){
+      e = document.createElement("div"); e.id = "gtAviso";
+      e.style.cssText = "position:fixed;left:50%;bottom:74px;transform:translateX(-50%);z-index:9999;"+
+        "background:rgba(20,22,20,.93);color:#fff;padding:9px 15px;border-radius:11px;font-size:13px;"+
+        "box-shadow:0 3px 14px rgba(0,0,0,.35);max-width:86%;text-align:center;pointer-events:none";
+      document.body.appendChild(e);
+    }
+    e.textContent = msg; e.style.display = "block";
+    clearTimeout(gtAviso._t);
+    gtAviso._t = setTimeout(()=>{ e.style.display = "none"; }, ms || 3200);
+  }catch(_){ }   // un aviso nunca debe impedir que el PDF se genere
+}
 /* ================== GENERADOR DE PDF (Carta Gantt) ==================
    Motor jsPDF + AutoTable incrustados arriba: funciona sin señal.
    Hoja A4 apaisada. El origen esta arriba-izquierda y la Y crece hacia abajo. */
@@ -8562,7 +8603,14 @@ async function ganttPDF(){
   if (!ls.length){ alert('No hay labores en este período con los filtros actuales.\nCambia de período con ‹ › o limpia los filtros y vuelve a intentarlo.'); return; }
   const a = gtAj();
   const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  if (esIOS) gtAviso('Generando el PDF… en el iPad se abre en una pestaña nueva.', 4200);
+  if (esIOS) gtAviso('Generando el PDF… se abrirá la hoja para compartir: elige «Guardar en Archivos».', 4500);
+  try{ return await ganttPDFArmar(T, ls, a, esIOS); }
+  catch(err){
+    alert('No se pudo generar el PDF.\n\nDetalle: ' + ((err && (err.message || err.name)) || err));
+    return false;
+  }
+}
+async function ganttPDFArmar(T, ls, a, esIOS){
   const filtros = [];
   if (a.fundos.length) filtros.push(a.fundos.join(' / '));
   if (a.esp.length) filtros.push(a.esp.join(' / '));
@@ -8609,7 +8657,40 @@ async function ganttPDF(){
   const nombre = ('Carta_Gantt_' + gtTitulo(T))
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^0-9A-Za-z]+/g, '_').replace(/^_|_$/g, '');
-  d.save(nombre + '.pdf');
+  await pdfEntregar(d, nombre + '.pdf', esIOS);
+}
+/* Entrega el archivo. En el iPad, save() de jsPDF intenta abrir una pestaña nueva y
+   eso falla si la app está instalada en la pantalla de inicio o si Safari la bloquea:
+   ahí lo correcto es la hoja para compartir, que ofrece "Guardar en Archivos". */
+async function pdfEntregar(d, archivo, esIOS){
+  let blob = null;
+  try{ blob = d.output('blob'); }catch(_){ }
+  if(esIOS && blob && navigator.canShare && typeof File !== 'undefined'){
+    try{
+      const f = new File([blob], archivo, {type:'application/pdf'});
+      if(navigator.canShare({files:[f]})){
+        await navigator.share({files:[f], title:archivo});
+        return true;                       // el usuario ya lo guardó o compartió
+      }
+    }catch(e){
+      if(e && e.name === 'AbortError') return true;   // cerró la hoja a propósito
+    }
+  }
+  if(blob){                                 // descarga normal (PC, Android, Safari nuevo)
+    try{
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = archivo; a.rel = 'noopener'; a.style.display = 'none';
+      (document.body || document.documentElement).appendChild(a);
+      a.click();
+      /* la limpieza va aparte: si fallara, el archivo YA se entregó y no debe mandarse dos veces */
+      setTimeout(()=>{ try{ a.remove(); }catch(_){ } try{ URL.revokeObjectURL(url); }catch(_){ } }, 10000);
+      return true;
+    }catch(_){ }
+  }
+  try{ d.save(archivo); return true; }catch(_){ }   // último recurso
+  alert('No se pudo entregar el PDF en este dispositivo. Prueba desde el navegador Safari en vez de la app instalada.');
+  return false;
 }
 
 /* Repintar con el nuevo diseño si el primer render ya ocurrió */
