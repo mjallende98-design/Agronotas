@@ -114,12 +114,14 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
 .b-morado{background:#ede7f6; color:#5e35b1;}
 /* --- campo de fecha dd/mm/aaaa --- */
 .fdmy{position:relative; display:block;}
-.fdmy > input[type="text"]{width:100%; padding-right:44px !important;}
-.fdmy-b{position:absolute; right:5px; top:50%; transform:translateY(-50%); border:none; background:none;
-  cursor:pointer; padding:7px; line-height:0; color:var(--txt2); border-radius:8px;}
-.fdmy-b:hover{background:#eef2ee; color:var(--p);}
-.fdmy-nat{position:absolute; right:38px; bottom:2px; width:1px; height:1px; min-height:0 !important;
-  padding:0 !important; margin:0 !important; border:0 !important; opacity:0; pointer-events:none;}
+.fdmy > input[type="text"]{width:100%; padding-right:50px !important;}
+/* icono decorativo: el que abre el calendario es el input nativo que va encima */
+.fdmy-b{position:absolute; right:13px; top:50%; transform:translateY(-50%); line-height:0;
+  color:var(--txt2); pointer-events:none; z-index:2;}
+.fdmy-nat{position:absolute !important; right:0; top:0; width:48px; height:100%;
+  min-height:0 !important; padding:0 !important; margin:0 !important; border:0 !important;
+  background:transparent !important; opacity:0; cursor:pointer; z-index:3; -webkit-appearance:none;}
+.fdmy:focus-within .fdmy-b{color:var(--p);}
 /* --- Carta Gantt --- */
 .gwrap{overflow:auto; max-height:min(74vh,760px); -webkit-overflow-scrolling:touch; position:relative;}
 .grow{display:flex; min-width:max-content; border-bottom:1px solid #f0f3ef;}
@@ -925,9 +927,9 @@ function fechaHTML(id, val, o){
   return `<span class="fdmy"${o.estilo?` style="${o.estilo}"`:""}>
     <input id="${id}_t" type="text" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="dd/mm/aaaa"
       value="${esc(dmyDe(iso))}" oninput="dmyEscribe('${id}')" onblur="dmyCierra('${id}')" ${o.attrs||""}>
-    <button type="button" class="fdmy-b" onclick="dmyPick('${id}')" aria-label="Abrir calendario">${ic("calendar")}</button>
-    <input id="${id}" type="date" class="fdmy-nat" value="${esc(iso)}" tabindex="-1" aria-hidden="true"
-      onchange="dmyDesdeNat('${id}')" ${o.natAttrs||""}>
+    <span class="fdmy-b" aria-hidden="true">${ic("calendar")}</span>
+    <input id="${id}" type="date" class="fdmy-nat" value="${esc(iso)}" aria-label="Abrir calendario"
+      onchange="dmyDesdeNat('${id}')" onclick="dmyPick('${id}')" ${o.natAttrs||""}>
   </span>`;
 }
 function dmyEscribe(id){ // mientras escribe: pone las barras y sincroniza el ISO
@@ -952,8 +954,10 @@ function dmyDesdeNat(id){ // eligió del calendario: refresca el texto
 }
 function dmyPick(id){
   const n = document.getElementById(id); if(!n) return;
-  try{ if(n.showPicker){ n.showPicker(); return; } }catch(_){ }
-  try{ n.focus(); n.click(); }catch(_){ }
+  /* En pantalla táctil (iPad) tocar el propio input ya abre el selector nativo:
+     llamar además a showPicker lo haría pelear consigo mismo. Con mouse sí hace falta. */
+  try{ if(window.matchMedia && window.matchMedia("(pointer:coarse)").matches) return; }catch(_){ }
+  try{ if(n.showPicker){ n.showPicker(); } }catch(_){ }
 }
 function areaF(id,lab,val,ph){ return `<label class="f">${lab}<textarea id="${id}" placeholder="${esc(ph||"")}">${esc(val??"")}</textarea></label>`; }
 function selF(id,lab,lista,val,opc0){
