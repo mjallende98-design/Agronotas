@@ -2747,7 +2747,7 @@ function badgeEstado(e){
     encurso:`<span class="badge b-azul">En curso</span>`,
     pausada:`<span class="badge b-ambar">⏸ En pausa</span>`,
     hecha:`<span class="badge b-verde">✓ Hecha</span>`,
-    finalizada:`<span class="badge b-morado">🏁 Finalizada</span>`}[e]||"";
+    finalizada:`<span class="badge b-morado">✓✓ Finalizada</span>`}[e]||"";
 }
 function filaLabor(l, mini){
   const atrasada = l.estado==="pendiente" && l.fecha<hoy();
@@ -2778,7 +2778,7 @@ function filaLabor(l, mini){
       ${l.estado==="pausada"?`<button class="btn sec chico" onclick="event.stopPropagation();retomarLabor(${l.id})">▶️ Retomar hoy</button>`:""}
       ${(l.estado==="hecha"||l.estado==="finalizada")?`<button class="btn sec chico" onclick="event.stopPropagation();estadoLabor(${l.id},'encurso')">↩️ Reabrir</button>`:""}
       ${(l.estado!=="hecha"&&l.estado!=="finalizada")?`<button class="btn chico" onclick="event.stopPropagation();estadoLabor(${l.id},'hecha')">${ic("checkCirc")} Hecha</button>`:""}
-      ${l.estado==="hecha"?`<button class="btn chico" style="background:#5e35b1" onclick="event.stopPropagation();estadoLabor(${l.id},'finalizada')">${ic("flag")} Finalizar</button>`:""}
+      ${l.estado==="hecha"?`<button class="btn chico" style="background:#5e35b1" onclick="event.stopPropagation();estadoLabor(${l.id},'finalizada')">${ic("checkCirc")} Finalizar</button>`:""}
     </div>
   </div>`;
 }
@@ -2842,11 +2842,20 @@ function verAvancesLabor(laborId){
   `, null, "Cerrar");
 }
 function planTerminadas(){
-  let ls = D.labores.filter(l=>l.estado==="finalizada" && (!nav.filtroFundo||l.fundo===nav.filtroFundo));
+  const todas = D.labores.filter(l=>l.estado==="finalizada");
+  let ls = todas.filter(l=>!nav.filtroFundo || l.fundo===nav.filtroFundo);
   ls.sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"") || b.id-a.id);
-  if(!ls.length) return `<div class="vacio"><span class="ico">🏁</span>Aún no hay labores finalizadas.${nav.filtroFundo?" en "+esc(nav.filtroFundo):""}<br>Cierra una labor Hecha con <b>${ic("flag")} Finalizar</b>.</div>`;
+  /* si el filtro de fundo las está escondiendo, avisar en vez de mostrar "no hay" */
+  const ocultas = todas.length - ls.length;
+  if(!ls.length){
+    if(todas.length) return `<div class="vacio"><span class="ico">✓✓</span>No hay finalizadas en <b>${esc(nav.filtroFundo)}</b>.<br>
+      Sí hay <b>${todas.length}</b> en otros fundos.<br>
+      <button class="btn sec chico" style="margin-top:10px" onclick="nav.filtroFundo='';render()">Ver todos los fundos</button></div>`;
+    return `<div class="vacio"><span class="ico">✓✓</span>Aún no hay labores finalizadas.<br>Cierra una labor Hecha con <b>${ic("checkCirc")} Finalizar</b>.</div>`;
+  }
   const totCosto = ls.reduce((s,l)=>s+(l.avances||[]).reduce((t,a)=>t+(+a.total||0),0),0);
-  let h = `<div class="card" style="background:var(--pclaro);border:1px solid var(--p)"><div class="fila" style="justify-content:space-between;align-items:center"><b>🏁 ${ls.length} labores finalizadas${nav.filtroFundo?" · "+esc(nav.filtroFundo):""}</b><b style="color:var(--p2)">$${Math.round(totCosto).toLocaleString("es-CL")}</b></div>
+  let h = `<div class="card" style="background:var(--pclaro);border:1px solid var(--p)"><div class="fila" style="justify-content:space-between;align-items:center"><b>✓✓ ${ls.length} labores finalizadas${nav.filtroFundo?" · "+esc(nav.filtroFundo):""}</b><b style="color:var(--p2)">$${Math.round(totCosto).toLocaleString("es-CL")}</b></div>
+    ${ocultas?`<div class="fila" style="align-items:center;gap:8px;margin-top:6px"><span class="muted" style="font-size:12px">Hay ${ocultas} más en otros fundos.</span><button class="btn sec chico" onclick="nav.filtroFundo='';render()">Ver todas</button></div>`:""}
     <div class="muted" style="font-size:12px;margin-top:2px">Toca una para ver su detalle, o abre 📊 Análisis / PDF (en el Panel) para el resumen completo con gráficos.</div></div>`;
   h += ls.map(l=>filaLabor(l,true)).join("");
   return h;
@@ -2856,7 +2865,7 @@ function vPlan(){
   let h = chipsFundo();
   h += `<button class="btn" style="width:100%;margin:2px 0 10px;padding:12px;font-size:15px" onclick="formParteDia('${vista==="dia"?(nav.diaSel||hoy()):hoy()}')">${ic("clipboard")} Registrar parte del día</button>`;
   h += `<div class="chips" style="margin-bottom:8px">
-    ${[["dia","📄 Día"],["sem","📅 Semana"],["mes","🗓️ Mes"],["fin","🏁 Finalizadas"]].map(([id,lab])=>
+    ${[["dia","📄 Día"],["sem","📅 Semana"],["mes","🗓️ Mes"],["fin","✓✓ Finalizadas"]].map(([id,lab])=>
       `<div class="chip ${vista===id?"act":""}" onclick="nav.planVista='${id}';render()">${lab}</div>`).join("")}
   </div>`;
   if(vista==="fin"){ h += planTerminadas(); }
@@ -3905,7 +3914,7 @@ function abrirInforme(iniIso){
   const apls = regs.filter(r=>r.tipo==="Aplicación").length;
   const urg = nots.filter(n=>n.cat==="Urgente" && !n.resuelta).length;
   const hechas = labs.filter(l=>l.estado==="hecha"||l.estado==="finalizada").length;
-  const est = {pendiente:"Pendiente", encurso:"En curso", hecha:"Hecha ✓", finalizada:"Finalizada 🏁"};
+  const est = {pendiente:"Pendiente", encurso:"En curso", hecha:"Hecha ✓", finalizada:"Finalizada ✓✓"};
   const fotos = [];
   for(const x of [...nots,...regs]) for(const f of (x.fotos||[])) if(fotos.length<9) fotos.push(f);
   const gReg={}; regs.forEach(r=>{ gReg[r.tipo]=(gReg[r.tipo]||0)+1; });
@@ -8188,7 +8197,11 @@ function gtNueva(fundo, cuartel){
 function gtEstId(nombre){ const k=Object.keys(GT_EST).find(x=>GT_EST[x].n===nombre); return k||"pendiente"; }
 function gtEditar(id){
   const l=D.labores.find(x=>x.id===id); if(!l) return;
-  const hermanas=l.gid? D.labores.filter(x=>x.gid===l.gid).length : 1;
+  const grupo = l.gid? D.labores.filter(x=>x.gid===l.gid) : [l];
+  const hermanas = grupo.length;
+  /* el selector arranca con los cuarteles que hoy tiene la labor (o su grupo) */
+  gtCuIni(null);
+  grupo.forEach(x=>{ GT_SEL.sel[gtCuKey(x.fundo, x.cuartel)] = true; });
   abrirModal(ic("calendar")+" Editar labor", `
     <div class="muted" style="font-size:12px;margin-bottom:8px">${esc(l.fundo)}${l.cuartel?" · <b>"+esc(l.cuartel)+"</b>":" · <b>todo el fundo</b>"}${hermanas>1?` · parte de un grupo de ${hermanas}`:""}</div>
     <label class="f">Tipo de labor *${gtCombo("gt_tipo",l.tipo||"",tiposLabor(),"Escribe para buscar…")}</label>
@@ -8200,10 +8213,15 @@ function gtEditar(id){
       <div style="flex:1;min-width:150px"><label class="f" style="margin:0">Ejecuta${gtCombo("gt_eje",l.resp||"",gtEjes(),"Contratista / propio")}</label></div>
       <div style="flex:1;min-width:150px">${selF("gt_est","Estado",Object.keys(GT_EST).map(k=>GT_EST[k].n),(GT_EST[l.estado]||GT_EST.pendiente).n)}</div></div>
     ${campoF("gt_av","Avance %","number",gtPct(l),'min="0" max="100" step="5"')}
+    ${gtCuHTML()}
+    <div class="muted" style="font-size:11.5px;margin:-2px 0 10px">Desmarca un cuartel para quitar su barra; marca otros para agregarlos.</div>
+    ${hermanas>1?`<label class="f" style="display:flex;align-items:center;gap:9px;font-weight:600">
+      <input type="checkbox" id="gt_todos" checked style="width:auto;margin:0">
+      <span style="font-size:13px;color:var(--txt)">Aplicar los cambios a las ${hermanas} labores del grupo</span></label>`:""}
     ${areaF("gt_nota","Nota / condición",l.nota||"","Carencia, EPP, condición previa…")}
     <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:10px">
       <button class="btn sec chico" onclick="gtDuplicar(${l.id})">⧉ Duplicar</button>
-      <button class="btn peligro chico" onclick="gtBorrar(${l.id})">${ic("trash")} Eliminar</button>
+      <button class="btn peligro chico" onclick="gtBorrar(${l.id})">${ic("trash")} Eliminar esta</button>
       ${hermanas>1?`<button class="btn peligro chico" onclick="gtBorrarGrupo('${esc(l.gid)}')">${ic("trash")} Eliminar las ${hermanas} del grupo</button>`:""}
     </div>
   `, ()=>{
@@ -8211,11 +8229,41 @@ function gtEditar(id){
     if(!tipo){ alert("Escribe o elige el tipo de labor."); return false; }
     let ini=v("gt_ini"); if(!ini){ alert("Falta la fecha de inicio."); return false; }
     let fin=v("gt_fin"); if(!fin||fin<ini) fin=ini;
+    const marcados = Object.keys(GT_SEL.sel);
+    if(!marcados.length){ alert("Marca al menos un cuartel."); return false; }
     if(tiposLabor().indexOf(tipo)<0) D.catalogos.tiposLabor.push(tipo);
     const est=gtEstId(v("gt_est"));
-    Object.assign(l,{tipo, desc:v("gt_desc"), fecha:ini, fecha2:fin, resp:(v("gt_eje")||"").trim(),
-      estado:est, nota:v("gt_nota"), av:est==="hecha"||est==="finalizada"?100:(parseFloat(v("gt_av"))||0)});
+    const pct = est==="hecha"||est==="finalizada"? 100 : (parseFloat(v("gt_av"))||0);
+    const datos = {tipo, desc:v("gt_desc"), fecha:ini, fecha2:fin,
+                   resp:(v("gt_eje")||"").trim(), estado:est, nota:v("gt_nota")};
+    const todos = (hermanas>1 && document.getElementById("gt_todos")) ? document.getElementById("gt_todos").checked : false;
+    /* 1. lo que se desmarcó se elimina */
+    const actuales = {}; grupo.forEach(x=>{ actuales[gtCuKey(x.fundo,x.cuartel)] = x; });
+    const quitar = Object.keys(actuales).filter(k=>marcados.indexOf(k)<0);
+    if(quitar.length && !confirm("Vas a quitar "+quitar.length+" cuartel(es): su barra se elimina.\n¿Continuar?")) return false;
+    const fuera = {};
+    quitar.forEach(k=>{ fuera[actuales[k].id]=true; });
+    if(quitar.length) D.labores = D.labores.filter(x=>!fuera[x.id]);
+    /* 2. se actualizan los que siguen */
+    const vive = !fuera[l.id];
+    if(vive) Object.assign(l, datos, {av:pct});
+    if(todos) grupo.forEach(x=>{ if(x.id!==l.id && !fuera[x.id]) Object.assign(x, datos, {av:pct}); });
+    /* 3. lo que se marcó de nuevo se crea */
+    const nuevos = marcados.filter(k=>actuales[k]===undefined);
+    if(nuevos.length){
+      let gid = l.gid;
+      if(!gid){ gid = "G"+Date.now(); D.labores.forEach(x=>{ if(x.id===l.id) x.gid=gid; }); }
+      nuevos.forEach(k=>{
+        const gen = k.indexOf("F:")===0;
+        const fu = gen? k.slice(2) : k.split("|")[0], cu = gen? "" : k.split("|").slice(1).join("|");
+        D.labores.push(Object.assign({id:nid(), gid, avances:[], meta:0, av:pct, unidad:"", fundo:fu, cuartel:cu}, datos));
+      });
+    }
+    /* si quedó una sola, ya no es grupo */
+    const quedan = D.labores.filter(x=>x.gid && x.gid===l.gid);
+    if(quedan.length===1) quedan[0].gid="";
   });
+  setTimeout(gtCuPinta, 0);
 }
 function gtDuplicar(id){
   const l=D.labores.find(x=>x.id===id); if(!l) return;
@@ -8390,7 +8438,7 @@ function pdfEscala(d, y, T){         // cabecera de la franja de tiempo (mes + d
   });
   pdfFill(d, CP.verde); d.rect(PG.ml, y, PG.ancho, 5, 'F');
   pdfF(d, 6.4, true, '#FFFFFF');
-  pdfTxt(d, 'LABOR / CUARTEL', PG.ml + 2, y + 3.4);
+  pdfTxt(d, 'FUNDO / CUARTEL', PG.ml + 2, y + 3.4);
   meses.forEach((m, k) => {
     const x = xT + m.i*paso, w = m.n*paso;
     if (k > 0){ pdfStroke(d, mezcla(CP.verde, 0.45), 0.3); d.line(x, y, x, y + 5); }
@@ -8429,59 +8477,100 @@ function pdfFondoCols(d, y, alto, T){    // finde sombreado + lineas de la grill
     pdfStroke(d, CP.cereza, 0.4); d.line(x, y, x, y + alto);
   }
 }
+function pdfPistas(ls, T, wT, iniMs, span){   // apila las barras que se traslapan
+  const fin = [], out = [];
+  ls.slice().sort((a,b)=> a.fecha<b.fecha? -1 : a.fecha>b.fecha? 1 : 0).forEach(l => {
+    const ini = l.fecha < T.ini ? T.ini : l.fecha;
+    const f   = gtFin(l) > T.fin ? T.fin : gtFin(l);
+    const x = (gtD(ini).getTime() - iniMs)/span * wT;
+    const w = Math.max(1.6, (gtD(f).getTime() + 864e5 - gtD(ini).getTime())/span * wT - 0.4);
+    let k = 0;
+    while (fin[k] !== undefined && fin[k] > x + 0.2) k++;
+    fin[k] = x + w;
+    out.push({l, x, w, k});
+  });
+  return {items: out, n: Math.max(1, fin.length)};
+}
+function pdfFilaGantt(d, T, y, items, n, izq, sub, extra){
+  const xT = PG.ml + GT_LW, altoB = 4.3, gap = 0.7;
+  const alto = Math.max(5.6, 1.4 + n*(altoB + gap));
+  pdfFondoCols(d, y, alto, T);
+  /* columna izquierda: cuartel a la izquierda, frutal y ha a la derecha */
+  pdfF(d, 6, true, CP.texto);
+  const nom = pdfCorta(d, izq, GT_LW * 0.52);
+  pdfTxt(d, nom, PG.ml + 2, y + alto/2 + 1.1);
+  if (sub){
+    pdfF(d, 5.2, false, CP.suave);
+    pdfTxt(d, sub, PG.ml + GT_LW - 2.5, y + alto/2 + 1.1, {align:'right', max: GT_LW * 0.42});
+  }
+  /* barras */
+  items.forEach(o => {
+    const l = o.l, cb = gtColBar(l), pct = gtPct(l), atr = gtAtras(l);
+    const yb = y + 1 + o.k*(altoB + gap);
+    pdfFill(d, mezcla(cb, 0.55)); pdfStroke(d, cb, 0.2);
+    d.roundedRect(xT + o.x, yb, o.w, altoB, 0.6, 0.6, 'FD');
+    if (pct > 0){
+      pdfFill(d, cb);
+      d.roundedRect(xT + o.x, yb, Math.max(0.5, o.w * pct/100), altoB, 0.6, 0.6, 'F');
+    }
+    if (atr){ pdfStroke(d, CP.cereza, 0.45); d.roundedRect(xT + o.x, yb, o.w, altoB, 0.6, 0.6, 'S'); }
+    if (o.w > 14){
+      pdfF(d, 4.8, true, pct >= 55 ? '#FFFFFF' : CP.texto);
+      pdfTxt(d, (l.tipo || 'Labor') + (l.desc? ' · '+l.desc : '') + (pct>0 && pct<100 ? ' · '+pct+'%' : ''),
+             xT + o.x + 1.4, yb + 2.9, {max: o.w - 2.6});
+    }
+  });
+  return y + alto;
+}
+/* La carta va agrupada por FUNDO y luego por CUARTEL, igual que en pantalla:
+   cada cuartel es una fila y sus labores son las barras de esa fila. */
 function pdfGantt(d, R, y, T, ls){
-  const xT = PG.ml + GT_LW, wT = PG.ancho - GT_LW;
+  const wT = PG.ancho - GT_LW;
   const iniMs = gtD(T.ini).getTime(), span = gtD(T.fin).getTime() + 864e5 - iniMs;
-  const altoF = 5.6;
-  let cab = pdfEscala(d, y, T);
-  y = cab;
-  let fundoAct = null, z = 0;
   const porFundo = {};
-  ls.forEach(l => { (porFundo[l.fundo] = porFundo[l.fundo] || []).push(l); });
+  ls.forEach(l => {
+    const f = l.fundo || 'Sin fundo';
+    const g = porFundo[f] = porFundo[f] || {gen:[], cu:{}, orden:[]};
+    if (!l.cuartel) g.gen.push(l);
+    else {
+      if (!g.cu[l.cuartel]){ g.cu[l.cuartel] = []; g.orden.push(l.cuartel); }
+      g.cu[l.cuartel].push(l);
+    }
+  });
+  y = pdfEscala(d, y, T);
   const fs = Object.keys(porFundo).sort();
   for (const f of fs){
-    const grupo = porFundo[f].slice().sort((a,b)=> a.fecha<b.fecha? -1 : a.fecha>b.fecha? 1 : 0);
-    if (y + altoF*2.4 > PG.yFin){ y = pdfPagina(d, R); y = pdfEscala(d, y, T); }
+    const g = porFundo[f];
+    const nCu = g.orden.length, nLab = g.gen.length + g.orden.reduce((s,c)=>s+g.cu[c].length, 0);
+    if (y + 12 > PG.yFin){ y = pdfPagina(d, R); y = pdfEscala(d, y, T); }
     /* banda del fundo */
     pdfFill(d, CP.pale); d.rect(PG.ml, y, PG.ancho, 5, 'F');
     pdfFill(d, CP.verde3); d.rect(PG.ml, y, 1.3, 5, 'F');
     pdfF(d, 7, true, CP.verde);
-    pdfTxt(d, pdfSano(f || 'Sin fundo'), PG.ml + 3, y + 3.5, {max: GT_LW - 6});
-    const haF = gtHaUnica(grupo);
+    pdfTxt(d, pdfSano(f), PG.ml + 3, y + 3.5, {max: GT_LW - 6});
     pdfF(d, 6, false, CP.verde2);
-    pdfTxt(d, grupo.length + (grupo.length===1?' labor':' labores') + '  ·  ' + num(haF) + ' ha',
+    pdfTxt(d, nCu + (nCu===1?' cuartel':' cuarteles') + '  ·  ' + nLab + (nLab===1?' labor':' labores') +
+              '  ·  ' + num(gtHaUnica(g.gen.concat(g.orden.reduce((a,c)=>a.concat(g.cu[c]), [])))) + ' ha',
            PG.w - PG.mr - 2, y + 3.5, {align:'right'});
     y += 5;
-    for (const l of grupo){
-      if (y + altoF > PG.yFin){ y = pdfPagina(d, R); y = pdfEscala(d, y, T); fundoAct = null; z = 0; }
-      if (z % 2 === 1){ pdfFill(d, '#FBFDFC'); d.rect(PG.ml, y, PG.ancho, altoF, 'F'); }
-      pdfFondoCols(d, y, altoF, T);
-      /* columna izquierda: labor a la izquierda, cuartel alineado a la derecha
-         (OJO: getTextWidth mide con la fuente ACTIVA, por eso se mide antes de cambiarla) */
-      pdfF(d, 5.9, true, CP.texto);
-      const nom = pdfCorta(d, l.tipo || 'Labor', GT_LW * 0.54);
-      pdfTxt(d, nom, PG.ml + 2, y + 3.7);
-      pdfF(d, 5.4, false, CP.suave);
-      pdfTxt(d, pdfSano(l.cuartel || 'Todo el fundo'), PG.ml + GT_LW - 2.5, y + 3.7, {align:'right', max: GT_LW * 0.40});
-      /* la barra */
-      const ini = l.fecha < T.ini ? T.ini : l.fecha;
-      const fin = gtFin(l) > T.fin ? T.fin : gtFin(l);
-      const x0 = xT + (gtD(ini).getTime() - iniMs)/span * wT;
-      const w0 = Math.max(1.6, (gtD(fin).getTime() + 864e5 - gtD(ini).getTime())/span * wT - 0.4);
-      const cb = gtColBar(l), pct = gtPct(l), atr = gtAtras(l);
-      pdfFill(d, mezcla(cb, 0.55)); pdfStroke(d, cb, 0.2);
-      d.roundedRect(x0, y + 1.1, w0, altoF - 2.2, 0.6, 0.6, 'FD');
-      if (pct > 0){
-        pdfFill(d, cb);
-        d.roundedRect(x0, y + 1.1, Math.max(0.5, w0 * pct/100), altoF - 2.2, 0.6, 0.6, 'F');
-      }
-      if (atr){ pdfStroke(d, CP.cereza, 0.45); d.roundedRect(x0, y + 1.1, w0, altoF - 2.2, 0.6, 0.6, 'S'); }
-      /* etiqueta dentro de la barra si cabe */
-      if (w0 > 15){
-        pdfF(d, 4.9, true, pct >= 55 ? '#FFFFFF' : CP.texto);
-        pdfTxt(d, (l.desc || l.tipo || '') + (pct>0 && pct<100 ? ' · '+pct+'%' : ''), x0 + 1.4, y + 3.6, {max: w0 - 2.6});
-      }
-      z++; y += altoF;
+    /* labores de todo el fundo (sin cuartel) */
+    if (g.gen.length){
+      const p = pdfPistas(g.gen, T, wT, iniMs, span);
+      const alto = Math.max(5.6, 1.4 + p.n*5);
+      if (y + alto > PG.yFin){ y = pdfPagina(d, R); y = pdfEscala(d, y, T); }
+      y = pdfFilaGantt(d, T, y, p.items, p.n, 'Todo el fundo', 'labor general');
+    }
+    /* una fila por cuartel */
+    let z = 0;
+    for (const cu of g.orden.slice().sort()){
+      const p = pdfPistas(g.cu[cu], T, wT, iniMs, span);
+      const alto = Math.max(5.6, 1.4 + p.n*5);
+      if (y + alto > PG.yFin){ y = pdfPagina(d, R); y = pdfEscala(d, y, T); }
+      if (z % 2 === 1){ pdfFill(d, '#FBFDFC'); d.rect(PG.ml, y, PG.ancho, alto, 'F'); }
+      const q = D.cuarteles.find(x => x.fundo === f && x.nombre === cu);
+      const sub = q ? [q.especie, num(+q.ha||0) + ' ha'].filter(Boolean).join(' · ') : '';
+      y = pdfFilaGantt(d, T, y, p.items, p.n, cu, sub);
+      z++;
     }
   }
   pdfStroke(d, CP.linea, 0.3); d.line(PG.ml, y, PG.w - PG.mr, y);
