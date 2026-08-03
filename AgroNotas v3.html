@@ -187,6 +187,21 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
 .culab:hover{background:var(--pclaro);}
 .culab input{width:auto !important; margin:0 !important; accent-color:var(--p); flex:none;}
 .cuha{color:var(--txt2); font-size:11.5px; font-weight:500;}
+/* editor de colores */
+.colsec{font-size:11px; font-weight:800; color:var(--p); text-transform:uppercase; letter-spacing:.05em;
+  margin:16px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--borde);}
+.colrow{display:flex; align-items:center; gap:10px; padding:6px 4px; border-radius:8px;}
+.colrow:hover{background:var(--pclaro);}
+.colsw{position:relative; width:30px; height:30px; border-radius:8px; flex:none; cursor:pointer;
+  border:1.5px solid rgba(0,0,0,.14); box-shadow:inset 0 1px 2px rgba(0,0,0,.08); overflow:hidden;}
+.colsw input[type="color"]{position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer;
+  border:0 !important; padding:0 !important; margin:0 !important; min-height:0 !important;}
+.colnom{flex:1; min-width:0; font-size:13.5px; font-weight:600; color:var(--txt);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.colhex{font-size:11px; color:var(--txt2); font-family:ui-monospace,Menlo,monospace; flex:none;}
+.colvolver{border:none; background:none; color:var(--txt2); font-size:16px; cursor:pointer;
+  padding:4px 7px; border-radius:7px; flex:none; line-height:1;}
+.colvolver:hover{background:#fff; color:var(--p);}
 
 /* ===== Miniaturas de fotos ===== */
 .thumbs{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;}
@@ -7734,6 +7749,10 @@ function gtAj(){
   if(a.est === undefined) a.est = "";
   if(a.q === undefined) a.q = "";
   if(!a.col || typeof a.col !== "object") a.col = {};
+  if(!a.colTipo) a.colTipo = {};
+  if(!a.colEst) a.colEst = {};
+  if(!a.colEsp) a.colEsp = {};
+  if(!a.colEje) a.colEje = {};
   return a;
 }
 /* --- fechas --- */
@@ -7745,17 +7764,75 @@ function gtLun(s){ const d=gtD(s); d.setDate(d.getDate()-((d.getDay()+6)%7)); re
 function gtFin(l){ return (l.fecha2 && l.fecha2>=l.fecha)? l.fecha2 : l.fecha; }
 function gtAtras(l){ return l.estado!=="hecha" && l.estado!=="finalizada" && gtFin(l)<hoy(); }
 /* --- colores --- */
-function gtColTipo(t){ const ts=tiposLabor(), i=ts.indexOf(t);
+function gtColTipoDef(t){ const ts=tiposLabor(), i=ts.indexOf(t);
   if(i>=0) return GT_PAL[i%GT_PAL.length];
   let h=0; t=String(t||""); for(let k=0;k<t.length;k++) h=(h*31+t.charCodeAt(k))>>>0;
   return GT_PAL[h%GT_PAL.length]; }
+function gtColTipo(t){ const a=gtAj(); return (a.colTipo && a.colTipo[t]) || gtColTipoDef(t); }
 function gtEspecies(){ return [...new Set(D.cuarteles.map(q=>q.especie).filter(Boolean))].sort(); }
-function gtColEsp(e){ const es=gtEspecies(), i=es.indexOf(e); return i>=0? GT_PALE[i%GT_PALE.length] : "#94A3B8"; }
-function gtColEje(s){ let h=0; s=String(s||"—"); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return GT_PAL[h%GT_PAL.length]; }
+function gtColEspDef(e){ const es=gtEspecies(), i=es.indexOf(e); return i>=0? GT_PALE[i%GT_PALE.length] : "#94A3B8"; }
+function gtColEsp(e){ const a=gtAj(); return (a.colEsp && a.colEsp[e]) || gtColEspDef(e); }
+function gtColEstado(k){ const a=gtAj(); return (a.colEst && a.colEst[k]) || (GT_EST[k]||GT_EST.pendiente).c; }
+function gtColEje(s){ const a=gtAj(); s=String(s||"—");
+  if(a.colEje && a.colEje[s]) return a.colEje[s];
+  let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return GT_PAL[h%GT_PAL.length]; }
+function gtColAtr(){ const a=gtAj(); return (a.colEst && a.colEst.atrasada) || "#A4133C"; }
 function gtColBar(l){ const a=gtAj();
-  if(a.color==="estado") return gtAtras(l)? "#A4133C" : (GT_EST[l.estado]||GT_EST.pendiente).c;
+  if(a.color==="estado") return gtAtras(l)? gtColAtr() : gtColEstado(l.estado);
   if(a.color==="eje")    return gtColEje(l.resp);
   return gtColTipo(l.tipo); }
+/* --- editor de colores (se usa en la carta y en el PDF) --- */
+function gtColSet(grupo, clave, val, id){
+  const a=gtAj(); a[grupo]=a[grupo]||{}; a[grupo][clave]=val;
+  const sw=document.getElementById("sw_"+id), hx=document.getElementById("hx_"+id);
+  if(sw) sw.style.background=val;
+  if(hx) hx.textContent=String(val).toUpperCase();
+  guardar();
+}
+function gtColQuita(grupo, clave, id, val){
+  const a=gtAj(); if(a[grupo]) delete a[grupo][clave];
+  guardar();
+  const sw=document.getElementById("sw_"+id), hx=document.getElementById("hx_"+id),
+        inp=document.getElementById("in_"+id);
+  if(sw) sw.style.background=val; if(hx) hx.textContent=String(val).toUpperCase();
+  if(inp) inp.value=val;
+}
+function gtColReset(){
+  if(!confirm("¿Volver a los colores originales?")) return;
+  const a=gtAj(); a.colTipo={}; a.colEst={}; a.colEsp={}; a.colEje={};
+  guardar(); cerrarModal(); render();
+}
+function gtColores(){
+  const a=gtAj();
+  a.colTipo=a.colTipo||{}; a.colEst=a.colEst||{}; a.colEsp=a.colEsp||{}; a.colEje=a.colEje||{};
+  const q=s=>JSON.stringify(String(s)).replace(/"/g,"&quot;");
+  const fila=(id,grupo,clave,nom,val,def)=>`<div class="colrow">
+    <span class="colsw" id="sw_${id}" style="background:${val}">
+      <input type="color" id="in_${id}" value="${val}" oninput="gtColSet('${grupo}',${q(clave)},this.value,'${id}')"></span>
+    <span class="colnom">${esc(nom)}</span>
+    <code class="colhex" id="hx_${id}">${String(val).toUpperCase()}</code>
+    <button type="button" class="colvolver" onclick="gtColQuita('${grupo}',${q(clave)},'${id}','${def}')" title="Volver al color original">↺</button>
+  </div>`;
+  let h=`<div class="muted" style="font-size:12.5px;margin-bottom:4px">Toca el cuadrito para cambiar el color. Se aplica en la carta y en el PDF.</div>`;
+  h+=`<div class="colsec">Por labor <span class="muted" style="font-weight:500">· se usa con «Color por labor»</span></div>`;
+  tiposLabor().forEach((t,i)=>{ h+=fila("t"+i,"colTipo",t,t,gtColTipo(t),gtColTipoDef(t)); });
+  h+=`<div class="colsec">Por estado <span class="muted" style="font-weight:500">· se usa con «Color por estado»</span></div>`;
+  Object.keys(GT_EST).forEach((k,i)=>{ h+=fila("e"+i,"colEst",k,GT_EST[k].n,gtColEstado(k),GT_EST[k].c); });
+  h+=fila("eatr","colEst","atrasada","Atrasada",gtColAtr(),"#A4133C");
+  const esp=gtEspecies();
+  if(esp.length){
+    h+=`<div class="colsec">Por frutal <span class="muted" style="font-weight:500">· el punto de cada cuartel</span></div>`;
+    esp.forEach((e,i)=>{ h+=fila("f"+i,"colEsp",e,e,gtColEsp(e),gtColEspDef(e)); });
+  }
+  const ejes=gtEjes();
+  if(ejes.length){
+    h+=`<div class="colsec">Por quien ejecuta <span class="muted" style="font-weight:500">· se usa con «Color por quien ejecuta»</span></div>`;
+    ejes.forEach((e,i)=>{ const a2=gtAj(); const def=(function(s){let x=0;for(let k=0;k<s.length;k++)x=(x*31+s.charCodeAt(k))>>>0;return GT_PAL[x%GT_PAL.length];})(e);
+      h+=fila("j"+i,"colEje",e,e,gtColEje(e),def); });
+  }
+  h+=`<div style="margin-top:14px"><button type="button" class="btn sec chico" onclick="gtColReset()">↺ Restaurar todos los colores</button></div>`;
+  abrirModal(ic("layers")+" Colores de la carta", h, ()=>{}, "✓ Listo");
+}
 /* --- ventana de tiempo --- */
 function gtTL(){
   const a=gtAj(), P=GT_PER[a.per], d=gtD(a.ancla), c=[];
@@ -7932,6 +8009,7 @@ function vGantt(){
       <button class="btn ${a.soloCon?"":"sec"} chico" onclick="gtSetF('soloCon',${a.soloCon?"false":"true"})">${a.soloCon?"✓":""} Solo con labores</button>
       ${(a.fundos.length||a.esp.length||a.tipo||a.est||a.q)?`<button class="btn sec chico" onclick="gtLimpiar()">✕ Limpiar filtros</button>`:""}
       <div style="flex:1"></div>
+      <button class="btn sec chico" onclick="gtColores()">${ic("layers")} Colores</button>
       <button class="btn sec chico" onclick="gtNueva()">＋ Nueva labor</button>
       <button class="btn chico" onclick="ganttPDF()">${ic("save")} PDF</button>
     </div>
@@ -8514,7 +8592,7 @@ async function ganttPDF(){
   ]);
   /* leyenda segun el color elegido en pantalla */
   let leyenda, tLey;
-  if (a.color === 'estado'){ leyenda = Object.keys(GT_EST).map(k => ({n:GT_EST[k].n, c:GT_EST[k].c})).concat([{n:'Atrasada', c:CP.cereza}]); tLey = 'ESTADO:'; }
+  if (a.color === 'estado'){ leyenda = Object.keys(GT_EST).map(k => ({n:GT_EST[k].n, c:gtColEstado(k)})).concat([{n:'Atrasada', c:gtColAtr()}]); tLey = 'ESTADO:'; }
   else if (a.color === 'eje'){ leyenda = [...new Set(ls.map(l=>l.resp||'Sin asignar'))].slice(0,10).map(e => ({n:e, c:gtColEje(e==='Sin asignar'?'':e)})); tLey = 'EJECUTA:'; }
   else { leyenda = [...new Set(ls.map(l=>l.tipo))].slice(0,12).map(t => ({n:t, c:gtColTipo(t)})); tLey = 'LABOR:'; }
   y = pdfLeyenda(d, y, leyenda, tLey) + 1.5;
