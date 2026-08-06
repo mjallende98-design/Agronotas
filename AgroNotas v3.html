@@ -155,6 +155,26 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
 .gbar.fin{opacity:.62;}
 .gbar.atr{box-shadow:0 0 0 2px var(--rojo), 0 1px 3px rgba(18,39,31,.22);}
 .gico{flex:none; opacity:.9;}
+/* separador de secciones (Planificado / Realizado) */
+.gsec{display:flex; min-width:max-content; background:var(--p); color:#fff;}
+.gsec .glft{position:sticky; left:0; z-index:22; background:var(--p); color:#fff; font-weight:800;
+  font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; padding:7px 10px; cursor:default;
+  border-right:1px solid rgba(255,255,255,.25); display:flex; align-items:center; gap:6px;}
+.gsec .gtrk{min-height:30px; background:var(--p); align-items:center; padding-left:12px;}
+.gsec.real, .gsec.real .glft, .gsec.real .gtrk{background:#2f4858;}
+.gsecm{font-size:11.5px; opacity:.85; align-self:center; white-space:nowrap;}
+/* barras de la grilla REALIZADO */
+.grbar{position:absolute; height:24px; border-radius:7px; display:flex; align-items:center;
+  padding:0 8px; font-size:11px; font-weight:700; cursor:pointer; overflow:hidden; white-space:nowrap;
+  border:1.5px solid transparent; box-shadow:0 1px 2px rgba(18,39,31,.15);}
+.grbar:hover{filter:brightness(.96);}
+.grtx{overflow:hidden; text-overflow:ellipsis;}
+.grbar.ok, .grbar.bit{background:#2D6A4F; color:#fff;}
+.grbar.bit{background:#40916C;}
+.grbar.no{background:#fdecec; color:#a01c1c; border-color:#d64545; text-decoration:line-through;}
+.grbar.dif{background:#E8720C; color:#fff;}
+.grbar.pend{background:#fff; color:#8a8f89; border:1.5px dashed #c2c9c2;}
+.grbar.futuro{background:#f4f6f3; color:#a8ada7; border:1.5px dashed #dde3dd;}
 .gfilt{gap:6px; flex-wrap:wrap; margin-top:9px; align-items:center;}
 .gfl{font-size:11.5px; font-weight:800; color:var(--p); text-transform:uppercase; letter-spacing:.04em;}
 .gsep{width:1px; height:18px; background:var(--borde); margin:0 3px;}
@@ -187,6 +207,44 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
 .culab:hover{background:var(--pclaro);}
 .culab input{width:auto !important; margin:0 !important; accent-color:var(--p); flex:none;}
 .cuha{color:var(--txt2); font-size:11.5px; font-weight:500;}
+/* --- Bitácora --- */
+.bitchips{display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px;}
+.bitchip{border:1.5px solid var(--borde); background:#fff; color:var(--txt2); border-radius:11px;
+  padding:9px 13px; font-size:13.5px; font-weight:600; cursor:pointer; display:inline-flex;
+  align-items:center; gap:7px; min-height:42px;}
+.bitchip.on{background:var(--pclaro); border-color:var(--p); color:var(--p2);}
+.bitck{display:inline-flex; align-items:center; justify-content:center; width:19px; height:19px;
+  border-radius:6px; border:1.5px solid var(--borde); font-size:12px; font-weight:800; background:#fff; flex:none;}
+.bitchip.on .bitck{background:var(--p); border-color:var(--p); color:#fff;}
+.bitlin{border:1px solid var(--borde); border-radius:11px; padding:10px 11px; margin-bottom:9px; background:#fbfdfb;}
+.bitlh{display:flex; align-items:center; gap:8px; margin-bottom:7px; font-size:13.5px; color:var(--txt);}
+.bitmas{margin-left:auto; border:none; background:none; color:var(--azul); font-size:11.5px;
+  font-weight:700; cursor:pointer; padding:3px 5px;}
+.bitx{border:none; background:none; color:var(--txt2); font-size:15px; cursor:pointer; padding:2px 5px; line-height:1;}
+.bitx:hover{color:var(--rojo);}
+.bitgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr)); gap:8px;}
+.bitgrid label{display:block; font-size:11px; font-weight:700; color:var(--txt2);
+  text-transform:uppercase; letter-spacing:.03em;}
+.bitgrid input, .bitgrid select{width:100%; margin-top:3px; padding:9px 10px; border:1.5px solid var(--borde);
+  border-radius:9px; font-size:14px; background:#fff; min-height:0;}
+.bitrin{font-size:12px; color:var(--p2); font-weight:600; margin-top:7px; min-height:14px;}
+.bitdia{padding:13px 15px;}
+.bititems{margin-top:9px; display:flex; flex-direction:column; gap:5px;}
+.bititem{display:flex; align-items:center; gap:7px; flex-wrap:wrap; font-size:13.5px;
+  padding:6px 0; border-bottom:1px solid #f2f5f1;}
+.bititem:last-child{border-bottom:none;}
+.bitpt{width:9px; height:9px; border-radius:50%; flex:none;}
+.bitcant{background:var(--pclaro); color:var(--p2); font-weight:700; border-radius:7px; padding:2px 8px; font-size:12.5px;}
+.bitrend{margin-left:auto; font-size:11.5px; font-weight:700; color:var(--azul);
+  background:#eef4ff; border-radius:7px; padding:2px 8px;}
+.grsel{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;}
+.grop{flex:1 1 130px; border:1.5px solid var(--borde); background:#fff; border-radius:11px;
+  padding:13px 10px; font-size:13.5px; font-weight:700; cursor:pointer; color:var(--txt2); min-height:50px;}
+.grop.si.on{background:#2D6A4F; border-color:#2D6A4F; color:#fff;}
+.grop.no.on{background:#d64545; border-color:#d64545; color:#fff;}
+.grop.dif.on{background:#E8720C; border-color:#E8720C; color:#fff;}
+.bitnota{margin-top:9px; padding:9px 11px; background:#fbfbf7; border-left:3px solid var(--acc);
+  border-radius:0 8px 8px 0; font-size:13px; color:var(--txt); white-space:pre-wrap;}
 /* editor de colores */
 .colsec{font-size:11px; font-weight:800; color:var(--p); text-transform:uppercase; letter-spacing:.05em;
   margin:16px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--borde);}
@@ -801,6 +859,7 @@ function cargar(){
     // migraciones futuras: dar defaults a campos nuevos aquí (corren también en instalación nueva)
     D.cuarteles = D.cuarteles || []; D.notas = D.notas || [];
     D.labores = D.labores || []; D.registros = D.registros || [];
+    D.bitacora = D.bitacora || []; D.bitCfg = D.bitCfg || {unidades:{}, integrar:false};
     D.checklists = D.checklists || [];
     D.checklists.forEach(function(l,i){ if(!Array.isArray(l.items)) l.items=[]; if(!l.color) l.color=CL_COLORS[i%CL_COLORS.length]; });
     D.cosechaPesos = D.cosechaPesos || {};
@@ -1035,6 +1094,7 @@ async function guardarModal(){
 const TABS = [
   {id:"panel", ico:"🏠", lab:"Panel"},
   {id:"notas", ico:"📝", lab:"Notas"},
+  {id:"bitacora", ico:"📓", lab:"Bitácora"},
   {id:"listas", ico:"✅", lab:"Listas"},
   {id:"plan", ico:"📅", lab:"Plan"},
   {id:"gantt", ico:"📊", lab:"Carta Gantt"},
@@ -1052,7 +1112,7 @@ function render(){
     `<div class="marca">🍊</div><h1>AgroNotas<span class="sub">${t} · Total Fruit Curacaví · ${fmtF(hoy())}</span></h1>`;
   document.getElementById("tabbar").innerHTML = TABS.map(x=>
     `<button class="${nav.tab===x.id?"act":""}" onclick="ir('${x.id}')"><span class="ico">${x.ico}</span>${x.lab}</button>`).join("");
-  const vistas = {panel:vPanel, notas:vNotas, plan:vPlan, gantt:(typeof vGantt==="function"?vGantt:vPlan), reg:vReg, tab:vTab, datos:vDatos};
+  const vistas = {panel:vPanel, notas:vNotas, bitacora:(typeof vBitacora==="function"?vBitacora:vNotas), plan:vPlan, gantt:(typeof vGantt==="function"?vGantt:vPlan), reg:vReg, tab:vTab, datos:vDatos};
   document.getElementById("app").innerHTML = vistas[nav.tab]();
   const posrender = {notas:posNotas, panel:posNotas, reg:posNotas}[nav.tab];
   if(posrender) posrender();
@@ -4283,6 +4343,7 @@ const ICO = {
   notas:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="12" height="14" rx="2"></rect><path d="M7 7.5h6M7 10.5h6M7 13.5h3.5"></path></svg>',
   listas:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 6l1.5 1.5L7.5 4"></path><path d="M4 12l1.5 1.5L7.5 10"></path><path d="M10.5 6h6M10.5 12h6"></path></svg>',
   plan:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4.5" width="14" height="12" rx="2"></rect><path d="M3 8.5h14M7 3v3M13 3v3"></path></svg>',
+  bitacora:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="12" height="14" rx="2"></rect><path d="M7.5 3v14"></path><path d="M10 7.5h3.5M10 11h3.5"></path></svg>',
   gantt:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 4.5h8M3 8.5h12M3 12.5h6M3 16.5h10"></path></svg>',
   reg:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3.5" width="12" height="13.5" rx="2"></rect><path d="M7 8h6M7 11h6M7 14h4"></path></svg>',
   tab:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.2" y="4" width="3.8" height="12" rx="1"></rect><rect x="8.1" y="4" width="3.8" height="8" rx="1"></rect><rect x="13" y="4" width="3.8" height="10" rx="1"></rect></svg>',
@@ -4374,7 +4435,7 @@ const IKO={
 const ic=n=>'<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+(IKO[n]||'')+'</svg>';
 
 function render(){
-  const t = {panel:"Panel", notas:"Notas de terreno", listas:"Mis listas", plan:"Planificación", gantt:"Carta Gantt de labores", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", datos:"Datos y ajustes"}[nav.tab];
+  const t = {panel:"Panel", notas:"Notas de terreno", bitacora:"Bitácora del campo", listas:"Mis listas", plan:"Planificación", gantt:"Carta Gantt de labores", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", datos:"Datos y ajustes"}[nav.tab];
   document.getElementById("topbar").innerHTML =
     `<div style="flex:1;min-width:180px"><h1>${t}<span class="sub">${PROY? esc(PROY.nombre) : "AgroNotas"} · ${fmtF(hoy())}</span></h1></div>
     <div class="acciones">
@@ -4386,7 +4447,7 @@ function render(){
   document.getElementById("tabbar").innerHTML =
     `<div class="marca-r">${ICO.marca}</div>` +
     TABS.map(x=>`${x.id==="datos"?'<button class="esp"></button>':""}<button class="${nav.tab===x.id?"act":""}" onclick="ir('${x.id}')">${ICO[x.id]||""}${x.lab}</button>`).join("");
-  const vistas = {panel:vPanel, notas:vNotas, listas:vListas, plan:vPlan, gantt:vGantt, reg:vReg, tab:vTab, noti:vNoticias, calcfito:vCalcFito, aplic:vAplic, datos:vDatos};
+  const vistas = {panel:vPanel, notas:vNotas, bitacora:vBitacora, listas:vListas, plan:vPlan, gantt:vGantt, reg:vReg, tab:vTab, noti:vNoticias, calcfito:vCalcFito, aplic:vAplic, datos:vDatos};
   document.getElementById("app").innerHTML = vistas[nav.tab]();
   if(nav.tab!=="panel" && geoWatch){ navigator.geolocation.clearWatch(geoWatch); geoWatch = null; } // ahorra batería fuera del mapa
   const posrender = {notas:posNotas, panel:posPanel, reg:posNotas, noti:posNoticias}[nav.tab];
@@ -7762,6 +7823,7 @@ function gtAj(){
   if(!a.colEst) a.colEst = {};
   if(!a.colEsp) a.colEsp = {};
   if(!a.colEje) a.colEje = {};
+  if(a.real === undefined) a.real = true;
   return a;
 }
 /* --- fechas --- */
@@ -7945,8 +8007,8 @@ function gtBar(o,T){
   const cl="gbar"+((l.estado==="hecha"||l.estado==="finalizada")?" fin":"")+(gtAtras(l)?" atr":"");
   const tip=`${nom}${l.desc?" · "+l.desc:""}\n${l.cuartel||"Todo el fundo"}\n${fmtF(l.fecha)} → ${fmtF(gtFin(l))}${l.resp?"\n"+l.resp:""}`;
   const rad = o.g.ci? "border-radius:0 7px 7px 0;" : o.g.cf? "border-radius:7px 0 0 7px;" : "";
-  if(o.g.w<38) return `<div class="${cl}" style="left:${o.g.x.toFixed(1)}px;width:${o.g.w.toFixed(1)}px;top:${(3+o.k*30)}px;background:${c};padding:0" onclick="gtEditar(${l.id})" title="${esc(tip)}"></div>`;
-  return `<div class="${cl}" style="left:${o.g.x.toFixed(1)}px;width:${o.g.w.toFixed(1)}px;top:${(3+o.k*30)}px;background:${c};${rad}" onclick="gtEditar(${l.id})" title="${esc(tip)}">
+  if(o.g.w<38) return `<div class="${cl}" style="left:${o.g.x.toFixed(1)}px;width:${o.g.w.toFixed(1)}px;top:${(3+o.k*gtLH())}px;background:${c};padding:0" onclick="gtEditar(${l.id})" title="${esc(tip)}"></div>`;
+  return `<div class="${cl}" style="left:${o.g.x.toFixed(1)}px;width:${o.g.w.toFixed(1)}px;top:${(3+o.k*gtLH())}px;background:${c};${rad}" onclick="gtEditar(${l.id})" title="${esc(tip)}">
     ${av>0&&av<100?`<div class="gav" style="width:${av}%"></div>`:""}
     <span class="gt-t">${(l.estado==="hecha"||l.estado==="finalizada")?"✓ ":""}${esc(txt)}${av>0&&av<100?" · "+av+"%":""}</span>
     ${l.nota?'<span class="gico">✱</span>':""}</div>`;
@@ -7957,6 +8019,130 @@ function gtPct(l){
   const meta=+l.meta||0; if(meta<=0) return 0;
   const h=(l.avances||[]).reduce((s,x)=>s+(+x.cantidad||0),0);
   return Math.max(0,Math.min(100,Math.round(h/meta*100)));
+}
+/* --- Lo REALIZADO: días de bitácora que corresponden a una labor planificada.
+       Calzan por vínculo directo (si se integró) o por fundo + cuartel + actividad. --- */
+function gtLH(){ return 30; }   // alto de cada pista
+function gtRealDias(l){
+  const out=[];
+  (D.bitacora||[]).forEach(e=>{
+    (e.lineas||[]).forEach(li=>{
+      const calza = (li.laborId && li.laborId===l.id) ||
+        (!li.laborId && li.tipo===l.tipo && e.fundo===l.fundo && (li.cuartel||"")===(l.cuartel||""));
+      if(calza) out.push({fecha:e.fecha, entId:e.id, cant:+li.cantidad||0, uni:li.unidad||"", pers:+li.personas||0});
+    });
+  });
+  return out.sort((a,b)=>a.fecha.localeCompare(b.fecha));
+}
+function gtRealSeg(dias){                          // junta días seguidos en un solo tramo
+  const s=[];
+  dias.forEach(d=>{
+    const u=s[s.length-1];
+    if(u && gtDif(u.fin,d.fecha)<=1 && d.fecha>=u.fin){ u.fin=d.fecha; u.n++; u.cant+=d.cant; if(!u.uni) u.uni=d.uni; }
+    else s.push({ini:d.fecha, fin:d.fecha, n:1, cant:d.cant, uni:d.uni, entId:d.entId});
+  });
+  return s;
+}
+function gtRealGeo(l,T){          // dónde va la barra de lo realizado
+  const r=l.real||{};
+  let ini=l.fecha, fin=gtFin(l), fuente="plan";
+  if(r.ok==="dif" && r.fecha){ ini=r.fecha; fin=(r.fecha2&&r.fecha2>=r.fecha)?r.fecha2:r.fecha; fuente="dif"; }
+  else{
+    const d=gtRealDias(l);
+    if(d.length){ ini=d[0].fecha; fin=d[d.length-1].fecha; fuente="bit"; }
+    else if(r.ok==="si" && r.fecha){ ini=r.fecha; fin=(r.fecha2&&r.fecha2>=r.fecha)?r.fecha2:r.fecha; fuente="si"; }
+  }
+  return {ini, fin, fuente};
+}
+function gtEstadoReal(l){         // qué mostrar en la grilla de abajo
+  const r=l.real||{};
+  if(r.ok) return r.ok;                                   // lo confirmaste a mano
+  if(gtRealDias(l).length) return "bit";                  // lo dice la bitácora
+  if(l.estado==="hecha"||l.estado==="finalizada") return "si";
+  return gtFin(l)<hoy()? "pend" : "futuro";
+}
+function gtBarReal(l,T,k){
+  const est=gtEstadoReal(l), g=gtRealGeo(l,T);
+  const ini=g.ini<T.ini?T.ini:g.ini, fin=g.fin>T.fin?T.fin:g.fin;
+  if(fin<T.ini || ini>T.fin) return "";
+  const iniMs=gtD(T.ini).getTime(), span=gtD(T.fin).getTime()+864e5-iniMs, anchoT=T.c.length*T.cw;
+  const x=(gtD(ini).getTime()-iniMs)/span*anchoT;
+  const w=Math.max(T.cw*0.42,(gtD(fin).getTime()+864e5-gtD(ini).getTime())/span*anchoT-2);
+  const cls={si:"ok", bit:"bit", no:"no", dif:"dif", pend:"pend", futuro:"futuro"}[est]||"pend";
+  const txt={si:"✓ Se hizo", bit:"✓ Se hizo", no:"✕ No se hizo", dif:"⚠ Distinto",
+             pend:"Sin confirmar", futuro:"Por hacer"}[est]||"";
+  const r=l.real||{};
+  const dias=gtRealDias(l);
+  const tot=dias.reduce((s,d)=>s+(+d.cant||0),0);
+  const tip=`${l.tipo||"Labor"} · ${l.cuartel||"todo el fundo"}\n${txt}`+
+    (est==="bit"?`\nBitácora: ${dias.length} día(s)${tot>0?" · "+num(tot)+" "+(dias[0].uni||""):""}`:"")+
+    (r.nota?`\n"${r.nota}"`:"")+`\nToca para confirmar o corregir`;
+  return `<div class="grbar ${cls}" style="left:${x.toFixed(1)}px;width:${w.toFixed(1)}px;top:${(3+k*gtLH())}px"
+    onclick="gtConfirmar(${l.id})" title="${esc(tip)}"><span class="grtx">${txt}${r.nota?" · "+esc(r.nota):""}</span></div>`;
+}
+/* --- confirmar desde la carta --- */
+function gtConfirmar(id){
+  const l=D.labores.find(x=>x.id===id); if(!l) return;
+  const r=l.real||{}, dias=gtRealDias(l);
+  const tot=dias.reduce((s,d)=>s+(+d.cant||0),0);
+  nav.gtOk = r.ok || (dias.length?"si":"");
+  abrirModal(ic("checkCirc")+" ¿Se hizo esta labor?", `
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">
+      <b>${esc(l.tipo||"Labor")}</b> · ${esc(l.cuartel||"todo el fundo")} · ${esc(l.fundo)}<br>
+      Planificada del <b>${fmtF(l.fecha)}</b> al <b>${fmtF(gtFin(l))}</b></div>
+    ${dias.length?`<div class="card" style="background:var(--pclaro);border:1px solid var(--p);padding:9px 11px;margin-bottom:10px;font-size:12.5px">
+      ${ic("clipboard")} La bitácora registra <b>${dias.length}</b> día(s)${tot>0?` · <b>${num(tot)} ${esc(dias[0].uni||"")}</b>`:""}
+      <div class="muted" style="font-size:11.5px">${dias.slice(0,6).map(d=>fmtF(d.fecha)).join(" · ")}${dias.length>6?" …":""}</div></div>`:""}
+    <div class="grsel">
+      ${[["si","✓ Sí, se hizo"],["no","✕ No se hizo"],["dif","⚠ Se hizo distinto"]].map(([k,t])=>
+        `<button type="button" class="grop ${k} ${nav.gtOk===k?"on":""}" id="grop_${k}" onclick="gtOkSel('${k}')">${t}</button>`).join("")}
+    </div>
+    <div id="grDif" style="display:${nav.gtOk==="dif"?"block":"none"}">
+      <div class="fila" style="gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:150px">${campoF("gr_ini","Se hizo desde","date",r.fecha||l.fecha)}</div>
+        <div style="flex:1;min-width:150px">${campoF("gr_fin","hasta","date",r.fecha2||gtFin(l))}</div></div>
+    </div>
+    ${areaF("gr_nota","¿Qué se hizo? (opcional)",r.nota||"","Ej: se podó solo la mitad, se cambió por raleo, faltó gente…")}
+    ${(r.ok)?`<button class="btn sec chico" style="margin-top:8px" onclick="gtQuitarConf(${l.id})">↺ Quitar la confirmación</button>`:""}
+  `, ()=>{
+    const ok=nav.gtOk;
+    if(!ok){ alert("Elige si se hizo, no se hizo, o se hizo distinto."); return false; }
+    l.real={ok, nota:v("gr_nota"), fecha:ok==="dif"?v("gr_ini"):"", fecha2:ok==="dif"?v("gr_fin"):"", ts:ahora()};
+    if(ok==="si" && l.estado!=="finalizada") l.estado="hecha";
+    if(ok==="no" && (l.estado==="hecha")) l.estado="pendiente";
+  }, ic("save")+" Confirmar");
+}
+function gtOkSel(k){
+  nav.gtOk=k;
+  ["si","no","dif"].forEach(x=>{ const b=document.getElementById("grop_"+x); if(b) b.classList.toggle("on",x===k); });
+  const d=document.getElementById("grDif"); if(d) d.style.display = k==="dif"? "block":"none";
+}
+function gtQuitarConf(id){
+  const l=D.labores.find(x=>x.id===id); if(!l) return;
+  delete l.real; guardar(); cerrarModal(); render();
+}
+function gtRealHTML(l,T,k){                        // (en desuso) barra fina bajo la planificada
+  if(!gtAj().real) return "";
+  const dias=gtRealDias(l), top=3+k*gtLH()+28;
+  if(!dias.length){
+    /* ya pasó y nadie anotó nada: se marca el hueco */
+    if(gtFin(l)>=hoy() || l.estado==="hecha" || l.estado==="finalizada") return "";
+    const g=gtGeo(l,T);
+    return `<div class="greal vacio" style="left:${g.x.toFixed(1)}px;width:${g.w.toFixed(1)}px;top:${top}px"
+      title="Sin registro en la bitácora para esta labor"></div>`;
+  }
+  return gtRealSeg(dias).map(s=>{
+    if(s.fin<T.ini || s.ini>T.fin) return "";
+    const ini=s.ini<T.ini?T.ini:s.ini, fin=s.fin>T.fin?T.fin:s.fin;
+    const iniMs=gtD(T.ini).getTime(), span=gtD(T.fin).getTime()+864e5-iniMs;
+    const anchoT=T.c.length*T.cw;
+    const x=(gtD(ini).getTime()-iniMs)/span*anchoT;
+    const w=Math.max(6,(gtD(fin).getTime()+864e5-gtD(ini).getTime())/span*anchoT-2);
+    const dentro = s.ini>=l.fecha && s.fin<=gtFin(l);
+    const tip=`Realizado · ${fmtF(s.ini)}${s.fin!==s.ini?" a "+fmtF(s.fin):""}${s.cant>0?" · "+num(s.cant)+" "+s.uni:""}${dentro?"":" · fuera de lo planificado"}`;
+    return `<div class="greal${dentro?"":" fuera"}" style="left:${x.toFixed(1)}px;width:${w.toFixed(1)}px;top:${top}px"
+      onclick="event.stopPropagation();bitEditar(${s.entId})" title="${esc(tip)}"></div>`;
+  }).join("");
 }
 function gtHaUnica(ls){ const s=new Set(); ls.forEach(l=>{ if(l.cuartel) s.add(l.fundo+"|"+l.cuartel); });
   let t=0; s.forEach(k=>{ const q=D.cuarteles.find(x=>x.fundo+"|"+x.nombre===k); t+=q?(+q.ha||0):0; }); return t; }
@@ -7977,37 +8163,56 @@ function vGantt(){
     cab+=`<div class="${gtCel(c,T)}" style="width:${T.cw}px;min-width:${T.cw}px"><div class="gd1">${esc(l1)}</div><div class="gd2">${esc(l2)}</div></div>`;
   });
   const celdas=T.c.map(c=>`<div class="${gtCel(c,T)}" style="width:${T.cw}px;min-width:${T.cw}px"></div>`).join("");
-  let h=`<div class="grow ghd"><div class="glft">Fundo / Cuartel</div><div class="gtrk" style="width:${anchoT}px">${cab}</div></div>`;
+  const cabHTML=`<div class="grow ghd"><div class="glft">Fundo / Cuartel</div><div class="gtrk" style="width:${anchoT}px">${cab}</div></div>`;
+  /* el cuerpo se arma dos veces: arriba lo planificado, abajo lo realizado */
   let nCu=0;
-  fus.forEach(f=>{
-    if(a.fundos.length && a.fundos.indexOf(f)<0) return;
-    const cus=D.cuarteles.filter(q=>q.fundo===f && gtCuPasa(q));
-    const lf=L.filter(l=>l.fundo===f && !l.cuartel && gtEnRango(l,T));
-    const conLab=cus.filter(q=>L.some(l=>l.fundo===f && l.cuartel===q.nombre && gtEnRango(l,T)));
-    const muestra=a.soloCon? conLab : cus;
-    if(a.soloCon && !muestra.length && !lf.length) return;
-    const haF=cus.reduce((s,q)=>s+(+q.ha||0),0);
-    const cerrado=!!a.col[f];
-    const pf=gtPistas(lf,T);
-    h+=`<div class="grow ggr" style="min-height:${Math.max(30,6+pf.n*30)}px">
-      <div class="glft" onclick="gtColap('${esc(f).replace(/'/g,"\\'")}')">
-        <span style="font-size:11px;width:12px;display:inline-block">${cerrado?"▸":"▾"}</span>${esc(f)}
-        <span class="gha">${num(haF)} ha · ${conLab.length}/${cus.length}</span></div>
-      <div class="gtrk" style="width:${anchoT}px">${celdas}${pf.items.map(o=>gtBar(o,T)).join("")}</div></div>`;
-    if(cerrado) return;
-    muestra.forEach(q=>{
-      nCu++;
-      const ls=L.filter(l=>l.fundo===f && l.cuartel===q.nombre && gtEnRango(l,T));
-      const p=gtPistas(ls,T);
-      h+=`<div class="grow" style="min-height:${Math.max(34,6+p.n*30)}px">
-        <div class="glft" onclick="gtNueva('${esc(f).replace(/'/g,"\\'")}','${esc(q.nombre).replace(/'/g,"\\'")}')" title="Agregar una labor en este cuartel">
-          <span class="gpt" style="background:${gtColEsp(q.especie)}"></span>
-          <div style="min-width:0"><div class="gcn">${esc(q.nombre)}</div>
-            <div class="gcs">${esc([q.especie,q.variedad,q.anio].filter(Boolean).join(" · "))}</div></div>
-          <span class="ghab">${num(+q.ha||0)}</span></div>
-        <div class="gtrk" style="width:${anchoT}px">${celdas}${p.items.map(o=>gtBar(o,T)).join("")}</div></div>`;
+  function cuerpo(modo){
+    let h="";
+    fus.forEach(f=>{
+      if(a.fundos.length && a.fundos.indexOf(f)<0) return;
+      const cus=D.cuarteles.filter(q=>q.fundo===f && gtCuPasa(q));
+      const lf=L.filter(l=>l.fundo===f && !l.cuartel && gtEnRango(l,T));
+      const conLab=cus.filter(q=>L.some(l=>l.fundo===f && l.cuartel===q.nombre && gtEnRango(l,T)));
+      const muestra=a.soloCon? conLab : cus;
+      if(a.soloCon && !muestra.length && !lf.length) return;
+      const haF=cus.reduce((s,q)=>s+(+q.ha||0),0);
+      const cerrado=!!a.col[f];
+      const pf=gtPistas(lf,T);
+      const barra=(o)=> modo==="plan"? gtBar(o,T) : gtBarReal(o.l,T,o.k);
+      h+=`<div class="grow ggr" style="min-height:${Math.max(30,6+pf.n*gtLH())}px">
+        <div class="glft" onclick="gtColap('${esc(f).replace(/'/g,"\\'")}')">
+          <span style="font-size:11px;width:12px;display:inline-block">${cerrado?"▸":"▾"}</span>${esc(f)}
+          <span class="gha">${num(haF)} ha · ${conLab.length}/${cus.length}</span></div>
+        <div class="gtrk" style="width:${anchoT}px">${celdas}${pf.items.map(barra).join("")}</div></div>`;
+      if(cerrado) return;
+      muestra.forEach(q=>{
+        if(modo==="plan") nCu++;
+        const ls=L.filter(l=>l.fundo===f && l.cuartel===q.nombre && gtEnRango(l,T));
+        const p=gtPistas(ls,T);
+        h+=`<div class="grow" style="min-height:${Math.max(34,6+p.n*gtLH())}px">
+          <div class="glft"${modo==="plan"?` onclick="gtNueva('${esc(f).replace(/'/g,"\\'")}','${esc(q.nombre).replace(/'/g,"\\'")}')" title="Agregar una labor en este cuartel"`:' style="cursor:default"'}>
+            <span class="gpt" style="background:${gtColEsp(q.especie)}"></span>
+            <div style="min-width:0"><div class="gcn">${esc(q.nombre)}</div>
+              <div class="gcs">${esc([q.especie,q.variedad,q.anio].filter(Boolean).join(" · "))}</div></div>
+            <span class="ghab">${num(+q.ha||0)}</span></div>
+          <div class="gtrk" style="width:${anchoT}px">${celdas}${p.items.map(barra).join("")}</div></div>`;
+      });
     });
-  });
+    return h;
+  }
+  const cuerpoPlan=cuerpo("plan");
+  let h = cabHTML;
+  if(a.real){
+    h = cabHTML
+      + `<div class="gsec"><div class="glft">${ic("calendar")} Planificado</div><div class="gtrk" style="width:${anchoT}px"></div></div>`
+      + cuerpoPlan
+      + `<div class="gsec real"><div class="glft">${ic("checkCirc")} Realizado · toca para confirmar</div>
+         <div class="gtrk" style="width:${anchoT}px"><span class="gsecm">Toca cada barra para marcar si se hizo, no se hizo, o se hizo distinto</span></div></div>`
+      + cabHTML
+      + cuerpo("real");
+  } else {
+    h = cabHTML + cuerpoPlan;
+  }
   /* KPIs */
   const enT=L.filter(l=>gtEnRango(l,T));
   const nAtr=enT.filter(gtAtras).length, nCur=enT.filter(l=>l.estado==="encurso").length;
@@ -8043,6 +8248,7 @@ function vGantt(){
       <button class="btn ${a.soloCon?"":"sec"} chico" onclick="gtSetF('soloCon',${a.soloCon?"false":"true"})">${a.soloCon?"✓":""} Solo con labores</button>
       ${(a.fundos.length||a.esp.length||a.tipo||a.est||a.q)?`<button class="btn sec chico" onclick="gtLimpiar()">✕ Limpiar filtros</button>`:""}
       <div style="flex:1"></div>
+      <button class="btn ${a.real?"":"sec"} chico" onclick="gtSetF('real',${a.real?"false":"true"})" title="Muestra bajo cada barra lo que quedó anotado en la Bitácora">${a.real?"✓":""} Plan vs. real</button>
       <button class="btn sec chico" onclick="gtColores()">${ic("layers")} Colores</button>
       <button class="btn sec chico" onclick="gtNueva()">＋ Nueva labor</button>
       <button class="btn chico" onclick="ganttPDF()">${ic("save")} PDF</button>
@@ -8280,6 +8486,250 @@ function gtBorrarGrupo(gid){
   D.labores=D.labores.filter(x=>x.gid!==gid); guardar(); cerrarModal(); render();
 }
 
+/* ================== BITÁCORA DEL CAMPO ==================
+   Diario rápido: marcas las labores que se hicieron hoy y, si quieres,
+   cuánto y con cuánta gente. El rendimiento sale de cantidad/personas.
+   Opcionalmente suma el avance a la labor del Plan (y por lo tanto a la
+   Carta Gantt), dejando un vínculo para no contar dos veces. */
+let BIT = null;
+function bitCfg(){ D.bitCfg = D.bitCfg || {}; D.bitCfg.unidades = D.bitCfg.unidades || {}; return D.bitCfg; }
+function bitUid(){ return "b"+Math.random().toString(36).slice(2,9); }
+function bitNum(x){ const n=parseFloat(String(x==null?"":x).replace(/\./g,"").replace(",",".").replace(/[^0-9.\-]/g,"")); return isNaN(n)?0:n; }
+function bitRinde(l){ const c=bitNum(l.cantidad), p=bitNum(l.personas); return (c>0&&p>0)? c/p : 0; }
+/* --- labores más usadas primero --- */
+function bitTiposOrden(){
+  const uso={};
+  (D.bitacora||[]).slice(-40).forEach(e=>(e.lineas||[]).forEach(l=>{ uso[l.tipo]=(uso[l.tipo]||0)+1; }));
+  return tiposLabor().slice().sort((a,b)=>(uso[b]||0)-(uso[a]||0) || a.localeCompare(b));
+}
+/* --- formulario --- */
+function bitNueva(fecha){
+  const c=bitCfg();
+  BIT={id:null, fecha:fecha||hoy(), fundo:(fundos()[0]||""), nota:"", lineas:[], integrar:!!c.integrar};
+  bitForm("Anotar el día");
+}
+function bitEditar(id){
+  const e=(D.bitacora||[]).find(x=>x.id===id); if(!e) return;
+  BIT={id:e.id, fecha:e.fecha, fundo:e.fundo, nota:e.nota||"", integrar:(e.lineas||[]).some(l=>l.laborId),
+       lineas:(e.lineas||[]).map(l=>Object.assign({uid:bitUid()}, l))};
+  bitForm("Editar el día");
+}
+function bitForm(titulo){
+  abrirModal(ic("clipboard")+" "+titulo, `
+    <div class="fila" style="gap:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:150px">${campoF("bit_fecha","Fecha *","date",BIT.fecha)}</div>
+      <div style="flex:1;min-width:150px">${selF("bit_fundo","Fundo *",fundos(),BIT.fundo)}</div>
+    </div>
+    <label class="f" style="margin-bottom:6px">¿Qué se hizo?</label>
+    <div class="bitchips" id="bitTipos"></div>
+    <div id="bitLineas"></div>
+    ${areaF("bit_nota","Nota del día (opcional)",BIT.nota,"Lo que pasó: visitas, problemas, clima…")}
+    <label class="f" style="display:flex;align-items:center;gap:9px;font-weight:600;background:var(--pclaro);
+      border:1px solid var(--p);border-radius:10px;padding:10px 12px">
+      <input type="checkbox" id="bit_integrar" ${BIT.integrar?"checked":""} onchange="BIT.integrar=this.checked"
+        style="width:auto;margin:0">
+      <span style="font-size:13px;color:var(--txt)">Integrar a la Carta Gantt
+        <span class="muted" style="display:block;font-size:11.5px;font-weight:500">Suma lo anotado como avance de la labor planificada. Si no existe, la crea.</span></span>
+    </label>
+  `, bitGuardar, ic("save")+" Guardar el día");
+  const ff=document.getElementById("bit_fundo");
+  if(ff) ff.onchange=()=>{ BIT.fundo=ff.value; BIT.lineas.forEach(l=>{ l.cuartel=""; }); bitPinta(); };
+  setTimeout(bitPinta,0);
+}
+function bitPinta(){
+  const cT=document.getElementById("bitTipos"), cL=document.getElementById("bitLineas");
+  if(!cT||!cL) return;
+  const marcados={}; BIT.lineas.forEach(l=>{ marcados[l.tipo]=true; });
+  cT.innerHTML = bitTiposOrden().map(t=>
+    `<button type="button" class="bitchip ${marcados[t]?"on":""}" onclick="bitToggle(${JSON.stringify(t).replace(/"/g,"&quot;")})">
+      <span class="bitck">${marcados[t]?"✓":"+"}</span>${esc(t)}</button>`).join("");
+  const cus=cuartelesDe(BIT.fundo);
+  cL.innerHTML = BIT.lineas.length? BIT.lineas.map(l=>{
+    const r=bitRinde(l);
+    return `<div class="bitlin">
+      <div class="bitlh"><b>${esc(l.tipo)}</b>
+        <button type="button" class="bitmas" onclick="bitOtra(${JSON.stringify(l.tipo).replace(/"/g,"&quot;")})" title="Otra línea de esta labor (otro cuartel)">＋ otro cuartel</button>
+        <button type="button" class="bitx" onclick="bitQuita('${l.uid}')" title="Quitar">✕</button></div>
+      <div class="bitgrid">
+        <label>Cuartel<select onchange="bitSet('${l.uid}','cuartel',this.value)">
+          <option value="">— Todo el fundo —</option>
+          ${cus.map(q=>`<option value="${esc(q.nombre)}"${l.cuartel===q.nombre?" selected":""}>${esc(q.nombre)}</option>`).join("")}
+        </select></label>
+        <label>Cantidad<input type="text" inputmode="decimal" value="${esc(l.cantidad||"")}"
+          oninput="bitSet('${l.uid}','cantidad',this.value)" placeholder="0"></label>
+        <label>Unidad<input type="text" value="${esc(l.unidad||"")}" list="bitUnid"
+          oninput="bitSet('${l.uid}','unidad',this.value)" placeholder="plantas, hileras, kg…"></label>
+        <label>Personas<input type="text" inputmode="decimal" value="${esc(l.personas||"")}"
+          oninput="bitSet('${l.uid}','personas',this.value)" placeholder="0"></label>
+      </div>
+      <div class="bitrin" id="rin_${l.uid}">${r>0?"Rinde <b>"+num(Math.round(r*10)/10)+"</b> "+esc(l.unidad||"u")+" por persona":""}</div>
+    </div>`;
+  }).join("") + `<datalist id="bitUnid">${["plantas","hileras","kg","ha","bins","metros","árboles","bandejas"].map(u=>`<option value="${u}">`).join("")}</datalist>`
+   : `<div class="muted" style="font-size:12.5px;padding:6px 2px 10px">Toca arriba las labores que se hicieron. Puedes marcar varias.</div>`;
+}
+function bitToggle(tipo){
+  const i=BIT.lineas.findIndex(l=>l.tipo===tipo);
+  if(i>=0) BIT.lineas=BIT.lineas.filter(l=>l.tipo!==tipo);
+  else BIT.lineas.push({uid:bitUid(), tipo, cuartel:"", cantidad:"", unidad:(bitCfg().unidades[tipo]||""), personas:""});
+  bitPinta();
+}
+function bitOtra(tipo){
+  BIT.lineas.push({uid:bitUid(), tipo, cuartel:"", cantidad:"", unidad:(bitCfg().unidades[tipo]||""), personas:""});
+  bitPinta();
+}
+function bitQuita(uid){ BIT.lineas=BIT.lineas.filter(l=>l.uid!==uid); bitPinta(); }
+function bitSet(uid,campo,val){
+  const l=BIT.lineas.find(x=>x.uid===uid); if(!l) return;
+  l[campo]=val;
+  const e=document.getElementById("rin_"+uid);           // se actualiza solo el rendimiento: no se repinta el formulario
+  if(e){ const r=bitRinde(l); e.innerHTML = r>0? "Rinde <b>"+num(Math.round(r*10)/10)+"</b> "+esc(l.unidad||"u")+" por persona" : ""; }
+}
+/* --- guardar, con integración opcional al Plan / Carta Gantt --- */
+function bitMatchLabor(fecha, fundo, cuartel, tipo){
+  const cand = D.labores.filter(l=> l.tipo===tipo && l.fundo===fundo && (l.cuartel||"")===(cuartel||"") && l.estado!=="finalizada");
+  if(!cand.length) return null;
+  cand.sort((a,b)=>{
+    const da = (a.fecha<=fecha && fecha<=gtFin(a))?0:1, db=(b.fecha<=fecha && fecha<=gtFin(b))?0:1;
+    if(da!==db) return da-db;
+    return Math.abs(gtDif(a.fecha,fecha)) - Math.abs(gtDif(b.fecha,fecha));
+  });
+  return cand[0];
+}
+function bitQuitaAvances(entId){   // borra los avances que dejó esta entrada (evita duplicar al reeditar)
+  D.labores.forEach(l=>{ if(l.avances && l.avances.length) l.avances = l.avances.filter(a=>a.bitId!==entId); });
+}
+function bitGuardar(){
+  const fecha=v("bit_fecha"), fundo=v("bit_fundo");
+  if(!fecha){ alert("Falta la fecha."); return false; }
+  if(!fundo){ alert("Elige el fundo."); return false; }
+  const lineas=BIT.lineas.filter(l=>l.tipo);
+  if(!lineas.length){ alert("Marca al menos una labor de las de arriba."); return false; }
+  const nota=v("bit_nota");
+  const integrar=!!(document.getElementById("bit_integrar")||{}).checked;
+  const ent = BIT.id? (D.bitacora||[]).find(x=>x.id===BIT.id) : null;
+  const id = ent? ent.id : nid();
+  bitQuitaAvances(id);                       // si se está reeditando, se rehace limpio
+  const cfg=bitCfg(); cfg.integrar=integrar;
+  const guardadas = lineas.map(l=>{
+    const cant=bitNum(l.cantidad), pers=bitNum(l.personas);
+    if(l.unidad) cfg.unidades[l.tipo]=l.unidad;    // recuerda la unidad habitual de esa labor
+    const o={tipo:l.tipo, cuartel:l.cuartel||"", cantidad:cant, unidad:l.unidad||"", personas:pers, laborId:null};
+    if(integrar && cant>0){
+      let lab=bitMatchLabor(fecha, fundo, o.cuartel, o.tipo);
+      if(!lab){
+        lab={id:nid(), gid:"", estado:"encurso", avances:[], meta:0, av:0, unidad:o.unidad,
+             fecha, fecha2:fecha, tipo:o.tipo, fundo, cuartel:o.cuartel, desc:"", resp:"", nota:""};
+        D.labores.push(lab);
+      }
+      lab.avances=lab.avances||[];
+      lab.avances.push({fecha, cantidad:cant, personas:pers, obs:"Bitácora", bitId:id});
+      if(!lab.unidad && o.unidad) lab.unidad=o.unidad;
+      o.laborId=lab.id;
+    }
+    return o;
+  });
+  const nuevo={id, fecha, fundo, nota, lineas:guardadas};
+  if(ent) Object.assign(ent, nuevo);
+  else { D.bitacora=D.bitacora||[]; D.bitacora.push(nuevo); }
+  BIT=null;
+}
+function bitBorrar(id){
+  if(!confirm("¿Eliminar esta anotación del día?\nSi la habías integrado, también se descuenta ese avance.")) return;
+  bitQuitaAvances(id);
+  D.bitacora=(D.bitacora||[]).filter(x=>x.id!==id);
+  guardar(); cerrarModal(); render();
+}
+/* --- vista: diario --- */
+function bitNav(){ nav.bit = nav.bit || {fundo:"", desde:"", hasta:"", tipo:""}; return nav.bit; }
+function bitSetF(k,val){ bitNav()[k]=val; render(); }
+function bitFiltradas(){
+  const f=bitNav();
+  return (D.bitacora||[]).filter(e=>{
+    if(f.fundo && e.fundo!==f.fundo) return false;
+    if(f.desde && e.fecha<f.desde) return false;
+    if(f.hasta && e.fecha>f.hasta) return false;
+    if(f.tipo && !(e.lineas||[]).some(l=>l.tipo===f.tipo)) return false;
+    return true;
+  }).sort((a,b)=> b.fecha.localeCompare(a.fecha) || b.id-a.id);
+}
+function vBitacora(){
+  const f=bitNav(), es=bitFiltradas();
+  /* resumen por labor */
+  const res={};
+  es.forEach(e=>(e.lineas||[]).forEach(l=>{
+    if(f.tipo && l.tipo!==f.tipo) return;
+    const g=res[l.tipo]=res[l.tipo]||{n:0, cant:0, pers:0, conP:0, uni:l.unidad||""};
+    g.n++; g.cant+=(+l.cantidad||0);
+    if(+l.personas>0 && +l.cantidad>0){ g.pers+=(+l.cantidad)/(+l.personas); g.conP++; }
+    if(!g.uni && l.unidad) g.uni=l.unidad;
+  }));
+  const filas=Object.keys(res).sort((a,b)=>res[b].n-res[a].n);
+  const nLab=es.reduce((s,e)=>s+(e.lineas||[]).length,0);
+  const tipos=[...new Set((D.bitacora||[]).flatMap(e=>(e.lineas||[]).map(l=>l.tipo)))].sort();
+  let h=`
+  <div class="card">
+    <button class="btn" style="width:100%;padding:13px;font-size:15px" onclick="bitNueva()">${ic("plus")} Anotar el día</button>
+    <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+      <select onchange="bitSetF('fundo',this.value)" style="max-width:190px">
+        <option value="">Todos los fundos</option>
+        ${fundos().map(x=>`<option value="${esc(x)}"${f.fundo===x?" selected":""}>${esc(x)}</option>`).join("")}
+      </select>
+      <select onchange="bitSetF('tipo',this.value)" style="max-width:190px">
+        <option value="">Toda labor</option>
+        ${tipos.map(x=>`<option value="${esc(x)}"${f.tipo===x?" selected":""}>${esc(x)}</option>`).join("")}
+      </select>
+      <span class="muted" style="font-size:12px">Desde</span>${fechaHTML("bit_d",f.desde,{estilo:"display:inline-block;width:145px",natAttrs:"onchange=\"bitSetF('desde',this.value)\""})}
+      <span class="muted" style="font-size:12px">hasta</span>${fechaHTML("bit_h",f.hasta,{estilo:"display:inline-block;width:145px",natAttrs:"onchange=\"bitSetF('hasta',this.value)\""})}
+      ${(f.fundo||f.tipo||f.desde||f.hasta)?`<button class="btn sec chico" onclick="nav.bit={fundo:'',desde:'',hasta:'',tipo:''};render()">✕ Limpiar</button>`:""}
+    </div>
+    <div class="fila" style="gap:12px;flex-wrap:wrap;margin-top:9px;font-size:12px;color:var(--txt2)">
+      <span><b>${es.length}</b> día${es.length===1?"":"s"} anotado${es.length===1?"":"s"}</span>
+      <span><b>${nLab}</b> labor${nLab===1?"":"es"} registrada${nLab===1?"":"s"}</span>
+    </div>
+  </div>`;
+  if(filas.length){
+    h+=`<div class="card"><h3 style="margin:0 0 8px">${ic("chart")} Resumen del período</h3>
+      <table class="tabla"><thead><tr><th>Labor</th><th style="text-align:right">Veces</th>
+      <th style="text-align:right">Total</th><th style="text-align:right">Rinde por persona</th></tr></thead><tbody>
+      ${filas.map(t=>{ const g=res[t]; const r=g.conP? g.pers/g.conP : 0;
+        return `<tr><td><b>${esc(t)}</b></td><td style="text-align:right">${g.n}</td>
+          <td style="text-align:right">${g.cant>0?num(g.cant)+" "+esc(g.uni):"—"}</td>
+          <td style="text-align:right">${r>0?num(Math.round(r*10)/10)+" "+esc(g.uni):"—"}</td></tr>`;}).join("")}
+      </tbody></table></div>`;
+  }
+  if(!es.length){
+    h+=`<div class="vacio"><span class="ico">📓</span>Aún no hay días anotados${f.fundo||f.tipo||f.desde||f.hasta?" con estos filtros":""}.<br>
+      Toca <b>Anotar el día</b> y marca lo que se hizo.</div>`;
+    return h;
+  }
+  h+=es.map(e=>{
+    const dt=gtD(e.fecha), dia=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][dt.getDay()];
+    const integradas=(e.lineas||[]).filter(l=>l.laborId).length;
+    return `<div class="card bitdia">
+      <div class="fila" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+        <div><b style="font-size:15px">${dia.charAt(0).toUpperCase()+dia.slice(1)} ${fmtF(e.fecha)}</b>
+          <span class="badge b-gris" style="margin-left:6px">${esc(e.fundo)}</span>
+          ${integradas?`<span class="badge b-verde" style="margin-left:4px">✓ ${integradas} en el plan</span>`:""}</div>
+        <div class="fila" style="gap:6px">
+          <button class="btn sec chico" onclick="bitEditar(${e.id})">${ic("edit")} Editar</button>
+          <button class="btn peligro chico" onclick="bitBorrar(${e.id})">${ic("trash")}</button></div>
+      </div>
+      <div class="bititems">${(e.lineas||[]).map(l=>{
+        const r=(+l.cantidad>0 && +l.personas>0)? (+l.cantidad)/(+l.personas) : 0;
+        return `<div class="bititem">
+          <span class="bitpt" style="background:${gtColTipo(l.tipo)}"></span>
+          <b>${esc(l.tipo)}</b>
+          <span class="muted">${l.cuartel?esc(l.cuartel):"todo el fundo"}</span>
+          ${+l.cantidad>0?`<span class="bitcant">${num(+l.cantidad)} ${esc(l.unidad||"")}</span>`:""}
+          ${+l.personas>0?`<span class="muted">· ${num(+l.personas)} pers.</span>`:""}
+          ${r>0?`<span class="bitrend">${num(Math.round(r*10)/10)} ${esc(l.unidad||"u")}/pers.</span>`:""}
+        </div>`;}).join("")}</div>
+      ${e.nota?`<div class="bitnota">${esc(e.nota)}</div>`:""}
+    </div>`;
+  }).join("");
+  return h;
+}
+
 /* aviso breve y no bloqueante (en el iPad el PDF pasa por la hoja para compartir) */
 function gtAviso(msg, ms){
   try{
@@ -8491,9 +8941,12 @@ function pdfPistas(ls, T, wT, iniMs, span){   // apila las barras que se traslap
   });
   return {items: out, n: Math.max(1, fin.length)};
 }
+/* alto de cada pista en el PDF: si se muestra lo realizado, hay que dejarle su franja */
+const PDF_B = 4.3, PDF_R = 1.5, PDF_GR = 0.6, PDF_GL = 0.7;
+function pdfPaso(){ return PDF_B + (gtAj().real ? PDF_GR + PDF_R : 0) + PDF_GL; }
 function pdfFilaGantt(d, T, y, items, n, izq, sub, extra){
-  const xT = PG.ml + GT_LW, altoB = 4.3, gap = 0.7;
-  const alto = Math.max(5.6, 1.4 + n*(altoB + gap));
+  const xT = PG.ml + GT_LW, altoB = PDF_B, paso = pdfPaso();
+  const alto = Math.max(5.6, 1.2 + n*paso);
   pdfFondoCols(d, y, alto, T);
   /* columna izquierda: cuartel a la izquierda, frutal y ha a la derecha */
   pdfF(d, 6, true, CP.texto);
@@ -8506,7 +8959,7 @@ function pdfFilaGantt(d, T, y, items, n, izq, sub, extra){
   /* barras */
   items.forEach(o => {
     const l = o.l, cb = gtColBar(l), pct = gtPct(l), atr = gtAtras(l);
-    const yb = y + 1 + o.k*(altoB + gap);
+    const yb = y + 1 + o.k*paso;
     pdfFill(d, mezcla(cb, 0.55)); pdfStroke(d, cb, 0.2);
     d.roundedRect(xT + o.x, yb, o.w, altoB, 0.6, 0.6, 'FD');
     if (pct > 0){
@@ -8518,6 +8971,20 @@ function pdfFilaGantt(d, T, y, items, n, izq, sub, extra){
       pdfF(d, 4.8, true, pct >= 55 ? '#FFFFFF' : CP.texto);
       pdfTxt(d, (l.tipo || 'Labor') + (l.desc? ' · '+l.desc : '') + (pct>0 && pct<100 ? ' · '+pct+'%' : ''),
              xT + o.x + 1.4, yb + 2.9, {max: o.w - 2.6});
+    }
+    /* lo realizado, segun la bitacora, justo debajo */
+    if (gtAj().real){
+      const iniMs2 = gtD(T.ini).getTime(), span2 = gtD(T.fin).getTime() + 864e5 - iniMs2;
+      const wT2 = PG.ancho - GT_LW;
+      gtRealSeg(gtRealDias(l)).forEach(s => {
+        if (s.fin < T.ini || s.ini > T.fin) return;
+        const si = s.ini < T.ini ? T.ini : s.ini, sf = s.fin > T.fin ? T.fin : s.fin;
+        const rx = (gtD(si).getTime() - iniMs2)/span2 * wT2;
+        const rw = Math.max(0.9, (gtD(sf).getTime() + 864e5 - gtD(si).getTime())/span2 * wT2 - 0.3);
+        const dentro = s.ini >= l.fecha && s.fin <= gtFin(l);
+        pdfFill(d, dentro ? CP.verde2 : CP.naranja);
+        d.roundedRect(xT + rx, yb + altoB + PDF_GR, rw, PDF_R, 0.35, 0.35, 'F');
+      });
     }
   });
   return y + alto;
@@ -8556,7 +9023,7 @@ function pdfGantt(d, R, y, T, ls){
     /* labores de todo el fundo (sin cuartel) */
     if (g.gen.length){
       const p = pdfPistas(g.gen, T, wT, iniMs, span);
-      const alto = Math.max(5.6, 1.4 + p.n*5);
+      const alto = Math.max(5.6, 1.2 + p.n*pdfPaso());
       if (y + alto > PG.yFin){ y = pdfPagina(d, R); y = pdfEscala(d, y, T); }
       y = pdfFilaGantt(d, T, y, p.items, p.n, 'Todo el fundo', 'labor general');
     }
@@ -8564,7 +9031,7 @@ function pdfGantt(d, R, y, T, ls){
     let z = 0;
     for (const cu of g.orden.slice().sort()){
       const p = pdfPistas(g.cu[cu], T, wT, iniMs, span);
-      const alto = Math.max(5.6, 1.4 + p.n*5);
+      const alto = Math.max(5.6, 1.2 + p.n*pdfPaso());
       if (y + alto > PG.yFin){ y = pdfPagina(d, R); y = pdfEscala(d, y, T); }
       if (z % 2 === 1){ pdfFill(d, '#FBFDFC'); d.rect(PG.ml, y, PG.ancho, alto, 'F'); }
       const q = D.cuarteles.find(x => x.fundo === f && x.nombre === cu);
