@@ -174,6 +174,56 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
 .grbar.no{background:#fdecec; color:#a01c1c; border-color:#d64545; text-decoration:line-through;}
 .grbar.dif{background:#E8720C; color:#fff;}
 .grbar.pend{background:#fff; color:#8a8f89; border:1.5px dashed #c2c9c2;}
+/* barras continuas, divididas por día */
+.gdbar{position:absolute; height:24px; border-radius:7px; overflow:hidden; display:flex; align-items:center;
+  color:#fff; font-size:11.5px; font-weight:700; white-space:nowrap;
+  box-shadow:0 1px 3px rgba(18,39,31,.22);}
+.gdbar.ok{background-color:#2D6A4F;}
+.gdbar.extra{background-color:#E8720C;}
+.gdtx{padding:0 9px; overflow:hidden; text-overflow:ellipsis; cursor:pointer;
+  text-shadow:0 1px 2px rgba(0,0,0,.3); letter-spacing:.01em;}
+.gdtx:hover{text-decoration:underline;}
+/* pista de lo planificado en la grilla de abajo */
+.gdtrack{position:absolute; height:24px; border-radius:7px; background-color:#f1f4f0;
+  border:1px solid #dfe5de; box-sizing:border-box;}
+/* días que ya pasaron y no se trabajaron: tinte suave, sin bordes que griten */
+.gdfalta{position:absolute; height:24px; border-radius:7px; background:rgba(214,69,69,.13);
+  box-sizing:border-box;}
+/* días sacados del plan */
+.gdoff{position:absolute; height:24px; border-radius:6px; box-sizing:border-box; border:1px solid #e2e6e1;
+  background:repeating-linear-gradient(45deg,#f6f8f5,#f6f8f5 3px,#e9ede8 3px,#e9ede8 6px);}
+/* placa con el nombre de la labor: legible sobre cualquier fondo */
+/* placa delgada con el nombre, dentro de la barra de lo realizado */
+.gdlbl{position:absolute; height:16px; line-height:16px; padding:0 6px; border-radius:4px;
+  background:rgba(255,255,255,.93); color:var(--txt); font-size:10.5px; font-weight:700;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:4; pointer-events:none;
+  box-shadow:0 1px 2px rgba(18,39,31,.16);}
+/* menú al tocar un día */
+.gmbg{position:fixed; inset:0; z-index:9998; background:rgba(16,24,20,.18);}
+.gmenu{position:fixed; z-index:9999; background:#fff; border-radius:14px; min-width:216px;
+  box-shadow:0 10px 34px rgba(16,32,24,.28); overflow:hidden; padding:6px;
+  border:1px solid var(--borde);}
+.gmh{padding:9px 11px 8px; border-bottom:1px solid var(--borde); margin-bottom:5px;}
+.gmh b{font-size:13.5px; color:var(--txt); display:block;}
+.gmh div{font-size:11.5px; color:var(--txt2); margin-top:2px;}
+.gmi{display:flex; align-items:center; gap:10px; width:100%; border:none; background:none;
+  padding:11px 11px; border-radius:10px; font-size:14px; font-weight:600; color:var(--txt);
+  cursor:pointer; text-align:left; min-height:46px;}
+.gmi:hover{background:var(--pclaro);}
+.gmic{width:22px; text-align:center; font-size:15px; flex:none;}
+.gmi.ok .gmic{color:#2D6A4F;} .gmi.no .gmic{color:#d64545;}
+.gmi.act{background:#f2f6f2;}
+.gmt{margin-left:auto; font-size:10px; font-weight:700; color:var(--txt2);
+  background:#eef1ec; border-radius:20px; padding:2px 8px;}
+/* contador de días trabajados */
+.gdcount{position:absolute; height:24px; display:flex; align-items:center; padding:0 7px;
+  font-size:10.5px; font-weight:800; color:#8a908a; background:#f4f6f3; border-radius:6px;
+  white-space:nowrap; pointer-events:none; border:1px solid #e6eae5;}
+.gdcount.algo{color:var(--p2); background:var(--pclaro); border-color:#cfe3d6;}
+.gdcount.full{color:#fff; background:#2D6A4F; border-color:#2D6A4F;}
+/* zonas para tocar día por día */
+.gzd{position:absolute; height:28px; cursor:pointer; z-index:5; border-radius:6px;}
+.gzd:hover{background:rgba(31,41,51,.09); box-shadow:inset 0 0 0 1.5px rgba(31,41,51,.18);}
 .grbar.futuro{background:#f4f6f3; color:#a8ada7; border:1.5px dashed #dde3dd;}
 .gfilt{gap:6px; flex-wrap:wrap; margin-top:9px; align-items:center;}
 .gfl{font-size:11.5px; font-weight:800; color:var(--p); text-transform:uppercase; letter-spacing:.04em;}
@@ -229,6 +279,24 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
   border-radius:9px; font-size:14px; background:#fff; min-height:0;}
 .bitrin{font-size:12px; color:var(--p2); font-weight:600; margin-top:7px; min-height:14px;}
 .bitdia{padding:13px 15px;}
+.bitdia.hoy{border:1.5px solid var(--p); box-shadow:0 2px 10px rgba(30,122,76,.13);}
+/* separador de mes en el diario */
+.bitmes{font-size:11.5px; font-weight:800; color:var(--p); text-transform:uppercase;
+  letter-spacing:.06em; margin:16px 4px 7px; display:flex; align-items:center; gap:10px;}
+.bitmes::after{content:""; flex:1; height:1px; background:var(--borde);}
+/* lo que llevas hecho */
+.bres{border:1px solid var(--borde); border-radius:11px; overflow:hidden;}
+.bresr{display:flex; align-items:center; gap:10px; padding:11px 12px; cursor:pointer;
+  border-bottom:1px solid #f0f3ef; flex-wrap:wrap;}
+.bresr:last-child{border-bottom:none;}
+.bresr:hover{background:var(--pclaro);}
+.bresn{flex:1 1 150px; min-width:0; font-size:13.5px; font-weight:700; color:var(--txt);}
+.bresv{display:block; font-size:11px; font-weight:600; color:var(--txt2); margin-top:2px;}
+.bresc{flex:0 0 auto; font-size:13px; color:var(--txt); text-align:right; min-width:78px;}
+.bresc b{font-size:15px; color:var(--p2);}
+.bresp{flex:0 0 auto; font-size:11.5px; color:var(--azul); background:#eef4ff;
+  border-radius:7px; padding:3px 9px; min-width:0;}
+.bresp:empty{display:none;}
 .bititems{margin-top:9px; display:flex; flex-direction:column; gap:5px;}
 .bititem{display:flex; align-items:center; gap:7px; flex-wrap:wrap; font-size:13.5px;
   padding:6px 0; border-bottom:1px solid #f2f5f1;}
@@ -7962,7 +8030,7 @@ function gtPer(p){ const a=gtAj(); a.per=p; guardar(); render(); }
 function gtHoy(){ const a=gtAj(); a.ancla=hoy(); guardar(); render(); }
 function gtSetF(k,v){ const a=gtAj(); a[k]=v; guardar(); render(); }
 function gtTog(k,v){ const a=gtAj(), i=a[k].indexOf(v); i<0? a[k].push(v) : a[k].splice(i,1); guardar(); render(); }
-function gtColap(f){ const a=gtAj(); a.col[f]=!a.col[f]; guardar(); render(); }
+function gtColap(f){ gtScrollGuardar(); const a=gtAj(); a.col[f]=!a.col[f]; guardar(); render(); }
 function gtLimpiar(){ const a=gtAj(); a.fundos=[]; a.esp=[]; a.tipo=""; a.est=""; a.q=""; guardar(); render(); }
 /* --- filtros --- */
 function gtNorm(s){ return String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,""); }
@@ -8003,6 +8071,7 @@ function gtPistas(ls,T){ // apila las barras que se traslapan
 }
 function gtBar(o,T){
   const l=o.l, c=gtColBar(l), av=gtPct(l);
+  if(T.step===1) return gtDiasPlanHTML(l,T,o.k,c,(l.desc||l.tipo||"Labor"));
   const nom=l.tipo||"Labor", txt=l.desc? l.desc : nom;
   const cl="gbar"+((l.estado==="hecha"||l.estado==="finalizada")?" fin":"")+(gtAtras(l)?" atr":"");
   const tip=`${nom}${l.desc?" · "+l.desc:""}\n${l.cuartel||"Todo el fundo"}\n${fmtF(l.fecha)} → ${fmtF(gtFin(l))}${l.resp?"\n"+l.resp:""}`;
@@ -8016,13 +8085,14 @@ function gtBar(o,T){
 function gtPct(l){
   if(l.estado==="hecha"||l.estado==="finalizada") return 100;
   if(l.av!=null && l.av!=="") return Math.max(0,Math.min(100,Math.round(+l.av||0)));
-  const meta=+l.meta||0; if(meta<=0) return 0;
+  const meta=+l.meta||0;
+  if(meta<=0) return gtPctDias(l);            // sin meta: manda cuántos días se trabajaron
   const h=(l.avances||[]).reduce((s,x)=>s+(+x.cantidad||0),0);
   return Math.max(0,Math.min(100,Math.round(h/meta*100)));
 }
 /* --- Lo REALIZADO: días de bitácora que corresponden a una labor planificada.
        Calzan por vínculo directo (si se integró) o por fundo + cuartel + actividad. --- */
-function gtLH(){ return 30; }   // alto de cada pista
+function gtLH(){ return 32; }   // alto de cada pista
 function gtRealDias(l){
   const out=[];
   (D.bitacora||[]).forEach(e=>{
@@ -8043,6 +8113,146 @@ function gtRealSeg(dias){                          // junta días seguidos en un
   });
   return s;
 }
+/* --- Día a día -------------------------------------------------------------
+   Una labor de lunes a viernes puede haberse trabajado solo algunos días.
+   diasOff = días del plan que NO se van a trabajar.
+   real.dias = días efectivamente trabajados (la bitácora también cuenta). --- */
+let GT_SCROLL=null;
+function gtScrollGuardar(){
+  const w=document.querySelector(".gwrap");
+  GT_SCROLL={y:(window.scrollY||0), l:w?w.scrollLeft:0, t:w?w.scrollTop:0};
+}
+function gtScrollRestaurar(){
+  if(!GT_SCROLL) return;
+  const s=GT_SCROLL; GT_SCROLL=null;
+  const w=document.querySelector(".gwrap");
+  if(w){ w.scrollLeft=s.l; w.scrollTop=s.t; }
+  try{ window.scrollTo(0,s.y); }catch(_){ }
+}
+function gtDiasEntre(a,b){ const o=[]; for(let s=a; s<=b; s=gtSum(s,1)) o.push(s); return o; }
+function gtDiasPlan(l){
+  const off=(l.diasOff||[]);
+  return gtDiasEntre(l.fecha, gtFin(l)).filter(d=>off.indexOf(d)<0);
+}
+function gtDiasHechos(l){
+  const s=new Set((l.real&&l.real.dias)||[]);
+  gtRealDias(l).forEach(d=>s.add(d.fecha));
+  return [...s].sort();
+}
+function gtDiaBit(l,fecha){ return gtRealDias(l).some(d=>d.fecha===fecha); }
+function gtTramos(dias){          // junta días seguidos
+  const s=[];
+  dias.slice().sort().forEach(d=>{
+    const u=s[s.length-1];
+    if(u && gtDif(u.fin,d)===1) u.fin=d; else s.push({ini:d, fin:d});
+  });
+  return s;
+}
+function gtPctDias(l){            // avance por días trabajados, cuando no hay meta
+  const p=gtDiasPlan(l).length; if(!p) return 0;
+  const h=gtDiasHechos(l).filter(d=>d>=l.fecha && d<=gtFin(l)).length;
+  return Math.max(0,Math.min(100,Math.round(h/p*100)));
+}
+/* --- menú al tocar un día: elaborado / no elaborado / editar --- */
+function gtMenuCerrar(){
+  ["gtMenu","gtMenuBg"].forEach(id=>{ const e=document.getElementById(id); if(e) e.remove(); });
+}
+function gtMenu(id, fecha, modo, ev){
+  const l=D.labores.find(x=>x.id===id); if(!l) return;
+  gtMenuCerrar();
+  const hechos=gtDiasHechos(l), hecho=hechos.indexOf(fecha)>=0, bit=gtDiaBit(l,fecha);
+  const off=((l.diasOff||[]).indexOf(fecha)>=0);
+  const plan=modo==="gtDiaPlan";
+  const d=document.createElement("div");
+  d.id="gtMenu"; d.className="gmenu";
+  d.innerHTML =
+    `<div class="gmh"><b>${esc(l.tipo||"Labor")}</b>
+       <div>${esc(l.cuartel||"todo el fundo")} · ${fmtF(fecha)}</div></div>`+
+    `<button type="button" class="gmi ok${hecho?" act":""}" onclick="gtMenuAcc(${id},'${fecha}','si')">
+       <span class="gmic">✓</span> Elaborado${hecho?" <span class=\"gmt\">actual</span>":""}</button>`+
+    `<button type="button" class="gmi no${!hecho?" act":""}" onclick="gtMenuAcc(${id},'${fecha}','no')">
+       <span class="gmic">✕</span> No elaborado${!hecho?" <span class=\"gmt\">actual</span>":""}</button>`+
+    (plan? `<button type="button" class="gmi" onclick="gtMenuAcc(${id},'${fecha}','${off?"on":"off"}')">
+       <span class="gmic">${off?"↩":"⌀"}</span> ${off?"Devolver este día al plan":"Sacar este día del plan"}</button>`:"")+
+    (bit? `<button type="button" class="gmi" onclick="gtMenuAcc(${id},'${fecha}','bit')">
+       <span class="gmic">📓</span> Ver en la bitácora</button>`:"")+
+    `<button type="button" class="gmi" onclick="gtMenuAcc(${id},'${fecha}','edit')">
+       <span class="gmic">✎</span> Editar labor</button>`;
+  const bg=document.createElement("div"); bg.id="gtMenuBg"; bg.className="gmbg";
+  bg.onclick=gtMenuCerrar;
+  document.body.appendChild(bg); document.body.appendChild(d);
+  const r=d.getBoundingClientRect();
+  const vw=window.innerWidth||900, vh=window.innerHeight||700;
+  const cx=(ev&&ev.clientX)||vw/2, cy=(ev&&ev.clientY)||vh/2;
+  d.style.left=Math.max(8,Math.min(cx-r.width/2, vw-r.width-8))+"px";
+  d.style.top =(cy+16+r.height>vh ? Math.max(8,cy-r.height-14) : cy+16)+"px";
+}
+function gtMenuAcc(id, fecha, acc){
+  gtMenuCerrar();
+  const l=D.labores.find(x=>x.id===id); if(!l) return;
+  if(acc==="edit"){ gtEditar(id); return; }
+  if(acc==="bit"){
+    const e=(D.bitacora||[]).find(x=>x.fecha===fecha && (x.lineas||[]).some(li=>
+      (li.laborId&&li.laborId===l.id) || (!li.laborId && li.tipo===l.tipo && x.fundo===l.fundo && (li.cuartel||"")===(l.cuartel||""))));
+    if(e) bitEditar(e.id);
+    return;
+  }
+  gtScrollGuardar();
+  if(acc==="off" || acc==="on"){
+    l.diasOff=l.diasOff||[];
+    const i=l.diasOff.indexOf(fecha);
+    if(acc==="off" && i<0) l.diasOff.push(fecha);
+    if(acc==="on" && i>=0) l.diasOff.splice(i,1);
+    if(!l.diasOff.length) delete l.diasOff;
+  }else{
+    if(acc==="no" && gtDiaBit(l,fecha)){
+      alert("Ese día viene de la Bitácora.\nPara quitarlo, edita esa anotación en Bitácora.");
+      return;
+    }
+    l.real=l.real||{}; l.real.dias=l.real.dias||[];
+    const i=l.real.dias.indexOf(fecha);
+    if(acc==="si" && i<0) l.real.dias.push(fecha);
+    if(acc==="no" && i>=0) l.real.dias.splice(i,1);
+    l.real.dias.sort();
+  }
+  const hechos=gtDiasHechos(l), plan=gtDiasPlan(l);
+  l.real=l.real||{};
+  l.real.ok = hechos.length? (hechos.length>=plan.length? "si":"parcial") : "";
+  if(!l.real.ok) delete l.real.ok;
+  if(l.real.ok==="si" && l.estado!=="finalizada") l.estado="hecha";
+  else if(l.estado==="hecha" && l.real.ok!=="si") l.estado="encurso";
+  guardar(); render();
+}
+/* toca un día en la grilla de abajo */
+function gtDiaReal(id, fecha){
+  const l=D.labores.find(x=>x.id===id); if(!l) return;
+  gtScrollGuardar();
+  if(gtDiaBit(l,fecha)){                       // ese día lo puso la bitácora: se edita allá
+    const e=(D.bitacora||[]).find(x=>x.fecha===fecha && (x.lineas||[]).some(li=>
+      (li.laborId&&li.laborId===l.id) || (!li.laborId && li.tipo===l.tipo && x.fundo===l.fundo && (li.cuartel||"")===(l.cuartel||""))));
+    if(e){ bitEditar(e.id); return; }
+  }
+  l.real=l.real||{}; l.real.dias=l.real.dias||[];
+  const i=l.real.dias.indexOf(fecha);
+  if(i<0) l.real.dias.push(fecha); else l.real.dias.splice(i,1);
+  l.real.dias.sort();
+  const hechos=gtDiasHechos(l), plan=gtDiasPlan(l);
+  l.real.ok = hechos.length? (hechos.length>=plan.length? "si":"parcial") : "";
+  if(!l.real.ok) delete l.real.ok;
+  if(l.real.ok==="si" && l.estado!=="finalizada") l.estado="hecha";
+  else if(l.estado==="hecha" && l.real.ok!=="si") l.estado="encurso";
+  guardar(); render();
+}
+/* toca un día en la grilla de arriba: lo saca o lo devuelve al plan */
+function gtDiaPlan(id, fecha){
+  const l=D.labores.find(x=>x.id===id); if(!l) return;
+  gtScrollGuardar();
+  l.diasOff=l.diasOff||[];
+  const i=l.diasOff.indexOf(fecha);
+  if(i<0) l.diasOff.push(fecha); else l.diasOff.splice(i,1);
+  if(!l.diasOff.length) delete l.diasOff;
+  guardar(); render();
+}
 function gtRealGeo(l,T){          // dónde va la barra de lo realizado
   const r=l.real||{};
   let ini=l.fecha, fin=gtFin(l), fuente="plan";
@@ -8061,7 +8271,84 @@ function gtEstadoReal(l){         // qué mostrar en la grilla de abajo
   if(l.estado==="hecha"||l.estado==="finalizada") return "si";
   return gtFin(l)<hoy()? "pend" : "futuro";
 }
+/* Geometría de un tramo de días dentro de la ventana */
+function gtTramoGeo(ini,fin,T){
+  if(fin<T.ini || ini>T.fin) return null;
+  const a=ini<T.ini?T.ini:ini, b=fin>T.fin?T.fin:fin;
+  return {x:gtDif(T.ini,a)*T.cw, w:(gtDif(a,b)+1)*T.cw-2};
+}
+/* líneas finas que dividen los días dentro de una barra continua */
+function gtRayas(T){
+  return `background-image:linear-gradient(90deg,rgba(255,255,255,.22) 0 1px,transparent 1px);`+
+         `background-size:${T.cw}px 100%;background-repeat:repeat-x;`;
+}
+/* zonas invisibles para tocar día por día encima de las barras */
+function gtZonas(l,T,k,fn,dias,tips,off){
+  return dias.map(d=>{
+    if(d<T.ini || d>T.fin) return "";
+    const x=gtDif(T.ini,d)*T.cw;
+    return `<div class="gzd" style="left:${x}px;width:${T.cw}px;top:${(1+(off||0)+k*gtLH())}px"
+      onclick="event.stopPropagation();gtMenu(${l.id},'${d}','${fn}',event)" title="${esc(tips(d))}"></div>`;
+  }).join("");
+}
+function gtDiasPlanHTML(l,T,k,color,titulo){
+  const plan=gtDiasPlan(l), off=(l.diasOff||[]), todos=gtDiasEntre(l.fecha,gtFin(l));
+  const top=3+k*gtLH();
+  let h="";
+  /* los días sacados del plan quedan como hueco rayado */
+  gtTramos(off).forEach(t=>{ const g=gtTramoGeo(t.ini,t.fin,T); if(g)
+    h+=`<div class="gdoff" style="left:${g.x}px;width:${g.w}px;top:${top}px"></div>`; });
+  /* los días planificados van como una sola barra continua, dividida por día */
+  const tramos=gtTramos(plan);
+  const mayor=tramos.reduce((a,b)=>(gtDif(b.ini,b.fin)>gtDif(a.ini,a.fin)?b:a), tramos[0]||{ini:l.fecha,fin:l.fecha});
+  tramos.forEach(t=>{
+    const g=gtTramoGeo(t.ini,t.fin,T); if(!g) return;
+    const rot=(t===mayor && g.w>40)? `<span class="gdtx">${esc(titulo)}</span>` : "";
+    h+=`<div class="gdbar" style="left:${g.x}px;width:${g.w}px;top:${top}px;background-color:${color};${gtRayas(T)}">${rot}</div>`;
+  });
+  h+=gtZonas(l,T,k,"gtDiaPlan",todos, d=>
+    `${l.tipo||"Labor"} · ${l.cuartel||"todo el fundo"}\n${fmtF(d)}\n`+
+    (off.indexOf(d)>=0?"Día fuera del plan":"Día planificado")+"\nToca para elegir qué hacer");
+  return h;
+}
+function gtDiasRealHTML(l,T,k){
+  const plan=gtDiasPlan(l), hechos=gtDiasHechos(l), hoyISO=hoy();
+  const top=3+k*gtLH();
+  const dentro=hechos.filter(d=>plan.indexOf(d)>=0), fuera=hechos.filter(d=>plan.indexOf(d)<0);
+  let h="";
+  /* la pista clara muestra lo que estaba planificado */
+  gtTramos(plan).forEach(t=>{ const g=gtTramoGeo(t.ini,t.fin,T); if(g)
+    h+=`<div class="gdtrack" style="left:${g.x}px;width:${g.w}px;top:${top}px;${gtRayas(T)}"></div>`; });
+  /* los días que ya pasaron y no se trabajaron: relleno rojo suave, sin bordes que griten */
+  const faltan=plan.filter(d=>hechos.indexOf(d)<0 && d<hoyISO);
+  gtTramos(faltan).forEach(t=>{ const g=gtTramoGeo(t.ini,t.fin,T); if(g)
+    h+=`<div class="gdfalta" style="left:${g.x}px;width:${g.w}px;top:${top}px"></div>`; });
+  /* lo trabajado, en verde; lo trabajado fuera de fecha, en naranjo */
+  gtTramos(dentro).forEach(t=>{ const g=gtTramoGeo(t.ini,t.fin,T); if(g)
+    h+=`<div class="gdbar ok" style="left:${g.x}px;width:${g.w}px;top:${top}px;${gtRayas(T)}"></div>`; });
+  gtTramos(fuera).forEach(t=>{ const g=gtTramoGeo(t.ini,t.fin,T); if(g)
+    h+=`<div class="gdbar extra" style="left:${g.x}px;width:${g.w}px;top:${top}px;${gtRayas(T)}"></div>`; });
+  /* el nombre va dentro, en una placa delgada que se lee sobre cualquier fondo */
+  const nd=dentro.length, np=plan.length;
+  const g0=gtTramoGeo(plan[0]||l.fecha, gtFin(l), T);
+  if(g0 && g0.w>44){
+    h+=`<div class="gdlbl" style="left:${g0.x+4}px;top:${top+4}px;max-width:${Math.max(44,g0.w-12)}px">${esc(l.desc||l.tipo||"Labor")}</div>`;
+  }
+  /* contador al final: 3/5 días */
+  const ult=gtTramoGeo(plan[np-1]||l.fecha, plan[np-1]||gtFin(l), T);
+  if(ult && np){
+    h+=`<div class="gdcount${nd>=np?" full":(nd?" algo":"")}" style="left:${(ult.x+ult.w+6)}px;top:${top}px">${nd}/${np}</div>`;
+  }
+  h+=gtZonas(l,T,k,"gtDiaReal", [...new Set(plan.concat(hechos))].sort(), d=>{
+    const hecho=hechos.indexOf(d)>=0, bit=gtDiaBit(l,d);
+    return `${l.tipo||"Labor"} · ${l.cuartel||"todo el fundo"}\n${fmtF(d)}\n`+
+      (hecho? (bit?"Anotado en la bitácora (toca para verlo)":"Se trabajó"):(d<hoyISO?"No se trabajó":"Aún no toca"))+
+      "\nToca para elegir qué hacer";
+  });
+  return h;
+}
 function gtBarReal(l,T,k){
+  if(T.step===1) return gtDiasRealHTML(l,T,k);
   const est=gtEstadoReal(l), g=gtRealGeo(l,T);
   const ini=g.ini<T.ini?T.ini:g.ini, fin=g.fin>T.fin?T.fin:g.fin;
   if(fin<T.ini || ini>T.fin) return "";
@@ -8083,6 +8370,7 @@ function gtBarReal(l,T,k){
 /* --- confirmar desde la carta --- */
 function gtConfirmar(id){
   const l=D.labores.find(x=>x.id===id); if(!l) return;
+  gtScrollGuardar();
   const r=l.real||{}, dias=gtRealDias(l);
   const tot=dias.reduce((s,d)=>s+(+d.cant||0),0);
   nav.gtOk = r.ok || (dias.length?"si":"");
@@ -8206,8 +8494,8 @@ function vGantt(){
     h = cabHTML
       + `<div class="gsec"><div class="glft">${ic("calendar")} Planificado</div><div class="gtrk" style="width:${anchoT}px"></div></div>`
       + cuerpoPlan
-      + `<div class="gsec real"><div class="glft">${ic("checkCirc")} Realizado · toca para confirmar</div>
-         <div class="gtrk" style="width:${anchoT}px"><span class="gsecm">Toca cada barra para marcar si se hizo, no se hizo, o se hizo distinto</span></div></div>`
+      + `<div class="gsec real"><div class="glft">${ic("checkCirc")} Realizado</div>
+         <div class="gtrk" style="width:${anchoT}px"><span class="gsecm">${T.step===1?"Toca cada día para marcar si se trabajó":"Toca cada barra para confirmar"}</span></div></div>`
       + cabHTML
       + cuerpo("real");
   } else {
@@ -8225,6 +8513,7 @@ function vGantt(){
   fus.forEach(f=>{ fil+=`<button class="chip ${a.fundos.indexOf(f)>=0?"on":""}" onclick="gtTog('fundos','${esc(f).replace(/'/g,"\\'")}')">${esc(f)}</button>`; });
   if(esp.length){ fil+=`<span class="gsep"></span><span class="gfl">Frutal:</span>`;
     esp.forEach(e=>{ fil+=`<button class="chip ${a.esp.indexOf(e)>=0?"on":""}" onclick="gtTog('esp','${esc(e).replace(/'/g,"\\'")}')"><span class="gpt" style="background:${gtColEsp(e)}"></span>${esc(e)}</button>`; });}
+  setTimeout(gtScrollRestaurar,0);
   return `
   <div class="card">
     <div class="fila" style="align-items:center;gap:8px;flex-wrap:wrap">
@@ -8652,64 +8941,101 @@ function bitFiltradas(){
     return true;
   }).sort((a,b)=> b.fecha.localeCompare(a.fecha) || b.id-a.id);
 }
+function bitAyer(){ const d=gtD(hoy()); d.setDate(d.getDate()-1); return gtI(d); }
 function vBitacora(){
-  const f=bitNav(), es=bitFiltradas();
-  /* resumen por labor */
+  const f=bitNav(), es=bitFiltradas(), hoyISO=hoy(), ayer=bitAyer();
+  const deHoy=(D.bitacora||[]).filter(e=>e.fecha===hoyISO);
+  /* resumen: cuánto se ha hecho de cada labor */
   const res={};
   es.forEach(e=>(e.lineas||[]).forEach(l=>{
     if(f.tipo && l.tipo!==f.tipo) return;
-    const g=res[l.tipo]=res[l.tipo]||{n:0, cant:0, pers:0, conP:0, uni:l.unidad||""};
-    g.n++; g.cant+=(+l.cantidad||0);
+    const g=res[l.tipo]=res[l.tipo]||{n:0, cant:0, pers:0, conP:0, uni:l.unidad||"", dias:new Set()};
+    g.n++; g.cant+=(+l.cantidad||0); g.dias.add(e.fecha);
     if(+l.personas>0 && +l.cantidad>0){ g.pers+=(+l.cantidad)/(+l.personas); g.conP++; }
     if(!g.uni && l.unidad) g.uni=l.unidad;
   }));
   const filas=Object.keys(res).sort((a,b)=>res[b].n-res[a].n);
   const nLab=es.reduce((s,e)=>s+(e.lineas||[]).length,0);
   const tipos=[...new Set((D.bitacora||[]).flatMap(e=>(e.lineas||[]).map(l=>l.tipo)))].sort();
+  const hayFiltro=!!(f.fundo||f.tipo||f.desde||f.hasta);
+  /* rango real de lo que se está mirando */
+  let rango="todo lo anotado";
+  if(f.desde && f.hasta) rango="del "+fmtF(f.desde)+" al "+fmtF(f.hasta);
+  else if(f.desde) rango="desde el "+fmtF(f.desde);
+  else if(f.hasta) rango="hasta el "+fmtF(f.hasta);
+  else if(es.length) rango="del "+fmtF(es[es.length-1].fecha)+" al "+fmtF(es[0].fecha);
+
   let h=`
   <div class="card">
-    <button class="btn" style="width:100%;padding:13px;font-size:15px" onclick="bitNueva()">${ic("plus")} Anotar el día</button>
-    <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
-      <select onchange="bitSetF('fundo',this.value)" style="max-width:190px">
+    <button class="btn" style="width:100%;padding:15px;font-size:16px" onclick="bitNueva('${hoyISO}')">
+      ${ic("plus")} Anotar lo de hoy</button>
+    <div class="fila" style="gap:8px;margin-top:9px;flex-wrap:wrap">
+      <button class="btn sec chico" onclick="bitNueva('${ayer}')">＋ Anotar ayer</button>
+      <button class="btn sec chico" onclick="bitNueva()">＋ Otro día</button>
+      ${deHoy.length?`<span class="badge b-verde" style="align-self:center">✓ Hoy ya tienes ${deHoy.length} anotación${deHoy.length>1?"es":""}</span>`
+                    :`<span class="muted" style="font-size:12px;align-self:center">Hoy todavía no anotas nada</span>`}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="fila" style="gap:8px;flex-wrap:wrap;align-items:center">
+      <select onchange="bitSetF('fundo',this.value)" style="max-width:180px">
         <option value="">Todos los fundos</option>
         ${fundos().map(x=>`<option value="${esc(x)}"${f.fundo===x?" selected":""}>${esc(x)}</option>`).join("")}
       </select>
-      <select onchange="bitSetF('tipo',this.value)" style="max-width:190px">
+      <select onchange="bitSetF('tipo',this.value)" style="max-width:180px">
         <option value="">Toda labor</option>
         ${tipos.map(x=>`<option value="${esc(x)}"${f.tipo===x?" selected":""}>${esc(x)}</option>`).join("")}
       </select>
-      <span class="muted" style="font-size:12px">Desde</span>${fechaHTML("bit_d",f.desde,{estilo:"display:inline-block;width:145px",natAttrs:"onchange=\"bitSetF('desde',this.value)\""})}
-      <span class="muted" style="font-size:12px">hasta</span>${fechaHTML("bit_h",f.hasta,{estilo:"display:inline-block;width:145px",natAttrs:"onchange=\"bitSetF('hasta',this.value)\""})}
-      ${(f.fundo||f.tipo||f.desde||f.hasta)?`<button class="btn sec chico" onclick="nav.bit={fundo:'',desde:'',hasta:'',tipo:''};render()">✕ Limpiar</button>`:""}
-    </div>
-    <div class="fila" style="gap:12px;flex-wrap:wrap;margin-top:9px;font-size:12px;color:var(--txt2)">
-      <span><b>${es.length}</b> día${es.length===1?"":"s"} anotado${es.length===1?"":"s"}</span>
-      <span><b>${nLab}</b> labor${nLab===1?"":"es"} registrada${nLab===1?"":"s"}</span>
+      <span class="muted" style="font-size:12px">Desde</span>${fechaHTML("bit_d",f.desde,{estilo:"display:inline-block;width:142px",natAttrs:"onchange=\"bitSetF('desde',this.value)\""})}
+      <span class="muted" style="font-size:12px">hasta</span>${fechaHTML("bit_h",f.hasta,{estilo:"display:inline-block;width:142px",natAttrs:"onchange=\"bitSetF('hasta',this.value)\""})}
+      ${hayFiltro?`<button class="btn sec chico" onclick="nav.bit={fundo:'',desde:'',hasta:'',tipo:''};render()">✕ Limpiar</button>`:""}
     </div>
   </div>`;
-  if(filas.length){
-    h+=`<div class="card"><h3 style="margin:0 0 8px">${ic("chart")} Resumen del período</h3>
-      <table class="tabla"><thead><tr><th>Labor</th><th style="text-align:right">Veces</th>
-      <th style="text-align:right">Total</th><th style="text-align:right">Rinde por persona</th></tr></thead><tbody>
-      ${filas.map(t=>{ const g=res[t]; const r=g.conP? g.pers/g.conP : 0;
-        return `<tr><td><b>${esc(t)}</b></td><td style="text-align:right">${g.n}</td>
-          <td style="text-align:right">${g.cant>0?num(g.cant)+" "+esc(g.uni):"—"}</td>
-          <td style="text-align:right">${r>0?num(Math.round(r*10)/10)+" "+esc(g.uni):"—"}</td></tr>`;}).join("")}
-      </tbody></table></div>`;
-  }
+
   if(!es.length){
-    h+=`<div class="vacio"><span class="ico">📓</span>Aún no hay días anotados${f.fundo||f.tipo||f.desde||f.hasta?" con estos filtros":""}.<br>
-      Toca <b>Anotar el día</b> y marca lo que se hizo.</div>`;
+    h+=`<div class="vacio"><span class="ico">📓</span>
+      ${hayFiltro?"No hay días anotados con estos filtros.":"Aún no has anotado ningún día."}<br>
+      Toca <b>Anotar lo de hoy</b> y marca las labores que se hicieron.</div>`;
     return h;
   }
+
+  /* --- lo que llevas hecho --- */
+  if(filas.length){
+    h+=`<div class="card">
+      <h3 style="margin:0 0 3px">${ic("chart")} Lo que llevas hecho</h3>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">${esc(rango)} · ${es.length} día${es.length===1?"":"s"} · ${nLab} labor${nLab===1?"":"es"} anotada${nLab===1?"":"s"}</div>
+      <div class="bres">${filas.map(t=>{
+        const g=res[t], r=g.conP? g.pers/g.conP : 0;
+        return `<div class="bresr" onclick="bitSetF('tipo','${esc(t).replace(/'/g,"\\'")}')" title="Ver solo esta labor">
+          <span class="bitpt" style="background:${gtColTipo(t)}"></span>
+          <div class="bresn">${esc(t)}
+            <span class="bresv">${g.dias.size} día${g.dias.size===1?"":"s"}${g.n>g.dias.size?" · "+g.n+" veces":""}</span></div>
+          <div class="bresc">${g.cant>0? `<b>${num(g.cant)}</b> ${esc(g.uni)}` : `<span class="muted">sin cantidad</span>`}</div>
+          <div class="bresp">${r>0? `<b>${num(Math.round(r*10)/10)}</b> ${esc(g.uni)}/persona` : ""}</div>
+        </div>`;}).join("")}</div>
+    </div>`;
+  }
+
+  /* --- el diario --- */
+  let mesAct="";
   h+=es.map(e=>{
-    const dt=gtD(e.fecha), dia=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][dt.getDay()];
+    const dt=gtD(e.fecha);
+    const mes=MESES_L[dt.getMonth()]+" "+dt.getFullYear();
+    let sep="";
+    if(mes!==mesAct){ mesAct=mes; sep=`<div class="bitmes">${esc(mes)}</div>`; }
+    const dia=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][dt.getDay()];
     const integradas=(e.lineas||[]).filter(l=>l.laborId).length;
-    return `<div class="card bitdia">
-      <div class="fila" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-        <div><b style="font-size:15px">${dia.charAt(0).toUpperCase()+dia.slice(1)} ${fmtF(e.fecha)}</b>
-          <span class="badge b-gris" style="margin-left:6px">${esc(e.fundo)}</span>
-          ${integradas?`<span class="badge b-verde" style="margin-left:4px">✓ ${integradas} en el plan</span>`:""}</div>
+    const esHoy=e.fecha===hoyISO;
+    return sep+`<div class="card bitdia${esHoy?" hoy":""}">
+      <div class="fila" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+        <div>
+          <b style="font-size:15.5px">${esHoy?"Hoy · ":""}${dia.charAt(0).toUpperCase()+dia.slice(1)} ${fmtF(e.fecha)}</b>
+          <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">
+            <span class="badge b-gris">${esc(e.fundo)}</span>
+            ${integradas?`<span class="badge b-verde">✓ ${integradas} en el plan</span>`:""}
+          </div>
+        </div>
         <div class="fila" style="gap:6px">
           <button class="btn sec chico" onclick="bitEditar(${e.id})">${ic("edit")} Editar</button>
           <button class="btn peligro chico" onclick="bitBorrar(${e.id})">${ic("trash")}</button></div>
@@ -8729,7 +9055,6 @@ function vBitacora(){
   }).join("");
   return h;
 }
-
 /* aviso breve y no bloqueante (en el iPad el PDF pasa por la hoja para compartir) */
 function gtAviso(msg, ms){
   try{
