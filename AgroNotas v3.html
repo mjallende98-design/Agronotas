@@ -4158,7 +4158,7 @@ body{padding-bottom:28px; padding-left:calc(var(--rail) + env(safe-area-inset-le
 .w-tit{font-size:11.5px; font-weight:700; letter-spacing:.8px; color:var(--txt2);
   margin-bottom:8px; text-transform:uppercase;}
 .g2p{display:grid; grid-template-columns:1.35fr 1fr; gap:12px; margin-bottom:14px;}
-.gmapa{display:grid; grid-template-columns:1.75fr 1fr; gap:12px; margin-bottom:14px; align-items:start;}
+.gmapa{display:grid; grid-template-columns:1fr; gap:12px; margin-bottom:14px; align-items:start;}
 .gmapa .card{margin-bottom:0;}
 .g2p .card{margin-bottom:0;}
 .urgente-card{display:flex; align-items:center; gap:12px; background:#fdf0ef;
@@ -4283,7 +4283,13 @@ html{-webkit-tap-highlight-color:transparent;}
 .vacio .ico{display:none;}
 .vacio::before{content:""; display:block; width:96px; height:96px; margin:0 auto 10px; opacity:.9;
   background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96' fill='none' stroke='%231c7a44' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='48' cy='48' r='44' fill='%23e7f3eb' stroke='none'/%3E%3Cpath d='M48 74V46'/%3E%3Cpath d='M48 58c-14 0-20-8-22-18 10-1 20 3 22 18z'/%3E%3Cpath d='M48 50c2-14 12-20 24-20-1 12-8 20-24 20z'/%3E%3Cpath d='M30 76h36'/%3E%3C/svg%3E") center/contain no-repeat;}
+/* clima: fila "Ahora" con fuente elegible */
+.clima-ahora{align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px; padding-top:8px; border-top:1px dashed var(--borde); font-size:13px;}
+.clima-ahora .ca-t{font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--txt2);}
+.clima-ahora b{font-size:15px; color:var(--txt);}
+.clima-ahora .chip{min-height:32px; padding:4px 11px; font-size:12px;}
 /* riego: tabla con casillas editables */
+.rgsel{font:inherit; font-size:11.5px; padding:3px 4px; border:1px solid var(--borde); border-radius:6px; background:#fff; color:var(--txt2); max-width:92px;}
 .ctt.rg td{padding:4px 6px;}
 .ctt.rg input{padding:4px 6px; border:1px solid var(--borde); border-radius:6px; font:inherit; font-size:12.5px; min-height:30px; background:#fff;}
 .ctt.rg input:focus{outline:none; border-color:var(--p); box-shadow:0 0 0 2px var(--foco);}
@@ -5249,7 +5255,8 @@ function vPanel(){
         <div style="flex:1;cursor:pointer" onclick="nav.planVista='sem';nav.semanaIni=null;ir('gantt')"><div data-cnt style="font-size:24px;font-weight:700;color:var(--urg)">${atras.length}</div><div class="muted" style="font-size:11.5px">atrasadas</div></div>
       </div></div>
     <div class="card"><div class="w-tit">Clima · ${esc(zonaClima())}</div>
-      <div id="climaW" class="muted" style="font-size:13px">cargando pronóstico…</div></div>
+      <div id="climaW" class="muted" style="font-size:13px">cargando pronóstico…</div>
+      <div id="climaAhora"></div></div>
   </div>`;
 
   /* Pregúntale a tus datos (IA) */
@@ -5271,32 +5278,16 @@ function vPanel(){
       <div class="mapa-dibbar" id="mapaDibBar"></div>
       <div class="mapa-med" id="mapaMedPanel" style="display:none"></div>
     </div>
-    <div class="card" style="display:flex;flex-direction:column;max-height:470px;overflow:hidden">
-      <div class="w-tit">Hoy · ${fmtDia(hoyISO)}</div>
-      <div style="overflow-y:auto;flex:1;margin-top:2px;padding-right:2px">
-        ${deHoy.length? deHoy.map(l=>filaLabor(l,true)).join("") : `<div class="muted">Sin labores hoy. Toca ＋ Labor para agregar.</div>`}
-      </div>
-    </div>
   </div>`;
 
   h += panelAvances();
 
-  /* Semana + notas recientes */
-  let hSem = `<div class="card"><div class="w-tit">${ic("calendar")} Esta semana</div>`;
-  if(!deSemana.length) hSem += `<div class="muted">Sin labores planificadas. Toca Plan para agregar.</div>`;
-  else{
-    const porDia = {};
-    deSemana.forEach(l=>{ (porDia[l.fecha]=porDia[l.fecha]||[]).push(l); });
-    hSem += Object.keys(porDia).sort().map(f=>`
-      <div class="dia-h ${f===hoyISO?"hoy":""}" style="margin:10px 0 4px">${f===hoyISO?"Hoy":fmtDia(f)}</div>
-      ${porDia[f].map(l=>filaLabor(l,true)).join("")}`).join("");
-  }
-  hSem += `</div>`;
+  /* Notas recientes (la tarjeta "Esta semana" se quitó: la Carta Gantt cubre la semana) */
   let hNot = `<div class="card"><div class="w-tit">${ic("note")} Notas recientes</div>`;
   const rec = [...fijadas, ...notasRec.filter(n=>!n.fijada)].slice(0,5);
   hNot += rec.length? rec.map(n=>miniNota(n)).join("") : `<div class="muted">Aún no hay notas. Toca ＋ Nota para crear la primera.</div>`;
   hNot += `</div>`;
-  h += `<div class="g2p" style="grid-template-columns:1.4fr 1fr">${hSem}${hNot}</div>`;
+  h += hNot;
   h += pintarWidgets();
   h += `<div style="text-align:center;margin:6px 0 12px"><button class="btn sec chico" onclick="agregarWidget()">＋ Agregar widget</button></div>`;
   return h;
@@ -7111,6 +7102,7 @@ function posPanel(){
   cargarFotosRec();
   cargarHeladas();
   cargarLluviaWidgets();
+  if(typeof cargarClimaAhora==="function") cargarClimaAhora();
   if(typeof wlAuto==="function") wlAuto();
 }
 
@@ -8434,7 +8426,9 @@ async function cargarClima(){
     const _usaReg = _regLl.length>0;
     const _of = lluviaOficialMes(); // dato DMC · IA del mes en curso (si ya lo buscaste en el widget de lluvia)
     let acum, _acumLab, _acumTit="";
+    const _st = (typeof wlLluviaMes==="function")? wlLluviaMes() : null;
     if(_usaReg){ acum=_accReg; _acumLab="medido"; _acumTit="Tus registros de lluvia (pluviómetro)"; }
+    else if(_st!=null){ acum=_st; _acumLab="estación"; _acumTit="Lluvia del mes medida por tu estación "+(wlCfg().stNombre||""); }
     else if(_of!=null){ acum=_of; _acumLab="oficial"; _acumTit="Dato oficial DMC obtenido con IA en el widget Lluvia por mes"; }
     else { acum=((m.daily && m.daily.precipitation_sum)||[]).reduce((s,x)=>s+(+x||0),0); _acumLab="estimado"; _acumTit="Estimación del modelo Open-Meteo"; }
     const DS = ["DO","LU","MA","MI","JU","VI","SÁ"];
@@ -9899,7 +9893,7 @@ async function wlConectar(){
 function wlF2C(f){ return (f==null||isNaN(f))? null : Math.round((f-32)/1.8*10)/10; }
 function wlNum(x){ return (x==null||isNaN(+x))? null : +x; }
 function wlParseActual(j){
-  const out={ts:null, temp:null, hum:null, viento:null, solar:null, etDia:null, lluvia:null};
+  const out={ts:null, temp:null, hum:null, viento:null, solar:null, etDia:null, lluvia:null, lluviaMes:null, lluviaAnio:null};
   for(const s of (j.sensors||[])){
     for(const r of (s.data||[])){
       if(r.temp!=null && out.temp==null) out.temp=wlF2C(r.temp);
@@ -9911,6 +9905,8 @@ function wlParseActual(j){
       if(r.et_day!=null && out.etDia==null) out.etDia=Math.round(r.et_day*25.4*100)/100;
       const ll=r.rainfall_daily_mm ?? (r.rainfall_daily_in!=null? r.rainfall_daily_in*25.4 : null) ?? (r.rainfall_day_in!=null? r.rainfall_day_in*25.4 : null);
       if(ll!=null && out.lluvia==null) out.lluvia=Math.round(ll*10)/10;
+      const lm=r.rainfall_monthly_mm ?? (r.rainfall_monthly_in!=null? r.rainfall_monthly_in*25.4 : null); if(lm!=null && out.lluviaMes==null) out.lluviaMes=Math.round(lm*10)/10;
+      const la=r.rainfall_year_mm ?? (r.rainfall_year_in!=null? r.rainfall_year_in*25.4 : null); if(la!=null && out.lluviaAnio==null) out.lluviaAnio=Math.round(la*10)/10;
       if(r.ts && (!out.ts || r.ts>out.ts)) out.ts=r.ts;
     }
   }
@@ -9975,6 +9971,7 @@ async function wlActualizar(manual){
   guardar(); _wlOcupado=false;
   if(manual){ if(errores.length) alert("⚠️ "+errores.join(" · ")); else alert("✅ Estación actualizada"); }
   if(typeof wlPintarEstado==="function") wlPintarEstado();
+  if(document.getElementById("climaAhora")) cargarClimaAhora();
   if(document.getElementById("riegoVista")) abrirRiego();
   if(nav.tab==="panel" && document.querySelector("[data-w-riego]")) render();
 }
@@ -10031,7 +10028,44 @@ function riegoSerie(n){ // últimos n días (hasta ayer, o hasta hoy si hay dato
 function riegoPron(n){ const w=wlCfg(); const p=(w.om&&w.om.pron)||{}; const out=[]; for(let i=1;i<=n;i++){ const k=wlDiaMenos(-i); const d=p[k]; out.push({k, et:d?d.et:null, ll:d?(d.ll||0):0, src:"om"}); } return out; }
 function riegoGrupo(q){ const g=fenGrupoDe(q.especie||""); return RIEGO_KC_DEF[g]? g : "general"; }
 function riegoKcTabla(g){ const r=riegoCfg(); return (r.kc[g] && r.kc[g].length===12)? r.kc[g] : RIEGO_KC_DEF[g]; }
-function riegoKc(q, mes){ const r=riegoCfg(); const o=r.cu[q.id]; if(o && o.kc>0) return +o.kc; return riegoKcTabla(riegoGrupo(q))[mes]; }
+/* Kc por estado fenológico (código BBCH del último registro del cuartel). Referenciales: cerezo según INIA/FAO-24 sin cubierta
+   (0,25 brotación → 0,85 postcosecha) e INTIA; cítricos según FAO-56 (70 % copa) con alza en cuaja/caída fisiológica (fase I,
+   sensible al déficit según IVIA) y baja en maduración. Editables en la vista de riego. */
+const RIEGO_KC_FEN_DEF = {
+  citricos: [ {d:"00-09", n:"Reposo invernal · yemas", kc:0.60}, {d:"10-39", n:"Brotación", kc:0.65}, {d:"51-59", n:"Botón floral", kc:0.65},
+              {d:"60-69", n:"Floración", kc:0.70}, {d:"71-74", n:"Cuaja · caída fisiológica (sensible)", kc:0.75}, {d:"75-79", n:"Fruto en crecimiento", kc:0.70},
+              {d:"81-89", n:"Cambio de color · maduración (sensible)", kc:0.65}, {d:"91-97", n:"Brotación completa · caída · reposo", kc:0.60} ],
+  carozo:   [ {d:"00-09", n:"Receso · yemas", kc:0.20}, {d:"10-39", n:"Brotación · primeras hojas", kc:0.30}, {d:"51-59", n:"Botón floral", kc:0.35},
+              {d:"60-69", n:"Floración", kc:0.40}, {d:"71-73", n:"Cuaja · fruto etapa I", kc:0.50}, {d:"74-75", n:"Fruto al 50 % (etapa II)", kc:0.60},
+              {d:"76-79", n:"Fruto al 90 % (etapa III, no restringir)", kc:0.75}, {d:"81-87", n:"Pinta a cosecha", kc:0.85},
+              {d:"89-91", n:"Postcosecha · follaje completo", kc:0.85}, {d:"92-93", n:"Caída de hojas", kc:0.60}, {d:"94-99", n:"Receso invernal", kc:0.20} ],
+  general:  [ {d:"00-09", n:"Reposo · yemas", kc:0.45}, {d:"10-49", n:"Brotación", kc:0.60}, {d:"51-69", n:"Floración", kc:0.65},
+              {d:"71-79", n:"Fruto en crecimiento", kc:0.75}, {d:"81-89", n:"Maduración", kc:0.70}, {d:"91-99", n:"Caída de hojas · reposo", kc:0.45} ]
+};
+function riegoKcFenTabla(g){ const r=riegoCfg(); r.kcFen=r.kcFen||{}; const def=RIEGO_KC_FEN_DEF[g]||RIEGO_KC_FEN_DEF.general; const o=r.kcFen[g]; return def.map((x,i)=>Object.assign({}, x, (o && o[i]!=null)? {kc:+o[i]} : {})); }
+function riegoKcFenSet(g,i,val){ const r=riegoCfg(); r.kcFen=r.kcFen||{}; r.kcFen[g]=r.kcFen[g]||{}; const x=parseFloat(String(val).replace(",",".")); if(!isNaN(x)&&x>=0&&x<=1.5) r.kcFen[g][i]=x; else delete r.kcFen[g][i]; guardar(); }
+function riegoKcFenReset(g){ const r=riegoCfg(); if(r.kcFen) delete r.kcFen[g]; guardar(); abrirRiego(); }
+function riegoFenDe(q){ // último registro fenológico del cuartel
+  const l=(D.fenologia||[]).filter(e=>e.fundo===q.fundo && e.cuartel===q.nombre && e.bbch).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+  if(!l.length) return null; const e=l[0];
+  const dias=Math.round((new Date(hoy()+"T12:00:00") - new Date(e.fecha+"T12:00:00"))/86400000);
+  return {bbch:e.bbch, estado:e.estado||"", fecha:e.fecha, dias};
+}
+function riegoKcFen(g, bbch){ const n=parseInt(bbch,10); if(isNaN(n)) return null; return riegoKcFenTabla(g).find(x=>{ const p=x.d.split("-"); return n>=+p[0] && n<=+p[1]; })||null; }
+function riegoKcInfo(q, mes){
+  const r=riegoCfg(), o=r.cu[q.id]||{}, g=riegoGrupo(q);
+  const modo = o.modo || "global";
+  if(modo==="manual" || (!o.modo && o.kc>0)){ if(o.kc>0) return {kc:+o.kc, src:"manual", lab:"manual"}; }
+  const ef = (modo==="global")? (r.modoKc||"mes") : modo;
+  if(ef==="fen"){
+    const fe=riegoFenDe(q);
+    if(fe){ const k=riegoKcFen(g, fe.bbch); if(k) return {kc:k.kc, src:"fen", lab:k.n, bbch:fe.bbch, fecha:fe.fecha, dias:fe.dias}; }
+  }
+  return {kc: riegoKcTabla(g)[mes], src:"mes", lab:"mes", sinFen: ef==="fen"};
+}
+function riegoKc(q, mes){ return riegoKcInfo(q, mes).kc; }
+function riegoModoKc(m){ riegoCfg().modoKc=m; guardar(); abrirRiego(); }
+function riegoSetModo(id, m){ const r=riegoCfg(); r.cu[id]=r.cu[id]||{}; if(m==="global") delete r.cu[id].modo; else r.cu[id].modo=m; if(m!=="manual") delete r.cu[id].kc; guardar(); abrirRiego(); }
 function riegoParam(q){ const r=riegoCfg(); const o=r.cu[q.id]||{}; return {gpp:+(o.gpp||r.def.gpp||0), caudal:+(o.caudal||r.def.caudal||0), ef:+(o.ef||r.def.ef||90)}; }
 function riegoCalcCuartel(q, serie){
   const pl=ctMarco(q); const area=pl>0? 10000/pl : 0; // m² por planta
@@ -10078,6 +10112,9 @@ function abrirRiego(){
             <span class="gfl">Calcular con:</span>
             <button class="chip ${base==="pron"?"on":""}" onclick="riegoBase('pron')">Pronóstico próximos 7 días</button>
             <button class="chip ${base==="med"?"on":""}" onclick="riegoBase('med')">Medido últimos 7 días</button>
+            <span class="gfl" style="margin-left:6px">Kc según:</span>
+            <button class="chip ${(r.modoKc||"mes")==="mes"?"on":""}" onclick="riegoModoKc('mes')">Mes</button>
+            <button class="chip ${(r.modoKc||"mes")==="fen"?"on":""}" onclick="riegoModoKc('fen')" title="Usa el último registro de la pestaña Fenología de cada cuartel">Fenología</button>
             <span class="muted" style="margin-left:auto">${wlListo()? esc(w.stNombre)+(w.ult? " · leída "+fmtFH(w.ult):"") : "Sin estación: todo con Open-Meteo"}</span>
           </div>
           <div class="fila gkpi" style="margin-top:10px">
@@ -10098,7 +10135,12 @@ function abrirRiego(){
           <div style="overflow-x:auto"><table class="ctt rg"><thead><tr><th>Cuartel</th><th>Especie</th><th style="text-align:right">ha</th><th style="text-align:right">m²/pl</th><th style="text-align:right">Kc</th><th style="text-align:right">got./pl</th><th style="text-align:right">L/h</th><th style="text-align:right">ef %</th><th style="text-align:right">ETc mm/d</th><th style="text-align:right">L/pl/día</th><th style="text-align:right"><b>h/día</b></th><th style="text-align:right">h/7 d</th><th style="text-align:right">m³/7 d</th></tr></thead>
           <tbody>${filas.map(({q,c})=>{ const o=r.cu[q.id]||{}; return `<tr><td><b>${esc(q.nombre)}</b></td><td>${esc(q.especie||"")}${q.variedad?" "+esc(q.variedad):""}</td><td style="text-align:right">${fmt(+q.ha||0,2)}</td>
             <td style="text-align:right">${c.area? fmt(c.area,1) : "<span class='muted' title='sin marco de plantación'>s/marco</span>"}</td>
-            <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.kc||""}" placeholder="${fmt(c.kcHoy,2)}" style="width:54px;text-align:right" onchange="riegoSet(${q.id},'kc',this.value)"></td>
+            <td style="text-align:right;white-space:normal;min-width:150px">${(function(){ const ki=riegoKcInfo(q,new Date().getMonth()); const modo=o.modo||((!o.modo&&o.kc>0)?"manual":"global");
+              const et = ki.src==="fen"? `${esc(ki.lab)} · ${ki.bbch} (${fmtF(ki.fecha).slice(0,5)}${ki.dias>45?`, <span style="color:var(--urg)">hace ${ki.dias} d</span>`:""})` : ki.src==="manual"? "manual" : (ki.sinFen? `<span style="color:var(--urg)">sin registro fenológico → mes</span>` : "según mes");
+              return `<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px"><b style="font-size:14px;color:var(--p2)">${fmt(ki.kc,2)}</b>
+                <select class="rgsel" onchange="riegoSetModo(${q.id},this.value)" title="Cómo se elige el Kc de este cuartel"><option value="global"${modo==="global"?" selected":""}>Global</option><option value="mes"${modo==="mes"?" selected":""}>Mes</option><option value="fen"${modo==="fen"?" selected":""}>Fenología</option><option value="manual"${modo==="manual"?" selected":""}>Manual</option></select>
+                ${modo==="manual"? `<input type="text" inputmode="decimal" value="${o.kc||""}" placeholder="0,70" style="width:52px;text-align:right" onchange="riegoSet(${q.id},'kc',this.value)">`:""}</div>
+                <div class="muted" style="font-size:10.5px;text-align:right;line-height:1.2">${et}</div>`; })()}</td>
             <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.gpp||""}" placeholder="${r.def.gpp}" style="width:46px;text-align:right" onchange="riegoSet(${q.id},'gpp',this.value)"></td>
             <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.caudal||""}" placeholder="${r.def.caudal}" style="width:46px;text-align:right" onchange="riegoSet(${q.id},'caudal',this.value)"></td>
             <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.ef||""}" placeholder="${r.def.ef}" style="width:46px;text-align:right" onchange="riegoSet(${q.id},'ef',this.value)"></td>
@@ -10107,10 +10149,15 @@ function abrirRiego(){
           ${filas.length? `<tr style="background:var(--pclaro);font-weight:700"><td colspan="2">TOTAL ${esc(f)}</td><td style="text-align:right">${fmt(cus.reduce((s,q)=>s+(+q.ha||0),0),2)}</td><td colspan="9"></td><td style="text-align:right">${fmt(totM3,0)}</td></tr>` : `<tr><td colspan="13" class="muted">Este fundo no tiene cuarteles plantados.</td></tr>`}</tbody></table></div>
           <div class="muted" style="font-size:11.5px;margin-top:6px">h/día = litros por planta ÷ (goteros × caudal) ÷ eficiencia. Si riegas día por medio, junta dos días de horas. Escribe en las casillas para cambiar un cuartel; vacío = valor por defecto.</div>
         </div>
-        <details class="card"><summary style="cursor:pointer;font-weight:700">${ic("gear")} Kc por mes (referencial, editable)</summary>
+        <details class="card"><summary style="cursor:pointer;font-weight:700">${ic("gear")} Kc por mes y por estado fenológico (referenciales, editables)</summary>
           ${grupos.map(g=>`<div style="margin-top:10px"><div class="fila" style="align-items:center;gap:8px"><b>${RIEGO_GRUPO_N[g]}</b>${r.kc[g]?`<button class="btn sec chico" onclick="riegoKcReset('${g}')">Volver al referencial</button>`:""}</div>
             <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:4px;margin-top:6px">${riegoKcTabla(g).map((k,i)=>`<label style="font-size:11px;color:var(--txt2);text-align:center">${MES[i]}<input type="text" inputmode="decimal" value="${k}" style="width:100%;text-align:center;padding:4px 2px" onchange="riegoKcSet('${g}',${i},this.value)"></label>`).join("")}</div></div>`).join("")}
-          <div class="muted" style="font-size:11.5px;margin-top:8px">Cítricos según FAO-56 (huerto adulto, 70 % de cobertura); cerezo sube de brotación a plena hoja y baja en otoño (INIA). Confírmalos con tu asesor de riego.</div>
+          <div class="muted" style="font-size:11.5px;margin-top:8px">Por mes: cítricos según FAO-56 (huerto adulto, 70 % de copa, sin cubierta); cerezo según INIA La Platina (FAO-24, sin malezas: 0,25 en septiembre → 0,85 en enero-febrero → 0,60 en abril). Con cubierta vegetal en la entrehilera los valores suben hasta 1,1 en cerezo y ~0,75 en cítricos.</div>
+          <div style="margin-top:14px;font-weight:700">Kc por estado fenológico</div>
+          <div class="muted" style="font-size:11.5px">Se usa cuando eliges «Kc según: Fenología»: toma el último registro de la pestaña Fenología de cada cuartel (código BBCH). Cerezo: no restringir entre floración y cosecha (etapa III del fruto); un déficit postcosecha en diciembre-enero produce frutos dobles. Cítricos: cuaja/caída fisiológica y maduración son las fases sensibles; solo la primera mitad del crecimiento del fruto tolera recortes (≤20 %).</div>
+          ${grupos.map(g=>`<div style="margin-top:10px"><div class="fila" style="align-items:center;gap:8px"><b>${RIEGO_GRUPO_N[g]}</b>${(r.kcFen&&r.kcFen[g]&&Object.keys(r.kcFen[g]).length)?`<button class="btn sec chico" onclick="riegoKcFenReset('${g}')">Volver al referencial</button>`:""}</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;margin-top:6px">${riegoKcFenTabla(g).map((x,i)=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt);border:1px solid var(--borde);border-radius:8px;padding:5px 8px"><span class="fenbb" style="background:#eef1ec;color:var(--txt2)">${x.d}</span><span style="flex:1;min-width:0">${esc(x.n)}</span><input type="text" inputmode="decimal" value="${x.kc}" style="width:52px;text-align:center;padding:4px 2px" onchange="riegoKcFenSet('${g}',${i},this.value)"></label>`).join("")}</div></div>`).join("")}
+          <div class="muted" style="font-size:11.5px;margin-top:8px">Todos son valores referenciales (FAO-56, INIA, IVIA, INTIA): confírmalos con tu asesor de riego y ajústalos con calicatas o sondas.</div>
         </details>
         <div class="muted" style="font-size:11.5px">Cálculo referencial. Ajusta con calicatas, tensiómetros o sondas de humedad si las tienes.</div>
       </div>
@@ -10160,10 +10207,46 @@ async function riegoPDFDoc(){
     }
     if(y>PG.yFin-10) y=pdfPagina(d,R);
     pdfF(d,6.6,false,CP.gris);
-    pdfTxt(d,"ETc = ET0 x Kc (FAO-56 / INIA, referenciales) menos el 75 % de la lluvia. Horas = litros por planta / (goteros x caudal) / eficiencia. Valores referenciales: ajustar con sondas o calicatas.",PG.ml,y+2,{max:PG.ancho});
+    pdfTxt(d,"ETc = ET0 x Kc menos el 75 % de la lluvia. Kc segun "+((r.modoKc||"mes")==="fen"? "el estado fenologico registrado en cada cuartel (o el mes si no hay registro)" : "el mes")+" (FAO-56 / INIA / IVIA, referenciales). Horas = litros por planta / (goteros x caudal) / eficiencia. Ajustar con sondas o calicatas.",PG.ml,y+2,{max:PG.ancho});
     pdfPies(d,R);
     await pdfEntregar(d, "Riego_"+hoy().replace(/-/g,"_")+".pdf", esIOS);
   }catch(err){ alert("No se pudo generar el PDF.\n\nDetalle: "+((err&&(err.message||err.name))||err)); }
+}
+
+/* --- "Ahora en el campo": lectura en vivo con fuente elegible (Auto · Estación · Open-Meteo), como el cambio de capa del mapa --- */
+function climaFuenteCiclo(){ const w=wlCfg(); const o=["auto","estacion","om"]; w.fuente=o[(o.indexOf(w.fuente||"auto")+1)%o.length]; guardar(); cargarClimaAhora(true); }
+function climaFuenteLab(m){ return m==="estacion"? "Estación" : m==="om"? "Open-Meteo" : "Auto"; }
+function wlEdadMin(){ const a=wlCfg().hoy; return (a && a.ts)? Math.round((Date.now()/1000 - a.ts)/60) : null; }
+function wlLluviaMes(){ const w=wlCfg(); if((w.fuente||"auto")==="om" || !w.hoy || w.hoy.lluviaMes==null) return null; const ed=wlEdadMin(); if(ed==null || ed>36*60) return null; return w.hoy.lluviaMes; }
+function climaHora(ts){ const d=new Date(ts*1000); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
+async function cargarClimaAhora(forzar){
+  const el=document.getElementById("climaAhora"); if(!el) return;
+  const w=wlCfg(); const modo=w.fuente||"auto"; const a=w.hoy; const edad=wlEdadMin();
+  const stHay = wlListo() && !!a && a.temp!=null;
+  const stFresca = stHay && edad!=null && edad<120;
+  const usarSt = modo==="estacion"? stHay : modo==="auto"? stFresca : false;
+  const chip=`<button type="button" class="chip" style="margin-left:auto;flex:0 0 auto" onclick="climaFuenteCiclo()" title="Cambiar la fuente de la lectura actual">${ic("layers")} ${climaFuenteLab(modo)}</button>`;
+  const dato=(v,u,d)=> v==null? "" : `<span><b>${(+v).toLocaleString("es-CL",{maximumFractionDigits:d==null?1:d})}</b> ${u}</span>`;
+  const fila=(h)=>`<div class="fila clima-ahora">${h}${chip}</div>`;
+  if(usarSt){
+    const aviso = (edad!=null && edad>=120)? `<span style="color:var(--urg);font-weight:600">${ic("alert")} sin datos nuevos hace ${edad>=120? Math.round(edad/60)+" h" : edad+" min"}</span>` : "";
+    el.innerHTML = fila(`<span class="ca-t">Ahora</span>${dato(a.temp,"°C")}${dato(a.hum,"% HR",0)}${dato(a.viento,"km/h viento",0)}${dato(a.solar,"W/m²",0)}${dato(a.lluvia,"mm hoy",1)}${a.lluviaMes!=null? dato(a.lluviaMes,"mm mes",1):""}${a.lluviaAnio!=null? dato(a.lluviaAnio,"mm año",0):""}
+      <span class="muted">${esc(w.stNombre)}${a.ts? " · "+climaHora(a.ts):""}</span>${aviso}`);
+    return;
+  }
+  /* Open-Meteo (estimación para la coordenada) */
+  const motivo = modo==="om"? "" : !wlListo()? "" : !stHay? " · estación sin lectura" : (edad!=null && edad>=120)? ` · estación sin datos nuevos hace ${Math.round(edad/60)} h` : "";
+  let om=w.omAhora;
+  if(navigator.onLine && (forzar || !om || (Date.now()-om.t)>30*60000)){
+    try{
+      const c=wlCoords();
+      const j=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lng}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation,precipitation&daily=precipitation_sum&timezone=auto&forecast_days=1`).then(r=>r.json());
+      if(j.current){ om={t:Date.now(), temp:j.current.temperature_2m, hum:j.current.relative_humidity_2m, viento:j.current.wind_speed_10m, solar:j.current.shortwave_radiation, lluvia:(j.daily&&j.daily.precipitation_sum&&j.daily.precipitation_sum[0])||0, hora:(j.current.time||"").slice(11,16)}; w.omAhora=om; guardar(); }
+    }catch(e){}
+  }
+  if(!om){ el.innerHTML = fila(`<span class="ca-t">Ahora</span><span class="muted">${navigator.onLine? "sin lectura disponible" : "sin señal: no hay lectura actual"}${motivo}</span>`); return; }
+  el.innerHTML = fila(`<span class="ca-t">Ahora</span>${dato(om.temp,"°C")}${dato(om.hum,"% HR",0)}${dato(om.viento,"km/h viento",0)}${dato(om.solar,"W/m²",0)}${dato(om.lluvia,"mm hoy",1)}
+    <span class="muted">Open-Meteo (estimado)${om.hora? " · "+om.hora:""}${motivo}</span>`);
 }
 
 /* ================== REGISTRO FENOLÓGICO ==================
