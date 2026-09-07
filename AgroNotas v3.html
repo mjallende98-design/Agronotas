@@ -964,6 +964,7 @@ function cargar(){
     D.bitacora = D.bitacora || []; D.bitCfg = D.bitCfg || {unidades:{}, integrar:false};
     D.fenologia = D.fenologia || [];
     D.ui = D.ui || {sol:false, grande:false};
+    D.wl = D.wl || null; D.riego = D.riego || null; // estación WeatherLink y programación de riego (se inicializan al usarse)
     D.checklists = D.checklists || [];
     D.checklists.forEach(function(l,i){ if(!Array.isArray(l.items)) l.items=[]; if(!l.color) l.color=CL_COLORS[i%CL_COLORS.length]; });
     D.cosechaPesos = D.cosechaPesos || {};
@@ -3562,6 +3563,7 @@ function vDatos(){
       <div id="ortoOff" style="margin-top:8px"><div class="muted">Revisando…</div></div></div>`;
     setTimeout(ortoOffPintar, 0);
   }
+  h += wlCardHTML();
   h += `<div class="card"><h2>${ic("link")} GesAgro</h2>
     <div class="muted">Importa el respaldo JSON de GesAgro para ver acá el 🚦 semáforo de carencias de cosecha (agrégalo como widget en el Panel). Re-importa cada vez que registres aplicaciones nuevas allá.</div>
     <div class="fila" style="margin-top:8px">
@@ -4171,8 +4173,11 @@ body{padding-bottom:28px; padding-left:calc(var(--rail) + env(safe-area-inset-le
 .mapa-tools, .mapa-hint, .mapa-dibbar, .mapa-tools *{user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;}
 .mapa-tools .btn{box-shadow:0 2px 10px rgba(0,0,0,.35); min-height:30px; padding:4px 11px; font-size:12.5px; border-radius:9px;}
 .mapa-hint{background:#fff; border-radius:8px; padding:6px 12px; font-size:12px; color:#555; box-shadow:0 2px 10px rgba(0,0,0,.35); max-width:190px; text-align:right;}
-.mapa-wrap.mapa-full{position:fixed; inset:0; z-index:90; margin:0; border-radius:0;}
-.mapa-wrap.mapa-full #mapaPanel{height:calc(100vh - 76px);}
+.mapa-wrap.mapa-full{position:fixed; inset:0; z-index:90; margin:0; border-radius:0; border:none; box-shadow:none; background:#0f1a13;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); display:flex; flex-direction:column;}
+.mapa-wrap.mapa-full .w-tit{display:none;}
+.mapa-wrap.mapa-full #mapaPanel{flex:1 1 auto; height:auto; min-height:0; border:none; border-radius:0;}
+html.grande .mapa-wrap.mapa-full{zoom:1;}
 .poly-lab{background:none!important; border:none!important; box-shadow:none!important; color:#fff; font-weight:800; font-size:12.5px; text-shadow:0 1px 4px rgba(0,0,0,.95);}
 .pin-div{background:none!important; border:none!important;}
 .mapa-dibbar{position:absolute; left:14px; right:14px; bottom:16px; z-index:2; display:none; gap:8px; align-items:center; overflow-x:auto; background:rgba(24,26,23,.93); border-radius:14px; padding:9px 10px; -webkit-overflow-scrolling:touch;}
@@ -4239,8 +4244,9 @@ label.f input:focus,label.f select:focus,label.f textarea:focus{border-color:var
 .aviso-t{flex:1 1 auto; min-width:0; text-align:left;}
 .aviso-acc{flex:0 0 auto; border:none; background:rgba(255,255,255,.16); color:#f5d58a; font:inherit; font-weight:800; padding:7px 12px; border-radius:9px; cursor:pointer; min-height:36px;}
 /* transición al cambiar de pestaña y tarjetas en cascada */
-@keyframes vtIn{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;}}
-#app.vt{animation:vtIn .24s ease both;}
+@keyframes vtIn{from{opacity:0; margin-top:8px;} to{opacity:1; margin-top:0;}}
+@keyframes vtFade{from{opacity:0;} to{opacity:1;}}
+#app.vt{animation:vtFade .22s ease both;}
 #app.vt > .card, #app.vt > .g2p > .card, #app.vt .fengrid > .fencard, #app.vt > .kpis > .kpi{animation:vtIn .34s ease both;}
 #app.vt > .card:nth-child(2), #app.vt > .g2p > .card:nth-child(2), #app.vt .fengrid > .fencard:nth-child(2){animation-delay:.05s;}
 #app.vt > .card:nth-child(3), #app.vt .fengrid > .fencard:nth-child(3){animation-delay:.1s;}
@@ -4248,8 +4254,8 @@ label.f input:focus,label.f select:focus,label.f textarea:focus{border-color:var
 #app.vt > .card:nth-child(5), #app.vt .fengrid > .fencard:nth-child(5){animation-delay:.2s;}
 #app.vt > .card:nth-child(n+6), #app.vt .fengrid > .fencard:nth-child(n+6){animation-delay:.24s;}
 /* carta gantt: barras que crecen y "hoy" latiendo */
-@keyframes gtCrece{from{transform:scaleX(.15); opacity:.35;}}
-#app.vt .gbar{animation:gtCrece .55s cubic-bezier(.2,.8,.2,1) both; transform-origin:left center;}
+@keyframes gtCrece{from{clip-path:inset(0 100% 0 0 round 7px); opacity:.35;} to{clip-path:inset(0 0 0 0 round 7px); opacity:1;}}
+#app.vt .gbar{animation:gtCrece .55s cubic-bezier(.2,.8,.2,1) both;}
 @keyframes hoyLate{0%{box-shadow:0 0 0 0 rgba(179,38,30,.45);} 100%{box-shadow:0 0 0 9px rgba(179,38,30,0);}}
 .ghd .gcel.hoy{position:relative;}
 .ghd .gcel.hoy::after{content:""; position:absolute; left:50%; bottom:1px; width:6px; height:6px; margin-left:-3px; border-radius:50%; background:var(--rojo); animation:hoyLate 1.8s ease-out infinite;}
@@ -4277,6 +4283,11 @@ html{-webkit-tap-highlight-color:transparent;}
 .vacio .ico{display:none;}
 .vacio::before{content:""; display:block; width:96px; height:96px; margin:0 auto 10px; opacity:.9;
   background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96' fill='none' stroke='%231c7a44' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='48' cy='48' r='44' fill='%23e7f3eb' stroke='none'/%3E%3Cpath d='M48 74V46'/%3E%3Cpath d='M48 58c-14 0-20-8-22-18 10-1 20 3 22 18z'/%3E%3Cpath d='M48 50c2-14 12-20 24-20-1 12-8 20-24 20z'/%3E%3Cpath d='M30 76h36'/%3E%3C/svg%3E") center/contain no-repeat;}
+/* riego: tabla con casillas editables */
+.ctt.rg td{padding:4px 6px;}
+.ctt.rg input{padding:4px 6px; border:1px solid var(--borde); border-radius:6px; font:inherit; font-size:12.5px; min-height:30px; background:#fff;}
+.ctt.rg input:focus{outline:none; border-color:var(--p); box-shadow:0 0 0 2px var(--foco);}
+.fila label.muted input{padding:4px 6px; border:1px solid var(--borde); border-radius:6px; font:inherit; font-size:12.5px; min-height:30px; background:#fff; margin-left:4px;}
 /* mapa sin señal: fondo cuadriculado + aviso */
 #mapaPanel.sin-senal{background:#e6ebe4 repeating-linear-gradient(0deg, transparent 0 39px, rgba(20,83,45,.08) 39px 40px), repeating-linear-gradient(90deg, transparent 0 39px, rgba(20,83,45,.08) 39px 40px);}
 .mapa-senal{position:absolute; left:12px; bottom:12px; z-index:800; display:flex; align-items:center; gap:8px; max-width:calc(100% - 24px);
@@ -5115,7 +5126,10 @@ function renderInterno(){
 }
 /* render() protegido: si una vista falla, muestra una tarjeta de rescate en vez de pantalla en blanco */
 function render(){
-  try{ uiAplicar(); renderInterno(); vistaEntrando(); }
+  try{
+    const full = document.querySelector("body > #mapaCard.mapa-full"); if(full) full.remove();
+    uiAplicar(); renderInterno(); vistaEntrando();
+  }
   catch(e){ renderRescate(e); }
 }
 
@@ -5410,6 +5424,7 @@ function widgetHTML(w){
     const h = filas.slice(0,8).map(f=>`<div class="met" style="padding:2px 0">${esc(f.n)}: catálogo <b>${num(f.cat)}</b> · mapa <b>${num(f.dib)}</b> ha <span style="color:${Math.abs(f.dif)>10?"var(--rojo,#c62828)":"#7a7d79"};font-weight:600">(${f.dif>0?"+":""}${Math.round(f.dif)}%)</span></div>`).join("");
     return widgetCard(w, h||`<div class="muted">Dibuja cuarteles en el mapa (enlazados al catálogo) para comparar superficies.</div>`, "🧮 Superficie: catálogo vs mapa");
   }
+  if(w.tipo==="riego") return riegoWidgetHTML(w);
   if(w.tipo==="respaldo"){
     const u = D.ultimoRespaldo;
     const dias = u? Math.floor((new Date() - new Date(u+"T12:00:00"))/86400000) : null;
@@ -5461,6 +5476,7 @@ function agregarWidget(){
       <option value="plan">📈 Avance de la semana</option>
       <option value="supmapa">🧮 Superficie: catálogo vs mapa</option>
       <option value="respaldo">💾 Recordatorio de respaldo</option>
+      <option value="riego">💧 Riego de la semana (ET₀ × Kc)</option>
       <option value="registros">📋 Registros por tipo (90 días)</option>
       <option value="ultimas">🕒 Últimas notas</option>
       <option value="hafundo">🏡 Superficie por fundo</option>
@@ -6797,8 +6813,9 @@ function calcFormCuad(){
     ${calcInput("q_val", base==="planta"? "Valor por planta $ (trato, opcional)" : base==="ha"? "Valor por hectárea $ (opcional)" : "Valor por unidad $ (opcional)","")}
   </div>`;
 }
-function calcCuad(){
-  const base=ctBase(), sel=ctSeleccionados();
+/* Modelo del cálculo de labor (lo usan la vista y el PDF) */
+function ctModelo(){
+  const base=ctBase(), sel=ctSeleccionados().slice().sort((a,b)=>(a.fundo+a.nombre).localeCompare(b.fundo+b.nombre));
   const u = base==="planta"? "plantas" : base==="ha"? "ha" : "unid.";
   const tot=cval("q_tot"),pers=cval("q_pers"),rend=cval("q_rend"),dias=cval("q_dias"),val=cval("q_val");
   const porDia=(pers>0&&rend>0)?pers*rend:NaN;
@@ -6808,25 +6825,32 @@ function calcCuad(){
   const diasJ=(dias>0)?dias:diasNec;
   const jornales=(pers>0&&diasJ>0)?pers*diasJ:NaN;
   const costo=(tot>0&&val>0)?tot*val:NaN;
-  let h=`<h3 style="margin-top:0">Resultado${(nav.calcVals&&nav.calcVals.q_labor)?" · "+esc(nav.calcVals.q_labor):""}</h3>
-    ${calcR("Total a realizar",tot,u,true)}
-    ${calcR("Avance por día (toda la cuadrilla)",porDia,u+"/día",true)}
-    ${calcR("Días para terminar",diasNec,"días",true)}
-    ${calcR("Personas necesarias (para esos días)",persNec,"personas")}
-    ${calcR("Rendimiento requerido por persona/día",rendReq,u)}
-    ${calcR("Jornales",jornales,"jornales")}
-    ${calcR("Costo a trato",costo,"$")}`;
+  const filas = (base!=="otra")? sel.map(q=>{
+    const cant = base==="planta"? ctPlantas(q) : (+q.ha||0);
+    return {q, cant, dias:(cant>0&&pers>0&&rend>0)? cant/(pers*rend) : NaN, costo:(cant>0&&val>0)? cant*val : NaN};
+  }) : [];
+  return {labor:(nav.calcVals&&nav.calcVals.q_labor)||"", base, u, sel, tot, pers, rend, dias, val, porDia, diasNec, persNec, rendReq, jornales, costo, filas,
+          haSel:sel.reduce((s,q)=>s+(+q.ha||0),0), plSel:sel.reduce((s,q)=>s+ctPlantas(q),0), sinMarco:sel.filter(q=>!ctMarco(q)).length};
+}
+function calcCuad(){
+  const m=ctModelo(), u=m.u, base=m.base;
+  const hayAlgo = m.sel.length || m.tot>0;
+  let h=`<div class="fila" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Resultado${m.labor?" · "+esc(m.labor):""}</h3>
+      ${hayAlgo? `<button class="btn chico" onclick="ctPDFDoc()">${ic("save")} Guardar PDF</button>`:""}</div>
+    ${calcR("Total a realizar",m.tot,u,true)}
+    ${calcR("Avance por día (toda la cuadrilla)",m.porDia,u+"/día",true)}
+    ${calcR("Días para terminar",m.diasNec,"días",true)}
+    ${calcR("Personas necesarias (para esos días)",m.persNec,"personas")}
+    ${calcR("Rendimiento requerido por persona/día",m.rendReq,u)}
+    ${calcR("Jornales",m.jornales,"jornales")}
+    ${calcR("Costo a trato",m.costo,"$")}`;
   /* desglose por cuartel: cuánto es cada uno y cuántos días le toca */
-  if(sel.length && base!=="otra"){
-    const filas=sel.slice().sort((a,b)=>(a.fundo+a.nombre).localeCompare(b.fundo+b.nombre)).map(q=>{
-      const cant = base==="planta"? ctPlantas(q) : (+q.ha||0);
-      const d=(cant>0&&pers>0&&rend>0)? cant/(pers*rend) : NaN;
-      const c=(cant>0&&val>0)? cant*val : NaN;
-      return `<tr><td>${esc(q.fundo)}</td><td><b>${esc(q.nombre)}</b></td><td style="text-align:right">${num(+q.ha||0)}</td>
-        <td style="text-align:right">${base==="planta"? (cant? cant.toLocaleString("es-CL"):"<span class='muted'>s/marco</span>") : num(cant)}</td>
-        <td style="text-align:right">${isNaN(d)?"—":(Math.round(d*10)/10).toLocaleString("es-CL")}</td>
-        <td style="text-align:right">${isNaN(c)?"—":"$"+Math.round(c).toLocaleString("es-CL")}</td></tr>`;
-    }).join("");
+  if(m.filas.length){
+    const filas=m.filas.map(f=>`<tr><td>${esc(f.q.fundo)}</td><td><b>${esc(f.q.nombre)}</b></td><td style="text-align:right">${num(+f.q.ha||0)}</td>
+        <td style="text-align:right">${base==="planta"? (f.cant? f.cant.toLocaleString("es-CL"):"<span class='muted'>s/marco</span>") : num(f.cant)}</td>
+        <td style="text-align:right">${isNaN(f.dias)?"—":(Math.round(f.dias*10)/10).toLocaleString("es-CL")}</td>
+        <td style="text-align:right">${isNaN(f.costo)?"—":"$"+Math.round(f.costo).toLocaleString("es-CL")}</td></tr>`).join("");
     h+=`<div style="margin-top:12px;overflow-x:auto"><table class="ctt"><thead><tr><th>Fundo</th><th>Cuartel</th><th style="text-align:right">ha</th>
       <th style="text-align:right">${base==="planta"?"Plantas":"ha a hacer"}</th><th style="text-align:right">Días</th><th style="text-align:right">Costo</th></tr></thead>
       <tbody>${filas}</tbody></table></div>
@@ -6835,6 +6859,74 @@ function calcCuad(){
     h+=`<div class="muted" style="font-size:11px;margin-top:6px">Llena solo los campos que tengas; se calcula lo que se pueda.</div>`;
   }
   return h;
+}
+/* ---------- PDF del cálculo de labor (motor jsPDF incrustado, funciona sin señal) ---------- */
+async function ctPDFDoc(){
+  if(!window.jspdf || !window.jspdf.jsPDF){ alert("No se pudo cargar el motor de PDF. Recarga la app e intenta de nuevo."); return; }
+  const m=ctModelo();
+  if(!m.sel.length && !(m.tot>0)){ alert("Marca al menos un cuartel o escribe el total a realizar."); return; }
+  const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+  if(esIOS) gtAviso("Generando el PDF… se abrirá la hoja para compartir: elige «Guardar en Archivos».", 4500);
+  try{ return await ctPDFArmar(m, esIOS); }
+  catch(err){ alert("No se pudo generar el PDF.\n\nDetalle: " + ((err && (err.message||err.name)) || err)); return false; }
+}
+async function ctPDFArmar(m, esIOS){
+  const baseTxt = m.base==="planta"? "por planta" : m.base==="ha"? "por hectárea" : "otra unidad";
+  const fN = (x,d)=> cfNum(x,d);
+  const fU = (x)=> m.base==="planta"? fN(x,0) : m.base==="ha"? fN(x,2) : fN(x, x<10?1:0);
+  const R={ doc:"Cálculo de labor por cuartel",
+            tit: m.labor || "Labor por cuartel",
+            sub: fmtF(hoy()) + "  ·  " + (m.sel.length? m.sel.length+" cuartel(es)  ·  "+fN(m.haSel,2)+" ha" : "sin cuarteles") + (m.plSel? "  ·  "+fN(m.plSel,0)+" plantas" : "") };
+  const d = new window.jspdf.jsPDF({orientation:"landscape", unit:"mm", format:"a4", compress:true});
+  d.setProperties({title:"Calculo de labor · "+(m.labor||""), author:"AgroNotas · Total Fruit Curacavi", subject:"Calculo de labor por cuartel", creator:"AgroNotas"});
+  pdfCabecera(d, R);
+  let y = PG.y0;
+  /* indicadores */
+  const k=[{v: fU(m.tot)+" "+m.u, l:"Total a realizar", d:"medido "+baseTxt}];
+  if(!isNaN(m.porDia)) k.push({v: fU(m.porDia)+" "+m.u, l:"Avance por dia", d: fN(m.pers,0)+" pers. x "+fN(m.rend, m.rend<10?2:0)+" c/u"});
+  if(!isNaN(m.diasNec)) k.push({v: fN(m.diasNec, m.diasNec<100?1:0)+" dias", l:"Dias para terminar", d: m.dias>0? "tienes "+fN(m.dias,0)+" disponibles" : ""});
+  if(!isNaN(m.persNec)) k.push({v: fN(Math.ceil(m.persNec),0)+" pers.", l:"Personas necesarias", d:"para "+fN(m.dias,0)+" dias"});
+  if(!isNaN(m.jornales)) k.push({v: fN(m.jornales, m.jornales<10?1:0), l:"Jornales", d:""});
+  if(!isNaN(m.costo)) k.push({v: cfCLP(m.costo), l:"Costo a trato", d: cfCLP(m.val)+" por "+(m.base==="planta"?"planta":m.base==="ha"?"ha":"unidad"), acento:CP.naranja});
+  y = pdfKPIs(d, y, k.slice(0,6));
+  /* supuestos */
+  pdfF(d, 7.2, false, CP.suave);
+  const sup=[];
+  if(m.pers>0) sup.push("Cuadrilla: "+fN(m.pers,0)+" persona(s)");
+  if(m.rend>0) sup.push("Rendimiento: "+fN(m.rend, m.rend<10?2:0)+" "+m.u+" por persona al dia");
+  if(m.dias>0) sup.push("Dias disponibles: "+fN(m.dias,0));
+  if(!isNaN(m.rendReq)) sup.push("Rendimiento requerido: "+fN(m.rendReq, m.rendReq<10?2:0)+" "+m.u+"/persona/dia");
+  if(sup.length){ pdfTxt(d, sup.join("   ·   "), PG.ml, y, {max:PG.ancho}); y += 6; }
+  /* tabla por cuartel */
+  if(m.filas.length){
+    y = pdfSeccion(d, y+2, "Desglose por cuartel", m.base==="planta"? "plantas = superficie x densidad del marco de plantacion" : "superficie del catalogo de cuarteles");
+    const totCant=m.filas.reduce((s,f)=>s+(f.cant||0),0), totDias=m.filas.reduce((s,f)=>s+(isNaN(f.dias)?0:f.dias),0), totCosto=m.filas.reduce((s,f)=>s+(isNaN(f.costo)?0:f.costo),0);
+    d.autoTable({
+      startY:y, margin:{left:PG.ml,right:PG.mr,top:PG.y0,bottom:PG.mb+3},
+      head:[["Fundo","Cuartel","Especie","Marco","ha", m.base==="planta"?"Plantas":"ha a hacer","Dias","Costo"]],
+      body: m.filas.map(f=>[f.q.fundo, f.q.nombre, (f.q.especie||"")+(f.q.variedad?" "+f.q.variedad:""), f.q.marco||"—", fN(+f.q.ha||0,2),
+        m.base==="planta"? (f.cant? fN(f.cant,0):"s/marco") : fN(f.cant,2), isNaN(f.dias)?"—":fN(f.dias,1), isNaN(f.costo)?"—":cfCLP(f.costo)].map(pdfSano)),
+      foot:[["TOTAL", m.filas.length+" cuartel(es)", "", "", fN(m.haSel,2), m.base==="planta"? fN(totCant,0) : fN(totCant,2), totDias? fN(totDias,1):"—", totCosto? cfCLP(totCosto):"—"].map(pdfSano)],
+      theme:"plain",
+      styles:{fontSize:7.6,textColor:rgb(CP.texto),cellPadding:1.7,overflow:"ellipsize"},
+      headStyles:{fillColor:rgb(CP.verde),textColor:[255,255,255],fontSize:6.4,fontStyle:"bold",halign:"right"},
+      footStyles:{fillColor:rgb(CP.pale),textColor:rgb(CP.verde),fontStyle:"bold",fontSize:7.8,halign:"right"},
+      alternateRowStyles:{fillColor:rgb("#FAFCFB")},
+      columnStyles:{0:{cellWidth:38,halign:"left"},1:{cellWidth:"auto",halign:"left",fontStyle:"bold"},2:{cellWidth:44,halign:"left"},3:{cellWidth:20,halign:"right"},
+        4:{cellWidth:22,halign:"right"},5:{cellWidth:30,halign:"right"},6:{cellWidth:22,halign:"right"},7:{cellWidth:30,halign:"right"}},
+      didParseCell:h=>{ if(h.column.index<=2) h.cell.styles.halign="left"; },
+      didDrawPage:()=>pdfCabecera(d,R)
+    });
+    y = d.lastAutoTable.finalY + 5;
+    if(m.sinMarco){ pdfF(d, 6.6, false, CP.cereza); pdfTxt(d, m.sinMarco+" cuartel(es) sin marco de plantacion en el catalogo: no suman plantas. Completa el marco en Datos > Cuarteles.", PG.ml, y, {max:PG.ancho}); y += 5; }
+  }
+  if(y > PG.yFin - 14) y = pdfPagina(d, R);
+  pdfF(d, 6.6, false, CP.gris);
+  pdfTxt(d, "Calculo referencial de terreno: los dias suponen trabajo continuo de toda la cuadrilla con el rendimiento indicado. Los cuarteles se hacen uno tras otro (los dias por cuartel suman el total). Valores sin IVA.", PG.ml, y+2, {max:PG.ancho});
+  pdfPies(d, R);
+  const nombre = ("Labor_"+(m.labor||"cuarteles")+"_"+hoy()).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^0-9A-Za-z]+/g,"_").replace(/^_|_$/g,"");
+  await pdfEntregar(d, nombre + ".pdf", esIOS);
+  return true;
 }
 /* ================== AVANCES: resumen + análisis ================== */
 function avAll(){ const out=[]; for(const l of D.labores) for(const a of (l.avances||[])) out.push({...a, tipo:l.tipo, fundo:l.fundo, cuartel:l.cuartel, laborId:l.id, unidad:l.unidad}); return out; }
@@ -7019,6 +7111,7 @@ function posPanel(){
   cargarFotosRec();
   cargarHeladas();
   cargarLluviaWidgets();
+  if(typeof wlAuto==="function") wlAuto();
 }
 
 /* Gesto tipo Google Earth: doble-toque y arrastrar (un dedo o lápiz) = zoom dinámico */
@@ -7330,7 +7423,14 @@ function mapaMedirDirecto(){ // atajo: entra directo a la regla de medición
 }
 function mapaFull(){
   const card = document.getElementById("mapaCard"); if(!card) return;
-  card.classList.toggle("mapa-full");
+  if(card.classList.contains("mapa-full")){ // salir: vuelve a su lugar en el panel
+    card.classList.remove("mapa-full");
+    if(card._padre){ try{ card._padre.insertBefore(card, card._sig && card._sig.parentNode===card._padre? card._sig : null); }catch(e){} card._padre=null; card._sig=null; }
+  }else{ // entrar: la tarjeta pasa al body para tapar toda la pantalla (riel incluido)
+    card._padre = card.parentNode; card._sig = card.nextSibling;
+    document.body.appendChild(card);
+    card.classList.add("mapa-full");
+  }
   mapaHerrDef();
   setTimeout(()=>{
     if(mapaP && window.L) mapaP.invalidateSize();
@@ -9748,6 +9848,322 @@ async function cfPDFArmar(pf, r, incl, uP, esIOS){
     .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
     .replace(/[^0-9A-Za-z]+/g,"_").replace(/^_|_$/g,"");
   await pdfEntregar(d, nombre + ".pdf", esIOS);
+}
+
+/* ================== ESTACIÓN WEATHERLINK + PROGRAMACIÓN DE RIEGO ==================
+   La app lee la estación Davis a través de un "puente" (Cloudflare Worker, ver
+   Puente_WeatherLink_instrucciones.md) que agrega la clave/secreto y permite CORS.
+   Datos por día en D.wl.dias[fecha] = {et (mm ET0), tmax, tmin, ll (mm), src:"wl"|"om", parcial}
+   Riego: ETc = ET0 × Kc(especie, mes) − lluvia efectiva; L/planta = ETc × área del marco;
+   horas = L/planta ÷ (goteros × caudal) ÷ eficiencia.  Kc referenciales FAO-56 / INIA, editables. */
+const RIEGO_KC_DEF = {
+  citricos: [0.72,0.72,0.70,0.68,0.65,0.62,0.62,0.65,0.68,0.70,0.72,0.72],
+  carozo:   [1.05,1.00,0.85,0.60,0.30,0.20,0.20,0.30,0.45,0.65,0.85,1.00],
+  general:  [0.70,0.70,0.70,0.70,0.70,0.70,0.70,0.70,0.70,0.70,0.70,0.70]
+};
+const RIEGO_GRUPO_N = {citricos:"Cítricos", carozo:"Cerezo / carozos", general:"Otros"};
+function wlCfg(){ D.wl = D.wl || {url:"", clave:"", st:null, stNombre:"", lat:null, lng:null, pro:null, ult:null, dias:{}, hoy:null, om:null}; D.wl.dias = D.wl.dias || {}; return D.wl; }
+function riegoCfg(){ D.riego = D.riego || {kc:{}, cu:{}, def:{gpp:2, caudal:4, ef:90}, base:"pron"}; D.riego.kc = D.riego.kc || {}; D.riego.cu = D.riego.cu || {}; D.riego.def = D.riego.def || {gpp:2, caudal:4, ef:90}; return D.riego; }
+function wlListo(){ const w=wlCfg(); return !!(w.url && w.st); }
+function wlISO(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function wlDiaMenos(n){ const d=new Date(); d.setDate(d.getDate()-n); return wlISO(d); }
+function wlCoords(){ const w=wlCfg(); if(w.lat&&w.lng) return {lat:+w.lat, lng:+w.lng}; return D.lluviaLoc || LOC_DEF; }
+/* --- llamadas al puente --- */
+async function wlFetch(ruta, params){
+  const w=wlCfg(); if(!w.url) throw new Error("Falta la dirección del puente (Datos → Estación WeatherLink).");
+  const p=new URLSearchParams(params||{}); if(w.clave) p.set("clave", w.clave);
+  const r=await fetch(w.url.replace(/\/+$/,"")+"/"+ruta+"?"+p.toString(), {cache:"no-store"});
+  let j=null; try{ j=await r.json(); }catch(e){ throw new Error("El puente no respondió con datos (HTTP "+r.status+")."); }
+  if(!r.ok || (j && (j.error || j.code))){ const msg=(j&&(j.error||j.message))||("HTTP "+r.status); const e=new Error(msg); e.status=r.status; throw e; }
+  return j;
+}
+async function wlConectar(){
+  const w=wlCfg();
+  w.url=(v("wl_url")||"").trim(); w.clave=(v("wl_clave")||"").trim(); guardar();
+  if(!w.url){ alert("Pega la dirección del puente (termina en .workers.dev)."); return; }
+  if(!navigator.onLine){ alert("⚠️ Necesitas señal para conectar la estación."); return; }
+  const est=document.getElementById("wlEstado"); if(est) est.innerHTML=`<span class="muted">Buscando estaciones…</span>`;
+  try{
+    const j=await wlFetch("stations");
+    const sts=(j.stations||[]);
+    if(!sts.length) throw new Error("La cuenta no tiene estaciones asociadas.");
+    const usar=(s)=>{ w.st=s.station_id; w.stNombre=s.station_name||("Estación "+s.station_id); w.lat=s.latitude||null; w.lng=s.longitude||null; w.pro=null;
+      if(!(D.widgets||[]).some(x=>x.tipo==="riego")){ D.widgets=D.widgets||[]; D.widgets.push({id:(D.seq=(D.seq||1000)+1), tipo:"riego"}); } // widget de riego en el Panel
+      guardar(); alert("✅ Conectada: "+w.stNombre); wlActualizar(true); };
+    if(sts.length===1){ usar(sts[0]); return; }
+    abrirModal(ic("plug")+" Elige la estación", `<label class="f">Estación<select id="wl_st">${sts.map((s,i)=>`<option value="${i}">${esc(s.station_name||s.station_id)}</option>`).join("")}</select></label>`,
+      ()=>{ usar(sts[+v("wl_st")||0]); }, "Usar esta");
+  }catch(e){ alert("⚠️ No se pudo conectar: "+e.message); if(est) est.innerHTML=`<span style="color:var(--rojo)">${esc(e.message)}</span>`; }
+}
+/* --- lectura de registros Davis (unidades: °F, pulgadas, mph) --- */
+function wlF2C(f){ return (f==null||isNaN(f))? null : Math.round((f-32)/1.8*10)/10; }
+function wlNum(x){ return (x==null||isNaN(+x))? null : +x; }
+function wlParseActual(j){
+  const out={ts:null, temp:null, hum:null, viento:null, solar:null, etDia:null, lluvia:null};
+  for(const s of (j.sensors||[])){
+    for(const r of (s.data||[])){
+      if(r.temp!=null && out.temp==null) out.temp=wlF2C(r.temp);
+      if(r.temp_out!=null && out.temp==null) out.temp=wlF2C(r.temp_out);
+      if(r.hum!=null && out.hum==null) out.hum=wlNum(r.hum);
+      if(r.hum_out!=null && out.hum==null) out.hum=wlNum(r.hum_out);
+      const vi=r.wind_speed_avg_last_10_min ?? r.wind_speed_avg ?? r.wind_speed_last; if(vi!=null && out.viento==null) out.viento=Math.round(vi*1.609*10)/10;
+      const so=r.solar_rad ?? r.solar_rad_avg; if(so!=null && out.solar==null) out.solar=wlNum(so);
+      if(r.et_day!=null && out.etDia==null) out.etDia=Math.round(r.et_day*25.4*100)/100;
+      const ll=r.rainfall_daily_mm ?? (r.rainfall_daily_in!=null? r.rainfall_daily_in*25.4 : null) ?? (r.rainfall_day_in!=null? r.rainfall_day_in*25.4 : null);
+      if(ll!=null && out.lluvia==null) out.lluvia=Math.round(ll*10)/10;
+      if(r.ts && (!out.ts || r.ts>out.ts)) out.ts=r.ts;
+    }
+  }
+  return out;
+}
+function wlParseDia(j){ // registros de archivo de un día → resumen diario
+  let et=0, hayEt=false, tmax=null, tmin=null, ll=0, hayLl=false, n=0;
+  for(const s of (j.sensors||[])){
+    for(const r of (s.data||[])){
+      if(r.et!=null){ et+=+r.et; hayEt=true; }
+      const hi=r.temp_hi ?? r.temp_out_hi ?? r.temp_last ?? r.temp_out ?? r.temp;
+      const lo=r.temp_lo ?? r.temp_out_lo ?? r.temp_last ?? r.temp_out ?? r.temp;
+      if(hi!=null){ const c=wlF2C(hi); if(tmax==null||c>tmax) tmax=c; n++; }
+      if(lo!=null){ const c=wlF2C(lo); if(tmin==null||c<tmin) tmin=c; }
+      const rl=r.rainfall_mm ?? (r.rainfall_in!=null? r.rainfall_in*25.4 : null); if(rl!=null){ ll+=+rl; hayLl=true; }
+    }
+  }
+  if(!n && !hayEt) return null;
+  return {et: hayEt? Math.round(et*25.4*100)/100 : null, tmax, tmin, ll: hayLl? Math.round(ll*10)/10 : null, src:"wl", parcial:false};
+}
+/* --- actualizar: actual + historial (si el plan lo permite) + relleno Open-Meteo --- */
+let _wlOcupado=false;
+async function wlActualizar(manual){
+  const w=wlCfg(); if(!w.url || !w.st) return;
+  if(!navigator.onLine){ if(manual) alert("⚠️ Sin señal: se usan los datos guardados."); return; }
+  if(_wlOcupado) return; _wlOcupado=true;
+  const est=document.getElementById("wlEstado"); if(est && manual) est.innerHTML=`<span class="muted">Leyendo la estación…</span>`;
+  let errores=[];
+  try{
+    const j=await wlFetch("current/"+w.st);
+    const a=wlParseActual(j); w.hoy=a; w.ult=ahora();
+    const hoyK=hoy(); const d=w.dias[hoyK]||{et:null,tmax:null,tmin:null,ll:null,src:"wl",parcial:true};
+    if(d.src!=="wl" || d.parcial){
+      if(a.etDia!=null) d.et=Math.max(d.et||0, a.etDia);
+      if(a.temp!=null){ d.tmax=(d.tmax==null||a.temp>d.tmax)? a.temp : d.tmax; d.tmin=(d.tmin==null||a.temp<d.tmin)? a.temp : d.tmin; }
+      if(a.lluvia!=null) d.ll=a.lluvia;
+      d.src="wl"; d.parcial=true; w.dias[hoyK]=d;
+    }
+  }catch(e){ errores.push("actual: "+e.message); }
+  /* historial día a día (requiere plan Pro): rellena hasta 10 días hacia atrás */
+  if(w.pro!==false){
+    let vacios=0;
+    for(let i=1;i<=10;i++){
+      const k=wlDiaMenos(i); const d=w.dias[k];
+      if(d && d.src==="wl" && !d.parcial) continue;
+      const ini=new Date(k+"T00:00:00"); const fin=new Date(ini.getTime()+86400000);
+      try{
+        const j=await wlFetch("historic/"+w.st, {"start-timestamp":Math.floor(ini/1000), "end-timestamp":Math.floor(fin/1000)});
+        const r=wlParseDia(j);
+        if(r){ w.dias[k]=r; w.pro=true; vacios=0; }
+        else if(w.pro!==true && ++vacios>=3){ w.pro=false; break; } // 3 días seguidos sin registros: plan Basic
+      }catch(e){
+        if(e.status===403 || e.status===401 || /permission|subscription|not authorized|forbidden/i.test(e.message)){ w.pro=false; break; }
+        errores.push("historial "+k+": "+e.message); break;
+      }
+    }
+  }
+  /* relleno con Open-Meteo (últimos 14 días) + pronóstico 7 días */
+  try{ await wlOpenMeteo(); }catch(e){ errores.push("Open-Meteo: "+e.message); }
+  /* poda: guardar solo 120 días */
+  const lim=wlDiaMenos(120); for(const k of Object.keys(w.dias)) if(k<lim) delete w.dias[k];
+  guardar(); _wlOcupado=false;
+  if(manual){ if(errores.length) alert("⚠️ "+errores.join(" · ")); else alert("✅ Estación actualizada"); }
+  if(typeof wlPintarEstado==="function") wlPintarEstado();
+  if(document.getElementById("riegoVista")) abrirRiego();
+  if(nav.tab==="panel" && document.querySelector("[data-w-riego]")) render();
+}
+async function wlOpenMeteo(){
+  const w=wlCfg(), c=wlCoords();
+  const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lng}&daily=et0_fao_evapotranspiration,precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=auto&past_days=14&forecast_days=7`);
+  const j=await r.json(); if(!j.daily) throw new Error("sin datos");
+  const hoyK=hoy(); const pron={};
+  j.daily.time.forEach((k,i)=>{
+    const rec={et:wlNum(j.daily.et0_fao_evapotranspiration[i]), ll:wlNum(j.daily.precipitation_sum[i]), tmax:wlNum(j.daily.temperature_2m_max[i]), tmin:wlNum(j.daily.temperature_2m_min[i])};
+    if(k>hoyK){ pron[k]=rec; return; }
+    const d=w.dias[k];
+    if(!d || d.src!=="wl" || (d.parcial && k<hoyK)){ w.dias[k]=Object.assign({}, rec, {src:"om", parcial:false}); }
+    else { if(d.et==null && rec.et!=null){ d.et=rec.et; d.src="mix"; } if(d.ll==null) d.ll=rec.ll; if(d.tmax==null) d.tmax=rec.tmax; if(d.tmin==null) d.tmin=rec.tmin; }
+  });
+  w.om={pron, ts:ahora()};
+}
+async function wlAuto(){ // desde el Panel: máximo una vez cada 30 min
+  const w=wlCfg(); if(!wlListo() || !navigator.onLine) return;
+  if(w.ult && (Date.now()-new Date(w.ult).getTime())<30*60000) return;
+  try{ await wlActualizar(false); }catch(e){}
+}
+/* --- tarjeta en Datos --- */
+function wlCardHTML(){
+  const w=wlCfg();
+  return `<div class="card"><h2>${ic("cloud")} Estación WeatherLink</h2>
+    <div class="muted">Lee tu estación Davis a través del puente de Cloudflare (ver <b>Puente_WeatherLink_instrucciones.md</b> en la carpeta de la app). Con eso la app calcula ET₀ y la programación de riego por cuartel.</div>
+    <div class="grid2" style="margin-top:8px">
+      ${campoF("wl_url","Dirección del puente","text",w.url,'placeholder="https://agronotas-clima.tu-cuenta.workers.dev" autocapitalize="off" autocorrect="off" spellcheck="false"')}
+      ${campoF("wl_clave","Clave de la app (CLAVE_APP)","text",w.clave,'placeholder="la palabra que pusiste en Cloudflare" autocapitalize="off" autocorrect="off" spellcheck="false"')}
+    </div>
+    <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:6px">
+      <button class="btn chico" onclick="wlConectar()">${ic("plug")} ${w.st? "Reconectar":"Conectar"}</button>
+      ${w.st? `<button class="btn sec chico" onclick="wlActualizar(true)">${ic("refresh")} Actualizar ahora</button>
+      <button class="btn sec chico" onclick="abrirRiego()">${ic("drop")} Programar riego</button>`:""}
+    </div>
+    <div id="wlEstado" style="margin-top:10px">${wlEstadoHTML()}</div></div>`;
+}
+function wlEstadoHTML(){
+  const w=wlCfg(); if(!w.st) return `<span class="muted">Sin estación conectada.</span>`;
+  const a=w.hoy||{}; const d7=riegoSerie(7);
+  const nWl=d7.filter(x=>x.src==="wl").length;
+  return `<div style="font-size:13.5px"><b>${esc(w.stNombre)}</b> · ${w.pro===true? "plan Pro (historial día a día)" : w.pro===false? "plan Basic (solo lectura actual; el historial se rellena con Open-Meteo)" : "plan por confirmar"}</div>
+    <div class="muted" style="margin-top:3px">${w.ult? "Última lectura "+fmtFH(w.ult) : "Aún sin lecturas"}${a.temp!=null? " · "+num(a.temp)+" °C":""}${a.hum!=null? " · "+num(a.hum)+" % HR":""}${a.viento!=null? " · viento "+num(a.viento)+" km/h":""}${a.solar!=null? " · "+num(a.solar)+" W/m²":""}${a.etDia!=null? " · ET₀ hoy "+num(a.etDia)+" mm":""}${a.lluvia!=null? " · lluvia hoy "+num(a.lluvia)+" mm":""}</div>
+    <div class="muted" style="margin-top:3px">ET₀ últimos 7 días: ${nWl} medidos por la estación, ${7-nWl} estimados con Open-Meteo${w.pro===false? " (con plan Basic el ET₀ del día no viene en la lectura actual; al pasar a Pro se descarga solo)":""}.</div>`;
+}
+function wlPintarEstado(){ const el=document.getElementById("wlEstado"); if(el) el.innerHTML=wlEstadoHTML(); }
+/* --- series para el riego --- */
+function riegoSerie(n){ // últimos n días (hasta ayer, o hasta hoy si hay dato)
+  const w=wlCfg(); const out=[];
+  for(let i=n;i>=1;i--){ const k=wlDiaMenos(i); const d=w.dias[k]||{}; out.push({k, et:d.et==null?null:d.et, ll:d.ll||0, src:d.src||"", tmax:d.tmax, tmin:d.tmin}); }
+  return out;
+}
+function riegoPron(n){ const w=wlCfg(); const p=(w.om&&w.om.pron)||{}; const out=[]; for(let i=1;i<=n;i++){ const k=wlDiaMenos(-i); const d=p[k]; out.push({k, et:d?d.et:null, ll:d?(d.ll||0):0, src:"om"}); } return out; }
+function riegoGrupo(q){ const g=fenGrupoDe(q.especie||""); return RIEGO_KC_DEF[g]? g : "general"; }
+function riegoKcTabla(g){ const r=riegoCfg(); return (r.kc[g] && r.kc[g].length===12)? r.kc[g] : RIEGO_KC_DEF[g]; }
+function riegoKc(q, mes){ const r=riegoCfg(); const o=r.cu[q.id]; if(o && o.kc>0) return +o.kc; return riegoKcTabla(riegoGrupo(q))[mes]; }
+function riegoParam(q){ const r=riegoCfg(); const o=r.cu[q.id]||{}; return {gpp:+(o.gpp||r.def.gpp||0), caudal:+(o.caudal||r.def.caudal||0), ef:+(o.ef||r.def.ef||90)}; }
+function riegoCalcCuartel(q, serie){
+  const pl=ctMarco(q); const area=pl>0? 10000/pl : 0; // m² por planta
+  const p=riegoParam(q); let etc=0, etcNeta=0, nEt=0;
+  for(const d of serie){ if(d.et==null) continue; const mes=new Date(d.k+"T12:00:00").getMonth(); const kc=riegoKc(q,mes); const e=d.et*kc; etc+=e; etcNeta+=Math.max(0, e-0.75*(d.ll||0)); nEt++; }
+  if(!nEt) return {area, plHa:pl, kcHoy:riegoKc(q,new Date().getMonth()), etcDia:null, etcNetaDia:null, etcPer:null, lPlDia:null, hDia:null, hPer:null, m3Per:null, nEt:0, dias:serie.length, p};
+  const dias=nEt;
+  const lPl=area? etcNeta*area : null;                              // L por planta en el período
+  const hTot=(lPl!=null && p.gpp>0 && p.caudal>0)? lPl/(p.gpp*p.caudal)/(p.ef/100) : null;
+  return {area, plHa:pl, kcHoy:riegoKc(q,new Date().getMonth()), etcDia:etc/dias, etcNetaDia:etcNeta/dias, etcPer:etcNeta, lPlDia:lPl!=null? lPl/dias : null,
+          hDia:hTot!=null? hTot/dias : null, hPer:hTot, m3Per:etcNeta*10*(+q.ha||0), nEt, dias:serie.length, p};
+}
+/* --- vista Programación de riego (visor) --- */
+function riegoSet(id,k,val){ const r=riegoCfg(); r.cu[id]=r.cu[id]||{}; const x=parseFloat(String(val).replace(",",".")); if(isNaN(x)||x<=0) delete r.cu[id][k]; else r.cu[id][k]=x; guardar(); abrirRiego(); }
+function riegoDef(k,val){ const r=riegoCfg(); const x=parseFloat(String(val).replace(",",".")); if(!isNaN(x)&&x>0) r.def[k]=x; guardar(); abrirRiego(); }
+function riegoBase(b){ riegoCfg().base=b; guardar(); abrirRiego(); }
+function riegoFundo(f){ nav.riegoFundo=f; abrirRiego(); }
+function riegoKcSet(g,mes,val){ const r=riegoCfg(); r.kc[g]=(r.kc[g]&&r.kc[g].length===12)? r.kc[g].slice() : RIEGO_KC_DEF[g].slice(); const x=parseFloat(String(val).replace(",",".")); if(!isNaN(x)&&x>=0&&x<=1.5) r.kc[g][mes]=x; guardar(); }
+function riegoKcReset(g){ delete riegoCfg().kc[g]; guardar(); abrirRiego(); }
+function abrirRiego(){
+  const r=riegoCfg(), w=wlCfg();
+  const base=r.base||"pron"; const serie= base==="pron"? riegoPron(7) : riegoSerie(7);
+  const fus=fundos(); const f=nav.riegoFundo && fus.indexOf(nav.riegoFundo)>=0? nav.riegoFundo : (fus[0]||"");
+  const cus=cuartelesDe(f).filter(q=>gtNorm(q.especie||"")!=="por plantar");
+  const etSum=serie.reduce((s,d)=>s+(d.et||0),0), nEt=serie.filter(d=>d.et!=null).length, llSum=serie.reduce((s,d)=>s+(d.ll||0),0);
+  const med=riegoSerie(7), medSum=med.reduce((s,d)=>s+(d.et||0),0), medN=med.filter(d=>d.et!=null).length, medWl=med.filter(d=>d.src==="wl").length;
+  const MES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  const filas=cus.map(q=>{ const c=riegoCalcCuartel(q,serie); return {q,c}; });
+  const totM3=filas.reduce((s,x)=>s+(x.c.m3Per||0),0);
+  const fmt=(x,d)=> (x==null||isNaN(x)||!isFinite(x))? "—" : (+x).toLocaleString("es-CL",{minimumFractionDigits:d,maximumFractionDigits:d});
+  const grupos=[...new Set(cus.map(riegoGrupo))];
+  document.getElementById("capaVisor").innerHTML=`
+  <div class="visor" id="riegoVista" style="background:#eef1ec">
+    <div class="vh" style="background:linear-gradient(135deg,#123f24,#1e7a4c)">
+      <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
+      <div style="flex:1;color:#fff;font-weight:800">${ic("drop")} Programación de riego</div>
+      <button class="btn sec chico" onclick="wlActualizar(true)">${ic("refresh")}<span class="lbl">Actualizar</span></button>
+      <button class="btn sec chico" onclick="riegoPDFDoc()">${ic("save")} PDF</button>
+    </div>
+    <div style="flex:1;overflow:auto;-webkit-overflow-scrolling:touch">
+      <div style="max-width:1100px;margin:0 auto;padding:14px 16px 40px">
+        <div class="card">
+          <div class="fila" style="gap:8px;flex-wrap:wrap;align-items:center">
+            <span class="gfl">Calcular con:</span>
+            <button class="chip ${base==="pron"?"on":""}" onclick="riegoBase('pron')">Pronóstico próximos 7 días</button>
+            <button class="chip ${base==="med"?"on":""}" onclick="riegoBase('med')">Medido últimos 7 días</button>
+            <span class="muted" style="margin-left:auto">${wlListo()? esc(w.stNombre)+(w.ult? " · leída "+fmtFH(w.ult):"") : "Sin estación: todo con Open-Meteo"}</span>
+          </div>
+          <div class="fila gkpi" style="margin-top:10px">
+            <div class="gk"><div class="gkn">${fmt(nEt? etSum/nEt:null,2)} mm/día</div><div class="gkl">ET₀ ${base==="pron"?"pronóstico":"medida"} (${nEt} días)</div></div>
+            <div class="gk"><div class="gkn">${fmt(llSum,1)} mm</div><div class="gkl">lluvia ${base==="pron"?"pronosticada":"caída"} 7 días</div></div>
+            <div class="gk"><div class="gkn">${fmt(medN? medSum/medN:null,2)} mm/día</div><div class="gkl">ET₀ medida últimos 7 (${medWl} de estación)</div></div>
+            <div class="gk"><div class="gkn">${fmt(totM3,0)} m³</div><div class="gkl">agua del fundo en 7 días</div></div>
+          </div>
+          <div style="margin-top:10px;display:flex;gap:4px;flex-wrap:wrap">${serie.map(d=>`<div style="flex:1;min-width:58px;text-align:center;background:${d.src==="wl"?"#e7f3eb":"#f4f6f3"};border:1px solid var(--borde);border-radius:8px;padding:5px 2px"><div style="font-size:11px;color:var(--txt2)">${fmtF(d.k).slice(0,5)}</div><div style="font-weight:800;font-size:14px;color:var(--p2)">${fmt(d.et,1)}</div><div style="font-size:10.5px;color:var(--txt2)">${d.ll? ic("rain")+" "+fmt(d.ll,0)+" mm" : "ET₀ mm"}</div></div>`).join("")}</div>
+          <div class="muted" style="font-size:11.5px;margin-top:6px">Verde = dato de tu estación · gris = estimado (Open-Meteo). ETc = ET₀ × Kc; se descuenta el 75 % de la lluvia. Kc referenciales FAO-56 / INIA: edítalos abajo con tu asesor.</div>
+        </div>
+        <div class="card">
+          <div class="fila" style="gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><span class="gfl">Fundo:</span>${fus.map(x=>`<button class="chip ${x===f?"on":""}" onclick="riegoFundo('${esc(x).replace(/'/g,"\\'")}')">${esc(x)}</button>`).join("")}
+            <span style="margin-left:auto" class="muted">Valores por defecto:</span>
+            <label class="muted">goteros/pl <input type="text" inputmode="decimal" value="${r.def.gpp}" style="width:52px" onchange="riegoDef('gpp',this.value)"></label>
+            <label class="muted">L/h <input type="text" inputmode="decimal" value="${r.def.caudal}" style="width:52px" onchange="riegoDef('caudal',this.value)"></label>
+            <label class="muted">efic. % <input type="text" inputmode="decimal" value="${r.def.ef}" style="width:52px" onchange="riegoDef('ef',this.value)"></label></div>
+          <div style="overflow-x:auto"><table class="ctt rg"><thead><tr><th>Cuartel</th><th>Especie</th><th style="text-align:right">ha</th><th style="text-align:right">m²/pl</th><th style="text-align:right">Kc</th><th style="text-align:right">got./pl</th><th style="text-align:right">L/h</th><th style="text-align:right">ef %</th><th style="text-align:right">ETc mm/d</th><th style="text-align:right">L/pl/día</th><th style="text-align:right"><b>h/día</b></th><th style="text-align:right">h/7 d</th><th style="text-align:right">m³/7 d</th></tr></thead>
+          <tbody>${filas.map(({q,c})=>{ const o=r.cu[q.id]||{}; return `<tr><td><b>${esc(q.nombre)}</b></td><td>${esc(q.especie||"")}${q.variedad?" "+esc(q.variedad):""}</td><td style="text-align:right">${fmt(+q.ha||0,2)}</td>
+            <td style="text-align:right">${c.area? fmt(c.area,1) : "<span class='muted' title='sin marco de plantación'>s/marco</span>"}</td>
+            <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.kc||""}" placeholder="${fmt(c.kcHoy,2)}" style="width:54px;text-align:right" onchange="riegoSet(${q.id},'kc',this.value)"></td>
+            <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.gpp||""}" placeholder="${r.def.gpp}" style="width:46px;text-align:right" onchange="riegoSet(${q.id},'gpp',this.value)"></td>
+            <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.caudal||""}" placeholder="${r.def.caudal}" style="width:46px;text-align:right" onchange="riegoSet(${q.id},'caudal',this.value)"></td>
+            <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.ef||""}" placeholder="${r.def.ef}" style="width:46px;text-align:right" onchange="riegoSet(${q.id},'ef',this.value)"></td>
+            <td style="text-align:right">${fmt(c.etcNetaDia,2)}</td><td style="text-align:right">${fmt(c.lPlDia,0)}</td>
+            <td style="text-align:right;font-weight:800;color:var(--p2);font-size:14px">${fmt(c.hDia,1)}</td><td style="text-align:right">${fmt(c.hPer,1)}</td><td style="text-align:right">${fmt(c.m3Per,0)}</td></tr>`; }).join("")}
+          ${filas.length? `<tr style="background:var(--pclaro);font-weight:700"><td colspan="2">TOTAL ${esc(f)}</td><td style="text-align:right">${fmt(cus.reduce((s,q)=>s+(+q.ha||0),0),2)}</td><td colspan="9"></td><td style="text-align:right">${fmt(totM3,0)}</td></tr>` : `<tr><td colspan="13" class="muted">Este fundo no tiene cuarteles plantados.</td></tr>`}</tbody></table></div>
+          <div class="muted" style="font-size:11.5px;margin-top:6px">h/día = litros por planta ÷ (goteros × caudal) ÷ eficiencia. Si riegas día por medio, junta dos días de horas. Escribe en las casillas para cambiar un cuartel; vacío = valor por defecto.</div>
+        </div>
+        <details class="card"><summary style="cursor:pointer;font-weight:700">${ic("gear")} Kc por mes (referencial, editable)</summary>
+          ${grupos.map(g=>`<div style="margin-top:10px"><div class="fila" style="align-items:center;gap:8px"><b>${RIEGO_GRUPO_N[g]}</b>${r.kc[g]?`<button class="btn sec chico" onclick="riegoKcReset('${g}')">Volver al referencial</button>`:""}</div>
+            <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:4px;margin-top:6px">${riegoKcTabla(g).map((k,i)=>`<label style="font-size:11px;color:var(--txt2);text-align:center">${MES[i]}<input type="text" inputmode="decimal" value="${k}" style="width:100%;text-align:center;padding:4px 2px" onchange="riegoKcSet('${g}',${i},this.value)"></label>`).join("")}</div></div>`).join("")}
+          <div class="muted" style="font-size:11.5px;margin-top:8px">Cítricos según FAO-56 (huerto adulto, 70 % de cobertura); cerezo sube de brotación a plena hoja y baja en otoño (INIA). Confírmalos con tu asesor de riego.</div>
+        </details>
+        <div class="muted" style="font-size:11.5px">Cálculo referencial. Ajusta con calicatas, tensiómetros o sondas de humedad si las tienes.</div>
+      </div>
+    </div>
+  </div>`;
+}
+/* --- widget del Panel --- */
+function riegoWidgetHTML(w){
+  const r=riegoCfg(); const base=r.base||"pron"; const serie= base==="pron"? riegoPron(7) : riegoSerie(7);
+  const nEt=serie.filter(d=>d.et!=null).length; const et=nEt? serie.reduce((s,d)=>s+(d.et||0),0)/nEt : null;
+  if(!nEt) return widgetCard(w, `<div class="muted" data-w-riego>Aún no hay datos de ET₀. ${wlListo()? "Toca Actualizar en Datos → Estación WeatherLink." : "Conecta tu estación en Datos, o entra a Programar riego para usar Open-Meteo."}</div><button class="btn sec chico" style="margin-top:8px" onclick="abrirRiego()">${ic("drop")} Programar riego</button>`, ic("drop")+" Riego de la semana");
+  const filas=fundos().map(f=>{ const cus=cuartelesDe(f).filter(q=>gtNorm(q.especie||"")!=="por plantar"); if(!cus.length) return ""; const cs=cus.map(q=>riegoCalcCuartel(q,serie)); const m3=cs.reduce((s,c)=>s+(c.m3Per||0),0); const hs=cs.map(c=>c.hDia).filter(x=>x!=null); const hmin=hs.length?Math.min(...hs):null, hmax=hs.length?Math.max(...hs):null;
+    return `<div class="fila" style="justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--borde)"><span>${esc(f)}</span><span class="muted">${hs.length? (hmin===hmax? num(Math.round(hmin*10)/10) : num(Math.round(hmin*10)/10)+"–"+num(Math.round(hmax*10)/10))+" h/día · " : ""}<b>${Math.round(m3).toLocaleString("es-CL")} m³</b>/7 d</span></div>`; }).join("");
+  return widgetCard(w, `<div data-w-riego><div class="muted" style="font-size:12px">ET₀ ${base==="pron"?"pronóstico":"medida"} ${num(Math.round(et*100)/100)} mm/día · ${wlListo()? esc(wlCfg().stNombre) : "Open-Meteo"}</div>${filas}
+    <button class="btn sec chico" style="margin-top:8px" onclick="abrirRiego()">${ic("drop")} Programar riego</button></div>`, ic("drop")+" Riego de la semana");
+}
+/* --- PDF de la programación --- */
+async function riegoPDFDoc(){
+  if(!window.jspdf || !window.jspdf.jsPDF){ alert("No se pudo cargar el motor de PDF."); return; }
+  const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+  if(esIOS) gtAviso("Generando el PDF… se abrirá la hoja para compartir.", 4000);
+  try{
+    const r=riegoCfg(), w=wlCfg(); const base=r.base||"pron"; const serie= base==="pron"? riegoPron(7) : riegoSerie(7);
+    const nEt=serie.filter(d=>d.et!=null).length; const et=nEt? serie.reduce((s,d)=>s+(d.et||0),0)/nEt : 0; const ll=serie.reduce((s,d)=>s+(d.ll||0),0);
+    const fN=(x,d)=>cfNum(x,d);
+    const R={doc:"Programación de riego", tit:(base==="pron"?"Próximos 7 días":"Últimos 7 días")+" · "+fmtF(serie[0].k)+" al "+fmtF(serie[serie.length-1].k), sub:(wlListo()? "Estación "+w.stNombre : "Open-Meteo")+"  ·  ET0 "+fN(et,2)+" mm/dia  ·  lluvia "+fN(ll,1)+" mm"};
+    const d=new window.jspdf.jsPDF({orientation:"landscape", unit:"mm", format:"a4", compress:true});
+    d.setProperties({title:"Programacion de riego", author:"AgroNotas · Total Fruit Curacavi", creator:"AgroNotas"});
+    pdfCabecera(d,R); let y=PG.y0;
+    y=pdfKPIs(d,y,[{v:fN(et,2)+" mm/dia", l:"ET0 "+(base==="pron"?"pronostico":"medida"), d:nEt+" dias con dato"},{v:fN(ll,1)+" mm", l:"Lluvia 7 dias", d:"se descuenta 75 %"},{v:serie.map(x=>fN(x.et,1)).join(" · "), l:"ET0 dia a dia (mm)", d:serie.map(x=>fmtF(x.k).slice(0,5)).join(" · ")}]);
+    for(const f of fundos()){
+      const cus=cuartelesDe(f).filter(q=>gtNorm(q.especie||"")!=="por plantar"); if(!cus.length) continue;
+      if(y>PG.yFin-40) y=pdfPagina(d,R);
+      y=pdfSeccion(d,y,f, cus.length+" cuartel(es)");
+      const filas=cus.map(q=>{ const c=riegoCalcCuartel(q,serie); const p=c.p; return [q.nombre,(q.especie||"")+(q.variedad?" "+q.variedad:""),fN(+q.ha||0,2),c.area?fN(c.area,1):"s/marco",fN(c.kcHoy,2),p.gpp+" x "+fN(p.caudal,1)+" L/h",fN(c.etcNetaDia,2),c.lPlDia!=null?fN(c.lPlDia,0):"—",c.hDia!=null?fN(c.hDia,1):"—",c.hPer!=null?fN(c.hPer,1):"—",fN(c.m3Per,0)].map(pdfSano); });
+      const tot=cus.reduce((s,q)=>s+riegoCalcCuartel(q,serie).m3Per,0);
+      d.autoTable({startY:y, margin:{left:PG.ml,right:PG.mr,top:PG.y0,bottom:PG.mb+3},
+        head:[["Cuartel","Especie","ha","m2/pl","Kc","Goteros x caudal","ETc mm/dia","L/pl/dia","h/dia","h/7 dias","m3/7 dias"]],
+        body:filas, foot:[["TOTAL","",fN(cus.reduce((s,q)=>s+(+q.ha||0),0),2),"","","","","","","",fN(tot,0)].map(pdfSano)],
+        theme:"plain", styles:{fontSize:7.4,textColor:rgb(CP.texto),cellPadding:1.5,overflow:"ellipsize"},
+        headStyles:{fillColor:rgb(CP.verde),textColor:[255,255,255],fontSize:6.3,fontStyle:"bold",halign:"right"},
+        footStyles:{fillColor:rgb(CP.pale),textColor:rgb(CP.verde),fontStyle:"bold",fontSize:7.4,halign:"right"},
+        alternateRowStyles:{fillColor:rgb("#FAFCFB")},
+        columnStyles:{0:{halign:"left",fontStyle:"bold",cellWidth:34},1:{halign:"left",cellWidth:40},8:{fontStyle:"bold"}},
+        didParseCell:h=>{ if(h.column.index<=1) h.cell.styles.halign="left"; }, didDrawPage:()=>pdfCabecera(d,R)});
+      y=d.lastAutoTable.finalY+6;
+    }
+    if(y>PG.yFin-10) y=pdfPagina(d,R);
+    pdfF(d,6.6,false,CP.gris);
+    pdfTxt(d,"ETc = ET0 x Kc (FAO-56 / INIA, referenciales) menos el 75 % de la lluvia. Horas = litros por planta / (goteros x caudal) / eficiencia. Valores referenciales: ajustar con sondas o calicatas.",PG.ml,y+2,{max:PG.ancho});
+    pdfPies(d,R);
+    await pdfEntregar(d, "Riego_"+hoy().replace(/-/g,"_")+".pdf", esIOS);
+  }catch(err){ alert("No se pudo generar el PDF.\n\nDetalle: "+((err&&(err.message||err.name))||err)); }
 }
 
 /* ================== REGISTRO FENOLÓGICO ==================
