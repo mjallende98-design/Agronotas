@@ -345,6 +345,13 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
 .fenrp{display:flex; gap:6px; flex-wrap:wrap; align-items:flex-start;}
 .fenth{width:96px; height:96px; border-radius:9px; background:#eef1ec center/cover no-repeat; cursor:pointer; border:1px solid var(--borde);}
 .fenth:hover{border-color:var(--p);}
+.fentl{display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; margin:0 0 14px;}
+.fentile{background:var(--card); border:1px solid var(--borde); border-radius:12px; padding:8px; cursor:pointer; min-width:0;}
+.fentile:hover{border-color:var(--p);}
+.fentph{width:100%; aspect-ratio:1; border-radius:9px; background:#eef1ec center/cover no-repeat; position:relative; display:flex; align-items:center; justify-content:center; color:var(--txt2); font-size:11.5px;}
+.fentn{position:absolute; right:6px; bottom:6px; background:rgba(0,0,0,.55); color:#fff; font-size:11px; font-weight:700; border-radius:8px; padding:2px 7px;}
+.fentd{font-size:13.5px; font-weight:800; color:var(--txt); margin:8px 0 5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.fentnota{font-size:11.5px; color:var(--txt2); margin-top:6px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
 .bitnota{margin-top:9px; padding:9px 11px; background:#fbfbf7; border-left:3px solid var(--acc);
   border-radius:0 8px 8px 0; font-size:13px; color:var(--txt); white-space:pre-wrap;}
 /* editor de colores */
@@ -3658,6 +3665,13 @@ function vDatos(){
     </div>
     <div class="muted" style="margin-top:6px">El CSV de Labores respeta el rango de fechas (vacío = todo) e incluye una fila de <b>TOTALES</b>. Los CSV se abren directo en Excel.</div></div>`;
 
+  h += `<div class="card"><h2>${ic("device")} Usar la app en otro dispositivo</h2>
+    <div class="muted">Para tener la misma información en tu teléfono (o en el PC): en este aparato toca <b>Exportar</b> (crea un archivo con una copia; <b>no borra ni cambia nada aquí</b>) y mándalo al otro (AirDrop, WhatsApp, correo o iCloud). En el otro aparato, abre la app desde su ícono, entra a Datos y toca <b>Importar</b>: ese aparato queda con la copia, fotos incluidas (lo que tuviera antes se reemplaza).</div>
+    <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn" onclick="respaldar()">${ic("share")} Exportar para otro dispositivo</button>
+      <button class="btn sec" onclick="document.getElementById('inpRest').click()">${ic("upload")} Importar datos de otro dispositivo</button>
+    </div>
+    <div class="muted" style="margin-top:8px;font-size:12.5px">${ic("info")} Es una copia de ida: lo que anotes en el teléfono no vuelve solo al iPad. Trabaja en uno y, si cambias de aparato, vuelve a exportar e importar.</div></div>`;
   h += `<div class="card"><h2>${ic("save")} Respaldo</h2>
     <div class="fila">
       <button class="btn" onclick="respaldar()">${ic("download")} Descargar respaldo completo</button>
@@ -4165,9 +4179,9 @@ body{padding-bottom:28px; padding-left:calc(var(--rail) + env(safe-area-inset-le
   border:1px solid #e2a9a4; border-radius:12px;
   padding:11px 16px; margin-bottom:14px; cursor:pointer;}
 .mapa-wrap{position:relative; isolation:isolate; z-index:0;}
-#mapaPanel{height:400px; border-radius:10px; border:1px solid var(--borde); background:#e8ebe6; position:relative; z-index:0; isolation:isolate;}
+#mapaPanel{height:500px; border-radius:10px; border:1px solid var(--borde); background:#e8ebe6; position:relative; z-index:0; isolation:isolate;}
 .mapa-btns{position:absolute; bottom:22px; right:24px; z-index:1; display:flex; gap:8px;}
-.mapa-tools{position:absolute; top:54px; right:24px; z-index:1; display:flex; flex-direction:column; align-items:flex-end; gap:8px; pointer-events:none;}
+.mapa-tools{position:absolute; top:54px; right:24px; z-index:1; display:flex; flex-direction:column; align-items:flex-end; gap:6px; pointer-events:none;}
 .mapa-tools .btn{pointer-events:auto;}
 .mapa-hint{pointer-events:none;}
 .mapa-tools, .mapa-hint, .mapa-dibbar, .mapa-tools *{user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;}
@@ -4265,7 +4279,7 @@ html{-webkit-tap-highlight-color:transparent;}
 .btn:active, .chip:active, .tabbar button:active, .fencard:active, .gbar:active, .aviso-acc:active, .card[onclick]:active{transform:scale(.96); filter:brightness(.94); opacity:1;}
 /* esqueleto brillante mientras cargan fotos */
 @keyframes brillo{from{background-position:-200% 0;} to{background-position:200% 0;}}
-.thumbs[data-fotos], .fenph[data-fid]:not([data-fid=""]):not(.ok), .fenth[data-fid]:not(.ok), .fotos-g .ph.sk{
+.thumbs[data-fotos], .fenph[data-fid]:not([data-fid=""]):not(.ok), .fenth[data-fid]:not(.ok), .fentph[data-fid]:not([data-fid=""]):not(.ok), .fotos-g .ph.sk{
   background:linear-gradient(90deg,#e6eae4 25%,#f5f7f4 50%,#e6eae4 75%) !important; background-size:200% 100% !important; animation:brillo 1.2s linear infinite;}
 .thumbs[data-fotos]{min-height:86px; min-width:86px; border-radius:10px;}
 /* aviso de respaldo en el panel */
@@ -5211,6 +5225,9 @@ function vPanel(){
   const deHoy = D.labores.filter(l=>l.estado==="encurso" || ((l.estado==="pendiente"||l.estado==="hecha"||l.estado==="finalizada") && (l.fecha===hoyISO || (l.fecha2 && l.fecha<=hoyISO && hoyISO<=l.fecha2))));
   const sem = semanaDe(hoyISO);
   const deSemana = D.labores.filter(l=>l.fecha>=sem[0] && l.fecha<=sem[6]);
+  /* planificadas de hoy al domingo: cada labor cuenta una vez por cada día que está en el plan (Carta Gantt) */
+  const diasRest = sem.filter(d=>d>=hoyISO);
+  const planSem = D.labores.reduce((s,l)=>{ if(!l.fecha) return s; let ds=[l.fecha]; try{ ds=gtDiasPlan(l); }catch(_){} return s + ds.filter(d=>diasRest.indexOf(d)>=0).length; }, 0);
   const notasRec = [...D.notas].sort((a,b)=>b.fh.localeCompare(a.fh));
   const fijadas = notasRec.filter(n=>n.fijada);
   const urg = D.notas.filter(n=>n.cat==="Urgente" && !n.resuelta);
@@ -5251,8 +5268,7 @@ function vPanel(){
       <div style="display:flex;font-variant-numeric:tabular-nums">
         <div style="flex:1;cursor:pointer" onclick="ir('datos')"><div data-cnt style="font-size:24px;font-weight:700;color:var(--p)">${num(haPlant)}</div><div class="muted" style="font-size:11.5px">ha plantadas · ${num(haTot)} tot.</div></div>
         <div style="flex:1;cursor:pointer" onclick="nav.planVista='dia';nav.diaSel=null;ir('gantt')"><div data-cnt style="font-size:24px;font-weight:700">${deHoy.length}</div><div class="muted" style="font-size:11.5px">labores hoy</div></div>
-        <div style="flex:1;cursor:pointer" onclick="nav.planVista='sem';nav.semanaIni=null;ir('gantt')"><div data-cnt style="font-size:24px;font-weight:700">${pend.length}</div><div class="muted" style="font-size:11.5px">pendientes</div></div>
-        <div style="flex:1;cursor:pointer" onclick="nav.planVista='sem';nav.semanaIni=null;ir('gantt')"><div data-cnt style="font-size:24px;font-weight:700;color:var(--urg)">${atras.length}</div><div class="muted" style="font-size:11.5px">atrasadas</div></div>
+        <div style="flex:1;cursor:pointer" onclick="gtAj().per='sem';gtAj().ancla=hoy();guardar();ir('gantt')" title="Labores planificadas en la Carta Gantt de hoy al domingo (cada labor cuenta por cada día que está planificada)"><div data-cnt style="font-size:24px;font-weight:700;color:var(--p2)">${planSem}</div><div class="muted" style="font-size:11.5px">planificadas esta semana</div></div>
       </div></div>
     <div class="card"><div class="w-tit">Clima · ${esc(zonaClima())}</div>
       <div id="climaW" class="muted" style="font-size:13px">cargando pronóstico…</div>
@@ -5280,7 +5296,6 @@ function vPanel(){
     </div>
   </div>`;
 
-  h += panelAvances();
 
   /* Notas recientes (la tarjeta "Esta semana" se quitó: la Carta Gantt cubre la semana) */
   let hNot = `<div class="card"><div class="w-tit">${ic("note")} Notas recientes</div>`;
@@ -6362,7 +6377,7 @@ function cfPDF(){
   const filas=incl.slice().sort((a,b)=>(a.fundo||"").localeCompare(b.fundo||"")||(a.nombre||"").localeCompare(b.nombre||"")).map(q=>{
     const ha=cfHaCuartel(q), rha=cfRowHa(q), pc=rha*ha*cfNapp(), s=cfSelDe(q.id), precio=cfP(pf.precioU)||0, nEstQ=(capP>0&&mojP>0)?Math.ceil(ha*mojP/capP):0;
     const doseC=!isNaN(cfP(s.dosis))?cfP(s.dosis):cfDosisGlobal();
-    let _row = `<tr><td>${esc(q.fundo)}</td><td>${esc(q.nombre)}</td><td>${esc(q.especie||"")}</td><td style="text-align:right">${cfNum(ha,2)}</td><td style="text-align:right">${cfNum(doseC,doseC<10?2:0)} ${esc(cfLabUnid(pf.unidadDosis))}</td><td style="text-align:right">${cfQty(pc,uP)}</td><td style="text-align:right">${nEstQ||"—"}</td><td style="text-align:right">${precio>0?cfCLP(pc*precio):"—"}</td><td style="text-align:right">${cfFechaCosechaCuartel(q)?fmtF(cfFechaCosechaCuartel(q)):"—"}</td></tr>`;
+    let _row = `<tr><td>${esc(q.fundo)}</td><td>${esc(q.nombre)}</td><td>${esc(q.especie||"")}${q.variedad?" "+esc(q.variedad):""}</td><td style="text-align:right">${cfNum(ha,2)}</td><td style="text-align:right">${cfNum(doseC,doseC<10?2:0)} ${esc(cfLabUnid(pf.unidadDosis))}</td><td style="text-align:right">${cfQty(pc,uP)}</td><td style="text-align:right">${nEstQ||"—"}</td><td style="text-align:right">${precio>0?cfCLP(pc*precio):"—"}</td><td style="text-align:right">${cfFechaCosechaCuartel(q)?fmtF(cfFechaCosechaCuartel(q)):"—"}</td></tr>`;
     const _moj=cfP(pf.moj)||0, _napp=cfNapp();
     cfMezcla().forEach(function(m){ if(!(m.producto||"").trim()) return; let _mph=cfProdHaDe(m.dosis,m.unidadDosis,_moj); if(isNaN(_mph)) _mph=0; const _mtot=_mph*ha*_napp, _mpr=cfP(m.precioU)||0, _md=cfP(m.dosis), _mdtxt=(isNaN(_md)?"":cfNum(_md,_md<10?2:0)+" "+cfLabUnid(m.unidadDosis)); _row += `<tr style="background:#f7faf7;color:#555;font-size:12px"><td></td><td>↳ ${esc(m.producto)}</td><td></td><td></td><td style="text-align:right">${_mdtxt}</td><td style="text-align:right">${cfQty(_mtot,m.unidad)}</td><td></td><td style="text-align:right">${_mpr>0?cfCLP(_mtot*_mpr):"—"}</td><td></td></tr>`; });
     return _row;
@@ -6771,7 +6786,7 @@ function ctCuHTML(){
       const pl=ctPlantas(q), k=ctKey(q);
       h+=`<label class="culab"><input type="checkbox" ${s[k]?"checked":""} onchange="ctToggle('${k.replace(/'/g,"\\\\'")}')">
         <span class="gpt" style="background:${gtColEsp(q.especie)}"></span>
-        <span style="flex:1;min-width:0">${esc(q.nombre)} <span class="cuha">· ${num(+q.ha||0)} ha${pl?" · "+pl.toLocaleString("es-CL")+" pl":" · marco s/d"}${q.especie?" · "+esc(q.especie):""}</span></span></label>`;
+        <span style="flex:1;min-width:0">${esc(q.nombre)} <span class="cuha">· ${num(+q.ha||0)} ha${pl?" · "+pl.toLocaleString("es-CL")+" pl":" · marco s/d"}${q.especie?" · "+esc(q.especie)+(q.variedad?" "+esc(q.variedad):""):""}</span></span></label>`;
     });
   });
   return h+`</div>`;
@@ -7115,7 +7130,7 @@ function activarZoomGesto(map){
   function reenable(){ try{ if(map.dragging && !map.dragging.enabled()) map.dragging.enable(); }catch(_){} }
   function settle(){
     try{ map._animatingZoom=false; }catch(_){}
-    if(zCenter){ try{ map._resetView(zCenter, zEnd); }catch(_){ try{ map.setView(zCenter, zEnd, {animate:false}); }catch(e){} } }
+    if(zCenter){ try{ map._resetView(zCenter, zEnd); }catch(_){ try{ map.setView(zCenter, zEnd, {animate:false}); }catch(e){} } mapaRefrescarVectores(); }
   }
   function limpiar(){ // deja el gesto en reposo pase lo que pase
     const w=dtz; ready=false; dtz=false; pid=null;
@@ -7182,6 +7197,7 @@ function initMapa(){
     }
     mp.setView([loc.lat, loc.lng], 13);
     mapaP = mp;
+    mp.on("zoomend moveend rotateend viewreset", ()=>setTimeout(mapaRefrescarVectores,0));
     try{ activarZoomGesto(mp); }catch(_){}
     mapaTiles = [];
     aplicarCapa();
@@ -7351,27 +7367,43 @@ async function ortoOffPintar(){
   if(!window.caches){ el.innerHTML=`<div class="muted">Este navegador no guarda copias. Si abres el archivo desde la carpeta (PC), las ortofotos se leen directo de ahí y siempre están.</div>`; return; }
   const est=await ortoOffEstado();
   let uso=""; try{ if(navigator.storage&&navigator.storage.estimate){ const e=await navigator.storage.estimate(); if(e&&e.usage) uso=`Espacio que usa la app en este dispositivo: ${(e.usage/1048576).toFixed(0)} MB`; } }catch(e){}
-  const todas=est.every(x=>x.ok);
-  el.innerHTML = est.map(x=>`<div class="fila" style="align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--borde)">
-      <span style="color:${x.ok?"var(--p)":"var(--urg)"};display:flex">${ic(x.ok?"checkCirc":"alert")}</span>
-      <div style="flex:1;min-width:0"><b>${esc(x.o.nombre)}</b><div class="muted">${x.ok? "Guardada en este dispositivo"+(x.mb?` · ${x.mb.toFixed(1)} MB`:"") : "No está guardada: sin señal no se verá"}</div></div></div>`).join("")
+  const faltan=est.filter(x=>!x.ok).length;
+  el.innerHTML = est.map(x=>`<div class="fila" style="align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--borde);flex-wrap:wrap">
+      <span style="color:${x.ok?"var(--p)":"var(--txt2)"};display:flex">${ic(x.ok?"checkCirc":"circle")}</span>
+      <div style="flex:1;min-width:160px"><b>${esc(x.o.nombre)}</b><div class="muted">${x.ok? "Guardada en este dispositivo"+(x.mb?` · ${x.mb.toFixed(1)} MB`:"") : "No está en este dispositivo: sin señal no se verá"}</div></div>
+      ${x.ok? `<button class="btn sec chico" onclick="ortoOffQuitar('${x.o.id}')">${ic("trash")} Quitar</button>` : `<button class="btn chico" onclick="ortoOffBajar('${x.o.id}')">${ic("download")} Descargar</button>`}</div>`).join("")
     + `<div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
-      <button class="btn ${todas?"sec":""} chico" onclick="ortoOffBajar()">${ic("download")} ${todas?"Volver a descargar":"Descargar ahora"}</button>
-      <span class="muted" id="ortoOffProg">${uso}</span></div>`;
+      ${faltan? `<button class="btn sec chico" onclick="ortoOffBajar()">${ic("download")} Descargar todas</button>` : `<button class="btn sec chico" onclick="ortoOffBajar()">${ic("refresh")} Volver a descargar todas</button>`}
+      <span class="muted" id="ortoOffProg">${uso}</span></div>
+    <div class="muted" style="font-size:11.5px;margin-top:6px">Quitar libera el espacio en este aparato (no borra el archivo de la app ni afecta a otros dispositivos). Ojo: si la vuelves a mostrar en el mapa con señal, se guarda de nuevo.</div>`;
 }
-async function ortoOffBajar(){
+/* marca "omitir": la app y el service worker no vuelven a guardar esa ortofoto por su cuenta */
+function ortoOffMarca(url){ return url+"?omitir"; }
+async function ortoOffBajar(id){
   if(!window.caches){ aviso("⚠️ Este navegador no permite guardar copias."); return; }
   if(!navigator.onLine){ aviso("⚠️ Necesitas señal para descargar las ortofotos."); return; }
   const prog=document.getElementById("ortoOffProg");
   let c=null; try{ c=await caches.open(ORTO_CACHE); }catch(e){ aviso("⚠️ No se pudo abrir el almacén: "+e.message); return; }
+  const lista = id? ORTOFOTOS.filter(o=>o.id===id) : ORTOFOTOS;
   let n=0; const fallas=[];
-  for(const o of ORTOFOTOS){
-    if(prog) prog.textContent=`Descargando ${o.corto||o.nombre}… (${n+1} de ${ORTOFOTOS.length})`;
-    try{ const r=await fetch(o.url,{cache:"reload"}); if(!r.ok) throw new Error("HTTP "+r.status); await c.put(o.url, r); n++; }
+  for(const o of lista){
+    if(prog) prog.textContent=`Descargando ${o.corto||o.nombre}… (${n+1} de ${lista.length})`;
+    try{ const r=await fetch(o.url,{cache:"reload"}); if(!r.ok) throw new Error("HTTP "+r.status); await c.put(o.url, r); try{ await c.delete(ortoOffMarca(o.url)); }catch(_){} n++; }
     catch(e){ fallas.push(o.corto||o.nombre); }
   }
   if(fallas.length) aviso("⚠️ No se pudo descargar: "+fallas.join(", ")+". Revisa la señal e inténtalo de nuevo.");
-  else aviso("✅ Ortofotos guardadas para usar sin señal");
+  else aviso(lista.length===1? "✅ "+(lista[0].corto||lista[0].nombre)+" guardada para usar sin señal" : "✅ Ortofotos guardadas para usar sin señal");
+  ortoOffPintar();
+}
+async function ortoOffQuitar(id){
+  const o=ORTOFOTOS.find(x=>x.id===id); if(!o || !window.caches) return;
+  try{
+    const ks=await caches.keys();
+    let abs=o.url; try{ abs=new URL(o.url, location.href).href; }catch(_){}
+    for(const k of ks){ const c=await caches.open(k); await c.delete(o.url); if(abs!==o.url) await c.delete(abs); }
+    const c=await caches.open(ORTO_CACHE); await c.put(ortoOffMarca(o.url), new Response("omitir", {headers:{"Content-Type":"text/plain"}}));
+    aviso((o.corto||o.nombre)+" quitada de este dispositivo");
+  }catch(e){ aviso("⚠️ No se pudo quitar: "+e.message); }
   ortoOffPintar();
 }
 window.addEventListener("online", ()=>{ _tileErrSeg=0; mapaSenal(false); if(mapaP){ try{ aplicarCapa(); }catch(e){} } });
@@ -7654,6 +7686,11 @@ function cuartelDe(p){ // cuartel del catálogo enlazado a un polígono
   if(p.tipo!=="Cuartel") return null;
   const f = p.fundoRef, n = p.cuartelRef || p.nombre;
   return D.cuarteles.find(q=>(!f || q.fundo===f) && q.nombre===n) || null;
+}
+/* vuelve a proyectar áreas y trazos con la vista actual (tras zoom con el lápiz, pellizco o giro) */
+function mapaRefrescarVectores(){
+  if(!mapaP || !window.L) return;
+  try{ mapaP.eachLayer(l=>{ if(l instanceof L.Path && l._map) l.redraw(); }); }catch(_){}
 }
 function pintarPoligonos(sinTocar){
   if(!mapaP) return;
@@ -9497,7 +9534,7 @@ function gtCuPinta(){
       const k=gtCuKey(f,c.nombre);
       h+=`<label class="culab"><input type="checkbox" ${GT_SEL.sel[k]?"checked":""} ${todoF?"disabled":""} onchange="gtCuMarca('${k.replace(/'/g,"\\'")}',this.checked)">
         <span class="gpt" style="background:${gtColEsp(c.especie)}"></span>
-        <span style="flex:1;min-width:0">${esc(c.nombre)} <span class="cuha">· ${num(+c.ha||0)} ha${c.especie?" · "+esc(c.especie):""}</span></span></label>`;
+        <span style="flex:1;min-width:0">${esc(c.nombre)} <span class="cuha">· ${num(+c.ha||0)} ha${c.especie?" · "+esc(c.especie)+(c.variedad?" "+esc(c.variedad):""):""}</span></span></label>`;
     });
   });
   caja.innerHTML = h || `<div class="cbx-v" style="padding:10px">Ningún cuartel coincide con la búsqueda.</div>`;
@@ -9741,7 +9778,7 @@ async function cfPDFArmar(pf, r, incl, uP, esIOS){
     const doseC=!isNaN(cfP(s.dosis))?cfP(s.dosis):cfDosisGlobal();
     const fcq=cfFechaCosechaCuartel(q);
     sumCosto += precio>0? pc*precio : 0; sumCant += pc;
-    filas.push([q.fundo||"—", q.nombre||"—", q.especie||"—", cfNum(ha,2),
+    filas.push([q.fundo||"—", q.nombre||"—", (q.especie||"—")+(q.variedad?" "+q.variedad:""), cfNum(ha,2),
                 cfNum(doseC,doseC<10?2:0)+" "+cfLabUnid(pf.unidadDosis), cfQty(pc,uP),
                 nEstQ||"—", precio>0? cfCLP(pc*precio):"—", fcq? fmtF(fcq):"—"].map(pdfSano));
     cfMezcla().forEach(m=>{
@@ -9857,7 +9894,7 @@ const RIEGO_KC_DEF = {
 };
 const RIEGO_GRUPO_N = {citricos:"Cítricos", carozo:"Cerezo / carozos", general:"Otros"};
 function wlCfg(){ D.wl = D.wl || {url:"", clave:"", st:null, stNombre:"", lat:null, lng:null, pro:null, ult:null, dias:{}, hoy:null, om:null}; D.wl.dias = D.wl.dias || {}; return D.wl; }
-function riegoCfg(){ D.riego = D.riego || {kc:{}, cu:{}, def:{gpp:2, caudal:4, ef:90}, base:"pron"}; D.riego.kc = D.riego.kc || {}; D.riego.cu = D.riego.cu || {}; D.riego.def = D.riego.def || {gpp:2, caudal:4, ef:90}; return D.riego; }
+function riegoCfg(){ D.riego = D.riego || {kc:{}, cu:{}, def:{gpp:2, caudal:4, ef:90}, base:"sem"}; D.riego.kc = D.riego.kc || {}; D.riego.cu = D.riego.cu || {}; D.riego.def = D.riego.def || {gpp:2, caudal:4, ef:90}; return D.riego; }
 function wlListo(){ const w=wlCfg(); return !!(w.url && w.st); }
 function wlISO(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function wlDiaMenos(n){ const d=new Date(); d.setDate(d.getDate()-n); return wlISO(d); }
@@ -9977,7 +10014,7 @@ async function wlActualizar(manual){
 }
 async function wlOpenMeteo(){
   const w=wlCfg(), c=wlCoords();
-  const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lng}&daily=et0_fao_evapotranspiration,precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=auto&past_days=14&forecast_days=7`);
+  const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lng}&daily=et0_fao_evapotranspiration,precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=auto&past_days=14&forecast_days=14`);
   const j=await r.json(); if(!j.daily) throw new Error("sin datos");
   const hoyK=hoy(); const pron={};
   j.daily.time.forEach((k,i)=>{
@@ -10026,6 +10063,22 @@ function riegoSerie(n){ // últimos n días (hasta ayer, o hasta hoy si hay dato
   return out;
 }
 function riegoPron(n){ const w=wlCfg(); const p=(w.om&&w.om.pron)||{}; const out=[]; for(let i=1;i<=n;i++){ const k=wlDiaMenos(-i); const d=p[k]; out.push({k, et:d?d.et:null, ll:d?(d.ll||0):0, src:"om"}); } return out; }
+const RIEGO_DIA=["D","L","M","Mi","J","V","S"];
+function riegoDiaSigla(k){ return RIEGO_DIA[new Date(k+"T12:00:00").getDay()]; }
+function riegoSemana(offset){ // lunes..domingo de la semana actual (offset 0) o siguiente (1): pasado guardado + futuro pronóstico
+  const w=wlCfg(), p=(w.om&&w.om.pron)||{}, hoyK=hoy();
+  const sem=semanaDe(hoyK); const out=[];
+  sem.forEach(k0=>{
+    let k=k0; if(offset){ const d=new Date(k0+"T12:00:00"); d.setDate(d.getDate()+7*offset); k=wlISO(d); }
+    const g=w.dias[k], f=p[k];
+    if(k<=hoyK && g && g.et!=null) out.push({k, et:g.et, ll:g.ll||0, src:g.src||"om", tmax:g.tmax, tmin:g.tmin});
+    else if(f) out.push({k, et:f.et, ll:f.ll||0, src:"om"});
+    else out.push({k, et:null, ll:0, src:""});
+  });
+  return out;
+}
+function riegoSerieBase(){ const b=riegoCfg().base||"sem"; return b==="prox"? riegoSemana(1) : b==="med"? riegoSerie(7) : b==="pron"? riegoPron(7) : riegoSemana(0); }
+function riegoBaseLab(b){ b=b||riegoCfg().base||"sem"; return b==="prox"? "próxima semana" : b==="med"? "últimos 7 días" : b==="pron"? "próximos 7 días" : "esta semana"; }
 function riegoGrupo(q){ const g=fenGrupoDe(q.especie||""); return RIEGO_KC_DEF[g]? g : "general"; }
 function riegoKcTabla(g){ const r=riegoCfg(); return (r.kc[g] && r.kc[g].length===12)? r.kc[g] : RIEGO_KC_DEF[g]; }
 /* Kc por estado fenológico (código BBCH del último registro del cuartel). Referenciales: cerezo según INIA/FAO-24 sin cubierta
@@ -10072,11 +10125,12 @@ function riegoCalcCuartel(q, serie){
   const p=riegoParam(q); let etc=0, etcNeta=0, nEt=0;
   for(const d of serie){ if(d.et==null) continue; const mes=new Date(d.k+"T12:00:00").getMonth(); const kc=riegoKc(q,mes); const e=d.et*kc; etc+=e; etcNeta+=Math.max(0, e-0.75*(d.ll||0)); nEt++; }
   if(!nEt) return {area, plHa:pl, kcHoy:riegoKc(q,new Date().getMonth()), etcDia:null, etcNetaDia:null, etcPer:null, lPlDia:null, hDia:null, hPer:null, m3Per:null, nEt:0, dias:serie.length, p};
-  const dias=nEt;
-  const lPl=area? etcNeta*area : null;                              // L por planta en el período
-  const hTot=(lPl!=null && p.gpp>0 && p.caudal>0)? lPl/(p.gpp*p.caudal)/(p.ef/100) : null;
-  return {area, plHa:pl, kcHoy:riegoKc(q,new Date().getMonth()), etcDia:etc/dias, etcNetaDia:etcNeta/dias, etcPer:etcNeta, lPlDia:lPl!=null? lPl/dias : null,
-          hDia:hTot!=null? hTot/dias : null, hPer:hTot, m3Per:etcNeta*10*(+q.ha||0), nEt, dias:serie.length, p};
+  const dias=nEt, nSem=serie.length||7;                             // promedio con los días que tienen dato; totales llevados a la semana completa
+  const etcNetaDia=etcNeta/dias, etcSem=etcNetaDia*nSem;
+  const lPlDia=area? etcNetaDia*area : null;                          // L por planta y día
+  const hDia=(lPlDia!=null && p.gpp>0 && p.caudal>0)? lPlDia/(p.gpp*p.caudal)/(p.ef/100) : null;
+  return {area, plHa:pl, kcHoy:riegoKc(q,new Date().getMonth()), etcDia:etc/dias, etcNetaDia, etcPer:etcSem, lPlDia,
+          hDia, hPer:hDia!=null? hDia*nSem : null, m3Per:etcSem*10*(+q.ha||0), nEt, dias:nSem, p};
 }
 /* --- vista Programación de riego (visor) --- */
 function riegoSet(id,k,val){ const r=riegoCfg(); r.cu[id]=r.cu[id]||{}; const x=parseFloat(String(val).replace(",",".")); if(isNaN(x)||x<=0) delete r.cu[id][k]; else r.cu[id][k]=x; guardar(); abrirRiego(); }
@@ -10087,7 +10141,7 @@ function riegoKcSet(g,mes,val){ const r=riegoCfg(); r.kc[g]=(r.kc[g]&&r.kc[g].le
 function riegoKcReset(g){ delete riegoCfg().kc[g]; guardar(); abrirRiego(); }
 function abrirRiego(){
   const r=riegoCfg(), w=wlCfg();
-  const base=r.base||"pron"; const serie= base==="pron"? riegoPron(7) : riegoSerie(7);
+  const base=r.base||"sem"; const serie=riegoSerieBase(); const hoyK=hoy();
   const fus=fundos(); const f=nav.riegoFundo && fus.indexOf(nav.riegoFundo)>=0? nav.riegoFundo : (fus[0]||"");
   const cus=cuartelesDe(f).filter(q=>gtNorm(q.especie||"")!=="por plantar");
   const etSum=serie.reduce((s,d)=>s+(d.et||0),0), nEt=serie.filter(d=>d.et!=null).length, llSum=serie.reduce((s,d)=>s+(d.ll||0),0);
@@ -10110,21 +10164,22 @@ function abrirRiego(){
         <div class="card">
           <div class="fila" style="gap:8px;flex-wrap:wrap;align-items:center">
             <span class="gfl">Calcular con:</span>
-            <button class="chip ${base==="pron"?"on":""}" onclick="riegoBase('pron')">Pronóstico próximos 7 días</button>
-            <button class="chip ${base==="med"?"on":""}" onclick="riegoBase('med')">Medido últimos 7 días</button>
+            <button class="chip ${base==="sem"?"on":""}" onclick="riegoBase('sem')">Esta semana</button>
+            <button class="chip ${base==="prox"?"on":""}" onclick="riegoBase('prox')">Próxima semana</button>
+            <button class="chip ${base==="med"?"on":""}" onclick="riegoBase('med')">Últimos 7 días medidos</button>
             <span class="gfl" style="margin-left:6px">Kc según:</span>
             <button class="chip ${(r.modoKc||"mes")==="mes"?"on":""}" onclick="riegoModoKc('mes')">Mes</button>
             <button class="chip ${(r.modoKc||"mes")==="fen"?"on":""}" onclick="riegoModoKc('fen')" title="Usa el último registro de la pestaña Fenología de cada cuartel">Fenología</button>
             <span class="muted" style="margin-left:auto">${wlListo()? esc(w.stNombre)+(w.ult? " · leída "+fmtFH(w.ult):"") : "Sin estación: todo con Open-Meteo"}</span>
           </div>
           <div class="fila gkpi" style="margin-top:10px">
-            <div class="gk"><div class="gkn">${fmt(nEt? etSum/nEt:null,2)} mm/día</div><div class="gkl">ET₀ ${base==="pron"?"pronóstico":"medida"} (${nEt} días)</div></div>
-            <div class="gk"><div class="gkn">${fmt(llSum,1)} mm</div><div class="gkl">lluvia ${base==="pron"?"pronosticada":"caída"} 7 días</div></div>
+            <div class="gk"><div class="gkn">${fmt(nEt? etSum/nEt:null,2)} mm/día</div><div class="gkl">ET₀ ${riegoBaseLab(base)} (${nEt} días con dato)</div></div>
+            <div class="gk"><div class="gkn">${fmt(llSum,1)} mm</div><div class="gkl">lluvia ${riegoBaseLab(base)}</div></div>
             <div class="gk"><div class="gkn">${fmt(medN? medSum/medN:null,2)} mm/día</div><div class="gkl">ET₀ medida últimos 7 (${medWl} de estación)</div></div>
-            <div class="gk"><div class="gkn">${fmt(totM3,0)} m³</div><div class="gkl">agua del fundo en 7 días</div></div>
+            <div class="gk"><div class="gkn">${fmt(totM3,0)} m³</div><div class="gkl">agua del fundo en la semana</div></div>
           </div>
-          <div style="margin-top:10px;display:flex;gap:4px;flex-wrap:wrap">${serie.map(d=>`<div style="flex:1;min-width:58px;text-align:center;background:${d.src==="wl"?"#e7f3eb":"#f4f6f3"};border:1px solid var(--borde);border-radius:8px;padding:5px 2px"><div style="font-size:11px;color:var(--txt2)">${fmtF(d.k).slice(0,5)}</div><div style="font-weight:800;font-size:14px;color:var(--p2)">${fmt(d.et,1)}</div><div style="font-size:10.5px;color:var(--txt2)">${d.ll? ic("rain")+" "+fmt(d.ll,0)+" mm" : "ET₀ mm"}</div></div>`).join("")}</div>
-          <div class="muted" style="font-size:11.5px;margin-top:6px">Verde = dato de tu estación · gris = estimado (Open-Meteo). ETc = ET₀ × Kc; se descuenta el 75 % de la lluvia. Kc referenciales FAO-56 / INIA: edítalos abajo con tu asesor.</div>
+          <div style="margin-top:10px;display:flex;gap:4px;flex-wrap:wrap">${serie.map(d=>`<div style="flex:1;min-width:58px;text-align:center;background:${d.src==="wl"?"#e7f3eb":"#f4f6f3"};border:${d.k===hoyK?"2px solid var(--p)":"1px solid var(--borde)"};border-radius:8px;padding:5px 2px"><div style="font-size:12px;font-weight:800;color:${d.k===hoyK?"var(--p)":"var(--txt)"}">${riegoDiaSigla(d.k)}</div><div style="font-size:11px;color:var(--txt2)">${fmtF(d.k).slice(0,5)}</div><div style="font-weight:800;font-size:14px;color:var(--p2)">${fmt(d.et,1)}</div><div style="font-size:10.5px;color:var(--txt2)">${d.ll? ic("rain")+" "+fmt(d.ll,0)+" mm" : "ET₀ mm"}</div></div>`).join("")}</div>
+          <div class="muted" style="font-size:11.5px;margin-top:6px">Verde = medido por tu estación · gris = estimado o pronóstico (Open-Meteo) · borde verde = hoy. ETc mm/día y h/día son el promedio de los días con dato; h/sem y m³ son la semana completa. Se descuenta el 75 % de la lluvia. Kc referenciales FAO-56 / INIA: edítalos abajo con tu asesor.</div>
         </div>
         <div class="card">
           <div class="fila" style="gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><span class="gfl">Fundo:</span>${fus.map(x=>`<button class="chip ${x===f?"on":""}" onclick="riegoFundo('${esc(x).replace(/'/g,"\\'")}')">${esc(x)}</button>`).join("")}
@@ -10132,9 +10187,10 @@ function abrirRiego(){
             <label class="muted">goteros/pl <input type="text" inputmode="decimal" value="${r.def.gpp}" style="width:52px" onchange="riegoDef('gpp',this.value)"></label>
             <label class="muted">L/h <input type="text" inputmode="decimal" value="${r.def.caudal}" style="width:52px" onchange="riegoDef('caudal',this.value)"></label>
             <label class="muted">efic. % <input type="text" inputmode="decimal" value="${r.def.ef}" style="width:52px" onchange="riegoDef('ef',this.value)"></label></div>
-          <div style="overflow-x:auto"><table class="ctt rg"><thead><tr><th>Cuartel</th><th>Especie</th><th style="text-align:right">ha</th><th style="text-align:right">m²/pl</th><th style="text-align:right">Kc</th><th style="text-align:right">got./pl</th><th style="text-align:right">L/h</th><th style="text-align:right">ef %</th><th style="text-align:right">ETc mm/d</th><th style="text-align:right">L/pl/día</th><th style="text-align:right"><b>h/día</b></th><th style="text-align:right">h/7 d</th><th style="text-align:right">m³/7 d</th></tr></thead>
+          <div style="overflow-x:auto"><table class="ctt rg"><thead><tr><th>Cuartel</th><th>Especie</th><th style="text-align:right">ha</th><th style="text-align:right">m²/pl</th><th style="text-align:right">m³/ha<br><span style="font-weight:500">semana</span></th><th style="text-align:right">Kc</th><th style="text-align:right">got./pl</th><th style="text-align:right">L/h</th><th style="text-align:right">ef %</th><th style="text-align:right">ETc mm/d</th><th style="text-align:right">L/pl/día</th><th style="text-align:right"><b>h/día</b></th><th style="text-align:right">h/sem</th><th style="text-align:right">m³/sem</th></tr></thead>
           <tbody>${filas.map(({q,c})=>{ const o=r.cu[q.id]||{}; return `<tr><td><b>${esc(q.nombre)}</b></td><td>${esc(q.especie||"")}${q.variedad?" "+esc(q.variedad):""}</td><td style="text-align:right">${fmt(+q.ha||0,2)}</td>
             <td style="text-align:right">${c.area? fmt(c.area,1) : "<span class='muted' title='sin marco de plantación'>s/marco</span>"}</td>
+            <td style="text-align:right">${fmt(c.etcPer!=null? c.etcPer*10 : null,0)}</td>
             <td style="text-align:right;white-space:normal;min-width:150px">${(function(){ const ki=riegoKcInfo(q,new Date().getMonth()); const modo=o.modo||((!o.modo&&o.kc>0)?"manual":"global");
               const et = ki.src==="fen"? `${esc(ki.lab)} · ${ki.bbch} (${fmtF(ki.fecha).slice(0,5)}${ki.dias>45?`, <span style="color:var(--urg)">hace ${ki.dias} d</span>`:""})` : ki.src==="manual"? "manual" : (ki.sinFen? `<span style="color:var(--urg)">sin registro fenológico → mes</span>` : "según mes");
               return `<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px"><b style="font-size:14px;color:var(--p2)">${fmt(ki.kc,2)}</b>
@@ -10146,7 +10202,7 @@ function abrirRiego(){
             <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.ef||""}" placeholder="${r.def.ef}" style="width:46px;text-align:right" onchange="riegoSet(${q.id},'ef',this.value)"></td>
             <td style="text-align:right">${fmt(c.etcNetaDia,2)}</td><td style="text-align:right">${fmt(c.lPlDia,0)}</td>
             <td style="text-align:right;font-weight:800;color:var(--p2);font-size:14px">${fmt(c.hDia,1)}</td><td style="text-align:right">${fmt(c.hPer,1)}</td><td style="text-align:right">${fmt(c.m3Per,0)}</td></tr>`; }).join("")}
-          ${filas.length? `<tr style="background:var(--pclaro);font-weight:700"><td colspan="2">TOTAL ${esc(f)}</td><td style="text-align:right">${fmt(cus.reduce((s,q)=>s+(+q.ha||0),0),2)}</td><td colspan="9"></td><td style="text-align:right">${fmt(totM3,0)}</td></tr>` : `<tr><td colspan="13" class="muted">Este fundo no tiene cuarteles plantados.</td></tr>`}</tbody></table></div>
+          ${filas.length? `<tr style="background:var(--pclaro);font-weight:700"><td colspan="2">TOTAL ${esc(f)}</td><td style="text-align:right">${fmt(cus.reduce((s,q)=>s+(+q.ha||0),0),2)}</td><td colspan="10"></td><td style="text-align:right">${fmt(totM3,0)}</td></tr>` : `<tr><td colspan="14" class="muted">Este fundo no tiene cuarteles plantados.</td></tr>`}</tbody></table></div>
           <div class="muted" style="font-size:11.5px;margin-top:6px">h/día = litros por planta ÷ (goteros × caudal) ÷ eficiencia. Si riegas día por medio, junta dos días de horas. Escribe en las casillas para cambiar un cuartel; vacío = valor por defecto.</div>
         </div>
         <details class="card"><summary style="cursor:pointer;font-weight:700">${ic("gear")} Kc por mes y por estado fenológico (referenciales, editables)</summary>
@@ -10166,12 +10222,12 @@ function abrirRiego(){
 }
 /* --- widget del Panel --- */
 function riegoWidgetHTML(w){
-  const r=riegoCfg(); const base=r.base||"pron"; const serie= base==="pron"? riegoPron(7) : riegoSerie(7);
+  const r=riegoCfg(); const base=r.base||"sem"; const serie=riegoSerieBase();
   const nEt=serie.filter(d=>d.et!=null).length; const et=nEt? serie.reduce((s,d)=>s+(d.et||0),0)/nEt : null;
   if(!nEt) return widgetCard(w, `<div class="muted" data-w-riego>Aún no hay datos de ET₀. ${wlListo()? "Toca Actualizar en Datos → Estación WeatherLink." : "Conecta tu estación en Datos, o entra a Programar riego para usar Open-Meteo."}</div><button class="btn sec chico" style="margin-top:8px" onclick="abrirRiego()">${ic("drop")} Programar riego</button>`, ic("drop")+" Riego de la semana");
   const filas=fundos().map(f=>{ const cus=cuartelesDe(f).filter(q=>gtNorm(q.especie||"")!=="por plantar"); if(!cus.length) return ""; const cs=cus.map(q=>riegoCalcCuartel(q,serie)); const m3=cs.reduce((s,c)=>s+(c.m3Per||0),0); const hs=cs.map(c=>c.hDia).filter(x=>x!=null); const hmin=hs.length?Math.min(...hs):null, hmax=hs.length?Math.max(...hs):null;
-    return `<div class="fila" style="justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--borde)"><span>${esc(f)}</span><span class="muted">${hs.length? (hmin===hmax? num(Math.round(hmin*10)/10) : num(Math.round(hmin*10)/10)+"–"+num(Math.round(hmax*10)/10))+" h/día · " : ""}<b>${Math.round(m3).toLocaleString("es-CL")} m³</b>/7 d</span></div>`; }).join("");
-  return widgetCard(w, `<div data-w-riego><div class="muted" style="font-size:12px">ET₀ ${base==="pron"?"pronóstico":"medida"} ${num(Math.round(et*100)/100)} mm/día · ${wlListo()? esc(wlCfg().stNombre) : "Open-Meteo"}</div>${filas}
+    return `<div class="fila" style="justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--borde)"><span>${esc(f)}</span><span class="muted">${hs.length? (hmin===hmax? num(Math.round(hmin*10)/10) : num(Math.round(hmin*10)/10)+"–"+num(Math.round(hmax*10)/10))+" h/día · " : ""}<b>${Math.round(m3).toLocaleString("es-CL")} m³</b>/sem</span></div>`; }).join("");
+  return widgetCard(w, `<div data-w-riego><div class="muted" style="font-size:12px">ET₀ ${riegoBaseLab(base)} ${num(Math.round(et*100)/100)} mm/día · ${wlListo()? esc(wlCfg().stNombre) : "Open-Meteo"}</div>${filas}
     <button class="btn sec chico" style="margin-top:8px" onclick="abrirRiego()">${ic("drop")} Programar riego</button></div>`, ic("drop")+" Riego de la semana");
 }
 /* --- PDF de la programación --- */
@@ -10180,28 +10236,28 @@ async function riegoPDFDoc(){
   const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
   if(esIOS) gtAviso("Generando el PDF… se abrirá la hoja para compartir.", 4000);
   try{
-    const r=riegoCfg(), w=wlCfg(); const base=r.base||"pron"; const serie= base==="pron"? riegoPron(7) : riegoSerie(7);
+    const r=riegoCfg(), w=wlCfg(); const base=r.base||"sem"; const serie=riegoSerieBase();
     const nEt=serie.filter(d=>d.et!=null).length; const et=nEt? serie.reduce((s,d)=>s+(d.et||0),0)/nEt : 0; const ll=serie.reduce((s,d)=>s+(d.ll||0),0);
     const fN=(x,d)=>cfNum(x,d);
-    const R={doc:"Programación de riego", tit:(base==="pron"?"Próximos 7 días":"Últimos 7 días")+" · "+fmtF(serie[0].k)+" al "+fmtF(serie[serie.length-1].k), sub:(wlListo()? "Estación "+w.stNombre : "Open-Meteo")+"  ·  ET0 "+fN(et,2)+" mm/dia  ·  lluvia "+fN(ll,1)+" mm"};
+    const lab=riegoBaseLab(base); const R={doc:"Programación de riego", tit:(lab.charAt(0).toUpperCase()+lab.slice(1))+" · "+riegoDiaSigla(serie[0].k)+" "+fmtF(serie[0].k)+" al "+riegoDiaSigla(serie[serie.length-1].k)+" "+fmtF(serie[serie.length-1].k), sub:(wlListo()? "Estación "+w.stNombre : "Open-Meteo")+"  ·  ET0 "+fN(et,2)+" mm/dia  ·  lluvia "+fN(ll,1)+" mm"};
     const d=new window.jspdf.jsPDF({orientation:"landscape", unit:"mm", format:"a4", compress:true});
     d.setProperties({title:"Programacion de riego", author:"AgroNotas · Total Fruit Curacavi", creator:"AgroNotas"});
     pdfCabecera(d,R); let y=PG.y0;
-    y=pdfKPIs(d,y,[{v:fN(et,2)+" mm/dia", l:"ET0 "+(base==="pron"?"pronostico":"medida"), d:nEt+" dias con dato"},{v:fN(ll,1)+" mm", l:"Lluvia 7 dias", d:"se descuenta 75 %"},{v:serie.map(x=>fN(x.et,1)).join(" · "), l:"ET0 dia a dia (mm)", d:serie.map(x=>fmtF(x.k).slice(0,5)).join(" · ")}]);
+    y=pdfKPIs(d,y,[{v:fN(et,2)+" mm/dia", l:"ET0 "+lab, d:nEt+" dias con dato"},{v:fN(ll,1)+" mm", l:"Lluvia "+lab, d:"se descuenta 75 %"},{v:serie.map(x=>riegoDiaSigla(x.k)+" "+fN(x.et,1)).join(" · "), l:"ET0 dia a dia (mm)", d:serie.map(x=>fmtF(x.k).slice(0,5)).join(" · ")}]);
     for(const f of fundos()){
       const cus=cuartelesDe(f).filter(q=>gtNorm(q.especie||"")!=="por plantar"); if(!cus.length) continue;
       if(y>PG.yFin-40) y=pdfPagina(d,R);
       y=pdfSeccion(d,y,f, cus.length+" cuartel(es)");
-      const filas=cus.map(q=>{ const c=riegoCalcCuartel(q,serie); const p=c.p; return [q.nombre,(q.especie||"")+(q.variedad?" "+q.variedad:""),fN(+q.ha||0,2),c.area?fN(c.area,1):"s/marco",fN(c.kcHoy,2),p.gpp+" x "+fN(p.caudal,1)+" L/h",fN(c.etcNetaDia,2),c.lPlDia!=null?fN(c.lPlDia,0):"—",c.hDia!=null?fN(c.hDia,1):"—",c.hPer!=null?fN(c.hPer,1):"—",fN(c.m3Per,0)].map(pdfSano); });
+      const filas=cus.map(q=>{ const c=riegoCalcCuartel(q,serie); const p=c.p; return [q.nombre,(q.especie||"")+(q.variedad?" "+q.variedad:""),fN(+q.ha||0,2),c.area?fN(c.area,1):"s/marco",c.etcPer!=null?fN(c.etcPer*10,0):"—",fN(c.kcHoy,2),p.gpp+" x "+fN(p.caudal,1)+" L/h",fN(c.etcNetaDia,2),c.lPlDia!=null?fN(c.lPlDia,0):"—",c.hDia!=null?fN(c.hDia,1):"—",c.hPer!=null?fN(c.hPer,1):"—",fN(c.m3Per,0)].map(pdfSano); });
       const tot=cus.reduce((s,q)=>s+riegoCalcCuartel(q,serie).m3Per,0);
       d.autoTable({startY:y, margin:{left:PG.ml,right:PG.mr,top:PG.y0,bottom:PG.mb+3},
-        head:[["Cuartel","Especie","ha","m2/pl","Kc","Goteros x caudal","ETc mm/dia","L/pl/dia","h/dia","h/7 dias","m3/7 dias"]],
-        body:filas, foot:[["TOTAL","",fN(cus.reduce((s,q)=>s+(+q.ha||0),0),2),"","","","","","","",fN(tot,0)].map(pdfSano)],
+        head:[["Cuartel","Especie","ha","m2/pl","m3/ha sem","Kc","Goteros x caudal","ETc mm/dia","L/pl/dia","h/dia","h/semana","m3/semana"]],
+        body:filas, foot:[["TOTAL","",fN(cus.reduce((s,q)=>s+(+q.ha||0),0),2),"","","","","","","","",fN(tot,0)].map(pdfSano)],
         theme:"plain", styles:{fontSize:7.4,textColor:rgb(CP.texto),cellPadding:1.5,overflow:"ellipsize"},
         headStyles:{fillColor:rgb(CP.verde),textColor:[255,255,255],fontSize:6.3,fontStyle:"bold",halign:"right"},
         footStyles:{fillColor:rgb(CP.pale),textColor:rgb(CP.verde),fontStyle:"bold",fontSize:7.4,halign:"right"},
         alternateRowStyles:{fillColor:rgb("#FAFCFB")},
-        columnStyles:{0:{halign:"left",fontStyle:"bold",cellWidth:34},1:{halign:"left",cellWidth:40},8:{fontStyle:"bold"}},
+        columnStyles:{0:{halign:"left",fontStyle:"bold",cellWidth:34},1:{halign:"left",cellWidth:40},9:{fontStyle:"bold"}},
         didParseCell:h=>{ if(h.column.index<=1) h.cell.styles.halign="left"; }, didDrawPage:()=>pdfCabecera(d,R)});
       y=d.lastAutoTable.finalY+6;
     }
@@ -10209,7 +10265,7 @@ async function riegoPDFDoc(){
     pdfF(d,6.6,false,CP.gris);
     pdfTxt(d,"ETc = ET0 x Kc menos el 75 % de la lluvia. Kc segun "+((r.modoKc||"mes")==="fen"? "el estado fenologico registrado en cada cuartel (o el mes si no hay registro)" : "el mes")+" (FAO-56 / INIA / IVIA, referenciales). Horas = litros por planta / (goteros x caudal) / eficiencia. Ajustar con sondas o calicatas.",PG.ml,y+2,{max:PG.ancho});
     pdfPies(d,R);
-    await pdfEntregar(d, "Riego_"+hoy().replace(/-/g,"_")+".pdf", esIOS);
+    await pdfEntregar(d, "Riego_semana_"+serie[0].k.replace(/-/g,"_")+".pdf", esIOS);
   }catch(err){ alert("No se pudo generar el PDF.\n\nDetalle: "+((err&&(err.message||err.name))||err)); }
 }
 
@@ -10465,12 +10521,15 @@ function vFenologia(){
   let h=`
   <div class="card">
     <button class="btn" style="width:100%;padding:15px;font-size:16px" onclick="fenNuevo()">${ic("camera")} Registrar estado fenológico</button>
-    <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
-      <select onchange="fenSetF('fundo',this.value)" style="max-width:180px"><option value="">Todos los fundos</option>
-        ${fundos().map(x=>`<option value="${esc(x)}"${f.fundo===x?" selected":""}>${esc(x)}</option>`).join("")}</select>
-      <select onchange="fenSetF('cuartel',this.value)" style="max-width:200px"><option value="">Todos los cuarteles</option>
-        ${cus.map(q=>`<option value="${esc(q.nombre)}"${f.cuartel===q.nombre?" selected":""}>${esc(q.nombre)}${!f.fundo?" · "+esc(q.fundo):""}</option>`).join("")}</select>
-      <span style="width:6px"></span>
+    <div class="chips" style="margin-top:10px">
+      <div class="chip ${!f.fundo?"act":""}" onclick="fenSetF('fundo','')">Todos los fundos</div>
+      ${fundos().map(x=>`<div class="chip ${f.fundo===x?"act":""}" onclick="fenSetF('fundo','${esc(x).replace(/'/g,"\\'")}')">${esc(x)}</div>`).join("")}
+    </div>
+    ${f.fundo? `<div class="chips" style="margin-top:6px">
+      <div class="chip ${!f.cuartel?"act":""}" onclick="fenSetF('cuartel','')">Todos los cuarteles</div>
+      ${cus.filter(q=>gtNorm(q.especie||"")!=="por plantar").map(q=>`<div class="chip ${f.cuartel===q.nombre?"act":""}" onclick="fenSetF('cuartel','${esc(q.nombre).replace(/'/g,"\\'")}')"><span class="gpt" style="background:${gtColEsp(q.especie)}"></span>${esc(q.nombre)}</div>`).join("")}
+    </div>`:""}
+    <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center">
       ${[["actual","Estado actual"],["hist","Historial"]].map(([k,t])=>`<button class="btn ${f.vista===k?"":"sec"} chico" onclick="fenSetF('vista','${k}')">${t}</button>`).join("")}
       <div style="flex:1"></div>
       <span class="muted" style="font-size:12px">${fenAll().length} registro${fenAll().length===1?"":"s"}</span>
@@ -10507,32 +10566,32 @@ function vFenologia(){
     setTimeout(fenCargarThumbs,0);
     return h;
   }
-  /* historial: fundo → cuartel → fecha */
+  /* historial: fundo → cuartel → mosaico por fecha (seguimiento del cuartel) */
   if(!es.length) return h+`<div class="vacio"><span class="ico">🌸</span>Sin registros con estos filtros.</div>`;
-  let fuAct=null, cuAct=null;
-  es.forEach(e=>{
-    if(e.fundo!==fuAct){ fuAct=e.fundo; cuAct=null; h+=`<div class="bitmes">${esc(fuAct)}</div>`; }
-    if(e.cuartel!==cuAct){ cuAct=e.cuartel;
-      const q=D.cuarteles.find(x=>x.fundo===e.fundo&&x.nombre===e.cuartel);
-      h+=`<div class="fencu"><span class="gpt" style="background:${gtColEsp(e.especie)}"></span><b>${esc(e.cuartel)}</b>
-        <span class="muted">${esc(e.especie||"")}${q&&q.variedad?" · "+esc(q.variedad):""}</span>
-        <button class="btn sec chico" style="margin-left:auto" onclick="fenNuevo('${esc(e.fundo).replace(/'/g,"\\\\'")}','${esc(e.cuartel).replace(/'/g,"\\\\'")}')">＋ Registrar</button></div>`; }
-    h+=`<div class="card fenrow">
-      <div class="fenrl">
-        <div class="fenrf"><b>${fmtF(e.fecha)}</b></div>
-        <div style="margin-top:4px">${fenBadge(e)}</div>
-        ${e.nota?`<div class="fenrn">${esc(e.nota)}</div>`:""}
-        <div class="fila" style="gap:6px;margin-top:8px">
-          <button class="btn sec chico" onclick="fenEditar(${e.id})">${ic("edit")} Editar</button></div>
-      </div>
-      <div class="fenrp">${(e.fotos||[]).length? (e.fotos||[]).map(fid=>`<div class="fenth" data-fid="${fid}" onclick="abrirVisor('${fid}')"></div>`).join("") : `<div class="muted" style="font-size:11.5px">sin fotos</div>`}</div>
-    </div>`;
+  fundos().forEach(fu=>{
+    if(f.fundo && fu!==f.fundo) return;
+    const deFu=es.filter(e=>e.fundo===fu); if(!deFu.length) return;
+    h+=`<div class="bitmes">${esc(fu)}</div>`;
+    const orden=D.cuarteles.filter(q=>q.fundo===fu).map(q=>q.nombre);
+    const cusFu=[...new Set(deFu.map(e=>e.cuartel))].sort((a,b)=>{ const ia=orden.indexOf(a), ib=orden.indexOf(b); return (ia<0?999:ia)-(ib<0?999:ib) || a.localeCompare(b); });
+    cusFu.forEach(cu=>{
+      const lst=deFu.filter(e=>e.cuartel===cu); const q=D.cuarteles.find(x=>x.fundo===fu&&x.nombre===cu); const esp=(q&&q.especie)||lst[0].especie||"";
+      h+=`<div class="fencu"><span class="gpt" style="background:${gtColEsp(esp)}"></span><b>${esc(cu)}</b>
+        <span class="muted">${esc(esp)}${q&&q.variedad?" · "+esc(q.variedad):""} · ${lst.length} registro${lst.length===1?"":"s"}</span>
+        <button class="btn sec chico" style="margin-left:auto" onclick="fenNuevo('${esc(fu).replace(/'/g,"\\'")}','${esc(cu).replace(/'/g,"\\'")}')">＋ Registrar</button></div>
+        <div class="fentl">${lst.map(e=>{ const fs=e.fotos||[]; const foto=fs[0]; return `<div class="fentile" onclick="fenEditar(${e.id})">
+          <div class="fentph" data-fid="${foto||""}" ${foto?`onclick="event.stopPropagation();abrirVisor('${foto}')"`:""}>${foto? (fs.length>1?`<span class="fentn">+${fs.length-1}</span>`:"") : `<span>sin foto</span>`}</div>
+          <div class="fentd">${fmtF(e.fecha)}<span class="muted" style="font-weight:500;margin-left:6px">hace ${gtDif(e.fecha,hoyISO)===0?"hoy":gtDif(e.fecha,hoyISO)+" d"}</span></div>
+          <div>${fenBadge(e)}</div>
+          ${e.nota?`<div class="fentnota">${esc(e.nota)}</div>`:""}
+        </div>`; }).join("")}</div>`;
+    });
   });
   setTimeout(fenCargarThumbs,0);
   return h;
 }
 async function fenCargarThumbs(){
-  const els=Array.prototype.slice.call(document.querySelectorAll(".fenph[data-fid], .fenth[data-fid]"));
+  const els=Array.prototype.slice.call(document.querySelectorAll(".fenph[data-fid], .fenth[data-fid], .fentph[data-fid]"));
   for(const el of els){
     const fid=el.getAttribute("data-fid"); if(!fid) continue;
     try{ const d=await fotoGet(fid); if(d) el.style.backgroundImage=`url(${d})`; el.classList.add("ok"); }catch(_){ el.classList.add("ok"); }
@@ -10736,6 +10795,7 @@ function vBitacora(){
     <div class="fila" style="gap:8px;margin-top:9px;flex-wrap:wrap">
       <button class="btn sec chico" onclick="bitNueva('${ayer}')">＋ Anotar ayer</button>
       <button class="btn sec chico" onclick="bitNueva()">＋ Otro día</button>
+      <button class="btn sec chico" onclick="abrirAvances()">${ic("chartUp")} Costos y avances (PDF)</button>
       ${deHoy.length?`<span class="badge b-verde" style="align-self:center">✓ Hoy ya tienes ${deHoy.length} anotación${deHoy.length>1?"es":""}</span>`
                     :`<span class="muted" style="font-size:12px;align-self:center">Hoy todavía no anotas nada</span>`}
     </div>

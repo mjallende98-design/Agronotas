@@ -1,7 +1,7 @@
 /* Service worker — AgroNotas (Total Fruit Curacaví)
    Permite usar la app sin señal: guarda una copia en el iPad y,
    cuando hay internet, busca la versión más nueva en segundo plano. */
-const CACHE = "agronotas-v105";
+const CACHE = "agronotas-v111";
 const ORTOS = "agronotas-ortos"; // ortofotos del dron: caché aparte, no se borra al actualizar la app
 const ARCHIVOS = ["./", "./index.html", "./AgroNotas%20v3.html", "./apple-touch-icon.png"];
 const ORTOFOTOS = ["./santa_sara_orto.webp", "./cuesta_vieja_orto.webp"];
@@ -14,7 +14,7 @@ self.addEventListener("install", e => {
       return c.addAll(ARCHIVOS).catch(()=>{});
     }),
     /* ortofotos: se bajan una sola vez (si ya están, no se vuelven a descargar); cada una por separado */
-    caches.open(ORTOS).then(c => Promise.all(ORTOFOTOS.map(u => c.match(u).then(r => r ? null : c.add(u).catch(()=>{})))))
+    caches.open(ORTOS).then(c => Promise.all(ORTOFOTOS.map(u => c.match(u).then(r => r ? null : c.match(u + "?omitir").then(m => m ? null : c.add(u).catch(()=>{}))))))
   ]));
   self.skipWaiting();
 });
@@ -40,7 +40,14 @@ self.addEventListener("fetch", e => {
   e.respondWith(
     caches.match(e.request).then(res => {
       const red = fetch(e.request).then(r => {
-        if (r && r.ok) caches.open(nom).then(c => c.put(e.request, r.clone()));
+        if (r && r.ok) {
+          const copia = r.clone();
+          caches.open(nom).then(c => {
+            if (nom !== ORTOS) return c.put(e.request, copia);
+            /* ortofoto quitada a propósito desde Datos: no se vuelve a guardar sola */
+            return c.match(e.request.url.split("?")[0] + "?omitir").then(m => m ? null : c.put(e.request, copia));
+          });
+        }
         return r;
       }).catch(() => res);
       return res || red;
