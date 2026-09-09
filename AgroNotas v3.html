@@ -7419,6 +7419,23 @@ function activarZoomGesto(map){
   window.addEventListener("pointercancel", end, true);
   window.addEventListener("blur", function(){ downs.clear(); if(ready||dtz) limpiar(); });
 }
+/* Pellizco de dos dedos (celular): al soltar, recalcular las áreas.
+   Leaflet termina el pellizco con una animación que NO dispara "viewreset", así que sin esto
+   los contornos quedan corridos respecto a la foto. Solo actúa si hubo dos dedos: un toque
+   normal no gatilla nada (para no repintar de más). */
+function activarPellizco(cont){
+  if(!cont || cont._pellizco) return; cont._pellizco = true;
+  let dosDedos = false;
+  cont.addEventListener("touchstart", e=>{ if(e.touches && e.touches.length>1) dosDedos = true; }, {passive:true});
+  cont.addEventListener("touchend", e=>{
+    if(!dosDedos) return;
+    if(e.touches && e.touches.length) return;   // todavía queda un dedo apoyado
+    dosDedos = false;
+    setTimeout(mapaRefrescarVectores, 60);
+    setTimeout(mapaRefrescarVectores, 400);
+  }, {passive:true});
+  cont.addEventListener("touchcancel", ()=>{ dosDedos = false; }, {passive:true});
+}
 /* ---------- Mapa satelital con pins de notas GPS ---------- */
 function initMapa(){
   const el = document.getElementById("mapaPanel");
@@ -7438,8 +7455,10 @@ function initMapa(){
     }
     mp.setView([loc.lat, loc.lng], 13);
     mapaP = mp;
-    mp.on("zoomend moveend rotateend viewreset", ()=>setTimeout(mapaRefrescarVectores,0));
+    mp.on("moveend", ()=>setTimeout(mapaRefrescarVectores,0));
+    mp.on("zoomend rotateend viewreset", ()=>setTimeout(mapaRefrescarVectores2,0));
     try{ activarZoomGesto(mp); }catch(_){}
+    try{ activarPellizco(el); }catch(_){}
     mapaTiles = [];
     aplicarCapa();
     try{ ortoAplicar(); }catch(_){}
@@ -7928,10 +7947,28 @@ function cuartelDe(p){ // cuartel del catálogo enlazado a un polígono
   const f = p.fundoRef, n = p.cuartelRef || p.nombre;
   return D.cuarteles.find(q=>(!f || q.fundo===f) && q.nombre===n) || null;
 }
-/* vuelve a proyectar áreas y trazos con la vista actual (tras zoom con el lápiz, pellizco o giro) */
+/* vuelve a proyectar áreas y trazos con la vista actual (tras zoom con el lápiz, pellizco o giro)
+   Ojo: redraw() solo repinta con las coordenadas YA calculadas; si el pellizco terminó sin
+   "viewreset" (caso del celular), esas coordenadas son las del zoom anterior y las áreas quedan
+   corridas. Por eso acá se hace la re-proyección completa (_reset = proyectar + repintar). */
 function mapaRefrescarVectores(){
   if(!mapaP || !window.L) return;
-  try{ mapaP.eachLayer(l=>{ if(l instanceof L.Path && l._map) l.redraw(); }); }catch(_){}
+  try{
+    const rends = [];
+    mapaP.eachLayer(l=>{ if(l instanceof L.Path && l._map && l._renderer && rends.indexOf(l._renderer)<0) rends.push(l._renderer); });
+    for(const r of rends){ try{ if(r._update) r._update(); }catch(_){} }   // el marco del dibujo vuelve a calzar con la vista
+    mapaP.eachLayer(l=>{
+      try{
+        if(l instanceof L.Path && l._map){ if(l._reset) l._reset(); else l.redraw(); }
+        else if(l instanceof L.Marker && l._map && l.update) l.update();   // pines y textos escritos sobre el mapa
+      }catch(_){}
+    });
+  }catch(_){}
+}
+/* dos pasadas: una al tiro y otra cuando la animación de zoom ya terminó del todo */
+function mapaRefrescarVectores2(){
+  mapaRefrescarVectores();
+  setTimeout(mapaRefrescarVectores, 400);
 }
 function pintarPoligonos(sinTocar){
   if(!mapaP) return;
@@ -10215,13 +10252,15 @@ async function syncSubir(manual){
 /* ---------- el que manda: fotos a R2, de a poco y en segundo plano ---------- */
 function syncFotosProgramar(ms){ clearTimeout(_syncFotoT); _syncFotoT=setTimeout(syncFotosTanda, ms||1500); }
 async function syncFotosLista(){                 // ids que ya están arriba
-  const ids={}; let cur=null, vueltas=0;
+  const ids={}; let cur=null, vueltas=0, donde="";
   do{
     const j=await syncFetch("fotos"+(cur? "?cursor="+encodeURIComponent(cur):""));
-    if(j.sinBucket) return null;
+    if(j.sinBucket) return null;                   // puentes viejos sin dónde guardar
+    donde = j.donde || donde;
     (j.ids||[]).forEach(function(x){ ids[x]=1; });
     cur=j.cursor; vueltas++;
   }while(cur && vueltas<20);
+  syncCfg().donde = donde;
   return ids;
 }
 async function syncFotosTanda(){
@@ -10241,9 +10280,15 @@ async function syncFotosTanda(){
       const data=await fotoGetLocal(id);
       if(data==null){ arriba[id]=1; continue; }
       const r=await fetch(syncBase()+"/foto/"+encodeURIComponent(id)+"?clave="+encodeURIComponent(s.clave), {method:"PUT", body:String(data), cache:"no-store"});
-      if(r.ok){ arriba[id]=1; n++; } else break;
+      if(r.ok){ arriba[id]=1; n++; continue; }
+      let msg=""; try{ const j=await r.json(); msg=j.error||""; }catch(e){}
+      s.fotosPend = locales.length-n;
+      s.estado = "Fotos en pausa: "+(msg||("HTTP "+r.status))+" · faltan "+s.fotosPend+", reintento en 30 min";
+      guardar(); syncPintar(); syncFotosProgramar(1800000);      // se acabó la cuota del día: esperar
+      return;
     }
     const faltan=locales.length-n;
+    s.fotosPend = faltan;
     s.estado = faltan>0? ("Subiendo fotos: faltan "+faltan) : "";
     syncPintar();
     if(faltan>0) syncFotosProgramar(2500);
@@ -10357,7 +10402,8 @@ function syncEstadoHTML(){
   const rol = s.rol==="emisor"? "Manda (sube lo que anotas)" : "Mira (se actualiza solo)";
   return `<div style="font-size:13.5px"><b>${esc(rol)}</b> · ${esc(syncEquipo())}</div>
     <div class="muted" style="margin-top:3px">${s.ult? (s.rol==="emisor"? "Última subida ":"Al día ")+fmtFH(s.ult)+(s.n? " · "+num(s.n/1024,0)+" KB":"") : "Todavía no sincroniza"}${s.rol==="receptor"? " · revisa cada 10 s":""}</div>
-    ${s.estado? `<div style="margin-top:4px;color:${s.estado.indexOf("No se pudo")===0||s.estado.indexOf("Falló")===0||s.estado.indexOf("El cuaderno pesa")===0? "var(--rojo)":"var(--txt2)"}">${esc(s.estado)}</div>`:""}`;
+    ${s.donde? `<div class="muted" style="margin-top:3px">Fotos: ${s.donde==="r2"? "en R2 (10 GB)":"en el mismo buzón KV (1 GB, unas 2.000 fotos)"}</div>`:""}
+    ${s.estado? `<div style="margin-top:4px;color:${s.estado.indexOf("No se pudo")===0||s.estado.indexOf("Falló")===0||s.estado.indexOf("El cuaderno pesa")===0||s.estado.indexOf("Fotos en pausa")===0? "var(--rojo)":"var(--txt2)"}">${esc(s.estado)}</div>`:""}`;
 }
 function syncPintar(){ const el=document.getElementById("syncEstado"); if(el) el.innerHTML=syncEstadoHTML(); }
 const EX_URL   = 'placeholder="https://agronotas-sync.tu-cuenta.workers.dev" autocapitalize="off" autocorrect="off" spellcheck="false" onchange="syncSet(&quot;url&quot;,this.value)"';
@@ -10373,7 +10419,7 @@ function syncCardHTML(){
     </div>
     <div style="margin-top:4px"><div class="muted" style="font-size:12.5px;margin-bottom:4px">¿Qué hace <b>este</b> equipo?</div>
       <div class="chips" style="padding-bottom:2px">${roles.map(([v,l])=>`<button class="chip ${s.rol===v?'act':''}" onclick="syncRol('${v}')">${l}</button>`).join("")}</div></div>
-    <label class="ui-row" style="border-top:none;padding:6px 0"><input type="checkbox" ${s.fotos!==false?"checked":""} onchange="syncFotosSet(this.checked)"><div><b>Incluir fotos</b><div class="muted">El iPad las sube de a poco; el celular baja cada una cuando la abres.</div></div></label>
+    <label class="ui-row" style="border-top:none;padding:6px 0"><input type="checkbox" ${s.fotos!==false?"checked":""} onchange="syncFotosSet(this.checked)"><div><b>Incluir fotos</b><div class="muted">El iPad las sube de a poco; el celular baja cada una cuando la abres. Sin bucket R2 van al mismo buzón (1 GB gratis, unas 2.000 fotos) y cada una gasta una de las 1.000 subidas diarias.</div></div></label>
     <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:6px">
       <button class="btn sec chico" onclick="syncProbar()">${ic("plug")} Probar</button>
       ${s.rol==="emisor"? `<button class="btn chico" onclick="syncSubir(true)">${ic("upload")} Subir ahora</button>`:""}
