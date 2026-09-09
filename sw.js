@@ -1,7 +1,7 @@
 /* Service worker — AgroNotas (Total Fruit Curacaví)
    Permite usar la app sin señal: guarda una copia en el iPad y,
    cuando hay internet, busca la versión más nueva en segundo plano. */
-const CACHE = "agronotas-v114";
+const CACHE = "agronotas-v115";
 const ORTOS = "agronotas-ortos"; // ortofotos del dron: caché aparte, no se borra al actualizar la app
 const ARCHIVOS = ["./", "./index.html", "./AgroNotas%20v3.html", "./apple-touch-icon.png"];
 const ORTOFOTOS = ["./santa_sara_orto.webp", "./cuesta_vieja_orto.webp"];

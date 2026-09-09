@@ -1096,6 +1096,7 @@ function guardar(){
   try{ localStorage.setItem(CLAVE, JSON.stringify(D)); }
   catch(e){ alert("⚠️ No se pudo guardar (memoria llena). Descarga un respaldo desde Datos."); }
   if(typeof espejoProgramar==="function") espejoProgramar(); // copia espejo en IndexedDB (segunda canasta)
+  if(typeof syncProgramar==="function") syncProgramar();     // sube al puente si este equipo manda
 }
 function nid(){ return ++D.seq; }
 
@@ -1123,6 +1124,11 @@ function fotoDel(id){ return new Promise((res)=>{
   t.objectStore("fotos").delete("v"+id); // datos vectoriales del croquis, si existen
   t.objectStore("fotos").delete("o"+id); // imagen original de fondo, si existe
   t.oncomplete=res; t.onerror=res;
+});}
+function fotoIds(){ return new Promise((res)=>{
+  try{ const r = idb.transaction("fotos").objectStore("fotos").getAllKeys();
+    r.onsuccess=()=>res(r.result||[]); r.onerror=()=>res([]);
+  }catch(e){ res([]); }
 });}
 function fotoTodas(){ return new Promise((res)=>{
   const r = idb.transaction("fotos").objectStore("fotos").getAll();
@@ -3651,6 +3657,7 @@ function vDatos(){
       <div id="ortoOff" style="margin-top:8px"><div class="muted">Revisando…</div></div></div>`;
     setTimeout(ortoOffPintar, 0);
   }
+  h += syncCardHTML();
   h += wlCardHTML();
   h += `<div class="card"><h2>${ic("link")} GesAgro</h2>
     <div class="muted">Importa el respaldo JSON de GesAgro para ver acá el 🚦 semáforo de carencias de cosecha (agrégalo como widget en el Panel). Re-importa cada vez que registres aplicaciones nuevas allá.</div>
@@ -4461,6 +4468,11 @@ html.movil .kpi .num{font-size:21px;}
 /* con texto grande el celular queda muy apretado: se limita el zoom */
 html.movil.grande #app, html.movil.grande #topbar, html.movil.grande #capaModal .modal{zoom:1.06;}
 html.movil.grande .mapa-wrap{zoom:.943;}
+/* franja del equipo espejo */
+.sync-esp{display:flex; align-items:flex-start; gap:10px; background:#eaf1f7; border:1px solid #a9c6dd;
+  color:#1d4a6b; border-radius:12px; padding:10px 14px; margin-bottom:12px; font-size:13px; line-height:1.35;}
+.sync-esp .i{flex:0 0 auto; margin-top:1px;}
+.sync-esp .muted{color:#3d6e90;}
 /* interruptores de la tarjeta Pantalla */
 .ui-row{display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--borde); cursor:pointer;}
 .ui-row:first-of-type{border-top:none;}
@@ -5274,7 +5286,8 @@ function renderInterno(){
     if(_act && _act.scrollIntoView) try{ _act.scrollIntoView({block:"nearest", inline:"center"}); }catch(_){ }
   }
   const vistas = {panel:vPanel, notas:vNotas, bitacora:vBitacora, fenologia:vFenologia, listas:vListas, gantt:vGantt, reg:vReg, tab:vTab, noti:vNoticias, calcfito:vCalcFito, aplic:vAplic, datos:vDatos};
-  document.getElementById("app").innerHTML = vistas[nav.tab]();
+  document.getElementById("app").innerHTML = (typeof syncBannerHTML==="function"? syncBannerHTML():"") + vistas[nav.tab]();
+  if(typeof syncIniciar==="function") syncIniciar();
   if(nav.tab!=="panel" && geoWatch){ navigator.geolocation.clearWatch(geoWatch); geoWatch = null; } // ahorra batería fuera del mapa
   const posrender = {notas:posNotas, panel:posPanel, reg:posNotas, noti:posNoticias}[nav.tab];
   if(posrender) posrender();
@@ -10122,6 +10135,253 @@ async function cfPDFArmar(pf, r, incl, uP, esIOS){
     .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
     .replace(/[^0-9A-Za-z]+/g,"_").replace(/^_|_$/g,"");
   await pdfEntregar(d, nombre + ".pdf", esIOS);
+}
+
+/* ================== SINCRONIZACIÓN ENTRE DISPOSITIVOS ==================
+   Un equipo "manda" (el iPad): cada vez que guardas, deja una copia del cuaderno
+   en el puente de Cloudflare. El otro "mira" (el celular): la baja solo cada 10 s.
+   Instrucciones para armar el puente: Sincronizacion_instrucciones.md            */
+const SYNC_ESPERA = 8000;      // espera tras el último guardado antes de subir
+const SYNC_MINIMO = 45000;     // no sube más seguido que esto (plan gratis: 1.000 al día)
+const SYNC_SONDEO = 10000;     // cada cuánto pregunta el que mira si hay algo nuevo
+const SYNC_MAX    = 23*1024*1024;  // el buzón admite 25 MiB por valor
+const SYNC_LOCAL  = ["sync","ui"]; // lo propio de cada equipo NO viaja
+let _syncT=null, _syncPollT=null, _syncSubiendo=false, _syncBajando=false,
+    _syncUltIntento=0, _syncFotoT=null, _syncFotoNo={}, _syncInit=false;
+
+function syncCfg(){
+  D.sync = D.sync || {url:"", clave:"", rol:"off", fotos:true, ult:null, ultTs:0, hash:"", n:0, estado:"", equipo:""};
+  return D.sync;
+}
+function syncEquipo(){
+  const s=syncCfg();
+  if(!s.equipo){
+    const ua=navigator.userAgent||"";
+    const t = /iPad/i.test(ua)? "iPad" : /iPhone|Android/i.test(ua)? "Celular" : "PC";
+    s.equipo = t+"-"+Math.random().toString(36).slice(2,6);
+  }
+  return s.equipo;
+}
+function syncListo(){ const s=syncCfg(); return !!(s.url && s.clave && s.rol && s.rol!=="off"); }
+function syncBase(){ return syncCfg().url.replace(/\/+$/,""); }
+function syncHash(t){ let h=5381; for(let i=0;i<t.length;i++) h=((h*33) ^ t.charCodeAt(i))>>>0; return h.toString(36)+"-"+t.length; }
+function syncPayload(){ const o={}; for(const k in D){ if(SYNC_LOCAL.indexOf(k)<0) o[k]=D[k]; } return o; }
+
+async function syncFetch(ruta, opt){
+  const s=syncCfg();
+  if(!s.url) throw new Error("Falta la dirección del puente (Datos → Sincronización).");
+  if(!s.clave) throw new Error("Falta la clave.");
+  const sep = ruta.indexOf("?")>=0? "&" : "?";
+  const o = Object.assign({cache:"no-store"}, opt||{});
+  const r = await fetch(syncBase()+"/"+ruta+sep+"clave="+encodeURIComponent(s.clave), o);
+  let j=null; try{ j=await r.json(); }catch(e){ throw new Error("El puente no respondió con datos (HTTP "+r.status+")."); }
+  if(!r.ok || (j && j.error)){ const e=new Error((j&&j.error)||("HTTP "+r.status)); e.status=r.status; throw e; }
+  return j;
+}
+
+/* ---------- el que manda: subir ---------- */
+function syncProgramar(){                       // lo llama guardar()
+  if(!D || !D.sync || D.sync.rol!=="emisor" || !syncListo()) return;
+  clearTimeout(_syncT); _syncT=setTimeout(function(){ syncSubir(false); }, SYNC_ESPERA);
+}
+async function syncSubir(manual){
+  const s=syncCfg();
+  if(s.rol!=="emisor"){ if(manual) alert("⚠️ Este equipo está en modo espejo. Cámbialo a “Manda” para subir."); return false; }
+  if(!syncListo()){ if(manual) alert("⚠️ Falta la dirección del puente o la clave."); return false; }
+  if(_syncSubiendo) return false;
+  if(!navigator.onLine){ s.estado="Sin señal: se sube cuando vuelva"; syncPintar(); return false; }
+  const txt=JSON.stringify(syncPayload()), h=syncHash(txt);
+  if(!manual && h===s.hash) return false;                                   // nada cambió
+  if(!manual && Date.now()-_syncUltIntento < SYNC_MINIMO){ syncProgramar(); return false; }
+  if(txt.length > SYNC_MAX){
+    s.estado="El cuaderno pesa "+num(txt.length/1048576)+" MB y no cabe en el buzón";
+    guardar(); syncPintar(); if(manual) alert("⚠️ "+s.estado+"."); return false;
+  }
+  _syncSubiendo=true; _syncUltIntento=Date.now(); s.estado="Subiendo…"; syncPintar();
+  try{
+    const j=await syncFetch("datos?equipo="+encodeURIComponent(syncEquipo()), {method:"PUT", body:txt, headers:{"Content-Type":"application/json"}});
+    s.hash=h; s.ult=ahora(); s.ultTs=j.ts||Date.now(); s.n=txt.length; s.estado="";
+    guardar(); syncPintar();
+    if(manual) aviso("✅ Cuaderno subido ("+num(txt.length/1024,0)+" KB)");
+    if(s.fotos) syncFotosProgramar(600);
+    return true;
+  }catch(e){
+    s.estado="No se pudo subir: "+e.message; guardar(); syncPintar();
+    if(manual) alert("⚠️ "+s.estado);
+    return false;
+  }finally{ _syncSubiendo=false; }
+}
+
+/* ---------- el que manda: fotos a R2, de a poco y en segundo plano ---------- */
+function syncFotosProgramar(ms){ clearTimeout(_syncFotoT); _syncFotoT=setTimeout(syncFotosTanda, ms||1500); }
+async function syncFotosLista(){                 // ids que ya están arriba
+  const ids={}; let cur=null, vueltas=0;
+  do{
+    const j=await syncFetch("fotos"+(cur? "?cursor="+encodeURIComponent(cur):""));
+    if(j.sinBucket) return null;
+    (j.ids||[]).forEach(function(x){ ids[x]=1; });
+    cur=j.cursor; vueltas++;
+  }while(cur && vueltas<20);
+  return ids;
+}
+async function syncFotosTanda(){
+  const s=syncCfg();
+  if(s.rol!=="emisor" || !syncListo() || !s.fotos || !navigator.onLine || !idb) return;
+  try{
+    if(!syncFotosTanda._arriba || Date.now()-(syncFotosTanda._ts||0) > 600000){
+      const l=await syncFotosLista();
+      if(l===null){ s.fotos=false; s.estado="El puente no tiene bucket de fotos (R2)"; guardar(); syncPintar(); return; }
+      syncFotosTanda._arriba=l; syncFotosTanda._ts=Date.now();
+    }
+    const arriba=syncFotosTanda._arriba;
+    const locales=(await fotoIds()).filter(function(id){ return typeof id==="string" && id.indexOf("__")!==0 && !arriba[id]; });
+    if(!locales.length){ s.estado=""; syncPintar(); return; }
+    let n=0;
+    for(const id of locales.slice(0,3)){
+      const data=await fotoGetLocal(id);
+      if(data==null){ arriba[id]=1; continue; }
+      const r=await fetch(syncBase()+"/foto/"+encodeURIComponent(id)+"?clave="+encodeURIComponent(s.clave), {method:"PUT", body:String(data), cache:"no-store"});
+      if(r.ok){ arriba[id]=1; n++; } else break;
+    }
+    const faltan=locales.length-n;
+    s.estado = faltan>0? ("Subiendo fotos: faltan "+faltan) : "";
+    syncPintar();
+    if(faltan>0) syncFotosProgramar(2500);
+  }catch(e){ s.estado="Fotos: "+e.message; syncPintar(); }
+}
+
+/* ---------- el que mira: bajar ---------- */
+function syncSondear(){
+  clearInterval(_syncPollT); _syncPollT=null;
+  const s=syncCfg(); if(s.rol!=="receptor" || !syncListo()) return;
+  _syncPollT=setInterval(syncMirar, SYNC_SONDEO);
+  syncMirar();
+}
+async function syncMirar(){
+  const s=syncCfg();
+  if(s.rol!=="receptor" || !syncListo() || _syncBajando) return;
+  if(document.hidden || !navigator.onLine) return;
+  try{
+    const m=await syncFetch("meta");
+    if(m.hay && (m.ts||0) > (s.ultTs||0)) await syncBajar(false);
+    else if(s.estado && s.estado.indexOf("No se pudo")===0){ s.estado=""; syncPintar(); }
+  }catch(e){ /* silencioso: puede ser señal mala */ }
+}
+async function syncBajar(manual){
+  const s=syncCfg();
+  if(s.rol!=="receptor"){ if(manual) alert("⚠️ Este equipo está en modo “Manda”: no baja datos para no pisar lo tuyo."); return false; }
+  if(!syncListo()){ if(manual) alert("⚠️ Falta la dirección del puente o la clave."); return false; }
+  if(_syncBajando) return false;
+  _syncBajando=true; s.estado="Bajando…"; syncPintar();
+  try{
+    const m=await syncFetch("meta");
+    if(!m.hay) throw new Error("el iPad todavía no ha subido nada");
+    const datos=await syncFetch("datos");
+    if(!datos || !datos.cuarteles) throw new Error("lo que llegó no parece el cuaderno");
+    syncAplicar(datos, m.ts||Date.now());
+    if(manual) aviso("✅ Cuaderno actualizado desde el iPad");
+    return true;
+  }catch(e){
+    s.estado="No se pudo bajar: "+e.message; guardar(); syncPintar();
+    if(manual) alert("⚠️ "+s.estado);
+    return false;
+  }finally{ _syncBajando=false; }
+}
+function syncAplicar(datos, ts){
+  const s=syncCfg();
+  const mio={}; SYNC_LOCAL.forEach(function(k){ if(D[k]!==undefined) mio[k]=D[k]; });   // config de este equipo
+  try{ if(!localStorage.getItem(CLAVE+"_presync")) localStorage.setItem(CLAVE+"_presync", localStorage.getItem(CLAVE)||""); }catch(e){}
+  const nuevo=Object.assign({}, datos);
+  SYNC_LOCAL.forEach(function(k){ if(mio[k]!==undefined) nuevo[k]=mio[k]; });
+  nuevo.sync = Object.assign({}, s, {ult:ahora(), ultTs:ts||Date.now(), estado:"", hash:""});
+  localStorage.setItem(CLAVE, JSON.stringify(nuevo));
+  cargar();
+  _syncFotoNo={};
+  try{ render(); }catch(e){}
+}
+
+/* ---------- fotos que el celular todavía no tiene: se bajan al abrirlas ---------- */
+const fotoGetLocal = fotoGet;
+fotoGet = async function(id){
+  const v = await fotoGetLocal(id);
+  if(v!=null) return v;
+  const s=(D && D.sync) || {};
+  if(s.rol!=="receptor" || !s.url || !s.clave || s.fotos===false) return null;
+  if(!navigator.onLine || _syncFotoNo[id]) return null;
+  try{
+    const r=await fetch(s.url.replace(/\/+$/,"")+"/foto/"+encodeURIComponent(id)+"?clave="+encodeURIComponent(s.clave), {cache:"no-store"});
+    if(!r.ok){ _syncFotoNo[id]=1; return null; }
+    const t=await r.text();
+    if(!t || t.charAt(0)==="{"){ _syncFotoNo[id]=1; return null; }
+    try{ await fotoPut(id, t); }catch(e){}
+    return t;
+  }catch(e){ _syncFotoNo[id]=1; return null; }
+};
+
+/* ---------- puesta en marcha y ajustes ---------- */
+function syncIniciar(){
+  if(_syncInit || !D) return; _syncInit=true;
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden) syncMirar(); });
+  window.addEventListener("online", function(){ const s=syncCfg(); if(s.rol==="receptor") syncMirar(); else if(s.rol==="emisor") syncProgramar(); });
+  syncSondear();
+  if(syncCfg().rol==="emisor" && syncCfg().fotos) syncFotosProgramar(5000);
+}
+function syncRol(v){
+  const s=syncCfg(); s.rol=v; s.estado=""; if(v!=="emisor") s.hash=""; guardar();
+  syncSondear(); render();
+  aviso(v==="emisor"? "✅ Este equipo manda: sube lo que anotes" : v==="receptor"? "Este equipo mira: se actualiza solo" : "Sincronización apagada");
+  if(v==="emisor") syncSubir(false);
+}
+function syncSet(campo, val){ const s=syncCfg(); s[campo]=(val||"").trim(); s.estado=""; s.hash=""; guardar(); syncPintar(); }
+function syncFotosSet(on){ const s=syncCfg(); s.fotos=!!on; guardar(); syncPintar(); if(on && s.rol==="emisor") syncFotosProgramar(300); }
+async function syncProbar(){
+  const s=syncCfg();
+  if(!s.url || !s.clave){ alert("⚠️ Pega la dirección del puente y la clave."); return; }
+  s.estado="Probando…"; syncPintar();
+  try{
+    const m=await syncFetch("meta");
+    s.estado=""; guardar();
+    aviso(m.hay? ("✅ Puente OK · última copia "+fmtFH(new Date(m.ts).toISOString())+(m.equipo? " desde "+m.equipo:"")+" · "+num(m.n/1024,0)+" KB")
+               : "✅ Puente OK · el buzón está vacío todavía");
+  }catch(e){ s.estado="Falló la prueba: "+e.message; alert("⚠️ "+s.estado); }
+  syncPintar();
+}
+function syncBannerHTML(){
+  const s=(D && D.sync) || {};
+  if(s.rol!=="receptor") return "";
+  return `<div class="sync-esp">${ic("refresh")}<div><b>Modo espejo</b> · este equipo muestra lo que anotas en el iPad. Lo que escribas aquí se perderá en la próxima actualización.${s.ult? ` <span class="muted">Al día ${fmtFH(s.ult)}.</span>`:""}</div></div>`;
+}
+function syncEstadoHTML(){
+  const s=syncCfg();
+  if(!syncListo()) return `<span class="muted">Sin configurar: pega la dirección del puente, la clave y elige qué hace este equipo.</span>`;
+  const rol = s.rol==="emisor"? "Manda (sube lo que anotas)" : "Mira (se actualiza solo)";
+  return `<div style="font-size:13.5px"><b>${esc(rol)}</b> · ${esc(syncEquipo())}</div>
+    <div class="muted" style="margin-top:3px">${s.ult? (s.rol==="emisor"? "Última subida ":"Al día ")+fmtFH(s.ult)+(s.n? " · "+num(s.n/1024,0)+" KB":"") : "Todavía no sincroniza"}${s.rol==="receptor"? " · revisa cada 10 s":""}</div>
+    ${s.estado? `<div style="margin-top:4px;color:${s.estado.indexOf("No se pudo")===0||s.estado.indexOf("Falló")===0||s.estado.indexOf("El cuaderno pesa")===0? "var(--rojo)":"var(--txt2)"}">${esc(s.estado)}</div>`:""}`;
+}
+function syncPintar(){ const el=document.getElementById("syncEstado"); if(el) el.innerHTML=syncEstadoHTML(); }
+const EX_URL   = 'placeholder="https://agronotas-sync.tu-cuenta.workers.dev" autocapitalize="off" autocorrect="off" spellcheck="false" onchange="syncSet(&quot;url&quot;,this.value)"';
+const EX_CLAVE = 'placeholder="la clave larga que inventaste" autocapitalize="off" autocorrect="off" spellcheck="false" onchange="syncSet(&quot;clave&quot;,this.value)"';
+function syncCardHTML(){
+  const s=syncCfg();
+  const roles=[["emisor","Manda (escribe)"],["receptor","Mira (solo lectura)"],["off","Apagada"]];
+  return `<div class="card"><h2>${ic("refresh")} Sincronización entre dispositivos</h2>
+    <div class="muted">El iPad sube una copia del cuaderno al puente y el celular la baja sola cada 10 segundos. Los dos siguen funcionando sin señal. Cómo armar el puente: <b>Sincronizacion_instrucciones.md</b> en la carpeta de la app.</div>
+    <div class="grid2" style="margin-top:8px">
+      ${campoF("sync_url","Dirección del puente","text",s.url,EX_URL)}
+      ${campoF("sync_clave","Clave (CLAVE_SYNC)","text",s.clave,EX_CLAVE)}
+    </div>
+    <div style="margin-top:4px"><div class="muted" style="font-size:12.5px;margin-bottom:4px">¿Qué hace <b>este</b> equipo?</div>
+      <div class="chips" style="padding-bottom:2px">${roles.map(([v,l])=>`<button class="chip ${s.rol===v?'act':''}" onclick="syncRol('${v}')">${l}</button>`).join("")}</div></div>
+    <label class="ui-row" style="border-top:none;padding:6px 0"><input type="checkbox" ${s.fotos!==false?"checked":""} onchange="syncFotosSet(this.checked)"><div><b>Incluir fotos</b><div class="muted">El iPad las sube de a poco; el celular baja cada una cuando la abres.</div></div></label>
+    <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:6px">
+      <button class="btn sec chico" onclick="syncProbar()">${ic("plug")} Probar</button>
+      ${s.rol==="emisor"? `<button class="btn chico" onclick="syncSubir(true)">${ic("upload")} Subir ahora</button>`:""}
+      ${s.rol==="receptor"? `<button class="btn chico" onclick="syncBajar(true)">${ic("download")} Actualizar ahora</button>`:""}
+    </div>
+    <div id="syncEstado" style="margin-top:10px">${syncEstadoHTML()}</div>
+    ${s.rol==="receptor"? `<div class="muted" style="margin-top:8px;font-size:12.5px">${ic("info")} Anota siempre en el iPad: lo que escribas en este equipo se pierde al actualizar.</div>`:""}
+  </div>`;
 }
 
 /* ================== ESTACIÓN WEATHERLINK + PROGRAMACIÓN DE RIEGO ==================
