@@ -3635,6 +3635,14 @@ function vDatos(){
   h += `<div class="card"><h2>${ic("device")} Pantalla</h2>
     <label class="ui-row"><input type="checkbox" ${D.ui&&D.ui.sol?"checked":""} onchange="uiSet('sol',this.checked)"><div><b>Modo sol</b><div class="muted">Más contraste y bordes marcados para leer con sol de mediodía.</div></div></label>
     <label class="ui-row"><input type="checkbox" ${D.ui&&D.ui.grande?"checked":""} onchange="uiSet('grande',this.checked)"><div><b>Texto grande</b><div class="muted">Toda la app un 12% más grande. Si el mapa se ve raro, apágalo.</div></div></label>
+    <div class="ui-row" style="cursor:default"><div style="flex:1;min-width:0">
+      <b>Modo celular</b>
+      <div class="muted">El menú pasa abajo y todo queda en una columna, para el teléfono en vertical. En <b>Automático</b> se enciende solo cuando la pantalla es angosta (menos de 760 px).</div>
+      <div class="chips" style="margin-top:7px;padding-bottom:0">
+        ${[["auto","Automático"],["si","Siempre"],["no","Nunca"]].map(([v,l])=>`<button class="chip ${uiModoMovil()===v?'act':''}" onclick="uiMovil('${v}')">${l}</button>`).join("")}
+      </div>
+      <div class="muted" style="margin-top:5px;font-size:12px">Ahora se está viendo en <b>${uiEsMovil()?"modo celular":"modo iPad/escritorio"}</b> · pantalla de ${window.innerWidth||0} px de ancho.</div>
+    </div></div>
     <div class="muted" style="margin-top:8px;font-size:12.5px">${ic("info")} Usa la app desde el ícono de la pantalla de inicio (no desde Safari): así el iPad no borra los datos si pasas días sin abrirla.</div>
   </div>`;
   if(typeof ORTOFOTOS!=="undefined" && ORTOFOTOS.length){
@@ -4403,6 +4411,56 @@ html.sol .aviso{box-shadow:0 0 0 2px #fff;}
 /* texto grande: toda la app un 12% más grande (el mapa mantiene su escala) */
 html.grande #app, html.grande #topbar, html.grande #capaModal .modal{zoom:1.12;}
 html.grande .mapa-wrap{zoom:.893;}
+/* ===== Modo celular: teléfono en vertical (html.movil) =====
+   El riel lateral se convierte en barra inferior y todo pasa a una columna. */
+html.movil body{padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right);
+  padding-bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 6px);}
+html.movil .tabbar{top:auto; bottom:0; left:0; right:0; width:auto;
+  height:calc(var(--tab-h) + env(safe-area-inset-bottom));
+  flex-direction:row; align-items:stretch; gap:2px;
+  padding:4px 6px calc(4px + env(safe-area-inset-bottom));
+  border-right:none; border-top:1px solid var(--borde);
+  box-shadow:0 -2px 14px rgba(16,40,24,.10);
+  overflow-x:auto; overflow-y:hidden; scroll-snap-type:x proximity;}
+html.movil .tabbar .marca-r{display:none;}
+html.movil .tabbar button{flex:0 0 auto; width:auto; min-width:60px; padding:5px 9px !important;
+  font-size:10px !important; gap:3px; border-radius:10px; scroll-snap-align:center;}
+html.movil .tabbar button.esp{display:none;}
+html.movil .topbar{padding:calc(9px + env(safe-area-inset-top)) 13px 2px; gap:8px;}
+html.movil .topbar h1{font-size:20px;}
+html.movil .topbar .sub{font-size:12px;}
+html.movil .cont{padding:10px 12px 16px;}
+html.movil .card{padding:13px 14px; border-radius:12px;}
+html.movil .btn-fab{bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 14px);}
+/* todo a una columna (minmax(0,..) deja que la columna se angoste bajo su contenido) */
+html.movil .g2p, html.movil .grid2, html.movil .grid3, html.movil .grid4,
+html.movil .tab-cols, html.movil .noti-grid, html.movil .fengrid{grid-template-columns:minmax(0,1fr);}
+html.movil .card, html.movil .g2p > *, html.movil .gmapa > *, html.movil .card > div{min-width:0;}
+html.movil .kpi3{gap:10px;}
+html.movil .kpi3 > div{min-width:0;}
+html.movil .kpi3 .muted{font-size:11px !important; line-height:1.25;}
+html.movil #climaW, html.movil #climaAhora{overflow-x:auto; -webkit-overflow-scrolling:touch;}
+html.movil .fentl{grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:8px;}
+html.movil .bitgrid{grid-template-columns:repeat(auto-fit,minmax(96px,1fr));}
+html.movil .inf-fotos{grid-template-columns:repeat(2,1fr);}
+/* avisos y filas con botón: el texto no queda en una columna de una palabra */
+html.movil .resp-aviso{flex-direction:column; align-items:stretch; gap:8px; padding:11px 13px;}
+html.movil .resp-aviso > .btn, html.movil .resp-aviso button{width:100%;}
+html.movil .topbar .acciones{width:100%; justify-content:flex-start; gap:6px;}
+html.movil .topbar .acciones .btn{flex:0 1 auto; min-width:0; font-size:13px; padding:8px 11px;}
+html.movil .topbar .acciones .btn svg{width:15px; height:15px;}
+/* tablas anchas: se deslizan de lado en vez de aplastarse */
+html.movil .ctt, html.movil table.t, html.movil .gtw table{display:block; overflow-x:auto; -webkit-overflow-scrolling:touch;}
+html.movil .ctt th, html.movil .ctt td{white-space:nowrap;}
+/* mapa y visores */
+html.movil #mapaPanel{height:400px;}   /* menos que los 500 del iPad, pero alcanza para la columna de herramientas */
+html.movil .modal-fondo{align-items:flex-end;}
+html.movil .modal{width:100%; max-width:100%; border-radius:16px 16px 0 0; max-height:90vh;}
+html.movil .kpi{padding:11px 13px;}
+html.movil .kpi .num{font-size:21px;}
+/* con texto grande el celular queda muy apretado: se limita el zoom */
+html.movil.grande #app, html.movil.grande #topbar, html.movil.grande #capaModal .modal{zoom:1.06;}
+html.movil.grande .mapa-wrap{zoom:.943;}
 /* interruptores de la tarjeta Pantalla */
 .ui-row{display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--borde); cursor:pointer;}
 .ui-row:first-of-type{border-top:none;}
@@ -5211,6 +5269,10 @@ function renderInterno(){
   document.getElementById("tabbar").innerHTML =
     `<div class="marca-r">${ICO.marca}</div>` +
     TABS.map(x=>`${x.id==="datos"?'<button class="esp"></button>':""}<button class="${nav.tab===x.id?"act":""}" onclick="ir('${x.id}')">${ICO[x.id]||""}${x.lab}</button>`).join("");
+  if(document.documentElement.classList.contains("movil")){   // barra abajo: dejar la pestaña activa a la vista
+    const _act=document.querySelector("#tabbar button.act");
+    if(_act && _act.scrollIntoView) try{ _act.scrollIntoView({block:"nearest", inline:"center"}); }catch(_){ }
+  }
   const vistas = {panel:vPanel, notas:vNotas, bitacora:vBitacora, fenologia:vFenologia, listas:vListas, gantt:vGantt, reg:vReg, tab:vTab, noti:vNoticias, calcfito:vCalcFito, aplic:vAplic, datos:vDatos};
   document.getElementById("app").innerHTML = vistas[nav.tab]();
   if(nav.tab!=="panel" && geoWatch){ navigator.geolocation.clearWatch(geoWatch); geoWatch = null; } // ahorra batería fuera del mapa
@@ -5338,7 +5400,7 @@ function vPanel(){
   /* Estado general + clima */
   h += `<div class="g2p">
     <div class="card"><div class="w-tit">Estado general</div>
-      <div style="display:flex;font-variant-numeric:tabular-nums">
+      <div class="kpi3" style="display:flex;font-variant-numeric:tabular-nums">
         <div style="flex:1;cursor:pointer" onclick="ir('datos')"><div data-cnt style="font-size:24px;font-weight:700;color:var(--p)">${num(haPlant)}</div><div class="muted" style="font-size:11.5px">ha plantadas · ${num(haTot)} tot.</div></div>
         <div style="flex:1;cursor:pointer" onclick="nav.planVista='dia';nav.diaSel=null;ir('gantt')"><div data-cnt style="font-size:24px;font-weight:700">${deHoy.length}</div><div class="muted" style="font-size:11.5px">labores hoy</div></div>
         <div style="flex:1;cursor:pointer" onclick="gtAj().per='sem';gtAj().ancla=hoy();guardar();ir('gantt')" title="Labores planificadas en la Carta Gantt de hoy al domingo (cada labor cuenta por cada día que está planificada)"><div data-cnt style="font-size:24px;font-weight:700;color:var(--p2)">${planSem}</div><div class="muted" style="font-size:11.5px">planificadas esta semana</div></div>
@@ -11203,7 +11265,30 @@ function uiAplicar(){
   const u = (D && D.ui) || {};
   document.documentElement.classList.toggle("sol", !!u.sol);
   document.documentElement.classList.toggle("grande", !!u.grande);
+  document.documentElement.classList.toggle("movil", uiEsMovil());
 }
+function uiModoMovil(){ return ((D && D.ui && D.ui.movil) || "auto"); }
+function uiEsMovil(){
+  const m = uiModoMovil();
+  if(m==="si") return true;
+  if(m==="no") return false;
+  const w = window.innerWidth || document.documentElement.clientWidth || 1024;   // automático: teléfono en vertical
+  return w <= 760;
+}
+function uiMovil(v){
+  D.ui = D.ui || {}; D.ui.movil = v; guardar(); uiAplicar(); render();
+  aviso(v==="si"? "✅ Modo celular activado" : (v==="no"? "Modo iPad/escritorio" : "Automático: cambia solo según el ancho de la pantalla"));
+}
+/* al girar el teléfono o cambiar el ancho, recalcular (y repintar solo si cambió) */
+let _uiRT=null;
+window.addEventListener("resize", function(){
+  clearTimeout(_uiRT);
+  _uiRT = setTimeout(function(){
+    const antes = document.documentElement.classList.contains("movil");
+    uiAplicar();
+    if(antes !== document.documentElement.classList.contains("movil")){ try{ render(); }catch(_){ } }
+  }, 200);
+});
 function uiSet(k, on){ D.ui = D.ui || {}; D.ui[k] = !!on; guardar(); uiAplicar(); aviso(on? "✅ Activado" : "Desactivado"); }
 
 /* Barra del mapa: nombres al mantener apretado (o al pasar el mouse/lápiz) */
