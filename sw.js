@@ -1,11 +1,16 @@
 /* Service worker — AgroNotas (Total Fruit Curacaví)
    Permite usar la app sin señal: guarda una copia en el iPad y,
    cuando hay internet, busca la versión más nueva en segundo plano. */
-const CACHE = "agronotas-v117";
+const CACHE = "agronotas-v139";
 const ORTOS = "agronotas-ortos"; // ortofotos del dron: caché aparte, no se borra al actualizar la app
 const ARCHIVOS = ["./", "./index.html", "./AgroNotas%20v3.html", "./apple-touch-icon.png"];
 const ORTOFOTOS = ["./santa_sara_orto.webp", "./cuesta_vieja_orto.webp"];
 const esOrto = url => /\.webp(\?.*)?$/i.test(url);
+/* Solo se guardan archivos fijos: la app, librerías y fotos del mapa. Todo lo demás
+   (estación WeatherLink, Open-Meteo, sincronización, noticias, dólar/UF…) son datos en vivo:
+   van directo a internet, sin copia guardada, para que nunca se muestre una lectura vieja. */
+const HOSTS_FIJOS = /(^|\.)(unpkg\.com|cdnjs\.cloudflare\.com|jsdelivr\.net|arcgisonline\.com|google\.com|gstatic\.com|opentopomap\.org|openstreetmap\.org)$/i;
+const esFijo = url => { try{ const u = new URL(url); return u.origin === self.location.origin || HOSTS_FIJOS.test(u.hostname); }catch(e){ return false; } };
 
 self.addEventListener("install", e => {
   e.waitUntil(Promise.all([
@@ -24,6 +29,7 @@ self.addEventListener("activate", e => {
 });
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
+  if (!esFijo(e.request.url)) return;   // dato en vivo: lo atiende el navegador directo, sin copia guardada
   const esHTML = e.request.mode === "navigate" || e.request.url.indexOf(".html") > -1;
   if (esHTML) {
     /* páginas: RED PRIMERO (la versión nueva llega al tiro); sin señal, usa la copia guardada */
