@@ -1327,6 +1327,10 @@ function abrirModal(titulo, html, onGuardar, txtBtn){
       </div>
     </div>
   </div>`;
+  /* si hay un visor de pantalla completa abierto (Riego, Calculadora, fichas…), la ventana va ENCIMA de él.
+     Antes quedaba detrás (capa 100 vs 200) y en el iPad parecía que el botón no hacía nada. */
+  const vis=document.getElementById("capaVisor");
+  if(vis && vis.innerHTML.trim()){ const f=document.querySelector("#capaModal .modal-fondo"); if(f) f.style.zIndex="260"; }
 }
 function cerrarModal(){ document.getElementById("capaModal").innerHTML=""; modalGuardar=null; }
 async function guardarModal(){
@@ -1346,6 +1350,7 @@ const TABS = [
   {id:"noti", ico:"📰", lab:"Noticias"},
   {id:"calcfito", ico:"🧪", lab:"Calc Fito"},
   {id:"aplic", ico:"📒", lab:"Aplic."},
+  {id:"riego", ico:"💧", lab:"Riego"},
   {id:"datos", ico:"⚙️", lab:"Datos"}
 ];
 function ir(tab){ if(tab==="reg") tab="bitacora"; nav.tab = tab; render(); window.scrollTo(0,0); }   // Registros ahora vive dentro de Bitácora
@@ -2955,7 +2960,11 @@ async function descargarPDF(nombre){
     html2canvas:{scale:2,useCORS:true,backgroundColor:"#ffffff",windowWidth:(cont.scrollWidth||820)},
     jsPDF:{unit:"mm",format:"a4",orientation:"portrait"},
     pagebreak:{mode:["css","legacy"],avoid:["tr","h2",".card"]} };
-  try{ await html2pdf().set(opt).from(cont).save(); }
+  try{ // se arma como Blob y se entrega igual que los demás PDF (en la app instalada del iPad, .save() no descargaba)
+    const blob = await html2pdf().set(opt).from(cont).outputPdf("blob");
+    const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+    await pdfEntregar(blob, opt.filename, esIOS);
+  }
   catch(err){ console.warn("PDF: fallback a imprimir",err); try{ window.print(); }catch(e){} }
   finally{ ocultos.forEach((e,i)=>{ e.style.display=prev[i]; }); btns.forEach(b=>b.disabled=false); }
 }
@@ -5474,6 +5483,25 @@ html.sol .dsec-b.act{background:#cfe8d8;}
 .rgsel{min-height:34px; font-size:12.5px; border-radius:8px;}
 .ctt.rg input, .fila label.muted input{min-height:36px;}
 #capaVisor input[type="number"]:not([class]), #capaVisor input[type="text"]:not([class]):not([id$="_t"]){min-height:36px; background:#fff; color:var(--txt); border:1px solid var(--borde2); border-radius:8px; padding:4px 8px; font:inherit; font-size:14px;}
+/* ---- Calculadora de labores: superficie parcial por cuartel ---- */
+.ct-parc{margin:4px 0 10px; border:1px solid var(--borde); border-radius:12px; background:#fff;}
+.ct-parc summary{cursor:pointer; padding:10px 12px; font-weight:650; font-size:14px; list-style:none; display:flex; gap:6px; align-items:center; flex-wrap:wrap;}
+.ct-parc summary::-webkit-details-marker{display:none;}
+.ct-parc summary .muted{font-weight:500; font-size:12.5px;}
+.ct-parc[open] summary{border-bottom:1px solid var(--borde);}
+.ct-parc > div, .ct-parc > .btn{margin-left:12px; margin-right:12px;}
+.ct-parc > div:last-child{margin-bottom:10px;}
+.ct-parc-l{display:flex; flex-direction:column;}
+.ct-parc-f{display:grid; grid-template-columns:minmax(0,1fr) auto 70px; gap:8px; align-items:center; padding:7px 0; border-bottom:1px dashed var(--borde);}
+.ct-parc-f.parcial .ct-parc-n b{color:var(--urg);}
+.ct-parc-i{display:flex; align-items:center; gap:6px; font-size:13px; color:var(--txt2); white-space:nowrap;}
+.ct-parc-i .inp{width:78px; min-height:40px; text-align:right;}
+.ct-parc-p{font-size:12px; text-align:right;}
+/* ---- Riego como pestaña ---- */
+.rgcard > .fila:first-child{flex-wrap:nowrap;}
+.rgcard > .fila:first-child > .btn{flex:none;}
+.rg-acc{display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin:0 0 10px;}
+.rg-tab > div{padding:0 !important; max-width:none !important;}
 /* ---- Riego: turnos por caudal de la bomba ---- */
 .rgt-in{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin-bottom:8px;}
 .rgt-in label{display:flex; flex-direction:column; gap:4px; font-size:13px; font-weight:600; color:#48525d;}
@@ -5582,6 +5610,7 @@ html.sol .btn.sec{border-color:#7c858e;}
 /* ================== REDISEÑO 6a: navegación + panel nuevo ================== */
 const LOC_DEF = {lat:-33.4123, lng:-71.1385}; // Curacaví (se usa D.lluviaLoc si está configurada)
 const ICO = {
+  riego:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M10 2.8c2.6 3.4 5.2 6.3 5.2 9.2a5.2 5.2 0 0 1-10.4 0c0-2.9 2.6-5.8 5.2-9.2z"></path><path d="M7.4 12.4a2.6 2.6 0 0 0 2.6 2.6"></path></svg>',
   noti:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="14" height="13" rx="2"></rect><path d="M6.5 8h7M6.5 11h7M6.5 14h4"></path></svg>',
   calcfito:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 3h4M8.5 3v4.5L5 14.2A1.6 1.6 0 0 0 6.4 16.6h7.2A1.6 1.6 0 0 0 15 14.2L11.5 7.5V3"></path><path d="M7.2 12.6h5.6"></path></svg>',
   aplic:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4.5" y="3" width="11" height="14" rx="1.5"></rect><path d="M4.5 6.5h11M8 3v14"></path></svg>',
@@ -5689,7 +5718,7 @@ const ic=n=>'<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+(IKO[n]||''
 
 function renderInterno(){
   if(nav.tab==="reg") nav.tab="bitacora";   // Registros se fusionó con Bitácora (29-09-2026)
-  const t = {panel:"Panel", notas:"Notas de terreno", bitacora:"Bitácora y registros", fenologia:"Registro fenológico", listas:"Mis listas", gantt:"Carta Gantt de labores", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", datos:"Datos y ajustes"}[nav.tab];
+  const t = {panel:"Panel", notas:"Notas de terreno", bitacora:"Bitácora y registros", fenologia:"Registro fenológico", listas:"Mis listas", gantt:"Carta Gantt de labores", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", riego:"Programación de riego", datos:"Datos y ajustes"}[nav.tab];
   document.getElementById("topbar").innerHTML =
     `<div style="flex:1;min-width:180px"><h1>${t}<span class="sub">${PROY? esc(PROY.nombre) : "AgroNotas"} · ${fmtF(hoy())}</span></h1></div>
     <div class="acciones">
@@ -5705,7 +5734,7 @@ function renderInterno(){
     const _act=document.querySelector("#tabbar button.act");
     if(_act && _act.scrollIntoView) try{ _act.scrollIntoView({block:"nearest", inline:"center"}); }catch(_){ }
   }
-  const vistas = {panel:vPanel, notas:vNotas, bitacora:vBitacora, fenologia:vFenologia, listas:vListas, gantt:vGantt, tab:vTab, noti:vNoticias, calcfito:vCalcFito, aplic:vAplic, datos:vDatos};
+  const vistas = {panel:vPanel, notas:vNotas, bitacora:vBitacora, fenologia:vFenologia, listas:vListas, gantt:vGantt, tab:vTab, noti:vNoticias, calcfito:vCalcFito, aplic:vAplic, riego:vRiego, datos:vDatos};
   document.getElementById("app").innerHTML = (typeof syncBannerHTML==="function"? syncBannerHTML():"") + vistas[nav.tab]();
   if(typeof syncIniciar==="function") syncIniciar();
   if(nav.tab!=="panel" && geoWatch){ navigator.geolocation.clearWatch(geoWatch); geoWatch = null; } // ahorra batería fuera del mapa
@@ -6001,7 +6030,7 @@ function widgetHTML(w){
     const h = filas.slice(0,8).map(f=>`<div class="met" style="padding:2px 0">${esc(f.n)}: catálogo <b>${num(f.cat)}</b> · mapa <b>${num(f.dib)}</b> ha <span style="color:${Math.abs(f.dif)>10?"var(--rojo,#c62828)":"#7a7d79"};font-weight:600">(${f.dif>0?"+":""}${Math.round(f.dif)}%)</span></div>`).join("");
     return widgetCard(w, h||`<div class="muted">Dibuja cuarteles en el mapa (enlazados al catálogo) para comparar superficies.</div>`, "🧮 Superficie: catálogo vs mapa");
   }
-  if(w.tipo==="riego") return riegoWidgetHTML(w);
+  if(w.tipo==="riego") return "";   // riego tiene su propia pestaña (29-09-2026)
   if(w.tipo==="respaldo"){
     if(syncEspejo()) return widgetCard(w, `<div style="font-size:14px">Este equipo es un <b>espejo</b>: el respaldo se hace en el iPad.</div>
       <div class="muted" style="font-size:11.5px;margin-top:4px">Lo que ves aquí es una copia de lo que hay allá.</div>`, ic("save")+" Respaldo");
@@ -6055,7 +6084,6 @@ function agregarWidget(){
       <option value="plan">📈 Avance de la semana</option>
       <option value="supmapa">🧮 Superficie: catálogo vs mapa</option>
       <option value="respaldo">💾 Recordatorio de respaldo</option>
-      <option value="riego">💧 Riego de la semana (ET₀ × Kc)</option>
       <option value="registros">📋 Registros por tipo (90 días)</option>
       <option value="ultimas">🕒 Últimas notas</option>
       <option value="hafundo">🏡 Superficie por fundo</option>
@@ -7333,13 +7361,13 @@ function abrirCalc(tab){
   if(nav.calcTab==="aplic") nav.calcTab="cosecha";
   const chips = CALC_TABS.map(([id,lab])=>`<button class="chip ${nav.calcTab===id?"act":""}" onclick="abrirCalc('${id}')">${lab}</button>`).join("");
   const form = ({cosecha:calcFormCosecha, plant:calcFormPlant, cuad:calcFormCuad}[nav.calcTab]||(()=>""))();
-  document.getElementById("capaVisor").innerHTML = `
+  const _html = `
   <div class="visor" style="background:#eef1ec">
     <div class="vh" style="background:linear-gradient(135deg,#123f24,#1e7a4c)">
       <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
       <div style="flex:1;color:#fff;font-weight:800">🧮 Calculadora de terreno</div>
     </div>
-    <div style="flex:1;overflow:auto;-webkit-overflow-scrolling:touch">
+    <div id="calcScroll" data-tab="${nav.calcTab}" style="flex:1;overflow:auto;-webkit-overflow-scrolling:touch">
       <div style="max-width:640px;margin:0 auto;padding:14px 16px 40px">
         <div class="chips" style="margin-bottom:12px;flex-wrap:wrap">${chips}</div>
         <div class="card">${form}</div>
@@ -7348,6 +7376,10 @@ function abrirCalc(tab){
       </div>
     </div>
   </div>`;
+  /* si la calculadora ya está abierta, solo se cambia el contenido del área que se desplaza: no vuelve arriba ni salta en el iPad */
+  const s0=document.getElementById("calcScroll");
+  if(s0 && s0.dataset.tab===nav.calcTab){ const t=document.createElement("div"); t.innerHTML=_html; const sN=t.querySelector("#calcScroll"); const y=s0.scrollTop; s0.innerHTML=sN.innerHTML; s0.scrollTop=y; }
+  else document.getElementById("capaVisor").innerHTML=_html;
   calcRun();
 }
 function calcRun(){
@@ -7443,9 +7475,36 @@ function ctMarco(q){                         // "5x2" / "5x1,5" -> plantas por h
   return (a>0&&b>0)? 10000/(a*b) : 0;
 }
 function ctPlantas(q){ const d=ctMarco(q); return d>0? Math.round(d*(+q.ha||0)) : 0; }
+/* superficie realmente hecha en un cuartel cuando la labor no se completó (01-10-2026). nav.calcHa[clave] = ha hechas;
+   sin dato o ≥ la superficie del cuartel = completo. Las plantas se calculan en proporción con el marco. */
+function ctHaSel(){ nav.calcHa = nav.calcHa || {}; return nav.calcHa; }
+function ctHaEf(q){ const tot=+q.ha||0, o=ctHaSel()[ctKey(q)]; return (o!=null && isFinite(o) && o>=0 && o<tot)? o : tot; }
+function ctParcial(q){ return ctHaEf(q) < (+q.ha||0) - 1e-9; }
+function ctPlantasEf(q){ const d=ctMarco(q); return d>0? Math.round(d*ctHaEf(q)) : 0; }
+function ctHaTxt(q){ return ctParcial(q)? num(Math.round(ctHaEf(q)*100)/100)+" de "+num(+q.ha||0) : num(+q.ha||0); }
+function ctHaSet(k, val){
+  const q=D.cuarteles.find(x=>ctKey(x)===k); if(!q) return;
+  const x=parseFloat(String(val).replace(",","."));
+  if(isNaN(x) || x>=(+q.ha||0)) delete ctHaSel()[k];
+  else ctHaSel()[k]=Math.max(0, Math.round(x*100)/100);
+  abrirCalc("cuad");
+}
+function ctHaTodo(){ nav.calcHa={}; abrirCalc("cuad"); }
+function ctParcialHTML(sel){
+  if(!sel.length) return "";
+  const nP=sel.filter(ctParcial).length;
+  return `<details class="ct-parc"${nP?" open":""}><summary>${ic("edit")} ¿Algún cuartel no se hizo completo? <span class="muted">${nP? nP+" con superficie parcial" : "ajusta las hectáreas hechas"}</span></summary>
+    <div class="ct-parc-l">${sel.map(q=>{ const k=ctKey(q), pl=ctPlantasEf(q);
+      return `<div class="ct-parc-f${ctParcial(q)?" parcial":""}"><span class="ct-parc-n"><b>${esc(q.nombre)}</b> <span class="muted">${esc(q.fundo)}</span></span>
+        <span class="ct-parc-i"><input class="inp" inputmode="decimal" value="${String(Math.round(ctHaEf(q)*100)/100).replace(".",",")}" onchange="ctHaSet('${jsq(k)}',this.value)" aria-label="Hectáreas hechas en ${esc(q.nombre)}"> de ${num(+q.ha||0)} ha</span>
+        <span class="muted ct-parc-p">${pl? pl.toLocaleString("es-CL")+" pl" : ""}</span></div>`; }).join("")}</div>
+    ${nP? `<button type="button" class="btn sec chico" onclick="ctHaTodo()" style="margin-top:6px">Todos completos</button>` : ""}
+    <div class="muted" style="font-size:11.5px;margin-top:6px">Escribe las hectáreas que realmente se hicieron. El total, los días, el costo, el PDF y lo que se guarda usan esa superficie.</div>
+  </details>`;
+}
 function ctSel(){ nav.calcCu = nav.calcCu || {}; return nav.calcCu; }
 function ctKey(q){ return q.fundo+"|"+q.nombre; }
-function ctToggle(k){ const s=ctSel(); if(s[k]) delete s[k]; else s[k]=true; abrirCalc("cuad"); }
+function ctToggle(k){ const s=ctSel(); if(s[k]){ delete s[k]; delete ctHaSel()[k]; } else s[k]=true; abrirCalc("cuad"); }
 function ctFundo(f,on){ const s=ctSel(); D.cuarteles.filter(q=>q.fundo===f && ctVisible(q)).forEach(q=>{ if(on) s[ctKey(q)]=true; else delete s[ctKey(q)]; }); abrirCalc("cuad"); }
 function ctEsp(e){ nav.calcEsp = nav.calcEsp||[]; const i=nav.calcEsp.indexOf(e); i<0? nav.calcEsp.push(e) : nav.calcEsp.splice(i,1); abrirCalc("cuad"); }
 function ctVisible(q){ const es=nav.calcEsp||[]; return !es.length || es.indexOf(q.especie)>=0; }
@@ -7474,17 +7533,17 @@ function ctCuHTML(){
     h+=`<div class="cufg">${esc(f)} <span class="muted" style="font-weight:600;text-transform:none;letter-spacing:0">· ${nSel}/${cs.length}</span>
       <button type="button" class="culink" onclick="ctFundo('${jsq(f)}',${nSel<cs.length})">${nSel<cs.length?"marcar todos":"desmarcar"}</button></div>`;
     cs.forEach(q=>{
-      const pl=ctPlantas(q), k=ctKey(q);
+      const k=ctKey(q), pl=s[k]? ctPlantasEf(q) : ctPlantas(q);
       h+=`<label class="culab"><input type="checkbox" ${s[k]?"checked":""} onchange="ctToggle('${k.replace(/'/g,"\\\\'")}')">
         <span class="gpt" style="background:${gtColEsp(q.especie)}"></span>
-        <span style="flex:1;min-width:0">${esc(q.nombre)} <span class="cuha">· ${num(+q.ha||0)} ha${pl?" · "+pl.toLocaleString("es-CL")+" pl":" · marco s/d"}${q.especie?" · "+esc(q.especie)+(q.variedad?" "+esc(q.variedad):""):""}</span></span></label>`;
+        <span style="flex:1;min-width:0">${esc(q.nombre)} <span class="cuha">· ${s[k]? ctHaTxt(q) : num(+q.ha||0)} ha${pl?" · "+pl.toLocaleString("es-CL")+" pl":" · marco s/d"}${q.especie?" · "+esc(q.especie)+(q.variedad?" "+esc(q.variedad):""):""}</span></span></label>`;
     });
   });
   return h+`</div>`;
 }
 function calcFormCuad(){
   const base=ctBase(), sel=ctSeleccionados();
-  const ha=sel.reduce((s,q)=>s+(+q.ha||0),0), pl=sel.reduce((s,q)=>s+ctPlantas(q),0), sinMarco=sel.filter(q=>!ctMarco(q)).length;
+  const ha=sel.reduce((s,q)=>s+ctHaEf(q),0), pl=sel.reduce((s,q)=>s+ctPlantasEf(q),0), sinMarco=sel.filter(q=>!ctMarco(q)).length;
   return `<h3 style="margin-top:0">${ic("users")} Labor por cuartel</h3>
   <label class="f" style="margin-bottom:2px">Labor${gtCombo("q_labor",(nav.calcVals&&nav.calcVals.q_labor)||"",tiposLabor(),"Poda, raleo, aplicación…")}</label>
   ${(function(){ setTimeout(function(){ const i=document.getElementById("q_labor"); if(!i||i._ct) return; i._ct=1;
@@ -7497,6 +7556,7 @@ function calcFormCuad(){
   </div>
   <label class="f" style="margin-bottom:2px">Cuarteles donde se hará</label>
   ${ctCuHTML()}
+  ${ctParcialHTML(sel)}
   <div class="muted" style="font-size:12px;margin:6px 0 10px">
     ${sel.length? `<b>${sel.length}</b> cuartel(es) · <b>${num(ha)}</b> ha · <b>${pl.toLocaleString("es-CL")}</b> plantas${sinMarco?` <span style="color:var(--urg)">· ${sinMarco} sin marco de plantación (no suman plantas)</span>`:""}` : "Marca los cuarteles para calcular el total automáticamente."}
   </div>
@@ -7539,7 +7599,7 @@ function ctModelo(){
     :                     (tot>0? tot*val : NaN);
   const costoEnt = (pago==="dia" && val>0 && diasJ>0)? val*Math.ceil(diasJ-1e-9) : NaN;   // cobrando días completos
   const filas = (base!=="otra")? sel.map(q=>{
-    const cant = base==="planta"? ctPlantas(q) : (+q.ha||0);
+    const cant = base==="planta"? ctPlantasEf(q) : ctHaEf(q);
     const dc = (cant>0&&pers>0&&rend>0)? cant/(pers*rend) : NaN;
     /* a trato el costo es propio de cada cuartel; pagando por día o por jornal se reparte
        el costo total en proporción a lo que pesa cada cuartel (así la tabla suma el total) */
@@ -7550,7 +7610,7 @@ function ctModelo(){
   }) : [];
   return {labor:(nav.calcVals&&nav.calcVals.q_labor)||"", base, u, sel, tot, pers, rend, dias, val, porDia, diasNec, persNec, rendReq, jornales, costo, filas,
           pago, costoEnt, diasJ, fini:cstr("q_ini"), ffin:cstr("q_fin"),
-          haSel:sel.reduce((s,q)=>s+(+q.ha||0),0), plSel:sel.reduce((s,q)=>s+ctPlantas(q),0), sinMarco:sel.filter(q=>!ctMarco(q)).length};
+          haSel:sel.reduce((s,q)=>s+ctHaEf(q),0), plSel:sel.reduce((s,q)=>s+ctPlantasEf(q),0), sinMarco:sel.filter(q=>!ctMarco(q)).length};
 }
 function calcCuad(){
   const m=ctModelo(), u=m.u, base=m.base;
@@ -7572,7 +7632,7 @@ function calcCuad(){
     ${calcR("Costo cobrando días completos",(m.costoEnt>0 && Math.abs(m.costoEnt-m.costo)>1)? m.costoEnt : NaN,"$")}`;
   /* desglose por cuartel: cuánto es cada uno y cuántos días le toca */
   if(m.filas.length){
-    const filas=m.filas.map(f=>`<tr><td>${esc(f.q.fundo)}</td><td><b>${esc(f.q.nombre)}</b></td><td style="text-align:right">${num(+f.q.ha||0)}</td>
+    const filas=m.filas.map(f=>`<tr><td>${esc(f.q.fundo)}</td><td><b>${esc(f.q.nombre)}</b></td><td style="text-align:right">${ctHaTxt(f.q)}</td>
         <td style="text-align:right">${base==="planta"? (f.cant? f.cant.toLocaleString("es-CL"):"<span class='muted'>s/marco</span>") : num(f.cant)}</td>
         <td style="text-align:right">${isNaN(f.dias)?"—":(Math.round(f.dias*10)/10).toLocaleString("es-CL")}</td>
         <td style="text-align:right">${isNaN(f.costo)?"—":"$"+Math.round(f.costo).toLocaleString("es-CL")}</td></tr>`).join("");
@@ -7632,7 +7692,7 @@ async function ctPDFArmar(m, esIOS, guardar){
     d.autoTable({
       startY:y, margin:{left:PG.ml,right:PG.mr,top:PG.y0,bottom:PG.mb+3},
       head:[["Fundo","Cuartel","Especie","Marco","ha", m.base==="planta"?"Plantas":"ha a hacer","Dias","Costo"]],
-      body: m.filas.map(f=>[f.q.fundo, f.q.nombre, (f.q.especie||"")+(f.q.variedad?" "+f.q.variedad:""), f.q.marco||"—", fN(+f.q.ha||0,2),
+      body: m.filas.map(f=>[f.q.fundo, f.q.nombre, (f.q.especie||"")+(f.q.variedad?" "+f.q.variedad:""), f.q.marco||"—", (ctParcial(f.q)? fN(ctHaEf(f.q),2)+" de "+fN(+f.q.ha||0,2) : fN(+f.q.ha||0,2)),
         m.base==="planta"? (f.cant? fN(f.cant,0):"s/marco") : fN(f.cant,2), isNaN(f.dias)?"—":fN(f.dias,1), isNaN(f.costo)?"—":cfCLP(f.costo)].map(pdfSano)),
       foot:[["TOTAL", m.filas.length+" cuartel(es)", "", "", fN(m.haSel,2), m.base==="planta"? fN(totCant,0) : fN(totCant,2), totDias? fN(totDias,1):"—", totCosto? cfCLP(totCosto):"—"].map(pdfSano)],
       theme:"plain",
@@ -7697,7 +7757,7 @@ function ctGuardarRegistro(){
     }
     const lid = "L"+nid();
     m.filas.forEach((f,i)=>{
-      const cantTxt = f.cant>0? (m.base==="planta"? Math.round(f.cant).toLocaleString("es-CL")+" plantas" : num(Math.round(f.cant*100)/100)+" ha") : "";
+      const cantTxt = (f.cant>0? (m.base==="planta"? Math.round(f.cant).toLocaleString("es-CL")+" plantas" : num(Math.round(f.cant*100)/100)+" ha") : "") + (ctParcial(f.q)? " (parcial: "+num(Math.round(ctHaEf(f.q)*100)/100)+" de "+num(+f.q.ha||0)+" ha)" : "");
       D.registros.push({id:nid(), tipo:"Labor", fecha:f1, fundo:f.q.fundo, cuartel:f.q.nombre,
         labor:m.labor, cantidad:cantTxt, personas:(m.pers>0?m.pers:""), dias:(isNaN(f.dias)?"":Math.round(f.dias*100)/100), costo:(isNaN(f.costo)?"":Math.round(f.costo)),
         cant:(f.cant>0?f.cant:0), unidad:m.u, rend:(m.rend>0?m.rend:""), pago:m.pago, resp, laborId:lid, fini:f1, ffin:f2,
@@ -7717,7 +7777,7 @@ function ctSnap(m){   // foto del cálculo actual (no guarda referencias vivas a
     dias:m.dias, tot:m.tot, diasNec:m.diasNec, jornales:m.jornales, costo:m.costo, costoEnt:m.costoEnt,
     fini:m.fini, ffin:m.ffin, haSel:m.haSel, plSel:m.plSel, sinMarco:m.sinMarco,
     filas:(m.filas||[]).map(f=>({fundo:f.q.fundo, cuartel:f.q.nombre, especie:f.q.especie||"", variedad:f.q.variedad||"",
-      marco:f.q.marco||"", ha:+f.q.ha||0, cant:f.cant, dias:f.dias, costo:f.costo}))};
+      marco:f.q.marco||"", ha:ctHaEf(f.q), haTot:+f.q.ha||0, cant:f.cant, dias:f.dias, costo:f.costo}))};
 }
 function ctServAgregar(){
   const m=ctModelo();
@@ -7894,7 +7954,7 @@ function ctServGuardar(){
       const filas = (x.filas&&x.filas.length)? x.filas : [{fundo:GENERAL, cuartel:"", cant:x.tot, dias:x.diasNec, costo:x.costo}];
       const f1 = x.fini || hoy(), f2 = x.ffin || f1;
       filas.forEach((f,i)=>{
-        const cantTxt = f.cant>0? (x.base==="planta"? Math.round(f.cant).toLocaleString("es-CL")+" plantas" : num(Math.round(f.cant*100)/100)+" "+x.u) : "";
+        const cantTxt = (f.cant>0? (x.base==="planta"? Math.round(f.cant).toLocaleString("es-CL")+" plantas" : num(Math.round(f.cant*100)/100)+" "+x.u) : "") + ((f.haTot && f.ha < f.haTot-1e-9)? " (parcial: "+num(Math.round(f.ha*100)/100)+" de "+num(f.haTot)+" ha)" : "");
         D.registros.push({id:nid(), tipo:"Labor", fecha:f1, fundo:f.fundo, cuartel:f.cuartel||"",
           labor:x.labor, cantidad:cantTxt, personas:(x.pers>0?x.pers:""), dias:(isNaN(f.dias)?"":Math.round(f.dias*100)/100), costo:(isNaN(f.costo)?"":Math.round(f.costo)),
           cant:(f.cant>0?f.cant:0), unidad:x.u, rend:(x.rend>0?x.rend:""), pago:x.pago, resp, laborId:lid, fini:f1, ffin:f2,
@@ -11265,7 +11325,7 @@ async function wlConectar(){
     const sts=(j.stations||[]);
     if(!sts.length) throw new Error("La cuenta no tiene estaciones asociadas.");
     const usar=(s)=>{ w.st=s.station_id; w.stNombre=s.station_name||("Estación "+s.station_id); w.lat=s.latitude||null; w.lng=s.longitude||null; w.pro=null;
-      if(!(D.widgets||[]).some(x=>x.tipo==="riego")){ D.widgets=D.widgets||[]; D.widgets.push({id:(D.seq=(D.seq||1000)+1), tipo:"riego"}); } // widget de riego en el Panel
+      /* (ya no se agrega el widget de riego al Panel: riego tiene su pestaña) */ // widget de riego en el Panel
       guardar(); alert("✅ Conectada: "+w.stNombre); wlActualizar(true); };
     if(sts.length===1){ usar(sts[0]); return; }
     abrirModal(ic("plug")+" Elige la estación", `<label class="f">Estación<select id="wl_st">${sts.map((s,i)=>`<option value="${i}">${esc(s.station_name||s.station_id)}</option>`).join("")}</select></label>`,
@@ -11360,7 +11420,7 @@ async function wlActualizarPaso(w, manual){
   if(manual){ if(errores.length) alert("⚠️ "+errores.join(" · ")); else alert("✅ Estación actualizada"); }
   if(typeof wlPintarEstado==="function") wlPintarEstado();
   if(document.getElementById("climaAhora")) cargarClimaAhora();
-  if(document.getElementById("riegoVista")) abrirRiego();
+  if(nav.tab==="riego" && document.getElementById("riegoScroll")) riegoPintar();
   if(nav.tab==="panel") wlRefrescarWidget();
 }
 /* repinta solo la tarjeta "Riego de la semana" del Panel (sin rehacer el mapa ni el resto) */
@@ -11513,7 +11573,8 @@ function riegoFenDe(q){ // último registro fenológico del cuartel
   return {bbch:e.bbch, estado:e.estado||"", fecha:e.fecha, dias};
 }
 function riegoKcFen(g, bbch){ const n=parseInt(bbch,10); if(isNaN(n)) return null; return riegoKcFenTabla(g).find(x=>{ const p=x.d.split("-"); return n>=+p[0] && n<=+p[1]; })||null; }
-function riegoKcInfo(q, mes){
+function riegoKcInfo(q, mes){ const _i=riegoKcInfoBase(q, mes), aj=riegoKcAj(q); if(aj!==100 && _i.src!=="manual" && _i.kc!=null){ _i.kcBase=_i.kc; _i.kc=Math.round(_i.kc*aj)/100; _i.aj=aj; } return _i; }
+function riegoKcInfoBase(q, mes){
   const r=riegoCfg(), o=r.cu[q.id]||{}, g=riegoGrupo(q);
   const modo = o.modo || "global";
   if(modo==="manual" || (!o.modo && o.kc>0)){ if(o.kc>0) return {kc:+o.kc, src:"manual", lab:"manual"}; }
@@ -11525,6 +11586,8 @@ function riegoKcInfo(q, mes){
   return {kc: riegoKcTabla(g)[mes], src:"mes", lab:"mes", sinFen: ef==="fen"};
 }
 function riegoKc(q, mes){ return riegoKcInfo(q, mes).kc; }
+/* ajuste propio del cuartel (%): multiplica el Kc de la tabla (mes o fenología), así conserva la variación de la temporada */
+function riegoKcAj(q){ const o=(q && riegoCfg().cu[q.id])||{}; const x=+o.kcAj; return (x>0 && isFinite(x) && x!==100)? x : 100; }
 function riegoModoKc(m){ riegoCfg().modoKc=m; guardar(); riegoPintar(); }
 function riegoSetModo(id, m){ const r=riegoCfg(); r.cu[id]=r.cu[id]||{}; if(m==="global") delete r.cu[id].modo; else r.cu[id].modo=m; if(m!=="manual") delete r.cu[id].kc; guardar(); riegoPintar(); }
 function riegoParam(q){ const r=riegoCfg(); const o=r.cu[q.id]||{}; return {gpp:+(o.gpp||r.def.gpp||0), caudal:+(o.caudal||r.def.caudal||0), ef:+(o.ef||r.def.ef||90)}; }
@@ -11547,19 +11610,33 @@ function riegoDiasTxt(arr){ return (arr||[]).map(i=>RIEGO_DIA[i]).join(" "); }
 const RIEGO_DIA_N=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 function riegoDiasChipsHTML(id, centrado){   // id 0/omitido = los días generales
   const sel = id? riegoDias({id:id}) : (riegoCfg().dias||[]);
-  return `<div class="rgdias"${centrado?' style="justify-content:center"':""}>${RIEGO_DIA.map((s,i)=>`<button type="button" class="rgd${sel.indexOf(i)>=0?" on":""}" onclick="riegoDiaTgl(${id||0},${i})" title="${RIEGO_DIA_N[i]}">${s}</button>`).join("")}</div>`;
+  return `<div class="rgdias"${centrado?' style="justify-content:center"':""}>${RIEGO_DIA.map((s,i)=>`<button type="button" class="rgd${sel.indexOf(i)>=0?" on":""}" data-rgd="${id||0}-${i}" onclick="riegoDiaTgl(${id||0},${i})" title="${RIEGO_DIA_N[i]}">${s}</button>`).join("")}</div>`;
 }
 /* Repinta la vista de riego conservando dónde ibas leyendo (antes saltaba al principio) */
-function riegoPintar(){
-  const y=(document.getElementById("riegoScroll")||{}).scrollTop||0;
-  abrirRiego();
-  const s=document.getElementById("riegoScroll"); if(s) s.scrollTop=y;
+/* Riego vive en su propia pestaña (29-09-2026): vRiego() = barra de acciones + el cuerpo de riegoArmarHTML().
+   riegoPintar(ancla) repinta solo #riegoScroll (la página no se recrea) y deja el botón tocado quieto en la pantalla. */
+function riegoCuerpoHTML(){ const t=document.createElement("div"); t.innerHTML=riegoArmarHTML(); const b=t.querySelector("#riegoScroll"); return b? b.innerHTML : ""; }
+function vRiego(){
+  return `<div class="rg-acc">
+      <button class="btn sec chico" onclick="wlActualizar(true)">${ic("refresh")} Actualizar clima</button>
+      <button class="btn chico" onclick="riegoPDFModal('reg')">${ic("print")} PDF regador</button>
+      <button class="btn sec chico" onclick="riegoPDFModal('pro')">${ic("save")} PDF Pro</button>
+    </div>
+    <div id="riegoScroll" class="rg-tab">${riegoCuerpoHTML()}</div>`;
 }
-function riegoVistaSet(v){ nav.riegoVista=v; riegoPintar(); }
+function abrirRiego(){ if(nav.tab!=="riego" || !document.getElementById("riegoScroll")) ir("riego"); else riegoPintar(); }
+function riegoPintar(ancla){
+  const c=document.getElementById("riegoScroll");
+  if(nav.tab!=="riego" || !c){ ir("riego"); return; }
+  const a0=(ancla && document.querySelector(ancla)); const t0=a0? a0.getBoundingClientRect().top : null;
+  c.innerHTML=riegoCuerpoHTML();
+  const a1=(ancla && document.querySelector(ancla));
+  if(t0!=null && a1){ const d=a1.getBoundingClientRect().top - t0; if(Math.abs(d)>0.5) window.scrollBy(0, d); }
+}function riegoVistaSet(v){ nav.riegoVista=v; riegoPintar(); }
 /* --- tarjeta de un cuartel --- */
 function riegoCardHTML(q, c, fmt){
   const ki=riegoKcInfo(q,new Date().getMonth());
-  const kcSrc = ki.src==="fen"? "fenología" : ki.src==="manual"? "manual" : "mes";
+  const kcSrc = (ki.src==="fen"? "fenología" : ki.src==="manual"? "manual" : "mes")+(ki.aj? " · ajuste "+ki.aj+" %" : "");
   const falta = c.hRiego==null;
   const d=(v,l)=>`<div><div class="rgc-dv">${v}</div><div class="rgc-dl">${l}</div></div>`;
   return `<div class="rgcard${falta?" alerta":""}">
@@ -11787,7 +11864,9 @@ function riegoFicha(id){
         <option value="fen"${modo==="fen"?" selected":""}>Según la fenología del cuartel</option>
         <option value="manual"${modo==="manual"?" selected":""}>Manual</option></select></label>
     ${campoF("rf_kc","Kc manual","text",o.kc||"")}
-    <div class="muted" style="font-size:11.5px">Ahora está usando <b>${f(ki.kc,2)}</b> (${ki.src==="fen"? esc(ki.lab)+" · BBCH "+esc(String(ki.bbch||"")) : ki.src==="manual"? "manual" : "tabla del mes"}).${ki.sinFen? ` <span style="color:var(--urg)">Sin registro fenológico: está cayendo al mes.</span>`:""}</div>
+    ${campoF("rf_kcaj","Ajuste del Kc de este cuartel (%)","text",o.kcAj||"",'inputmode="decimal" placeholder="100 = sin ajuste"')}
+    <div class="muted" style="font-size:11.5px;margin:-4px 0 8px">Multiplica el Kc del mes o de la fenología solo para este cuartel (ej: 80 % cuartel joven, 110 % muy frondoso) y mantiene la variación de la temporada. No se usa si el Kc es manual.</div>
+    <div class="muted" style="font-size:11.5px">Ahora está usando <b>${f(ki.kc,2)}</b>${ki.aj? " = "+f(ki.kcBase,2)+" × "+ki.aj+" %" : ""} (${ki.src==="fen"? esc(ki.lab)+" · BBCH "+esc(String(ki.bbch||"")) : ki.src==="manual"? "manual" : "tabla del mes"}).${ki.sinFen? ` <span style="color:var(--urg)">Sin registro fenológico: está cayendo al mes.</span>`:""}</div>
   `, ()=>{
     const set=(k,el)=>{ const x=parseFloat(String(v(el)).replace(",",".")); r.cu[id]=r.cu[id]||{}; if(isNaN(x)||x<=0) delete r.cu[id][k]; else r.cu[id][k]=x; };
     set("gpp","rf_gpp"); set("caudal","rf_caudal"); set("ef","rf_ef"); set("rep","rf_rep");
@@ -11800,6 +11879,7 @@ function riegoFicha(id){
     const m=v("rf_modo"); r.cu[id]=r.cu[id]||{};
     if(m==="global") delete r.cu[id].modo; else r.cu[id].modo=m;
     if(m==="manual") set("kc","rf_kc"); else delete r.cu[id].kc;
+    { const x=parseFloat(String(v("rf_kcaj")).replace(",",".")); if(isNaN(x)||x<=0||x===100) delete r.cu[id].kcAj; else r.cu[id].kcAj=Math.round(x*10)/10; }
     setTimeout(riegoPintar,0);
   }, ic("save")+" Guardar");
 }
@@ -11811,7 +11891,7 @@ function riegoDiaTgl(id, i){
   if(id){ r.cu[id]=r.cu[id]||{}; r.cu[id].dias=nuevo; } else r.dias=nuevo;
   guardar();
   const fe=document.getElementById("rgFichaDias"); if(fe && id) fe.innerHTML=riegoDiasChipsHTML(id);   // la ficha abierta también se actualiza
-  riegoPintar();
+  riegoPintar('#riegoScroll [data-rgd="'+(id||0)+'-'+i+'"]');   // el botón tocado queda donde estaba
 }
 function riegoDiasReset(id){ const r=riegoCfg(); if(r.cu[id]) delete r.cu[id].dias; guardar(); riegoPintar(); }
 function riegoDescLluvia(v){ riegoCfg().descLluvia=!!v; guardar(); riegoPintar(); }
@@ -11855,7 +11935,7 @@ function riegoBase(b){ riegoCfg().base=b; guardar(); riegoPintar(); }
 function riegoFundo(f){ nav.riegoFundo=f; riegoPintar(); }
 function riegoKcSet(g,mes,val){ const r=riegoCfg(); r.kc[g]=(r.kc[g]&&r.kc[g].length===12)? r.kc[g].slice() : RIEGO_KC_DEF[g].slice(); const x=parseFloat(String(val).replace(",",".")); if(!isNaN(x)&&x>=0&&x<=1.5) r.kc[g][mes]=x; guardar(); }
 function riegoKcReset(g){ delete riegoCfg().kc[g]; guardar(); riegoPintar(); }
-function abrirRiego(){
+function riegoArmarHTML(){   // arma la vista completa (el área #riegoScroll es lo que se muestra en la pestaña)
   const r=riegoCfg(), w=wlCfg();
   const base=r.base||"sem"; const serie=riegoSerieBase(); const hoyK=hoy();
   const fus=fundos(); const f=nav.riegoFundo && fus.indexOf(nav.riegoFundo)>=0? nav.riegoFundo : (fus[0]||"");
@@ -11869,7 +11949,7 @@ function abrirRiego(){
   const vista=["dia","tabla","turnos"].indexOf(nav.riegoVista)>=0? nav.riegoVista : "cu";   // antes "tabla" nunca se mostraba
   const fmt=(x,d)=> (x==null||isNaN(x)||!isFinite(x))? "—" : (+x).toLocaleString("es-CL",{minimumFractionDigits:d,maximumFractionDigits:d});
   const grupos=[...new Set(cus.map(riegoGrupo))];
-  document.getElementById("capaVisor").innerHTML=`
+  const _html=`
   <div class="visor" id="riegoVista" style="background:#eef1ec">
     <div class="vh" style="background:linear-gradient(135deg,#123f24,#1e7a4c)">
       <button class="btn sec chico" onclick="cerrarVisor()">← Volver</button>
@@ -11966,6 +12046,7 @@ function abrirRiego(){
       </div>
     </div>
   </div>`;
+  return _html;
 }
 /* --- widget del Panel --- */
 function riegoWidgetHTML(w){
@@ -12152,7 +12233,7 @@ async function riegoPDFPro(o){
       const fil=P.filas.map(({q,c})=>{ const ki=riegoKcInfo(q,new Date(o.lunes+"T12:00:00").getMonth()), p=c.p||{};
         return [q.nombre, (q.especie||"")+(q.variedad? " "+q.variedad:""), fN(+q.ha||0,2), c.area? fN(c.area,1) : "s/marco",
           riegoSectores(q).map(s=>s.cod||"unico").join(" "), riegoEquipo(q)||"principal",
-          fN(ki.kc,2)+" "+(ki.src==="fen"? "fen" : ki.src==="manual"? "man" : "mes"), fN(c.etcDia,2), fN(c.lamSem,1), fN(p.ef,0), fN(c.lamBruta,1),
+          fN(ki.kc,2)+" "+(ki.src==="fen"? "fen" : ki.src==="manual"? "man" : "mes")+(ki.aj? " "+ki.aj+"%" : ""), fN(c.etcDia,2), fN(c.lamSem,1), fN(p.ef,0), fN(c.lamBruta,1),
           riegoDiasTxt(c.diasSel||[]), fN(c.lamRiego,1), fN(c.pp,2), fN(c.hRiego,1), fN(c.m3haRiego,1), fN(c.m3Sem,0)].map(pdfSano); });
       const tot=P.filas.reduce((s,x)=>s+(x.c.m3Sem||0),0);
       d.autoTable({startY:y, margin:{left:PG.ml,right:PG.mr,top:PG.y0,bottom:PG.mb+3},
@@ -13513,17 +13594,25 @@ async function ganttPDFArmar(T, ls, a, esIOS){
    ahí lo correcto es la hoja para compartir, que ofrece "Guardar en Archivos". */
 async function pdfEntregar(d, archivo, esIOS){
   let blob = null;
-  try{ blob = d.output('blob'); }catch(_){ }
+  try{ blob = (d instanceof Blob)? d : d.output('blob'); }catch(_){ }   // acepta un documento jsPDF o un Blob ya armado
   if(esIOS && blob && navigator.canShare && typeof File !== 'undefined'){
-    try{
-      const f = new File([blob], archivo, {type:'application/pdf'});
-      if(navigator.canShare({files:[f]})){
+    const f = new File([blob], archivo, {type:'application/pdf'});
+    let puede = false; try{ puede = navigator.canShare({files:[f]}); }catch(_){ }
+    if(puede){
+      try{
         await navigator.share({files:[f], title:archivo});
         return true;                       // el usuario ya lo guardó o compartió
+      }catch(e){
+        if(e && e.name === 'AbortError') return true;   // cerró la hoja a propósito
+        /* Safari solo abre "Compartir" justo después de tocar un botón; si el PDF tardó o hubo un paso intermedio,
+           lo bloquea. En vez de fallar en silencio: aviso con un botón que lo comparte (un toque nuevo sí se permite). */
+        pdfOfrecerCompartir(f, archivo);
+        return true;
       }
-    }catch(e){
-      if(e && e.name === 'AbortError') return true;   // cerró la hoja a propósito
     }
+  }
+  if(esIOS && blob){                        // iPad sin "Compartir" archivos: abrir el PDF para verlo y guardarlo desde ahí
+    try{ const url = URL.createObjectURL(blob); const w = window.open(url, '_blank'); if(w){ setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(_){ } }, 60000); return true; } }catch(_){ }
   }
   if(blob){                                 // descarga normal (PC, Android, Safari nuevo)
     try{
@@ -13537,11 +13626,24 @@ async function pdfEntregar(d, archivo, esIOS){
       return true;
     }catch(_){ }
   }
-  try{ d.save(archivo); return true; }catch(_){ }   // último recurso
+  try{ if(!(d instanceof Blob)){ d.save(archivo); return true; } }catch(_){ }   // último recurso
   alert('No se pudo entregar el PDF en este dispositivo. Prueba desde el navegador Safari en vez de la app instalada.');
   return false;
 }
 
+/* aviso con botón "Compartir PDF": el toque del usuario habilita la hoja de Compartir de Safari */
+function pdfOfrecerCompartir(file, archivo){
+  const compartir = async ()=>{
+    try{ await navigator.share({files:[file], title:archivo}); }
+    catch(e){
+      if(e && e.name==='AbortError') return;
+      try{ const url=URL.createObjectURL(file); const w=window.open(url,'_blank'); if(!w) throw 0; }
+      catch(_){ alert('⚠️ No se pudo abrir el PDF. Prueba desde Safari (no desde la app instalada) o actualiza el iPad.'); }
+    }
+  };
+  if(typeof aviso==="function") aviso("✅ PDF listo: "+archivo, {tipo:"ok", dur:30000, accion:{txt:"Compartir PDF", fn:compartir}});
+  else if(confirm("PDF listo: "+archivo+". ¿Compartir o guardar ahora?")) compartir();
+}
 /* Repintar con el nuevo diseño si el primer render ya ocurrió */
 if(typeof D !== "undefined" && D) render();
 </script>
