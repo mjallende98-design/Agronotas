@@ -6,9 +6,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="AgroNotas">
+<meta name="apple-mobile-web-app-title" content="AgroNotas 2.0">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<title>AgroNotas — Total Fruit Curacaví</title>
+<title>AgroNotas 2.0 — Total Fruit Curacaví</title>
 <style>
 :root{
   /* Tokens de diseño: ÚNICA fuente de colores y medidas (unificados 29-09-2026).
@@ -1055,7 +1055,8 @@ function cargarDe(raw){
     D = raw ? JSON.parse(raw) : defaults();
     // migraciones futuras: dar defaults a campos nuevos aquí (corren también en instalación nueva)
     D.cuarteles = D.cuarteles || []; D.notas = D.notas || [];
-    D.labores = D.labores || []; D.registros = D.registros || [];
+    D.labores = D.labores || []; D.registros = D.registros || []; D.recordatorios = D.recordatorios || [];
+    (D.notas||[]).forEach(n=>{ if(!Array.isArray(n.fotos)) n.fotos=[]; });   // notas importadas o sincronizadas sin fotos no deben romper la vista
     D.bitacora = D.bitacora || []; D.bitCfg = D.bitCfg || {unidades:{}, integrar:false};
     D.fenologia = D.fenologia || [];
     D.ui = D.ui || {sol:false, grande:false};
@@ -1332,7 +1333,10 @@ function abrirModal(titulo, html, onGuardar, txtBtn){
   const vis=document.getElementById("capaVisor");
   if(vis && vis.innerHTML.trim()){ const f=document.querySelector("#capaModal .modal-fondo"); if(f) f.style.zIndex="260"; }
 }
-function cerrarModal(){ document.getElementById("capaModal").innerHTML=""; modalGuardar=null; }
+function cerrarModal(){ document.getElementById("capaModal").innerHTML=""; modalGuardar=null;
+  if(window._rfDias){ const x=window._rfDias; window._rfDias=null;   // ficha de riego cerrada sin guardar: los días vuelven a como estaban
+    try{ const rc=riegoCfg(); rc.cu[x.id]=rc.cu[x.id]||{}; if(x.dias0) rc.cu[x.id].dias=x.dias0; else delete rc.cu[x.id].dias; guardar(); setTimeout(()=>{ if(typeof riegoPintar==="function" && nav.tab==="riego") riegoPintar(); },0); }catch(e){} }
+}
 async function guardarModal(){
   if(modalGuardar){ const ok = await modalGuardar(); if(ok===false) return; }
   guardar(); cerrarModal(); render();
@@ -1340,7 +1344,7 @@ async function guardarModal(){
 
 /* ================== NAVEGACIÓN ================== */
 const TABS = [
-  {id:"panel", ico:"🏠", lab:"Panel"},
+  {id:"panel", ico:"🏠", lab:"Hoy"},
   {id:"notas", ico:"📝", lab:"Notas"},
   {id:"bitacora", ico:"📓", lab:"Bitácora"},
   {id:"fenologia", ico:"🌸", lab:"Fenología"},
@@ -1368,8 +1372,8 @@ function miniNota(n){
   return `<div class="item" style="box-shadow:none;border:1px solid var(--borde);padding:10px 12px" onclick="verNota(${n.id})">
     <div class="tit" style="font-size:14px">${n.fijada?ic("pin2")+" ":""}${badgeCat(n.cat)} ${esc(n.fundo)}${n.cuartel?" · "+esc(n.cuartel):""}</div>
     ${n.titulo? `<div style="font-weight:700;font-size:13.5px;margin-top:2px">${esc(n.titulo)}</div>`:""}
-    <div class="txt" style="margin-top:3px;font-size:13.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(n.texto)}</div>
-    <div class="met">${fmtFH(n.fh)}${n.fotos.length?` · 📷 ${n.fotos.length}`:""}</div>
+    <div class="txt" style="margin-top:3px;font-size:13.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${n.oculta? `<span class="muted">${ic("eyeOff")} Contenido oculto</span>` : esc(n.texto)}</div>
+    <div class="met">${fmtFH(n.fh)}${(n.fotos||[]).length?` · 📷 ${n.fotos.length}`:""}</div>
   </div>`;
 }
 
@@ -1391,7 +1395,7 @@ function vNotas(){
 function notasFiltradas(){
   let lst=[...D.notas];
   if(nav.filtroFundo) lst=lst.filter(n=>n.fundo===nav.filtroFundo);
-  if(nav.notaBuscar){ const q=nav.notaBuscar.toLowerCase(); lst=lst.filter(n=>((n.oculta?"":(n.texto||"")+" "+(n.titulo||""))+" "+(n.cuartel||"")+" "+(n.cat||"")).toLowerCase().includes(q)); }
+  if(nav.notaBuscar){ const q=nav.notaBuscar.toLowerCase(); lst=lst.filter(n=>((n.oculta?"":(n.texto||"")+" "+(n.titulo||"")+" "+(n.check||[]).map(c=>c.t).join(" "))+" "+(n.cuartel||"")+" "+(n.cat||"")).toLowerCase().includes(q)); }   // también busca en el checklist
   return lst;
 }
 function notasSeccion(label,key,items){
@@ -1487,7 +1491,7 @@ function formNota(id){
       ${campoF("m_aviso","Desde","date",n?.aviso)}
       ${campoF("m_avisoFin","Hasta (opcional)","date",n?.avisoFin)}
     </div>
-    <button type="button" class="btn sec chico" style="margin:-4px 0 10px" onclick="document.getElementById('m_aviso').value='';document.getElementById('m_avisoFin').value='';">✕ Quitar recordatorio</button>
+    <button type="button" class="btn sec chico" style="margin:-4px 0 10px" onclick="['m_aviso','m_avisoFin','m_aviso_t','m_avisoFin_t'].forEach(function(i){var e=document.getElementById(i); if(e) e.value='';});">✕ Quitar recordatorio</button>
     <label class="f" style="display:flex;align-items:center;gap:10px;font-size:15px">
       <input type="checkbox" id="m_fijada" ${n?.fijada?"checked":""} style="width:24px;height:24px;min-height:0;margin:0"> ${ic("pin2")} Fijar arriba (importante)
     </label>
@@ -1511,6 +1515,8 @@ function formNota(id){
     ${n? `<button class="btn peligro chico" style="margin-top:14px" onclick="eliminarNota(${n.id})">${ic("trash")} Eliminar nota</button>`:""}
   `, async ()=>{
     if(!req("m_fundo","m_texto")) return false;
+    if(v("m_aviso") && v("m_avisoFin") && v("m_avisoFin")<v("m_aviso")){ alert("⚠️ La fecha «hasta» del recordatorio no puede ser anterior a «desde»."); return false; }
+    if(!n && gpsOn && !pinsTmp.length && gpsTmp) pinsTmp = [Object.assign({}, gpsTmp)];   // nota nueva: la ubicación automática se guarda (antes se perdía)
     if(n){
       // adjuntos quitados en edición: borrarlos de IndexedDB
       for(const fid of n.fotos) if(!fotosTmp.includes(fid)) await fotoDel(fid);
@@ -2459,7 +2465,7 @@ function pintarChk(){
 }
 function marcarChk(id,i,val){
   const n = D.notas.find(x=>x.id===id);
-  if(n && n.check && n.check[i]){ n.check[i].ok = val; guardar(); }
+  if(n && n.check && n.check[i]){ n.check[i].ok = val; guardar(); if(nav.tab==="panel" && typeof hoyRefrescar==="function") hoyRefrescar(); }
 }
 
 /* --- GPS --- */
@@ -2516,7 +2522,8 @@ function notaPinMapa(){ elegirEnMapa("pin"); }
 function laborDesdeNota(id){
   const n = D.notas.find(x=>x.id===id); if(!n) return;
   cerrarModal();
-  formLabor(null, hoy(), {fundo:n.fundo, cuartel:n.cuartel, desc:n.texto});
+  const cus = String(n.cuartel||"").split(",").map(s=>s.trim()).filter(Boolean);   // la labor es de un cuartel: se toma el primero
+  formLabor(null, hoy(), {fundo:n.fundo, cuartel:cus[0]||"", desc:(n.titulo? n.titulo+": " : "")+n.texto+(cus.length>1? " (también: "+cus.slice(1).join(", ")+")" : "")});
 }
 async function compartirNota(id){
   const n = D.notas.find(x=>x.id===id); if(!n) return;
@@ -2524,7 +2531,8 @@ async function compartirNota(id){
   if(n.check && n.check.length) txt += "\n\n" + n.check.map(c=>(c.ok?"☑":"☐")+" "+c.t).join("\n");
   const _pins=(n.pins&&n.pins.length)?n.pins:(n.gps?[n.gps]:[]); if(_pins.length) txt += "\n\n" + _pins.map(function(g){return "📍 "+linkMapa(g);}).join("\n");
   if(navigator.share){ try{ await navigator.share({title:"Nota AgroNotas", text:txt}); }catch(e){} }
-  else if(navigator.clipboard){ await navigator.clipboard.writeText(txt); alert("Nota copiada al portapapeles 📋. Pégala en WhatsApp o correo."); }
+  else if(navigator.clipboard){ try{ await navigator.clipboard.writeText(txt); alert("Nota copiada al portapapeles 📋. Pégala en WhatsApp o correo."); }catch(e){ alert("⚠️ Este equipo no dejó compartir ni copiar la nota."); } }
+  else alert("⚠️ Este equipo no permite compartir ni copiar desde la app.");
 }
 function comprimirImagen(file){
   return new Promise((res,rej)=>{
@@ -2825,7 +2833,7 @@ function verNota(id){
   `, ()=>{ formNota(id); return false; }, "✏️ Editar");
   posNotas();
 }
-function marcarResuelta(id,val){ const n=D.notas.find(x=>x.id===id); if(n){ n.resuelta=val; guardar(); } }
+function marcarResuelta(id,val){ const n=D.notas.find(x=>x.id===id); if(n){ n.resuelta=val; guardar(); if(nav.tab==="panel" && typeof hoyRefrescar==="function") hoyRefrescar(); } }
 function cerrarAviso(id){ const n=D.notas.find(x=>x.id===id); if(n){ n.aviso=""; n.avisoFin=""; guardar(); render(); } }
 function notaPlantilla(i){
   const p = plantillas()[i]; if(!p) return;
@@ -3256,7 +3264,7 @@ function vAplic(){
   h += `<div class="chips" style="margin-bottom:6px"><span class="muted" style="align-self:center;font-size:12px;margin-right:2px">Agrupar por:</span>${[["dia","Día"],["semana","Semana"],["mes","Mes"]].map(([k,l])=>`<div class="chip ${modo===k?"act":""}" onclick="nav.regAgr='${k}';render()">${l}</div>`).join("")}</div>`;
   if(!lst.length){
     h += `<div class="vacio"><span class="ico">📒</span>Aún no hay aplicaciones. Ve a <b>Calc Fito</b>, arma el plan y toca <b>Guardar</b>.</div>`;
-    h += `<button class="btn-fab" onclick="ir('calcfito')">${ic("plus")}</button>`;
+    h += `<button class="btn-fab" onclick="ir('calcfito')" aria-label="Nueva aplicación (Calc Fito)" title="Nueva aplicación">${ic("plus")}</button>`;
     return h;
   }
   nav.regAbiertos = nav.regAbiertos || {};
@@ -3272,7 +3280,7 @@ function vAplic(){
       ${abierto? `<div style="padding:8px 10px">${regAgrupar(p.items)}</div>` : ""}
     </div>`;
   }).join("");
-  h += `<button class="btn-fab" onclick="ir('calcfito')">${ic("plus")}</button>`;
+  h += `<button class="btn-fab" onclick="ir('calcfito')" aria-label="Nueva aplicación (Calc Fito)" title="Nueva aplicación">${ic("plus")}</button>`;
   return h;
 }
 function aplicExcelBlob(){
@@ -3459,6 +3467,7 @@ function formReg(id){
        (agrupación de aplicaciones y de labores, rango de fechas, estado, etc.) */
     if(r) ["aplId","estado","fechaReal","fechaPlan","mezcla","laborId","fini","ffin","unidad","resp","rend","pago","cant"].forEach(k=>{ if((k in r) && !(k in o)) o[k]=r[k]; });
     if(r){ for(const k of Object.keys(r)) if(k!=="id" && !(k in o)) delete r[k]; Object.assign(r,o); }
+    else if(tipo==="Aplicación") D.registros.push({id:nid(), aplId:"ap"+Date.now(), estado:"pendiente", fechaPlan:o.fecha, ...o});   // se puede confirmar como las de Calc Fito
     else D.registros.push({id:nid(), ...o});
   });
   pintarAdjuntos();
@@ -3512,7 +3521,7 @@ function vTab(){
           <button class="btn sec chico" style="min-height:30px;padding:2px 10px" onclick="event.stopPropagation();moverTarjeta(${t.id},-1)">◀</button>
           <button class="btn sec chico" style="min-height:30px;padding:2px 10px" onclick="event.stopPropagation();moverTarjeta(${t.id},1)">▶</button>
         </div></div>`).join("")}
-      <button class="btn sec chico" style="margin-top:8px;width:100%" onclick="formTarjeta(null,'${id}')">${ic("plus")}</button>
+      <button class="btn sec chico" style="margin-top:8px;width:100%" onclick="formTarjeta(null,'${id}')" aria-label="Agregar tarjeta en ${esc(id)}" title="Agregar tarjeta">${ic("plus")}</button>
     </div>`;
   }
   h += `</div>`;
@@ -3570,6 +3579,9 @@ function renombrarFundo(i){
   for(const x of D.notas) if(x.fundo===f) x.fundo = n;
   for(const x of D.registros) if(x.fundo===f) x.fundo = n;
   for(const x of D.labores) if(x.fundo===f) x.fundo = n;
+  for(const k of ["bitacora","fenologia","tablero","recordatorios"]) for(const x of (D[k]||[])) if(x.fundo===f) x.fundo = n;   // antes la Bitácora quedaba con el nombre viejo
+  if(D.gantt && Array.isArray(D.gantt.fundos)) D.gantt.fundos = D.gantt.fundos.map(x=>x===f? n : x);
+  if(nav.hoyFundo===f) nav.hoyFundo = n;
   for(const p of D.mapoly){
     if(p.fundoRef===f) p.fundoRef = n;
     if(p.tipo==="Fundo" && p.nombre===f) p.nombre = n;
@@ -3580,8 +3592,9 @@ function renombrarFundo(i){
 function eliminarFundo(i){
   const f = fundos()[i]; if(!f) return;
   const usos = cuartelesDe(f).length + D.notas.filter(x=>x.fundo===f).length +
-    D.registros.filter(x=>x.fundo===f).length + D.labores.filter(x=>x.fundo===f).length;
-  if(usos){ alert(`No se puede eliminar: "${f}" tiene ${usos} elementos guardados (cuarteles, notas, registros o labores). Renómbralo, o mueve/borra esos elementos primero.`); return; }
+    D.registros.filter(x=>x.fundo===f).length + D.labores.filter(x=>x.fundo===f).length +
+    ["bitacora","fenologia","tablero"].reduce((s,k)=>s+(D[k]||[]).filter(x=>x.fundo===f).length, 0);
+  if(usos){ alert(`No se puede eliminar: "${f}" tiene ${usos} elementos guardados (cuarteles, notas, registros, labores o bitácora). Renómbralo, o mueve/borra esos elementos primero.`); return; }
   undoIni(`Fundo "${f}" eliminado`);
   D.fundos = fundos().filter(x=>x!==f);
   D.mapoly = D.mapoly.filter(p=>!(p.tipo==="Fundo" && (p.fundoRef===f || p.nombre===f)));
@@ -3649,7 +3662,7 @@ const DATOS_SEC=[
   {id:"campo", lab:"Campo", ico:"tree", re:/Superficie por variedad|Fundos|Cuarteles por fundo|Zona del clima/i, txt:"Fundos, cuarteles, superficie y zona del clima."},
   {id:"conexiones", lab:"Conexiones", ico:"link", re:/WeatherLink|Sincronizaci|GesAgro|Inteligencia|Ortofotos|otro dispositivo/i, txt:"Estación meteorológica, sincronización, GesAgro, IA y ortofotos."},
   {id:"personalizar", lab:"Personalizar", ico:"tag", re:/Pantalla|catálogos|Plantillas|Proyecto/i, txt:"Pantalla, catálogos, plantillas de nota y proyecto."},
-  {id:"respaldo", lab:"Respaldo", ico:"save", re:/Respaldo|Exportar|Instalar|Espacio/i, txt:"Respaldo de tus datos, exportar para informes e instalar en el iPad."}
+  {id:"respaldo", lab:"Respaldo", ico:"save", re:/Respaldo|Exportar|Instalar|Espacio|Prueba autom/i, txt:"Respaldo de tus datos, exportar para informes e instalar en el iPad."}
 ];
 function irDatos(sec){ nav.datosSec=sec; ir("datos"); }
 /* --- Espacio (29-09-2026): lo que ocupa la app EN ESTE EQUIPO (cuaderno, fotos, ortofotos, copia de la app)
@@ -3752,8 +3765,8 @@ function vDatosTodo(){
       const nq = cuartelesDe(f).length;
       return `<div class="chip act" style="display:inline-flex;align-items:center;gap:7px">${esc(f)}
         <span style="opacity:.75;font-weight:400">${nq? "· "+nq+" cuarteles":"· sin cuarteles"}</span>
-        <button class="qx-cat" onclick="renombrarFundo(${i})">${ic("edit")}</button>
-        <button class="qx-cat" onclick="eliminarFundo(${i})">✕</button></div>`;
+        <button class="qx-cat" onclick="renombrarFundo(${i})" aria-label="Renombrar fundo" title="Renombrar">${ic("edit")}</button>
+        <button class="qx-cat" onclick="eliminarFundo(${i})" aria-label="Eliminar fundo" title="Eliminar">✕</button></div>`;
     }).join("")}</div>
     <button class="btn sec chico" style="margin-top:10px" onclick="agregarFundo()">${ic("plus")} Agregar fundo</button></div>`;
   h += `<div class="card"><h2>${ic("users")} Proyecto</h2>
@@ -3893,6 +3906,10 @@ function vDatosTodo(){
     <button class="btn peligro chico" style="margin-top:14px" onclick="borrarTodo()">${ic("trash")} Borrar todos los datos</button></div>`;
 
   h += espacioCardHTML();
+  h += `<div class="card"><h2>${ic("check")} Prueba automática de la app (bots)</h2>
+    <div class="muted">Varios bots usan la app como gente del campo (notas, labores, recordatorios, aplicaciones, riego, fenología, bitácora, calculadoras, listas, datos, mapa y pantallas) y anotan todo lo que falle o se vea mal.
+    Trabajan sobre una <b>copia en memoria</b>: no cambian tus datos ni suben nada a Cloudflare. Necesita señal la primera vez.</div>
+    <button class="btn chico" style="margin-top:10px" onclick="botsAbrir()">${ic("play")} Probar la app</button></div>`;
   h += `<div class="card"><h2>${ic("device")} Instalar en el iPad</h2>
     <div style="font-size:14.5px;line-height:1.6">
     1. Abre esta página en <b>Safari</b> del iPad.<br>
@@ -3902,7 +3919,7 @@ function vDatosTodo(){
   return h;
 }
 function cuartelCalcPlantas(){
-  const ha=parseFloat((v("m_ha")||"").replace(",","."))||0;
+  const ha=numES(v("m_ha"))||0;
   const mp=marcoPlantas(v("m_marco"), ha);
   if(!mp||!mp.total){ alert("Ingresa el marco (ej. 4,5 x 2,25) y la superficie primero."); return; }
   const el=document.getElementById("m_plantas"); if(el) el.value=Math.round(mp.total);
@@ -3916,7 +3933,7 @@ function formCuartel(id){
     <div class="grid2">
       ${campoF("m_variedad","Variedad","text",q?.variedad)}
       ${campoF("m_portainjerto","Portainjerto","text",q?.portainjerto)}
-      ${campoF("m_ha","Superficie (ha)","number",q?.ha,'inputmode="decimal" step="0.01"')}
+      ${campoF("m_ha","Superficie (ha)","text",q? String(q.ha==null?"":q.ha).replace(".",",") : "",'inputmode="decimal" placeholder="ej: 2,5"')}
       ${campoF("m_marco","Marco de plantación","text",q?.marco,'placeholder="Ej: 6x3"')}
       ${campoF("m_anio","Año de plantación","number",q?.anio,'inputmode="numeric"')}
       ${campoF("m_plantas","Plantas (reales)","number",q?.plantas,'inputmode="numeric" placeholder="cantidad real"')}
@@ -3928,7 +3945,7 @@ function formCuartel(id){
     if(!req("m_fundo","m_nombre")) return false;
     if(v("m_fundo")==="__nuevo"){ alert("Elige o crea el fundo primero."); return false; }
     const o = {fundo:v("m_fundo"), nombre:v("m_nombre"), especie:v("m_especie"), variedad:v("m_variedad"),
-      portainjerto:v("m_portainjerto"), ha:+v("m_ha")||0, marco:v("m_marco"), anio:v("m_anio"), plantas:+v("m_plantas")||0};
+      portainjerto:v("m_portainjerto"), ha:(numES(v("m_ha"))||0), marco:v("m_marco"), anio:v("m_anio"), plantas:+v("m_plantas")||0};
     if(q) Object.assign(q,o); else D.cuarteles.push({id:nid(), ...o});
   });
   const sf = document.getElementById("m_fundo");
@@ -5596,6 +5613,189 @@ html.sol .btn.sec{border-color:#7c858e;}
   .topbar{position:static; border:none;}
 }
 </style>
+<style id="agronotas2">
+/* ===== AgroNotas 2.0 (01-10-2026) =====
+   Barra lateral oscura con el logo de Total Fruit, menos verde (un solo verde de acción + naranjo del logo como acento),
+   tarjetas planas con borde fino y el panel "Hoy" (tarjetas de acción + mapa + próximas acciones).
+   Para volver al diseño anterior: borrar este bloque, o usar el respaldo
+   "AgroNotas v3_RESPALDO_antes-AgroNotas-2.0_2026-10-01.html". */
+:root{
+  --p:#1d7a4a; --p-h:#17663d; --p2:#123d2a; --pclaro:#e8f3ec; --p-tinte:#e6f2ea; --p-linea:#b9d9c5;
+  --acc:#e8892b;
+  --fondo:#f3f4f1; --card:#ffffff; --hover:#f0f2ee;
+  --txt:#16201b; --txt2:#5d6862; --borde:#e0e4de; --borde2:#cfd6cf;
+  --riel-bg:#0f2a1f; --riel-tx:#b7cbbd; --riel-act:#1f4a35;
+  --som:none; --som-h:0 2px 10px rgba(16,32,24,.06);
+  --rad:12px; --rad-s:9px;
+  --rail:84px;
+}
+@media (min-width:1100px){ html:not(.movil){ --rail:216px; } }
+body{background:var(--fondo);}
+
+/* ---- Barra lateral oscura ---- */
+html:not(.movil) .tabbar{background:var(--riel-bg); border-right:none; gap:2px;
+  padding:calc(14px + env(safe-area-inset-top)) 10px 12px calc(10px + env(safe-area-inset-left));
+  scrollbar-color:#2c4a3b transparent;}
+html:not(.movil) .tabbar::-webkit-scrollbar-thumb{background:#2c4a3b;}
+html:not(.movil) .tabbar button{width:100%; color:var(--riel-tx); border-radius:9px; font-weight:550;}
+html:not(.movil) .tabbar button svg{stroke:currentColor;}
+html:not(.movil) .tabbar button:not(.act):hover{background:rgba(255,255,255,.06); color:#fff;}
+html:not(.movil) .tabbar button.act{background:var(--riel-act); color:#fff; font-weight:650; box-shadow:inset 3px 0 0 var(--acc);}
+html:not(.movil) .tabbar button.act svg{stroke:#fff;}
+html:not(.movil) .tabbar .marca-r{width:auto; height:auto; border:none; background:none; box-shadow:none;
+  display:flex; align-items:center; justify-content:center; gap:10px; margin:0 0 14px; padding:2px;}
+.tabbar .marca-r img{width:40px; height:40px; object-fit:contain; flex:0 0 auto; background:#fff; border-radius:11px; padding:3px;}
+.tabbar .marca-t{display:none; color:#fff; line-height:1.2; text-align:left;}
+.tabbar .marca-t b{font-size:15.5px; font-weight:700; letter-spacing:-.01em;}
+.tabbar .marca-t .v2{color:var(--acc); font-weight:750; font-size:12.5px; margin-left:4px;}
+.tabbar .marca-t small{display:block; color:#8fae9b; font-size:11px; font-weight:500;}
+.tabbar .riel-pie{display:none;}
+@media (min-width:1100px){
+  html:not(.movil) .tabbar{align-items:stretch;}
+  html:not(.movil) .tabbar .marca-r{display:flex; justify-content:flex-start; padding:2px 4px;}
+  html:not(.movil) .tabbar .marca-t{display:block;}
+  html:not(.movil) .tabbar button{flex-direction:row; justify-content:flex-start; gap:11px;
+    padding:8px 12px !important; font-size:14px !important; min-height:39px; text-align:left;}
+  html:not(.movil) .tabbar button svg{width:20px; height:20px; flex:0 0 auto;}
+  html:not(.movil) .tabbar button.esp{min-height:8px;}
+  html:not(.movil) .tabbar .riel-pie{display:flex; align-items:center; gap:8px; margin-top:8px; padding:10px 8px 2px;
+    border-top:1px solid rgba(255,255,255,.08); color:#8fae9b; font-size:12px; line-height:1.3;}
+  html:not(.movil) .tabbar .riel-pie .i{width:16px; height:16px; flex:0 0 auto;}
+  html:not(.movil) .tabbar .riel-pie .pt{width:8px; height:8px; border-radius:50%; background:#5fbf86; flex:0 0 auto;}
+  html:not(.movil) .tabbar .riel-pie .pt.off{background:#6b7f73;}
+}
+
+/* ---- Cabecera ---- */
+.topbar{background:var(--fondo);}
+.topbar h1{color:var(--txt); font-weight:700;}
+
+/* ---- Superficies: planas con borde fino ---- */
+.card, .item, .kpi{box-shadow:none; border-color:var(--borde);}
+.card{border-radius:var(--rad);}
+@media (hover:hover){ .item:hover, .card[onclick]:hover{box-shadow:var(--som-h);} }
+.w-tit .i{color:var(--txt2);}
+
+/* ---- Botones y chips ---- */
+.btn{box-shadow:none;}
+.btn.sec{box-shadow:none;}
+.chip.act{background:var(--riel-bg); border-color:var(--riel-bg); color:#fff;}
+
+/* ---- Hoy: cabecera ---- */
+.hoy-cab{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 12px;}
+.hoy-cab .hoy-fun{flex:1 1 280px; padding:0; min-width:0;}
+.hoy-cab .chip{min-height:36px; padding:6px 14px;}
+.hoy-est{display:inline-flex; align-items:center; gap:7px; min-height:38px; padding:6px 12px; border:1px solid var(--borde);
+  background:#fff; border-radius:10px; font:inherit; font-size:13.5px; font-weight:600; color:var(--txt); cursor:pointer; white-space:nowrap;}
+.hoy-est .i{width:17px; height:17px; color:var(--azul);}
+.hoy-est .muted{font-weight:500; font-size:12px;}
+.hoy-pt{width:8px; height:8px; border-radius:50%; background:#9aa5a0; flex:0 0 auto;}
+.hoy-pt.ok{background:#2f9e5b;} .hoy-pt.ambar{background:#e09f3e;} .hoy-pt.rojo{background:#c23b3b;}
+
+/* ---- Hoy: tarjetas de acción ---- */
+.hoy-acs{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:14px;}
+.hoy-ac{--c:var(--p); display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; min-width:0;
+  background:#fff; border:1px solid var(--borde); border-radius:var(--rad); padding:12px 14px 12px 16px;
+  font:inherit; color:var(--txt); cursor:pointer; position:relative; overflow:hidden;
+  transition:border-color .15s var(--ease), box-shadow .15s var(--ease), transform .09s ease;}
+.hoy-ac::before{content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--c);}
+.hoy-ac-t{display:flex; align-items:center; gap:6px; font-size:13px; font-weight:650; color:var(--c);}
+.hoy-ac-t .i{width:17px; height:17px;}
+.hoy-ac-n{font-size:24px; font-weight:700; letter-spacing:-.02em; line-height:1.25; font-variant-numeric:tabular-nums;}
+.hoy-ac-s{font-size:12.5px; color:var(--txt2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
+.hoy-ac.riego{--c:#1d6fb8;} .hoy-ac.carencia{--c:#b26a00;} .hoy-ac.atras{--c:#b3261e;} .hoy-ac.notas{--c:#7a4fc0;}
+.hoy-ac.cero::before{background:#d5dbd6;}
+.hoy-ac.cero .hoy-ac-n{color:#55615a;}
+@media (hover:hover){ .hoy-ac:hover{border-color:var(--borde2); box-shadow:var(--som-h);} }
+.hoy-ac:active{transform:scale(.985);}
+
+/* ---- Hoy: mapa + columna ---- */
+.hoy-grid{display:grid; grid-template-columns:minmax(0,1.62fr) minmax(290px,1fr); gap:14px; align-items:start; margin-bottom:14px;}
+.hoy-grid > .card, .hoy-col > .card{margin-bottom:0;}
+.hoy-col{display:flex; flex-direction:column; gap:14px; min-width:0;}
+.hoy-mapa{padding:12px;}
+.hoy-mapa #mapaPanel{height:540px;}
+.hoy-mapa-cab{display:flex; align-items:center; gap:10px; margin:0 2px 10px; flex-wrap:nowrap;}
+.hoy-mapa-cab .w-tit{flex:0 0 auto; white-space:nowrap;}
+.hoy-temas{display:flex; gap:4px; overflow-x:auto; flex:1 1 auto; min-width:0; justify-content:flex-end; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
+.hoy-temas::-webkit-scrollbar{display:none;}
+.hoy-tema{border:1px solid var(--borde2); background:#fff; color:#3c4652; border-radius:999px; padding:4px 11px;
+  font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; white-space:nowrap; min-height:32px; flex:0 0 auto;}
+.hoy-tema.act{background:var(--riel-bg); border-color:var(--riel-bg); color:#fff;}
+.hoy-mapa .mapa-tools{top:66px; right:22px;}
+.mapa-wrap.mapa-full .hoy-mapa-cab{display:none;}
+.mapa-wrap.mapa-full.hoy-mapa{padding:0;}
+
+/* ---- Hoy: próximas acciones ---- */
+.hoy-prox{padding:14px 16px 8px;}
+.hoy-prox-h{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;}
+.hoy-it{--c:var(--p); --bg:var(--p-tinte); display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid #edf0ec;}
+.hoy-prox-h + .hoy-it{border-top:none;}
+.hoy-it-i{width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; background:var(--bg); color:var(--c);}
+.hoy-it-i .i{width:16px; height:16px;}
+.hoy-it.riego{--c:#1d6fb8; --bg:#e7f0fa;} .hoy-it.rec{--c:#a35f00; --bg:#fbf1e1;} .hoy-it.car{--c:#b3261e; --bg:#fbeceb;}
+.hoy-it-tx{flex:1; min-width:0; cursor:pointer;}
+.hoy-it-tx b{display:block; font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.hoy-it-tx span{display:block; font-size:12px; color:var(--txt2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.hoy-it-f{font-size:12px; color:var(--txt2); font-weight:600; white-space:nowrap;}
+.hoy-it-f.venc{color:var(--rojo);} .hoy-it-f.hoy{color:var(--p);}
+.hoy-chk{width:32px; height:32px; border-radius:50%; border:1.5px solid var(--borde2); background:#fff; padding:0; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; color:#c5ccc6;}
+.hoy-chk .i{width:16px; height:16px;}
+@media (hover:hover){ .hoy-chk:hover{color:var(--p); border-color:var(--p);} }
+.hoy-chk:active{background:var(--p-tinte); color:var(--p);}
+.hoy-vacio{padding:12px 0; color:var(--txt2); font-size:13.5px;}
+.hoy-kpis{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px;}
+.hoy-kpis > div{background:#f4f6f3; border-radius:9px; padding:9px 10px; cursor:pointer; min-width:0;}
+.hoy-kpis b{display:block; font-size:19px; font-weight:700; font-variant-numeric:tabular-nums;}
+.hoy-kpis span{font-size:11.5px; color:var(--txt2);}
+
+/* iPad en vertical: el mapa a todo el ancho y la columna debajo en dos */
+@media (max-width:1099px){
+  html:not(.movil) .hoy-grid{grid-template-columns:minmax(0,1fr);}
+  html:not(.movil) .hoy-col{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start;}
+  html:not(.movil) .hoy-mapa #mapaPanel{height:480px;}
+}
+/* celular */
+html.movil .hoy-acs{grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;}
+html.movil .hoy-ac{padding:10px 11px 10px 14px;}
+html.movil .hoy-ac-n{font-size:20px;}
+html.movil .hoy-grid{grid-template-columns:minmax(0,1fr); gap:12px;}
+html.movil .hoy-col{gap:12px;}
+html.movil .hoy-mapa{padding:10px;}
+html.movil .hoy-mapa #mapaPanel{height:380px;}
+html.movil .hoy-mapa-cab .hoy-temas{justify-content:flex-start;}
+html.movil .hoy-cab .hoy-est{order:-1; width:100%; justify-content:flex-start;}
+html.movil .hoy-mapa .mapa-tools{top:60px; right:18px;}
+html.movil .topbar{flex-wrap:wrap;}
+html.movil .topbar .acciones{width:100%; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px;}
+html.movil .topbar .acciones .btn{min-height:40px; padding:6px 4px; font-size:13px; gap:4px; white-space:nowrap;}
+html.movil .topbar .acciones .btn .i{width:15px; height:15px;}
+@media (max-width:400px){ html.movil .topbar .acciones .btn .i{display:none;} }
+
+/* columnas que se ajustan al ancho (con texto grande la tarjeta de IA se salía por el costado; lo encontró la prueba de bots) */
+.g2p{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);}
+.g2p > *, .hoy-grid > *, .hoy-acs > *{min-width:0;}
+/* botones chicos para el dedo (los encontró la prueba de bots): ojo de ocultar nota y ✕ de plagas */
+#app button[onclick*="notaOcultar("], #app button[onclick^="cfQuitarPlaga("]{min-width:34px; min-height:34px; display:inline-flex; align-items:center; justify-content:center;}
+/* ---- Programar ---- */
+.prog-op{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+.prog-b{display:flex; flex-direction:column; align-items:flex-start; gap:6px; text-align:left; padding:16px;
+  border:1px solid var(--borde2); border-radius:12px; background:#fff; font:inherit; color:var(--txt); cursor:pointer;}
+.prog-b .i{width:26px; height:26px; color:var(--p);}
+.prog-b b{font-size:16px;}
+.prog-b span{font-size:13px; color:var(--txt2); line-height:1.4;}
+@media (hover:hover){ .prog-b:hover{border-color:var(--p); background:#fbfdfb;} }
+html.movil .prog-op{grid-template-columns:1fr;}
+
+/* ---- Carta Gantt: fila de recordatorios ---- */
+.grec .glft{color:#a35f00; font-weight:650; font-size:13px; gap:6px; display:flex; align-items:center;}
+.grec .glft .i{width:15px; height:15px;}
+.grec-p{position:absolute; top:6px; width:20px; height:20px; border-radius:50%; border:none; background:var(--acc); color:#fff;
+  display:flex; align-items:center; justify-content:center; padding:0; cursor:pointer; box-shadow:0 0 0 2px #fff; z-index:2;}
+.grec-p .i{width:12px; height:12px;}
+.grec-p.ok{background:#a3ada7;}
+.grec-p.venc{background:var(--rojo);}
+</style>
 <script id="libLeaflet">
 /* @preserve
  * Leaflet 1.9.4, a JS library for interactive maps. https://leafletjs.com
@@ -5718,18 +5918,18 @@ const ic=n=>'<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+(IKO[n]||''
 
 function renderInterno(){
   if(nav.tab==="reg") nav.tab="bitacora";   // Registros se fusionó con Bitácora (29-09-2026)
-  const t = {panel:"Panel", notas:"Notas de terreno", bitacora:"Bitácora y registros", fenologia:"Registro fenológico", listas:"Mis listas", gantt:"Carta Gantt de labores", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", riego:"Programación de riego", datos:"Datos y ajustes"}[nav.tab];
+  const t = {panel:saludo(), notas:"Notas de terreno", bitacora:"Bitácora y registros", fenologia:"Registro fenológico", listas:"Mis listas", gantt:"Carta Gantt de labores", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", riego:"Programación de riego", datos:"Datos y ajustes"}[nav.tab];
   document.getElementById("topbar").innerHTML =
     `<div style="flex:1;min-width:180px"><h1>${t}<span class="sub">${PROY? esc(PROY.nombre) : "AgroNotas"} · ${fmtF(hoy())}</span></h1></div>
     <div class="acciones">
       <button class="btn" onclick="formNota()">${ic("plus")} Nota</button>
-      <button class="btn sec" onclick="formLabor()">${ic("plus")} Labor</button>
+      <button class="btn sec" onclick="formProgramar()">${ic("calendar")} Programar</button>
       <button class="btn sec" onclick="formReg()">${ic("plus")} Registro</button>
       <button class="btn sec" onclick="abrirCalc()">${ic("calc")} Calc</button>
     </div>`;
   document.getElementById("tabbar").innerHTML =
-    `<div class="marca-r">${ICO.marca}</div>` +
-    TABS.map(x=>`${x.id==="datos"?'<button class="esp"></button>':""}<button class="${nav.tab===x.id?"act":""}" onclick="ir('${x.id}')">${ICO[x.id]||""}${x.lab}</button>`).join("");
+    `<div class="marca-r">${typeof LOGO_TF_SIMBOLO!=="undefined"? `<img src="${LOGO_TF_SIMBOLO}" alt="Total Fruit">` : ICO.marca}<span class="marca-t"><b>AgroNotas</b><span class="v2">2.0</span><small>Total Fruit Curacaví</small></span></div>` +
+    TABS.map(x=>`${x.id==="datos"?'<button class="esp"></button>':""}<button class="${nav.tab===x.id?"act":""}" onclick="ir('${x.id}')">${ICO[x.id]||""}${x.lab}</button>`).join("") + rielPieHTML();
   if(document.documentElement.classList.contains("movil")){   // barra abajo: dejar la pestaña activa a la vista
     const _act=document.querySelector("#tabbar button.act");
     if(_act && _act.scrollIntoView) try{ _act.scrollIntoView({block:"nearest", inline:"center"}); }catch(_){ }
@@ -5740,6 +5940,20 @@ function renderInterno(){
   if(nav.tab!=="panel" && geoWatch){ navigator.geolocation.clearWatch(geoWatch); geoWatch = null; } // ahorra batería fuera del mapa
   const posrender = {notas:posNotas, panel:posPanel, reg:posNotas, bitacora:posNotas, noti:posNoticias, datos:espacioPintar}[nav.tab];
   if(posrender) posrender();
+}
+/* Bots de prueba (01-10-2026): bots.js se carga solo cuando se pide (Datos → Respaldo, o abrir la app con ?bots) */
+function botsAbrir(){
+  if(window.AgroBots && window.AgroBots.abrirInicio){ window.AgroBots.abrirInicio(); return; }
+  const s=document.createElement("script"); s.src="bots.js?v="+Date.now();
+  s.onerror=()=>alert("⚠️ No se pudo cargar bots.js (¿sin señal o falta el archivo junto a la app?).");
+  document.head.appendChild(s);
+}
+if(/[?&]bots\b/.test(location.search)) document.addEventListener("DOMContentLoaded", ()=>setTimeout(()=>{ if(typeof D!=="undefined" && D) botsAbrir(); }, 1500));
+/* pie de la barra lateral (AgroNotas 2.0): estado de la sincronización */
+function rielPieHTML(){
+  const s=D.sync||{}, on=!!(s.url && s.rol && s.rol!=="off");
+  const txt= on? (s.rol==="emisor"? "Envía datos" : "Recibe datos")+(s.ultTs? " · "+wlHace(Date.now()-s.ultTs) : "") : "Sin sincronizar";
+  return `<div class="riel-pie" title="Sincronización entre dispositivos (Datos → Conexiones)"><span class="pt${on?"":" off"}"></span><span>${txt}</span></div>`;
 }
 /* render() protegido: si una vista falla, muestra una tarjeta de rescate en vez de pantalla en blanco */
 function render(){
@@ -5805,7 +6019,7 @@ function clDel(id,i){ const l=clLists().find(function(x){return x.id===id;}); if
 function clUp(id,i){ const l=clLists().find(function(x){return x.id===id;}); if(!l||!l.items||!l.items[i]) return; let j=i-1; while(j>=0 && l.items[j].ok) j--; if(j<0) return; const t=l.items.splice(i,1)[0]; l.items.splice(j,0,t); guardar(); clRefresh(false); }
 function clEditStart(id,i){ nav.clEdit={id:id,i:i}; clRefresh(false); const inp=document.getElementById("clEditInp"); if(inp){ inp.focus(); try{ inp.setSelectionRange(inp.value.length,inp.value.length); }catch(e){} } }
 function clEditCancel(){ nav.clEdit=null; clRefresh(false); }
-function clEditSave(id,i,val){ const l=clLists().find(function(x){return x.id===id;}); const t=(val||"").trim(); if(l&&l.items&&l.items[i]){ if(t) l.items[i].t=t; else l.items.splice(i,1); } nav.clEdit=null; guardar(); clRefresh(false); }
+function clEditSave(id,i,val){ const l=clLists().find(function(x){return x.id===id;}); const t=(val||"").trim(); if(l&&l.items&&l.items[i]){ if(t) l.items[i].t=t; else { undoIni("Ítem borrado"); l.items.splice(i,1); } } nav.clEdit=null; guardar(); clRefresh(false); }
 function clLimpiar(id){ const l=clLists().find(function(x){return x.id===id;}); if(!l) return; undoIni("Ítems hechos vaciados"); l.items=(l.items||[]).filter(function(i){return !i.ok;}); guardar(); clRefresh(false); }
 function clHechasTgl(id){ nav.clHechas=nav.clHechas||{}; nav.clHechas[id]=!nav.clHechas[id]; clRefresh(false); }
 function clNueva(){ abrirModal(ic("plus")+" Nueva lista", campoF("cl_nom","Nombre de la lista","text","",'placeholder="Ej: Comprar, Arreglar, Ideas"'), function(){ const n=(v("cl_nom")||"").trim(); if(!n){ alert("Ponle un nombre a la lista."); return false; } const id=nid(); const color=CL_COLORS[clLists().length % CL_COLORS.length]; clLists().push({id:id, nombre:n, color:color, items:[]}); nav.clActiva=id; }, "Crear"); }
@@ -5815,97 +6029,252 @@ function clMover(id,i){ const l=clLists().find(function(x){return x.id===id;}); 
 function clMoverA(fromId,i,toId){ const from=clLists().find(function(x){return x.id===fromId;}), to=clLists().find(function(x){return x.id===toId;}); if(!from||!to||!from.items||!from.items[i]) return; const it=from.items.splice(i,1)[0]; to.items=to.items||[]; to.items.push(it); nav.clEdit=null; guardar(); cerrarModal(); render(); }
 function clDelLista(id){ const l=clLists().find(function(x){return x.id===id;}); if(!l) return; undoIni('Lista "'+l.nombre+'" borrada'); D.checklists=clLists().filter(function(x){return x.id!==id;}); nav.clActiva=null; nav.clEdit=null; guardar(); render(); }
 
+/* ================== AgroNotas 2.0 · panel "Hoy" (01-10-2026) ==================
+   Arriba: fundo + estación + Programar. Luego 4 tarjetas de acción (riego, carencias, atrasadas, urgentes),
+   el mapa con sus temas al lado de "Próximas acciones" y, abajo, clima, IA, notas recientes y los widgets.
+   Los id de siempre (mapaPanel, mapaHerr, climaW, climaAhora, iaBuscaQ…) se mantienen: posPanel() los sigue llenando. */
+function saludo(){ const h=new Date().getHours(); return h<12? "Buenos días" : h<20? "Buenas tardes" : "Buenas noches"; }
+function hoyFundos(){ return fundos().filter(f=>D.cuarteles.some(q=>q.fundo===f)); }
+function hoyFundo(){ const f=nav.hoyFundo||""; return hoyFundos().indexOf(f)>=0? f : ""; }
+function hoyFundoSet(f){ nav.hoyFundo=f; render(); setTimeout(()=>hoyMapaFundo(f), 450); }
+function hoyMapaFundo(f){   // encuadra el mapa en los cuarteles del fundo elegido
+  if(!f || !window.L || typeof mapaP==="undefined" || !mapaP) return;
+  const pts=[];
+  (D.mapoly||[]).forEach(p=>{
+    if(!p.pts || p.forma==="texto") return;
+    const q=p.tipo==="Cuartel"? cuartelDe(p) : null;
+    if((q && q.fundo===f) || (p.tipo==="Fundo" && gtNorm(p.nombre||"")===gtNorm(f))) p.pts.forEach(x=>pts.push(x));
+  });
+  if(pts.length) try{ mapaP.fitBounds(L.latLngBounds(pts), {padding:[28,28], maxZoom:17, animate:false}); }catch(e){}   /* sin animación: encuadra siempre (la animación a veces no terminaba) */
+}
+function hoyMapaTema(t){
+  try{ localStorage.setItem("agronotasMapaTema", t); }catch(e){}
+  if(nav.polyOff) nav.polyOff=false;
+  if(typeof mapaP!=="undefined" && mapaP){ pintarPoligonos(); mapaHerrDef(); }
+  hoyTemasPintar();
+  const c=document.getElementById("mapaCard"); if(c && c.scrollIntoView && t!=="normal") try{ c.scrollIntoView({block:"nearest", behavior:"smooth"}); }catch(e){}
+}
+function hoyTemasPintar(){ const t=mapaTema(); document.querySelectorAll(".hoy-tema").forEach(b=>b.classList.toggle("act", b.dataset.t===t)); }
+function hoyAtrasadas(){ const a=gtAj(); a.est="atr"; guardar(); ir("gantt"); }
+/* riego de hoy: sectores, horas (el equipo más largo; los equipos riegan en paralelo) y m³ aproximados */
+function hoyRiego(fs){
+  let serie; try{ serie=riegoSerieBase(); }catch(e){ return null; }
+  if(!serie || !serie.some(d=>d.et!=null)) return null;
+  const dia=new Date().getDay(), r={sect:0, h:0, m3:0, fundos:[]};
+  fs.forEach(f=>{
+    let pl; try{ pl=riegoPlanFundo(f, serie); }catch(e){ return; }
+    let sect=0, hMax=0, m3=0, turnos=0;
+    pl.planes.forEach(p=>{
+      const d=p.dias.find(x=>x.i===dia); if(!d || !d.ts.length) return;
+      hMax=Math.max(hMax, d.ts.reduce((s,t)=>s+t.h,0)); turnos+=d.ts.length;
+      d.ts.forEach(t=>{ sect+=t.items.length; m3+=t.qm3*t.h; });
+    });
+    if(sect){ r.sect+=sect; r.h=Math.max(r.h,hMax); r.m3+=m3; r.fundos.push({f, sect, h:hMax, turnos}); }
+  });
+  return r;
+}
+function hoyEstacionHTML(){
+  const w=wlCfg(); if(!w.st) return "";
+  const a=w.hoy||{}, ms=a.ts? a.ts*1000 : null, edad=ms? Date.now()-ms : null;
+  const est= edad==null? "" : edad<=30*60000? "ok" : edad<=2*3600000? "ambar" : "rojo";
+  const d=(w.dias||{})[hoy()]||{}, p=[];
+  if(a.temp!=null) p.push(num(Math.round(a.temp*10)/10)+"°");
+  if(a.hum!=null) p.push("HR "+num(Math.round(a.hum))+"%");
+  if(a.viento!=null) p.push(num(Math.round(a.viento))+" km/h");
+  if(d.et!=null) p.push("ET₀ "+num(Math.round(d.et*10)/10));
+  return `<button type="button" class="hoy-est" onclick="ir('riego')" title="Estación meteorológica (toca para ir a Riego)"><span class="hoy-pt ${est}"></span>${ic("cloud")}<span>${p.join(" · ")||"Estación"}</span>${edad!=null? `<span class="muted">${wlHace(edad)}</span>`:""}</button>`;
+}
+function hoyFechaLab(iso){
+  const H=hoy();
+  if(iso===H) return "Hoy";
+  if(iso===sumarDiasISO(H,1)) return "Mañana";
+  const d=gtD(iso); return ["dom","lun","mar","mié","jue","vie","sáb"][d.getDay()]+" "+String(d.getDate()).padStart(2,"0")+"-"+String(d.getMonth()+1).padStart(2,"0");
+}
+/* lista "Próximas acciones": recordatorios, avisos de notas, labores, carencias que terminan y el riego de hoy (7 días) */
+function hoyProximas(f0, rg, carc){
+  const H=hoy(), lim=sumarDiasISO(H,7), it=[];
+  const enF=x=>!f0 || !x.fundo || x.fundo===f0 || x.fundo===GENERAL;
+  recs().forEach(r=>{ if(r.ok || !r.fecha || r.fecha>lim || !enF(r)) return;
+    it.push({f:r.fecha, h:r.hora||"", cls:"rec", ico:"bell", t:r.t, s:[r.hora, r.fundo].filter(Boolean).join(" · ")||"Recordatorio", venc:r.fecha<H, on:`formRecordatorio(${r.id})`, chk:`recHecho(${r.id})`}); });
+  D.notas.forEach(n=>{ if(!n.aviso || n.aviso>H || (n.avisoFin && H>n.avisoFin) || (f0 && n.fundo!==f0)) return;
+    it.push({f:H, cls:"rec", ico:"bell", t:n.oculta? "Nota oculta" : String(n.titulo||n.texto||"Nota").slice(0,80), s:"Aviso de nota · "+(n.fundo||"")+(n.cuartel?" · "+n.cuartel:""), on:`verNota(${n.id})`, chk:`cerrarAviso(${n.id})`}); });
+  (rg && rg.fundos || []).forEach(x=>{
+    it.push({f:H, h:"00", cls:"riego", ico:"drop", t:"Riego "+x.f, s:x.sect+" sector"+(x.sect>1?"es":"")+" · "+x.turnos+" turno"+(x.turnos>1?"s":"")+" · "+num(Math.round(x.h*10)/10)+" h", on:"ir('riego')"}); });
+  D.labores.forEach(l=>{
+    if(l.estado==="hecha" || l.estado==="finalizada" || !l.fecha || (f0 && l.fundo!==f0)) return;
+    const fin=l.fecha2||l.fecha, atr=l.estado==="pendiente" && fin<H;
+    if(!(atr || l.estado==="encurso" || (l.fecha<=lim && fin>=H))) return;
+    it.push({f:l.fecha<H? H : l.fecha, cls:"lab", ico:"calendar", t:(l.tipo||"Labor")+(l.desc? " · "+l.desc : ""), s:[l.fundo, l.cuartel||"todo el fundo", l.resp].filter(Boolean).join(" · "), venc:atr, curso:l.estado==="encurso", on:`formLabor(${l.id})`});
+  });
+  (carc||[]).forEach(x=>{ if(x.c.fin<=lim) it.push({f:x.c.fin, cls:"car", ico:"alert", t:"Termina carencia · "+x.q.nombre, s:x.q.fundo+(x.c.prod? " · "+x.c.prod : ""), on:"hoyMapaTema('carencia')"}); });
+  it.sort((a,b)=>((b.venc?1:0)-(a.venc?1:0)) || a.f.localeCompare(b.f) || String(a.h||"99").localeCompare(String(b.h||"99")));
+  return it;
+}
+function hoyItemHTML(x){
+  const lab= x.venc? "Atrasada" : x.curso? "En curso" : hoyFechaLab(x.f);
+  return `<div class="hoy-it ${x.cls}"><span class="hoy-it-i">${ic(x.ico)}</span>
+    <div class="hoy-it-tx" onclick="${x.on}"><b>${esc(x.t)}</b><span>${esc(x.s||"")}</span></div>
+    <span class="hoy-it-f${x.venc?" venc":(lab==="Hoy"||x.curso)?" hoy":""}">${lab}</span>
+    ${x.chk? `<button type="button" class="hoy-chk" onclick="${x.chk}" aria-label="Marcar como hecho" title="Marcar como hecho">${ic("check")}</button>` : ""}</div>`;
+}
 function vPanel(){
-  const haTot = D.cuarteles.reduce((s,q)=>s+(+q.ha||0),0);
-  const haPlant = D.cuarteles.filter(q=>q.especie!=="Por plantar").reduce((s,q)=>s+(+q.ha||0),0);
-  const hoyISO = hoy();
-  const pend = D.labores.filter(l=>l.estado!=="hecha" && l.estado!=="finalizada");
-  const atras = pend.filter(l=>l.estado==="pendiente" && (l.fecha2||l.fecha)<hoyISO);
-  const deHoy = D.labores.filter(l=>l.estado==="encurso" || ((l.estado==="pendiente"||l.estado==="hecha"||l.estado==="finalizada") && (l.fecha===hoyISO || (l.fecha2 && l.fecha<=hoyISO && hoyISO<=l.fecha2))));
-  const sem = semanaDe(hoyISO);
-  const deSemana = D.labores.filter(l=>l.fecha>=sem[0] && l.fecha<=sem[6]);
-  /* planificadas de hoy al domingo: cada labor cuenta una vez por cada día que está en el plan (Carta Gantt) */
-  const diasRest = sem.filter(d=>d>=hoyISO);
-  const planSem = D.labores.reduce((s,l)=>{ if(!l.fecha) return s; let ds=[l.fecha]; try{ ds=gtDiasPlan(l); }catch(_){} return s + ds.filter(d=>diasRest.indexOf(d)>=0).length; }, 0);
-  const notasRec = [...D.notas].sort((a,b)=>b.fh.localeCompare(a.fh));
-  const fijadas = notasRec.filter(n=>n.fijada);
-  const urg = D.notas.filter(n=>n.cat==="Urgente" && !n.resuelta);
+  const hoyISO=hoy(), f0=hoyFundo(), fusC=hoyFundos(), fs=f0? [f0] : fusC;
+  const cus=D.cuarteles.filter(q=>fs.indexOf(q.fundo)>=0);
+  const cusP=cus.filter(q=>gtNorm(q.especie||"")!=="por plantar");
+  const haTot=cus.reduce((s,q)=>s+(+q.ha||0),0), haPlant=cusP.reduce((s,q)=>s+(+q.ha||0),0);
+  const labF=D.labores.filter(l=>!f0 || l.fundo===f0);
+  const pend=labF.filter(l=>l.estado!=="hecha" && l.estado!=="finalizada");
+  const atras=pend.filter(l=>l.estado==="pendiente" && (l.fecha2||l.fecha)<hoyISO);
+  const recV=recs().filter(r=>!r.ok && r.fecha && r.fecha<hoyISO && (!f0 || !r.fundo || r.fundo===f0 || r.fundo===GENERAL));
+  const deHoy=labF.filter(l=>l.estado==="encurso" || ((l.estado==="pendiente"||l.estado==="hecha"||l.estado==="finalizada") && (l.fecha===hoyISO || (l.fecha2 && l.fecha<=hoyISO && hoyISO<=l.fecha2))));
+  const sem=semanaDe(hoyISO), diasRest=sem.filter(d=>d>=hoyISO);
+  const planSem=labF.reduce((s,l)=>{ if(!l.fecha) return s; let ds=[l.fecha]; try{ ds=gtDiasPlan(l); }catch(_){} return s + ds.filter(d=>diasRest.indexOf(d)>=0).length; }, 0);
+  const notasF=D.notas.filter(n=>!f0 || n.fundo===f0);
+  const urg=notasF.filter(n=>n.cat==="Urgente" && !n.resuelta);
+  const notasSem=notasF.filter(n=>String(n.fh||"").slice(0,10)>=sem[0]).length;
+  let carc=[]; try{ carc=cusP.map(q=>({q, c:carenciaDe(q)})).filter(x=>x.c && x.c.tipo==="carencia").sort((a,b)=>String(a.c.fin).localeCompare(String(b.c.fin))); }catch(e){}
+  let rg=null; try{ rg=hoyRiego(fs); }catch(e){}
+  const notasRec=[...D.notas].sort((a,b)=>b.fh.localeCompare(a.fh));
+  let h="";
 
-  let h = "";
+  /* fundo · estación · programar */
+  h+=`<div class="hoy-cab">
+    <div class="chips hoy-fun">
+      <button type="button" class="chip ${f0?"":"act"}" onclick="hoyFundoSet('')">Todos</button>
+      ${fusC.map(f=>`<button type="button" class="chip ${f0===f?"act":""}" onclick="hoyFundoSet('${jsq(f)}')">${esc(f)}</button>`).join("")}
+    </div>
+    ${hoyEstacionHTML()}
+  </div>`;
 
-  /* Urgencias: franja siempre arriba */
+  /* urgencias y respaldo: franjas arriba, como antes */
   if(urg.length){
-    const u = urg[0];
-    h += `<div class="urgente-card" onclick="verNota(${u.id})">
+    const u=urg[0];
+    h+=`<div class="urgente-card" onclick="verNota(${u.id})">
       <span style="width:9px;height:9px;border-radius:50%;background:var(--urg);flex:0 0 auto"></span>
       <div style="flex:1;font-size:13.5px;min-width:0"><b>${urg.length===1?"1 urgente sin resolver:":urg.length+" urgentes sin resolver. La última:"}</b>
-        ${esc(u.texto).slice(0,90)}${u.texto.length>90?"…":""} — ${esc(u.fundo)}${u.cuartel?" · "+esc(u.cuartel):""}</div>
+        ${u.oculta? "(nota oculta)" : esc(String(u.texto||"").slice(0,90))+(String(u.texto||"").length>90?"…":"")} — ${esc(u.fundo)}${u.cuartel?" · "+esc(u.cuartel):""}</div>
       <button class="btn sec chico" onclick="event.stopPropagation();verNota(${u.id})">Ver nota</button>
     </div>`;
   }
-
-  /* Respaldo: aviso automático si nunca se hizo o lleva más de 7 días.
-     En el equipo espejo (celular) no se muestra: ahí no se anota nada y el respaldo se hace en el iPad. */
-  const _ur = D.ultimoRespaldo, _dr = _ur? Math.floor((new Date() - new Date(_ur+"T12:00:00"))/86400000) : null;
-  if((_dr===null || _dr>7) && !syncEspejo()) h += `<div class="resp-aviso">
+  const _ur=D.ultimoRespaldo, _dr=_ur? Math.floor((new Date() - new Date(_ur+"T12:00:00"))/86400000) : null;
+  if((_dr===null || _dr>7) && !syncEspejo()) h+=`<div class="resp-aviso">
       <span class="resp-i">${ic("save")}</span>
       <div style="flex:1;min-width:0;font-size:13.5px"><b>${_dr===null? "Aún no descargas un respaldo de tus datos." : "Llevas "+_dr+" días sin respaldo."}</b>
         <span class="muted"> Guárdalo en Archivos o iCloud: es tu seguro si el iPad se pierde o Safari limpia los datos.</span></div>
       <button class="btn chico" onclick="respaldar()">${ic("download")} Respaldar ahora</button>
     </div>`;
 
-  /* Recordatorios */
-  const avisos = D.notas.filter(n=>n.aviso && n.aviso<=hoyISO && (!n.avisoFin || hoyISO<=n.avisoFin));
-  if(avisos.length) h += `<div class="card" style="border:1px solid #e2c07a;background:#fdf8ec">
-    <div class="w-tit">${ic("bell")} Recordatorios (${avisos.length})</div>
-    ${avisos.sort((a,b)=>a.aviso.localeCompare(b.aviso)).map(n=>`<div class="fila" style="align-items:center">
-      <div style="flex:1">${miniNota(n)}</div>
-      <button class="btn sec chico" onclick="cerrarAviso(${n.id})">✓ Listo</button></div>`).join("")}</div>`;
-
-  /* Estado general + clima */
-  h += `<div class="g2p">
-    <div class="card"><div class="w-tit">Estado general</div>
-      <div class="kpi3" style="display:flex;font-variant-numeric:tabular-nums">
-        <div style="flex:1;cursor:pointer" onclick="irDatos('campo')"><div data-cnt style="font-size:24px;font-weight:700;color:var(--p)">${num(haPlant)}</div><div class="muted" style="font-size:11.5px">ha plantadas · ${num(haTot)} tot.</div></div>
-        <div style="flex:1;cursor:pointer" onclick="nav.planVista='dia';nav.diaSel=null;ir('gantt')"><div data-cnt style="font-size:24px;font-weight:700">${deHoy.length}</div><div class="muted" style="font-size:11.5px">labores hoy</div></div>
-        <div style="flex:1;cursor:pointer" onclick="gtAj().per='sem';gtAj().ancla=hoy();guardar();ir('gantt')" title="Labores planificadas en la Carta Gantt de hoy al domingo (cada labor cuenta por cada día que está planificada)"><div data-cnt style="font-size:24px;font-weight:700;color:var(--p2)">${planSem}</div><div class="muted" style="font-size:11.5px">planificadas esta semana</div></div>
-      </div></div>
-    <div class="card"><div class="w-tit">Clima · ${esc(zonaClima())}</div>
-      <div id="climaW" class="muted" style="font-size:13px">cargando pronóstico…</div>
-      <div id="climaAhora"></div></div>
+  /* tarjetas de acción */
+  const tarj=(cls,ico,tit,val,sub,on,cero)=>`<button type="button" class="hoy-ac ${cls}${cero?" cero":""}" onclick="${on}"><span class="hoy-ac-t">${ic(ico)} ${tit}</span><span class="hoy-ac-n">${val}</span><span class="hoy-ac-s">${sub}</span></button>`;
+  const nAtr=atras.length+recV.length;
+  h+=`<div class="hoy-acs">
+    ${tarj("riego","drop","Riego hoy", rg&&rg.sect? rg.sect+" sector"+(rg.sect>1?"es":"") : "—",
+        rg&&rg.sect? "hasta "+num(Math.round(rg.h*10)/10)+" h · ≈ "+Math.round(rg.m3).toLocaleString("es-CL")+" m³" : (rg? "no hay riego programado hoy" : "faltan datos de clima o riego"), "ir('riego')", !(rg&&rg.sect))}
+    ${tarj("carencia","alert","Carencias", carc.length? carc.length+" cuartel"+(carc.length>1?"es":"") : "Ninguna",
+        carc.length? "la primera termina el "+fmtF(carc[0].c.fin) : "todo libre para cosechar", "hoyMapaTema('carencia')", !carc.length)}
+    ${tarj("atras","clock","Atrasadas", nAtr, nAtr? [atras.length? atras.length+" labor"+(atras.length>1?"es":"") : "", recV.length? recV.length+" recordatorio"+(recV.length>1?"s":"") : ""].filter(Boolean).join(" · ") : "todo al día", "hoyAtrasadas()", !nAtr)}
+    ${tarj("notas","note","Urgentes", urg.length, notasSem+" nota"+(notasSem===1?"":"s")+" esta semana", "ir('notas')", !urg.length)}
   </div>`;
 
-  /* Pregúntale a tus datos (IA) */
-  h += `<div class="card">
-    <div class="w-tit">${ic("search")} Pregúntale a tus datos <span class="badge b-azul">IA</span></div>
-    <div class="muted">Pregunta en lenguaje normal sobre tus notas, registros, labores y cuarteles. Necesita señal.</div>
-    <div class="fila" style="margin-top:8px">
-      <input id="iaBuscaQ" placeholder="Ej: ¿cuándo apliqué por última vez en San Joaquín?" style="flex:1;padding:11px;border:1.5px solid var(--borde);border-radius:10px;font-size:16px;min-width:150px" onkeydown="if(event.key==='Enter'){event.preventDefault();iaBuscar();}">
-      <button class="btn chico" onclick="iaBuscar()">Preguntar</button>
-    </div>
-    <div id="iaBuscaR" style="margin-top:10px;white-space:pre-wrap;font-size:14.5px"></div>
-  </div>`;
-
-  /* Mapa + hoy + fotos */
-  h += `<div class="gmapa">
-    <div class="card mapa-wrap" id="mapaCard"><div class="w-tit">Mapa · notas en terreno</div>
+  /* mapa + próximas acciones */
+  const prox=hoyProximas(f0, rg, carc), MAXP=8;
+  h+=`<div class="hoy-grid">
+    <div class="card mapa-wrap hoy-mapa" id="mapaCard">
+      <div class="hoy-mapa-cab"><div class="w-tit" style="margin:0">${ic("map")} Mapa${f0? " · "+esc(f0) : ""}</div>
+        <div class="hoy-temas">${MAPA_TEMAS.map(t=>`<button type="button" class="hoy-tema ${mapaTema()===t[0]?"act":""}" data-t="${t[0]}" onclick="hoyMapaTema('${t[0]}')">${t[0]==="normal"? "Normal" : esc(t[1])}</button>`).join("")}</div></div>
       <div id="mapaPanel"></div>
       <div class="mapa-tools" id="mapaHerr"></div>
       <div class="mapa-dibbar" id="mapaDibBar"></div>
       <div class="mapa-med" id="mapaMedPanel" style="display:none"></div>
     </div>
+    <div class="hoy-col">
+      <div class="card hoy-prox">
+        <div class="hoy-prox-h"><div class="w-tit" style="margin:0">Próximas acciones</div><button class="btn sec chico" onclick="ir('gantt')">Carta Gantt ›</button></div>
+        ${prox.length? prox.slice(0,MAXP).map(hoyItemHTML).join("") : `<div class="hoy-vacio">Nada pendiente para los próximos 7 días. Usa <b>Programar</b> para agregar una labor o un recordatorio.</div>`}
+        ${prox.length>MAXP? `<div class="muted" style="font-size:12px;padding:8px 0 4px">…y ${prox.length-MAXP} más en la Carta Gantt.</div>` : ""}
+      </div>
+      <div class="card">
+        <div class="w-tit">${ic("sprout")} Campo${f0? " · "+esc(f0) : ""}</div>
+        <div class="hoy-kpis">
+          <div onclick="irDatos('campo')"><b>${num(haPlant)}</b><span>ha plantadas · ${num(haTot)} tot.</span></div>
+          <div onclick="nav.planVista='dia';nav.diaSel=null;ir('gantt')"><b>${deHoy.length}</b><span>labores hoy</span></div>
+          <div onclick="gtAj().per='semana';gtAj().ancla=hoy();guardar();ir('gantt')" title="Labores planificadas en la Carta Gantt de hoy al domingo"><b>${planSem}</b><span>planificadas a domingo</span></div>
+        </div>
+      </div>
+    </div>
   </div>`;
 
+  /* clima + IA */
+  h+=`<div class="g2p">
+    <div class="card"><div class="w-tit">${ic("cloud")} Clima · ${esc(zonaClima())}</div>
+      <div id="climaW" class="muted" style="font-size:13px">cargando pronóstico…</div>
+      <div id="climaAhora"></div></div>
+    <div class="card">
+      <div class="w-tit">${ic("search")} Pregúntale a tus datos <span class="badge b-azul">IA</span></div>
+      <div class="muted">Pregunta en lenguaje normal sobre tus notas, registros, labores y cuarteles. Necesita señal.</div>
+      <div class="fila" style="margin-top:8px">
+        <input id="iaBuscaQ" placeholder="Ej: ¿cuándo apliqué por última vez en San Joaquín?" style="flex:1;padding:11px;border:1px solid var(--borde2);border-radius:10px;font-size:16px;min-width:150px" onkeydown="if(event.key==='Enter'){event.preventDefault();iaBuscar();}">
+        <button class="btn chico" onclick="iaBuscar()">Preguntar</button>
+      </div>
+      <div id="iaBuscaR" style="margin-top:10px;white-space:pre-wrap;font-size:14.5px"></div>
+    </div>
+  </div>`;
 
-  /* Notas recientes (la tarjeta "Esta semana" se quitó: la Carta Gantt cubre la semana) */
-  let hNot = `<div class="card"><div class="w-tit">${ic("note")} Notas recientes</div>`;
-  const rec = [...fijadas, ...notasRec.filter(n=>!n.fijada)].slice(0,5);
-  hNot += rec.length? rec.map(n=>miniNota(n)).join("") : `<div class="muted">Aún no hay notas. Toca ＋ Nota para crear la primera.</div>`;
-  hNot += `</div>`;
-  h += hNot;
-  h += pintarWidgets();
-  h += `<div style="text-align:center;margin:6px 0 12px"><button class="btn sec chico" onclick="agregarWidget()">${ic("plus")} Agregar widget</button></div>`;
+  /* notas recientes + widgets */
+  let hNot=`<div class="card"><div class="w-tit">${ic("note")} Notas recientes</div>`;
+  const rec=[...notasRec.filter(n=>n.fijada), ...notasRec.filter(n=>!n.fijada)].slice(0,5);
+  hNot+=rec.length? rec.map(n=>miniNota(n)).join("") : `<div class="muted">Aún no hay notas. Toca ＋ Nota para crear la primera.</div>`;
+  hNot+=`</div>`;
+  h+=hNot;
+  h+=pintarWidgets();
+  h+=`<div style="text-align:center;margin:6px 0 12px"><button class="btn sec chico" onclick="agregarWidget()">${ic("plus")} Agregar widget</button></div>`;
   return h;
+}
+
+/* ================== Programar: labor o recordatorio (AgroNotas 2.0) ==================
+   D.recordatorios = [{id, t, fecha, hora, fundo, ok}] — cosas que no son labores de campo.
+   Se ven en Hoy (Próximas acciones, se marcan con ✓) y como punto naranjo en la Carta Gantt. */
+function recs(){ D.recordatorios = D.recordatorios || []; return D.recordatorios; }
+function formProgramar(){
+  abrirModal(ic("plus")+" Programar", `<div class="prog-op">
+    <button type="button" class="prog-b" onclick="cerrarModal();formLabor()">${ic("calendar")}<b>Labor de campo</b><span>Queda en la Carta Gantt con fecha, fundo y cuartel. Ej: poda, aplicación, cosecha.</span></button>
+    <button type="button" class="prog-b" onclick="cerrarModal();formRecordatorio()">${ic("bell")}<b>Recordatorio</b><span>Algo que no es una labor: llamar al proveedor, comprar, renovar un certificado.</span></button>
+  </div>`, null);
+  const mf=document.querySelector("#capaModal .mf"); if(mf) mf.style.display="none";
+}
+function formRecordatorio(id){
+  const r=id? recs().find(x=>x.id===id) : null;
+  abrirModal(ic("bell")+(r? " Recordatorio" : " Nuevo recordatorio"), `
+    ${campoF("rc_t","¿Qué hay que recordar? *","text",r? r.t : "",'placeholder="Ej: llamar al proveedor de fertilizantes"')}
+    <div class="grid2">${campoF("rc_f","Fecha *","date",r? r.fecha : hoy())}${campoF("rc_h","Hora (opcional)","time",r? r.hora||"" : "")}</div>
+    ${selF("rc_fu","Fundo (opcional)",fundosSel(),r? r.fundo||"" : "","— Sin fundo —")}
+    ${r? `<label class="f" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="rc_ok" ${r.ok?"checked":""}> Ya está hecho</label>
+      <button class="btn peligro chico" style="margin-top:4px" onclick="recBorrar(${r.id})">${ic("trash")} Eliminar recordatorio</button>` : ""}
+    <div class="muted" style="font-size:12px;margin-top:10px">Aparece en Hoy (Próximas acciones) y como punto en la Carta Gantt.</div>`,
+  ()=>{
+    const t=v("rc_t"), fe=v("rc_f");
+    if(!t || !fe){ alert("Escribe qué hay que recordar y la fecha."); return false; }
+    const o={t, fecha:fe, hora:v("rc_h"), fundo:v("rc_fu")};
+    if(r){ Object.assign(r,o); const ok=document.getElementById("rc_ok"); r.ok=!!(ok && ok.checked); }
+    else recs().push(Object.assign({id:nid(), ok:false}, o));
+  });
+}
+function recHecho(id){ const r=recs().find(x=>x.id===id); if(!r) return; r.ok=!r.ok; guardar(); render(); if(r.ok) aviso("✓ Recordatorio hecho"); }
+function recBorrar(id){ if(!confirm("¿Eliminar este recordatorio?")) return; D.recordatorios=recs().filter(x=>x.id!==id); guardar(); cerrarModal(); render(); }
+/* Carta Gantt: fila "Recordatorios" con un punto por fecha */
+function gtXFecha(iso, T){
+  const k=T.c.findIndex(c=>iso>=c.i && iso<=c.f); if(k<0) return null;
+  const c=T.c[k], len=Math.round((gtD(c.f)-gtD(c.i))/864e5)+1, off=Math.round((gtD(iso)-gtD(c.i))/864e5);
+  return k*T.cw + (off+.5)/len*T.cw;
+}
+function gtRecFila(T, celdas, anchoT){
+  const rs=recs().filter(r=>r.fecha && r.fecha>=T.ini && r.fecha<=T.fin).sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  if(!rs.length) return "";
+  const usados={}, H=hoy();
+  const pts=rs.map(r=>{ const x=gtXFecha(r.fecha,T); if(x==null) return "";
+    const n=usados[r.fecha]=(usados[r.fecha]||0)+1;
+    return `<button type="button" class="grec-p${r.ok?" ok":(r.fecha<H?" venc":"")}" style="left:${(x-10+(n-1)*7).toFixed(1)}px" onclick="formRecordatorio(${r.id})" title="${esc(r.t+"\n"+fmtF(r.fecha)+(r.hora?" "+r.hora:"")+(r.fundo?"\n"+r.fundo:"")+(r.ok?"\n✓ hecho":""))}">${ic("bell")}</button>`; }).join("");
+  return `<div class="grow grec"><div class="glft" onclick="formRecordatorio()" title="Agregar un recordatorio">${ic("bell")} Recordatorios <span class="gha">${rs.length}</span></div><div class="gtrk" style="width:${anchoT}px">${celdas}${pts}</div></div>`;
 }
 
 /* ---------- Widgets configurables del panel ---------- */
@@ -5974,7 +6343,7 @@ function widgetHTML(w){
     return widgetCard(w, `<div id="wHelada_${w.id}" class="muted">consultando pronóstico…</div>`, `❄️ Alerta de helada (bajo ${num(w.um??0)}°C)`);
   }
   if(w.tipo==="cuenta"){
-    const dias = Math.ceil((new Date(w.fecha+"T12:00:00") - new Date())/86400000);
+    const dias = Math.round((new Date(w.fecha+"T12:00:00") - new Date(hoy()+"T12:00:00"))/86400000);   // por días de calendario (antes dependía de la hora)
     const txt = dias>1? `Faltan <b style="font-size:26px;color:var(--p,#1e7a4c)">${dias}</b> días`
       : dias===1? "<b>¡Es mañana!</b>" : dias===0? "<b>¡Es hoy! 🎉</b>" : `<span class="muted">Pasó hace ${-dias} días</span>`;
     return widgetCard(w, `<div style="font-size:15px">${txt} <span class="muted">· ${fmtF(w.fecha)}</span></div>`, `⏳ ${esc(w.nom)}`);
@@ -6353,7 +6722,18 @@ const CF_UNID_LIQ = [["cc/100L","cc/100 L"],["L/ha","L/ha"],["cc/ha","cc/ha"],["
 const CF_UNID_LAB = {"g/100L":"g/100 L","cc/100L":"cc/100 L","kg/ha":"kg/ha","L/ha":"L/ha","g/ha":"g/ha","cc/ha":"cc/ha","%":"%"};
 const CF_UNID_PAR = {"g/100L":"cc/100L","cc/100L":"g/100L","kg/ha":"L/ha","L/ha":"kg/ha","g/ha":"cc/ha","cc/ha":"g/ha","%":"%"};
 function cfEspKey(e){ return CF_ESPKEY[e] || "otro"; }
-function cfP(v){ if(v==null) return NaN; const s=String(v).trim().replace(",","."); const x=parseFloat(s.replace(/[^0-9.\-]/g,"")); return isNaN(x)?NaN:x; }
+/* Números escritos a la chilena (20-10-2026, encontrado por los bots): «1.500» = 1500, «1.234,5» = 1234,5, «2,5» = 2,5;
+   «1.5» se sigue leyendo como 1,5 (punto decimal) porque no tiene grupos de 3 cifras. «1e5» no es un número válido. */
+function numES(v){
+  if(v==null) return NaN;
+  let s=String(v).trim().replace(/\s+/g,""); if(!s) return NaN;
+  if(/[eE]\d/.test(s)) return NaN;
+  s=s.replace(/[^0-9.,\-]/g,"");
+  if(/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s=s.replace(/\./g,"").replace(",",".");
+  else if(s.indexOf(",")>=0) s=s.replace(/\./g,"").replace(",",".");
+  const x=parseFloat(s); return isNaN(x)? NaN : x;
+}
+function cfP(v){ const x=numES(v); return (isNaN(x) || x<0)? NaN : x; }   // en Calc Fito no hay cantidades negativas
 function cfCLP(n){ return "$" + Math.round(n||0).toLocaleString("es-CL"); }
 function cfNum(x,d){ if(x==null||isNaN(x)||!isFinite(x)) return "—"; return (+x).toLocaleString("es-CL",{minimumFractionDigits:d||0,maximumFractionDigits:d||0}); }
 function cfQty(v,uP,dec){ if(v==null||isNaN(v)||!isFinite(v)) return "—"; if(Math.abs(v)>0 && Math.abs(v)<1){ const c=v*1000; return cfNum(c, Math.abs(c)<10?1:0)+" "+(uP==="L"?"cc":"g"); } return cfNum(v, dec==null?2:dec)+" "+uP; }
@@ -6707,7 +7087,7 @@ function cfTodoFundo(f,on){ cfFundoStats(f).qs.forEach(q=>{ cfSelDe(q.id).on=!!o
 function cfToggleAcordeon(f){ const pf=cfPF(); pf.abiertos[f]=!pf.abiertos[f]; guardar(); render(); }
 function cfExpandir(on){ const pf=cfPF(); cfFundos().forEach(f=>pf.abiertos[f]=!!on); guardar(); render(); }
 function cfFiltro(k){ cfPF().filtro=k; guardar(); render(); }
-function cfUnidad(u){ const pf=cfPF(); pf.unidad=u; pf.unidadDosis = CF_UNID_PAR[pf.unidadDosis] || (u==="L"?"cc/100L":"g/100L"); guardar(); render(); }
+function cfUnidad(u){ const pf=cfPF(); if(pf.unidad===u) return; pf.unidad=u;   /* tocar el tipo ya elegido no cambia nada */ pf.unidadDosis = CF_UNID_PAR[pf.unidadDosis] || (u==="L"?"cc/100L":"g/100L"); guardar(); render(); }
 function cfUnidadDosis(ud){ cfPF().unidadDosis=ud; guardar(); render(); }
 function cfSinCos(id){ const s=cfSelDe(id); s.sincos=!s.sincos; guardar(); render(); }
 function cfReset(){ if(confirm("¿Limpiar la Calculadora Fito? Se borra el producto y la selección de cuarteles.")){ D.planFito=cfDefault(); guardar(); render(); } }
@@ -7387,7 +7767,7 @@ function calcRun(){
   const f = {cosecha:calcCosecha, plant:calcPlant, cuad:calcCuad}[nav.calcTab];
   out.innerHTML = f? f() : "";
 }
-function cval(id){ const el=document.getElementById(id); if(!el) return NaN; const s=(el.value||"").trim().replace(",","."); const x=parseFloat(s.replace(/[^0-9.\-]/g,"")); return isNaN(x)?NaN:x; }
+function cval(id){ const el=document.getElementById(id); if(!el) return NaN; const x=numES(el.value); return (isNaN(x) || x<0)?NaN:x; }
 function calcSet(id,val){ nav.calcVals=nav.calcVals||{}; nav.calcVals[id]=val; calcRun(); }
 function calcInput(id,lab,ph){ const cv=(nav.calcVals&&nav.calcVals[id])||""; return `<label class="f">${lab}<input id="${id}" type="text" inputmode="decimal" placeholder="${esc(ph||"")}" value="${esc(cv)}" oninput="calcSet('${id}',this.value)"></label>`; }
 function cstr(id){ const el=document.getElementById(id); if(el) return (el.value||"").trim(); return (nav.calcVals&&nav.calcVals[id])||""; }   // texto tal cual (fechas)
@@ -7407,7 +7787,7 @@ function calcPlant(){
   const dens=(a>0&&b>0)?10000/(a*b):NaN;
   const tot=(!isNaN(dens)&&ha>0)?dens*ha:NaN;
   let h=`<h3 style="margin-top:0">Resultado</h3>${calcR("Plantas por hectárea",dens,"pl/ha",true)}${calcR("Total de plantas",tot,"plantas",true)}`;
-  if(a>0&&b>0) h+=`<div class="muted" style="font-size:11.5px;margin-top:6px">Marco ${a}×${b} m = ${Math.round(a*b*100)/100} m² por planta.</div>`;
+  if(a>0&&b>0) h+=`<div class="muted" style="font-size:11.5px;margin-top:6px">Marco ${num(a)}×${num(b)} m = ${num(Math.round(a*b*100)/100)} m² por planta.</div>`;
   else h+=`<div class="muted">Ingresa el marco de plantación (las dos distancias).</div>`;
   return h;
 }
@@ -7469,7 +7849,7 @@ function calcCosecha(){
 /* --- Cuadrilla --- */
 /* --- Labores por cuartel: cuánto hay que hacer (plantas o ha) y cuánto demora la cuadrilla --- */
 function ctMarco(q){                         // "5x2" / "5x1,5" -> plantas por ha
-  const m=String(q.marco||"").toLowerCase().replace(",",".").match(/([0-9.]+)\s*[x×]\s*([0-9.]+)/);
+  const m=String(q.marco||"").toLowerCase().replace(/,/g,".").match(/([0-9.]+)\s*[x×*]\s*([0-9.]+)/);   // todas las comas: «4,5x2,25» (antes se leía 4,5 × 2 y el riego quedaba corto)
   if(!m) return 0;
   const a=parseFloat(m[1]), b=parseFloat(m[2]);
   return (a>0&&b>0)? 10000/(a*b) : 0;
@@ -7534,7 +7914,7 @@ function ctCuHTML(){
       <button type="button" class="culink" onclick="ctFundo('${jsq(f)}',${nSel<cs.length})">${nSel<cs.length?"marcar todos":"desmarcar"}</button></div>`;
     cs.forEach(q=>{
       const k=ctKey(q), pl=s[k]? ctPlantasEf(q) : ctPlantas(q);
-      h+=`<label class="culab"><input type="checkbox" ${s[k]?"checked":""} onchange="ctToggle('${k.replace(/'/g,"\\\\'")}')">
+      h+=`<label class="culab"><input type="checkbox" ${s[k]?"checked":""} onchange="ctToggle('${jsq(k)}')">
         <span class="gpt" style="background:${gtColEsp(q.especie)}"></span>
         <span style="flex:1;min-width:0">${esc(q.nombre)} <span class="cuha">· ${s[k]? ctHaTxt(q) : num(+q.ha||0)} ha${pl?" · "+pl.toLocaleString("es-CL")+" pl":" · marco s/d"}${q.especie?" · "+esc(q.especie)+(q.variedad?" "+esc(q.variedad):""):""}</span></span></label>`;
     });
@@ -8855,6 +9235,7 @@ function mapaTemaCiclo(){
   try{ localStorage.setItem("agronotasMapaTema", n); }catch(e){}
   if(nav.polyOff) nav.polyOff=false;
   pintarPoligonos(); mapaHerrDef();
+  if(typeof hoyTemasPintar==="function") hoyTemasPintar();
 }
 function sumarDiasISO(iso, n){ const d=new Date(String(iso).slice(0,10)+"T12:00:00"); d.setDate(d.getDate()+n); return wlISO(d); }
 /* aplicación que manda en el cuartel: la carencia que termina más tarde; si no hay, una pendiente de confirmar */
@@ -10056,6 +10437,7 @@ function gtTitulo(T){
   return "Año "+d.getFullYear();
 }
 function gtNav(p){ const a=gtAj(), d=gtD(a.ancla);
+  if(a.per!=="semana") d.setDate(1);   // desde un día 31 «›» saltaba un mes (31-ene + 1 mes = 3-mar)
   if(a.per==="semana") d.setDate(d.getDate()+7*p);
   else if(a.per==="mes") d.setMonth(d.getMonth()+p);
   else if(a.per==="trim") d.setMonth(d.getMonth()+3*p);
@@ -10119,7 +10501,7 @@ function gtBar(o,T){
 }
 function gtPct(l){
   if(l.estado==="hecha"||l.estado==="finalizada") return 100;
-  if(l.av!=null && l.av!=="") return Math.max(0,Math.min(100,Math.round(+l.av||0)));
+  if(l.av!=null && l.av!=="" && +l.av>0) return Math.max(0,Math.min(100,Math.round(+l.av)));   // av 0 = sin avance manual: manda lo trabajado
   const meta=+l.meta||0;
   if(meta<=0) return gtPctDias(l);            // sin meta: manda cuántos días se trabajaron
   const h=(l.avances||[]).reduce((s,x)=>s+(+x.cantidad||0),0);
@@ -10500,7 +10882,7 @@ function vGantt(){
     });
     return h;
   }
-  const cuerpoPlan=cuerpo("plan");
+  const cuerpoPlan=gtRecFila(T, celdas, anchoT)+cuerpo("plan");   // recordatorios (AgroNotas 2.0) como puntos arriba
   let h = cabHTML;
   if(a.real){
     h = cabHTML
@@ -10719,7 +11101,7 @@ function gtEditar(id){
     <div class="fila" style="gap:10px;flex-wrap:wrap">
       <div style="flex:1;min-width:150px"><label class="f" style="margin:0">Ejecuta${gtCombo("gt_eje",l.resp||"",gtEjes(),"Contratista / propio")}</label></div>
       <div style="flex:1;min-width:150px">${selF("gt_est","Estado",Object.keys(GT_EST).map(k=>GT_EST[k].n),(GT_EST[l.estado]||GT_EST.pendiente).n)}</div></div>
-    ${campoF("gt_av","Avance %","number",gtPct(l),'min="0" max="100" step="5"')}
+    ${campoF("gt_av","Avance %","number",gtPct(l),'min="0" max="100" step="5" data-ini="'+gtPct(l)+'"')}
     ${gtCuHTML()}
     <div class="muted" style="font-size:11.5px;margin:-2px 0 10px">Desmarca un cuartel para quitar su barra; marca otros para agregarlos.</div>
     ${hermanas>1?`<label class="f" style="display:flex;align-items:center;gap:9px;font-weight:600">
@@ -10740,7 +11122,10 @@ function gtEditar(id){
     if(!marcados.length){ alert("Marca al menos un cuartel."); return false; }
     if(tiposLabor().indexOf(tipo)<0) D.catalogos.tiposLabor.push(tipo);
     const est=gtEstId(v("gt_est"));
-    const pct = est==="hecha"||est==="finalizada"? 100 : (parseFloat(v("gt_av"))||0);
+    const _avEl = document.getElementById("gt_av");
+    const pct = est==="hecha"||est==="finalizada"? 100
+      : (_avEl && _avEl.dataset.ini===v("gt_av"))? (l.av||"")   // no se tocó: el avance sigue calculándose solo
+      : (parseFloat(v("gt_av"))||0);
     const datos = {tipo, desc:v("gt_desc"), fecha:ini, fecha2:fin,
                    resp:(v("gt_eje")||"").trim(), estado:est, nota:v("gt_nota")};
     const todos = (hermanas>1 && document.getElementById("gt_todos")) ? document.getElementById("gt_todos").checked : false;
@@ -10774,7 +11159,8 @@ function gtEditar(id){
 }
 function gtDuplicar(id){
   const l=D.labores.find(x=>x.id===id); if(!l) return;
-  const n=Object.assign({}, l, {id:nid(), gid:"", estado:"pendiente", av:0, avances:[]});
+  const n=Object.assign(JSON.parse(JSON.stringify(l)), {id:nid(), gid:"", estado:"pendiente", av:"", avances:[]});   // copia completa: antes compartía el avance con la original
+  delete n.real; delete n.diasOff;
   D.labores.push(n); guardar(); cerrarModal(); render();
 }
 function gtBorrar(id){
@@ -11178,6 +11564,9 @@ function syncAplicar(datos, ts){
   try{ if(!localStorage.getItem(CLAVE+"_presync")) localStorage.setItem(CLAVE+"_presync", localStorage.getItem(CLAVE)||""); }catch(e){}
   const nuevo=Object.assign({}, datos);
   SYNC_LOCAL.forEach(function(k){ if(mio[k]!==undefined) nuevo[k]=mio[k]; });
+  /* estación: si este equipo ya leyó la estación más reciente que el iPad (el iPad pudo quedar dormido), se conserva su lectura */
+  try{ const tL=D.wl && D.wl.ult? new Date(D.wl.ult).getTime() : 0, tR=nuevo.wl && nuevo.wl.ult? new Date(nuevo.wl.ult).getTime() : 0;
+    if(tL && tL>tR) nuevo.wl=D.wl; }catch(e){}
   nuevo.sync = Object.assign({}, s, {ult:ahora(), ultTs:ts||Date.now(), estado:"", hash:""});
   localStorage.setItem(CLAVE, JSON.stringify(nuevo));
   cargar();
@@ -11300,6 +11689,87 @@ function wlISO(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,
 function wlDiaMenos(n){ const d=new Date(); d.setDate(d.getDate()-n); return wlISO(d); }
 function wlCoords(){ const w=wlCfg(); if(w.lat&&w.lng) return {lat:+w.lat, lng:+w.lng}; return D.lluviaLoc || LOC_DEF; }
 /* --- llamadas al puente --- */
+/* ================== ET₀ DE LA ESTACIÓN (20-10-2026) ==================
+   FAO-56 / ASCE-EWRI para períodos cortos (cada lectura de 15 min): el puente v2 guarda las lecturas del día en KV
+   (ruta «dias») y aquí se calcula la ET₀ de cada día con los datos de la estación (temperatura, humedad, viento, radiación).
+   Verificado con el ejemplo 19 de FAO-56 (Ra 3,543 · Rn 1,749 · 0,63 mm/h con Cd 0,34). Se usa Cd 0,24 de día y 0,96 de noche (ASCE). */
+const ET0 = (()=>{
+  const rad = g => g*Math.PI/180;
+  function sol(J, latR){   // declinación, distancia relativa, ángulo de puesta
+    const dr = 1+0.033*Math.cos(2*Math.PI*J/365), dec = 0.409*Math.sin(2*Math.PI*J/365-1.39);
+    const ws = Math.acos(Math.max(-1, Math.min(1, -Math.tan(latR)*Math.tan(dec))));
+    return {dr, dec, ws};
+  }
+  /* Ra del período [t1,t2] (hora solar, h) en MJ/m² (FAO-56 ec. 28 con los ángulos recortados a salida/puesta) */
+  function raPeriodo(J, latG, hs1, hs2){
+    const latR = rad(latG), s = sol(J, latR);
+    let w1 = Math.PI/12*(hs1-12), w2 = Math.PI/12*(hs2-12);
+    w1 = Math.max(-s.ws, Math.min(s.ws, w1)); w2 = Math.max(-s.ws, Math.min(s.ws, w2));
+    if(w2<=w1) return 0;
+    return 12*60/Math.PI*0.0820*s.dr*((w2-w1)*Math.sin(latR)*Math.sin(s.dec) + Math.cos(latR)*Math.cos(s.dec)*(Math.sin(w2)-Math.sin(w1)));
+  }
+  function horaSolar(fechaUTC, lonG){   // hora solar verdadera a partir de la hora UTC
+    const J = diaJ(fechaUTC, lonG);
+    const b = 2*Math.PI*(J-81)/364, Sc = 0.1645*Math.sin(2*b)-0.1255*Math.cos(b)-0.025*Math.sin(b);
+    let h = fechaUTC.getUTCHours()+fechaUTC.getUTCMinutes()/60+fechaUTC.getUTCSeconds()/3600 + lonG/15 + Sc;
+    return ((h%24)+24)%24;
+  }
+  function diaJ(fechaUTC, lonG){ const loc = new Date(fechaUTC.getTime()+lonG/15*3600000); const ini = Date.UTC(loc.getUTCFullYear(),0,1); return Math.floor((loc.getTime()-ini)/86400000)+1; }
+  /* tasa ET₀ en mm/h (ASCE-EWRI ec. corta, constantes horarias) */
+  function tasa(o){   // o: {T °C, RH %, u2 m/s, RsH MJ/m²/h, RaH MJ/m²/h, z m, ratioNoche}
+    const T=o.T, es=0.6108*Math.exp(17.27*T/(T+237.3)), ea=es*Math.max(0,Math.min(100,o.RH))/100;
+    const D=4098*es/Math.pow(T+237.3,2), P=101.3*Math.pow((293-0.0065*o.z)/293,5.26), g=0.000665*P;
+    const RsoH=(0.75+2e-5*o.z)*o.RaH;
+    let ratio;
+    if(o.RaH>0.3 && RsoH>0) ratio = Math.max(0.3, Math.min(1, o.RsH/RsoH));   // de día con sol suficientemente alto
+    else ratio = (o.ratioNoche!=null? o.ratioNoche : 0.7);                      // de noche: la última razón de día (ASCE)
+    const Rns=0.77*o.RsH, Rnl=2.042e-10*Math.pow(T+273.16,4)*(0.34-0.14*Math.sqrt(ea))*(1.35*ratio-0.35);
+    const Rn=Rns-Rnl, dia = Rn>0, G = dia? 0.1*Rn : 0.5*Rn, Cd = dia? 0.24 : 0.96;
+    const et=(0.408*D*(Rn-G) + g*37/(T+273)*o.u2*(es-ea)) / (D + g*(1+Cd*o.u2));
+    return {mmh: Math.max(0, et), ratio: (o.RaH>0.3 && RsoH>0)? ratio : null};
+  }
+  /* viento a 2 m desde la altura del anemómetro (FAO-56 ec. 47) */
+  const u2de = (uz, zw)=> zw && Math.abs(zw-2)>0.01? uz*4.87/Math.log(67.8*zw-5.42) : uz;
+  /* ET₀ de un día a partir de lecturas [ts(s), T, RH, u(m/s a la altura zw), Rs(W/m²), lluviaDía(mm)] */
+  function dia(muestras, cfg){
+    const s = (muestras||[]).filter(m=>m && m[0] && m[1]!=null && m[2]!=null).sort((a,b)=>a[0]-b[0]);
+    if(!s.length) return null;
+    let et=0, horas=0, ratio=null, tmax=-1e9, tmin=1e9, ll=null;
+    for(let i=0;i<s.length;i++){
+      const m=s[i], prev=s[i-1];
+      const dt = Math.min(1, prev? Math.max(0,(m[0]-prev[0])/3600) : 0.25);   // cada lectura cubre el tiempo desde la anterior (máx. 1 h)
+      if(dt<=0) continue;
+      const fin = new Date(m[0]*1000), hs2 = horaSolar(fin, cfg.lon), hs1 = hs2-dt, J = diaJ(fin, cfg.lon);
+      const RaH = raPeriodo(J, cfg.lat, hs1, hs2)/dt;
+      const RsH = Math.max(0, m[4]||0)*0.0036;
+      const r = tasa({T:m[1], RH:m[2], u2:u2de(Math.max(0,m[3]||0), cfg.zw), RsH, RaH, z:cfg.z, ratioNoche:ratio});
+      if(r.ratio!=null) ratio=r.ratio;
+      et += r.mmh*dt; horas += dt;
+      tmax=Math.max(tmax,m[1]); tmin=Math.min(tmin,m[1]);
+      if(m[5]!=null) ll=m[5];
+    }
+    return {et:Math.round(et*100)/100, horas:Math.round(horas*10)/10, n:s.length, tmax:Math.round(tmax*10)/10, tmin:Math.round(tmin*10)/10, ll};
+  }
+  return {tasa, raPeriodo, horaSolar, diaJ, u2de, dia};
+})();
+
+function wlEtCfg(){ const w=wlCfg(); return {lat:+(w.lat||-33.448), lon:+(w.lng||-71.028), z:(w.elev>0? +w.elev : 185), zw:(w.anemAlt>0? +w.anemAlt : 2)}; }
+function wlSetNum(k, val){ const w=wlCfg(); const x=parseFloat(String(val).replace(",",".")); if(isNaN(x)||x<=0) delete w[k]; else w[k]=x; guardar(); wlPintarEstado(); }
+/* baja las lecturas guardadas por el puente y calcula la ET₀ de cada día (días completos = medido por la estación) */
+async function wlEtEstacion(w){
+  let j;
+  try{ j = await wlFetch("dias", {desde: wlDiaMenos(14)}); }
+  catch(e){ if(e.status===400 || /ruta no permitida/i.test(e.message)){ w.etPuente=false; return; } if(/KV/.test(e.message)){ w.etPuente="sinKV"; return; } throw e; }
+  w.etPuente = true; const cfg = wlEtCfg(), hoyK = hoy(); let nDias = 0;
+  for(const k of Object.keys(j.dias||{})){
+    const r = ET0.dia((j.dias[k]||{}).s, cfg); if(!r) continue;
+    const d0 = w.dias[k] || {};
+    if(k===hoyK){ w.etHoy = {et:r.et, horas:r.horas, n:r.n}; continue; }   // hoy va acumulando: el día completo sigue estimado hasta mañana
+    if(r.horas>=20){ w.dias[k] = Object.assign({}, d0, {et:r.et, tmax:r.tmax, tmin:r.tmin, ll:(r.ll!=null? r.ll : d0.ll), src:"wl", parcial:false, horas:r.horas, n:r.n}); nDias++; }
+    else { d0.etWl = r.et; d0.horasWl = r.horas; w.dias[k] = d0; }   // día incompleto (la estación o el puente estuvo caído): queda la estimación
+  }
+  w.etDiasOk = nDias;
+}
 async function wlFetch(ruta, params){
   const w=wlCfg(); if(!w.url) throw new Error("Falta la dirección del puente (Datos → Estación WeatherLink).");
   const p=new URLSearchParams(params||{}); if(w.clave) p.set("clave", w.clave);
@@ -11373,7 +11843,17 @@ function wlParseDia(j){ // registros de archivo de un día → resumen diario
 /* --- actualizar: actual + historial (si el plan lo permite) + relleno Open-Meteo --- */
 let _wlOcupado=false;
 async function wlActualizar(manual){
-  const w=wlCfg(); if(!w.url || !w.st) return;
+  const w=wlCfg();
+  if(!w.url || !w.st){   // sin estación: igual se trae ET₀ y lluvia de Open-Meteo para el riego (antes no hacía nada)
+    if(!navigator.onLine){ if(manual) alert("⚠️ Sin señal: se usan los datos guardados."); return; }
+    if(_wlOcupado) return; _wlOcupado=true;
+    try{ await wlOpenMeteo(); guardar(); if(manual) alert("✅ Clima actualizado con Open-Meteo (no hay estación conectada)."); }
+    catch(e){ if(manual) alert("⚠️ No se pudo traer el clima de Open-Meteo: "+e.message); }
+    finally{ _wlOcupado=false; }
+    if(nav.tab==="riego" && document.getElementById("riegoScroll")) riegoPintar();
+    if(nav.tab==="panel" && typeof hoyRefrescar==="function") hoyRefrescar();
+    return;
+  }
   if(!navigator.onLine){ if(manual) alert("⚠️ Sin señal: se usan los datos guardados."); return; }
   if(_wlOcupado) return; _wlOcupado=true;
   try{ await wlActualizarPaso(w, manual); }
@@ -11412,6 +11892,8 @@ async function wlActualizarPaso(w, manual){
       }
     }
   }
+  /* ET₀ calculada con las lecturas de la estación que guarda el puente v2 (plan Basic incluido) */
+  try{ await wlEtEstacion(w); }catch(e){ errores.push("ET₀ estación: "+e.message); }
   /* relleno con Open-Meteo (últimos 14 días) + pronóstico 7 días */
   try{ await wlOpenMeteo(); }catch(e){ errores.push("Open-Meteo: "+e.message); }
   /* poda: guardar solo 120 días */
@@ -11421,7 +11903,20 @@ async function wlActualizarPaso(w, manual){
   if(typeof wlPintarEstado==="function") wlPintarEstado();
   if(document.getElementById("climaAhora")) cargarClimaAhora();
   if(nav.tab==="riego" && document.getElementById("riegoScroll")) riegoPintar();
-  if(nav.tab==="panel") wlRefrescarWidget();
+  if(nav.tab==="panel"){ wlRefrescarWidget(); hoyRefrescar(); }   // panel Hoy: estación, tarjeta de riego y próximas acciones al día
+}
+/* AgroNotas 2.0: repinta en el lugar la píldora de la estación, las tarjetas de acción y "Próximas acciones" del panel Hoy
+   (sin rehacer el mapa). Antes solo se repintaba al cambiar de pestaña y la lectura parecía congelada. */
+function hoyRefrescar(){
+  if(nav.tab!=="panel" || typeof vPanel!=="function") return;
+  const app=document.getElementById("app"); if(!app || !app.querySelector(".hoy-acs")) return;
+  let t; try{ t=document.createElement("div"); t.innerHTML=vPanel(); }catch(e){ return; }
+  [".hoy-acs", ".hoy-prox"].forEach(sel=>{ const a=app.querySelector(sel), b=t.querySelector(sel); if(a && b) a.replaceWith(b); });
+  hoyEstRefrescar();
+}
+function hoyEstRefrescar(){   // solo la píldora de la estación (barato: se llama cada minuto para que avance el "hace N min")
+  const a=document.querySelector("#app .hoy-est"); if(!a || typeof hoyEstacionHTML!=="function") return;
+  const t=document.createElement("div"); t.innerHTML=hoyEstacionHTML(); const b=t.firstElementChild; if(b) a.replaceWith(b);
 }
 /* repinta solo la tarjeta "Riego de la semana" del Panel (sin rehacer el mapa ni el resto) */
 function wlRefrescarWidget(){
@@ -11439,8 +11934,9 @@ async function wlOpenMeteo(){
     const rec={et:wlNum(j.daily.et0_fao_evapotranspiration[i]), ll:wlNum(j.daily.precipitation_sum[i]), tmax:wlNum(j.daily.temperature_2m_max[i]), tmin:wlNum(j.daily.temperature_2m_min[i])};
     if(k>hoyK){ pron[k]=rec; return; }
     const d=w.dias[k];
-    if(!d || d.src!=="wl" || (d.parcial && k<hoyK)){ w.dias[k]=Object.assign({}, rec, {src:"om", parcial:false}); }
+    if(!d || d.src!=="wl" || (d.parcial && k<hoyK)){ w.dias[k]=Object.assign({}, rec, {src:"om", parcial:false}, (d && d.etWl!=null)? {etWl:d.etWl, horasWl:d.horasWl} : {}); }
     else { if(d.et==null && rec.et!=null){ d.et=rec.et; d.src="mix"; } if(d.ll==null) d.ll=rec.ll; if(d.tmax==null) d.tmax=rec.tmax; if(d.tmin==null) d.tmin=rec.tmin; }
+    if(w.dias[k]) w.dias[k].etOM = rec.et;   // para comparar la estación con Open-Meteo
   });
   w.om={pron, ts:ahora()};
 }
@@ -11448,7 +11944,11 @@ const WL_CADA = 15*60000;   // la estación sube una lectura cada 15 min
 const WL_REINTENTO = 2*60000; // si la consulta falló (sin señal, puente caído), reintenta a los 2 min
 async function wlAuto(){ // automático: máximo una vez cada 15 min
   if(typeof D==="undefined" || !D) return;      // todavía no se entra a un proyecto
-  const w=wlCfg(); if(!wlListo() || !navigator.onLine) return;
+  const w=wlCfg(); if(!navigator.onLine) return;
+  if(!wlListo()){   // sin estación: Open-Meteo cada 3 horas
+    if(!w.om || !w.om.ts || (Date.now()-new Date(w.om.ts).getTime()) > 3*3600000){ try{ await wlActualizar(false); }catch(e){} }
+    return;
+  }
   if(w.ult && (Date.now()-new Date(w.ult).getTime())<WL_CADA) return;
   if(w.errAct && w.intento && (Date.now()-new Date(w.intento).getTime())<WL_REINTENTO) return;
   try{ await wlActualizar(false); }catch(e){}
@@ -11459,6 +11959,7 @@ function wlTic(){
   try{
     wlAuto();
     wlPintarEstado();   // los "hace N min" de Datos avanzan solos
+    hoyEstRefrescar();  // y los del panel Hoy
     if(document.getElementById("climaAhora")) cargarClimaAhora();   // la lectura de Open-Meteo también se renueva (caché de 30 min)
   }catch(e){}
 }
@@ -11521,7 +12022,27 @@ function wlEstadoHTML(){
   const nWl=d7.filter(x=>x.src==="wl").length;
   return wlSaludHTML()+`<div style="font-size:13.5px"><b>${esc(w.stNombre)}</b> · ${w.pro===true? "plan Pro (historial día a día)" : w.pro===false? "plan Basic (solo lectura actual; el historial se rellena con Open-Meteo)" : "plan por confirmar"}</div>
     <div class="muted" style="margin-top:3px">${w.ult? "Lectura actual" : "Aún sin lecturas"}${a.temp!=null? " · "+num(a.temp)+" °C":""}${a.hum!=null? " · "+num(a.hum)+" % HR":""}${a.viento!=null? " · viento "+num(a.viento)+" km/h":""}${a.solar!=null? " · "+num(a.solar)+" W/m²":""}${a.etDia!=null? " · ET₀ hoy "+num(a.etDia)+" mm":""}${a.lluvia!=null? " · lluvia hoy "+num(a.lluvia)+" mm":""}</div>
-    <div class="muted" style="margin-top:3px">ET₀ últimos 7 días: ${nWl} medidos por la estación, ${7-nWl} estimados con Open-Meteo${w.pro===false? " (con plan Basic el ET₀ del día no viene en la lectura actual; al pasar a Pro se descarga solo)":""}.</div>`;
+    <div class="muted" style="margin-top:3px">ET₀ últimos 7 días: ${nWl} medidos por la estación, ${7-nWl} estimados con Open-Meteo.</div>`+wlEtResumenHTML();
+}
+/* tarjeta de la ET₀ propia: estado del puente, configuración y comparación con Open-Meteo */
+function wlEtResumenHTML(){
+  const w=wlCfg(), c=wlEtCfg();
+  let est;
+  if(w.etPuente===true) est = `<span class="badge b-verde">ET₀ de la estación activa</span> <span class="muted">${Array.from({length:7},(_,i)=>wlDiaMenos(i+1)).filter(k=>(w.dias[k]||{}).src==="wl").length} de los últimos 7 días medidos por la estación${w.etHoy? " · hoy lleva "+num(w.etHoy.et)+" mm en "+num(w.etHoy.horas)+" h" : ""}</span>`;
+  else if(w.etPuente==="sinKV") est = `<span class="badge b-ambar">Falta un paso en Cloudflare</span> <span class="muted">el puente nuevo no tiene enlazado el espacio KV «ET» (ver instrucciones, parte 4)</span>`;
+  else if(w.etPuente===false) est = `<span class="badge b-gris">Puente antiguo</span> <span class="muted">actualiza el puente en Cloudflare para que la ET₀ salga de tu estación (instrucciones, parte 4)</span>`;
+  else est = `<span class="muted">La ET₀ propia se activa al actualizar el clima.</span>`;
+  const pares = Object.keys(w.dias||{}).sort().slice(-14).map(k=>w.dias[k]).filter(d=>d.src==="wl" && d.et!=null && d.etOM!=null).slice(-7);
+  let comp = "";
+  if(pares.length){ const a=pares.reduce((s,d)=>s+d.et,0), b=pares.reduce((s,d)=>s+d.etOM,0), dif = b? Math.round((a-b)/b*100) : 0;
+    comp = `<div class="muted" style="margin-top:4px">Últimos ${pares.length} días: estación <b>${num(a)} mm</b> · Open-Meteo ${num(b)} mm (${dif>0?"+":""}${dif} %).</div>`; }
+  return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--borde)">
+    <div class="w-tit" style="margin-bottom:6px">${ic("drop")} ET₀ FAO-56 con tu estación</div>${est}${comp}
+    <div class="grid2" style="margin-top:8px">
+      ${campoF("wl_anem","Altura del anemómetro sobre el suelo (m)","text",String(c.zw).replace(".",","),'inputmode="decimal" onchange="wlSetNum(&quot;anemAlt&quot;,this.value)"')}
+      ${campoF("wl_elev","Altitud de la estación (m s. n. m.)","text",String(c.z),'inputmode="decimal" onchange="wlSetNum(&quot;elev&quot;,this.value)"')}
+    </div>
+    <div class="muted" style="font-size:11.5px">El viento se lleva a 2 m con la fórmula FAO-56 (la ET₀ cambia poco con la altura). Los cambios se aplican en la próxima actualización.</div></div>`;
 }
 function wlPintarEstado(){ const el=document.getElementById("wlEstado"); if(el) el.innerHTML=wlEstadoHTML(); }
 /* --- series para el riego --- */
@@ -11721,7 +12242,7 @@ function riegoBomba(f){
 function riegoBombaSet(f,k,val){
   const r=riegoCfg(); r.bombas=r.bombas||{}; const b=r.bombas[f]=r.bombas[f]||{};
   const x=parseFloat(String(val).replace(",","."));
-  if(isNaN(x)||x<=0) delete b[k]; else b[k]=(k==="n"? Math.round(x) : x);
+  if(isNaN(x)||x<=0) delete b[k]; else b[k]=(k==="n"? Math.max(1, Math.round(x)) : x);   // 0,4 sectores → 1 (antes quedaba 0)
   guardar(); riegoPintar();
 }
 function riegoUnidadesDia(conDatos, dia){ // sectores que riegan ese día (válvulas compartidas se juntan por código)
@@ -11833,6 +12354,7 @@ function riegoFicha(id){
   const ki=riegoKcInfo(q,new Date().getMonth());
   const modo=o.modo||((!o.modo&&o.kc>0)?"manual":"global");
   const f=(x,d)=>(x==null||isNaN(x)||!isFinite(x))?"—":(+x).toLocaleString("es-CL",{minimumFractionDigits:d,maximumFractionDigits:d});
+  const _rfPrev = {id, dias0: Array.isArray(o.dias)? o.dias.slice() : null};
   abrirModal(ic("drop")+" "+esc(q.nombre), `
     <div class="muted" style="margin-bottom:10px">${esc(q.especie||"")}${q.variedad?" "+esc(q.variedad):""} · ${f(+q.ha||0,2)} ha${c.area? " · "+f(c.area,1)+" m² por planta" : " · <span style='color:var(--urg)'>sin marco de plantación</span>"}</div>
     <div class="card" style="background:var(--pclaro);border:1.5px solid var(--p);margin-bottom:12px">
@@ -11845,7 +12367,7 @@ function riegoFicha(id){
     </div>
     <label class="f" style="margin-bottom:4px">Días de riego</label>
     <div id="rgFichaDias" style="margin-bottom:6px">${riegoDiasChipsHTML(id)}</div>
-    ${riegoDiasPropios(q)? `<button class="btn sec chico" style="margin-bottom:10px" onclick="riegoDiasReset(${id});cerrarModal();riegoFicha(${id})">Usar los días generales (${esc(riegoDiasTxt(r.dias))})</button>` : `<div class="muted" style="font-size:11.5px;margin-bottom:10px">Usa los días generales. Si los cambias acá, este cuartel queda con los suyos.</div>`}
+    ${riegoDiasPropios(q)? `<button class="btn sec chico" style="margin-bottom:10px" onclick="window._rfDias=null;riegoDiasReset(${id});cerrarModal();riegoFicha(${id})">Usar los días generales (${esc(riegoDiasTxt(r.dias))})</button>` : `<div class="muted" style="font-size:11.5px;margin-bottom:10px">Usa los días generales. Si los cambias acá, este cuartel queda con los suyos.</div>`}
     <div class="grid2">
       ${campoF("rf_gpp","Goteros por planta","text",o.gpp||"")}
       ${campoF("rf_caudal","Caudal del gotero (L/h)","text",o.caudal||"")}
@@ -11879,9 +12401,13 @@ function riegoFicha(id){
     const m=v("rf_modo"); r.cu[id]=r.cu[id]||{};
     if(m==="global") delete r.cu[id].modo; else r.cu[id].modo=m;
     if(m==="manual") set("kc","rf_kc"); else delete r.cu[id].kc;
-    { const x=parseFloat(String(v("rf_kcaj")).replace(",",".")); if(isNaN(x)||x<=0||x===100) delete r.cu[id].kcAj; else r.cu[id].kcAj=Math.round(x*10)/10; }
+    { const s=String(v("rf_kcaj")).trim(), x=parseFloat(s.replace(",","."));
+      if(s && (isNaN(x) || x<30 || x>200)){ alert("⚠️ El ajuste del Kc va de 30 % a 200 % (100 = sin ajuste). No lo cambié."); }
+      else if(!s || x===100) delete r.cu[id].kcAj; else r.cu[id].kcAj=Math.round(x*10)/10; }
+    window._rfDias=null;   // se guardó: los días elegidos en la ficha quedan
     setTimeout(riegoPintar,0);
   }, ic("save")+" Guardar");
+  window._rfDias=_rfPrev;
 }
 function riegoDiaTgl(id, i){
   const r=riegoCfg();
@@ -12619,7 +13145,7 @@ async function fenCargarThumbs(){
 let BIT = null;
 function bitCfg(){ D.bitCfg = D.bitCfg || {}; D.bitCfg.unidades = D.bitCfg.unidades || {}; return D.bitCfg; }
 function bitUid(){ return "b"+Math.random().toString(36).slice(2,9); }
-function bitNum(x){ const n=parseFloat(String(x==null?"":x).replace(/\./g,"").replace(",",".").replace(/[^0-9.\-]/g,"")); return isNaN(n)?0:n; }
+function bitNum(x){ const n=numES(x); return (isNaN(n) || n<0)? 0 : n; }   // «2.5» = 2,5 · «1.500» = 1500
 function bitRinde(l){ const c=bitNum(l.cantidad), p=bitNum(l.personas); return (c>0&&p>0)? c/p : 0; }
 /* --- labores más usadas primero --- */
 function bitTiposOrden(){
@@ -12630,7 +13156,7 @@ function bitTiposOrden(){
 /* --- formulario --- */
 function bitNueva(fecha){
   const c=bitCfg();
-  BIT={id:null, fecha:fecha||hoy(), fundo:(fundos()[0]||""), nota:"", lineas:[], integrar:!!c.integrar};
+  BIT={id:null, fecha:(fecha===undefined? "" : fecha||hoy()), fundo:(fundos()[0]||""), nota:"", lineas:[], integrar:!!c.integrar};   // «Otro día» abre sin fecha para elegirla
   bitForm("Anotar el día");
 }
 function bitEditar(id){
@@ -12742,7 +13268,7 @@ function bitGuardar(){
     if(integrar && cant>0){
       let lab=bitMatchLabor(fecha, fundo, o.cuartel, o.tipo);
       if(!lab){
-        lab={id:nid(), gid:"", estado:"encurso", avances:[], meta:0, av:0, unidad:o.unidad,
+        lab={id:nid(), gid:"", estado:"encurso", avances:[], meta:0, av:"", autoBit:true, unidad:o.unidad,
              fecha, fecha2:fecha, tipo:o.tipo, fundo, cuartel:o.cuartel, desc:"", resp:"", nota:""};
         D.labores.push(lab);
       }
@@ -12756,11 +13282,15 @@ function bitGuardar(){
   const nuevo={id, fecha, fundo, nota, lineas:guardadas};
   if(ent) Object.assign(ent, nuevo);
   else { D.bitacora=D.bitacora||[]; D.bitacora.push(nuevo); }
+  bitLimpiarAuto();
   BIT=null;
 }
+/* labores que creó la integración de la Bitácora y que quedaron sin ningún avance: se quitan (antes quedaban «en curso» vacías) */
+function bitLimpiarAuto(){ D.labores = D.labores.filter(l=>!(l.autoBit && !(l.avances||[]).length)); }
 function bitBorrar(id){
   undoIni("Anotación eliminada");
   bitQuitaAvances(id);
+  bitLimpiarAuto();
   D.bitacora=(D.bitacora||[]).filter(x=>x.id!==id);
   guardar(); cerrarModal(); render();
 }
