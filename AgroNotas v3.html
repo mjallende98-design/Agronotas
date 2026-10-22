@@ -1151,7 +1151,6 @@ function datosDanadosAviso(){
   else alert(msg);
 }
 function guardar(){
-  if(typeof _lcVer!=="undefined") _lcVer++;   // índice de la Bitácora (lcIdx): los datos cambiaron, se rehace al pedirlo
   if(_datosDanados){ datosDanadosAviso(); return; }   // no pisar los datos dañados (ni la copia espejo, ni la sincronización)
   try{ localStorage.setItem(CLAVE, JSON.stringify(D)); }
   catch(e){ alert("⚠️ No se pudo guardar (memoria llena). Descarga un respaldo desde Datos."); }
@@ -3323,7 +3322,6 @@ function vAplic(){
   h += `<button class="btn-fab" onclick="ir('calcfito')" aria-label="Nueva aplicación (Calc Fito)" title="Nueva aplicación">${ic("plus")}</button>`;
   return h;
 }
-const REG_OBS_RE={sup:/Sup ([\d.,]+) ha/, costo:/costo (\$[\d.]+)/};   // superficie y costo que Calc Fito escribe en obs (Excel e índice de la Bitácora)
 function aplicExcelBlob(){
   let lst = D.registros.filter(r=>r.tipo==="Aplicación");
   if(nav.filtroFundo) lst = lst.filter(r=>r.fundo===nav.filtroFundo);
@@ -3336,9 +3334,9 @@ function aplicExcelBlob(){
   lst.forEach(r=>{
     const q=regCuartelInfo(r), obs=r.obs||"";
     const est=(r.estado==="aplicado"?"Aplicado":"Pendiente"), fr=(r.fechaReal?fmtF(r.fechaReal):"");
-    const sup=m(obs,REG_OBS_RE.sup), cos=m(obs,/cosecha desde ([\d-]+)/), rsp=m(obs,/resp: (.+?)(?: ·|$)/);
+    const sup=m(obs,/Sup ([\d.,]+) ha/), cos=m(obs,/cosecha desde ([\d-]+)/), rsp=m(obs,/resp: (.+?)(?: ·|$)/);
     rows.push([ fmtF(r.fecha), est, fr, r.fundo||"", r.cuartel||"", q.especie||"", q.variedad||"", r.producto||"", r.dosis||"", r.objetivo||"", r.carencia||"", r.mojamiento||"",
-      sup, m(obs,/producto ([\d.,]+ ?[a-zA-Z]+)/), m(obs,REG_OBS_RE.costo), cos, rsp ]);
+      sup, m(obs,/producto ([\d.,]+ ?[a-zA-Z]+)/), m(obs,/costo (\$[\d.]+)/), cos, rsp ]);
     (r.mezcla||[]).forEach(mz=>{
       rows.push([ fmtF(r.fecha), est, fr, r.fundo||"", r.cuartel||"", q.especie||"", q.variedad||"", "↳ "+(mz.n||""), mz.dosis||"", "(en mezcla)", (mz.carencia||""), r.mojamiento||"",
         sup, (mz.total?cfQty(mz.total,mz.uP):""), (mz.costo>0?cfCLP(mz.costo):""), cos, rsp ]);
@@ -3635,7 +3633,6 @@ function renombrarFundo(i){
   for(const k of ["bitacora","fenologia","tablero","recordatorios"]) for(const x of (D[k]||[])) if(x.fundo===f) x.fundo = n;   // antes la Bitácora quedaba con el nombre viejo
   if(D.gantt && Array.isArray(D.gantt.fundos)) D.gantt.fundos = D.gantt.fundos.map(x=>x===f? n : x);
   if(nav.hoyFundo===f) nav.hoyFundo = n;
-  if(typeof lcRenombrar==="function") lcRenombrar(f, null, n, null);   // Bitácora: fundo que se está mirando y preferencia guardada
   for(const p of D.mapoly){
     if(p.fundoRef===f) p.fundoRef = n;
     if(p.tipo==="Fundo" && p.nombre===f) p.nombre = n;
@@ -4089,7 +4086,6 @@ function cuartelCascada(f0, n0, f1, n1){
     p.cuartelRef=n1; p.fundoRef=f1; n++;
   }
   const fn=nav.fen; if(fn && fn.fundo===f0 && fn.cuartel===n0){ fn.fundo=f1; fn.cuartel=n1; }
-  if(typeof lcRenombrar==="function") lcRenombrar(f0, n0, f1, n1);   // Bitácora: lo que se está mirando y la preferencia guardada
   if(nav.avCuartel===n0 && (!nav.avFundo || nav.avFundo===f0)){ nav.avCuartel=n1; if(nav.avFundo) nav.avFundo=f1; }
   [nav.calcCu, nav.calcHa].forEach(m=>{ const k0=f0+"|"+n0; if(m && (k0 in m)){ m[f1+"|"+n1]=m[k0]; delete m[k0]; } });
   return {n, quedan};
@@ -6016,201 +6012,6 @@ html.movil .prog-op{grid-template-columns:1fr;}
    Las funciones igual se cortan con espejoNo(); lo que se quiera anotar se dicta y va al iPad por la bandeja. */
 html.espejo button:is([onclick^="formReg("],[onclick^="eliminarReg("],[onclick^="regConfirmar"],[onclick^="regBorrar"],[onclick^="bitNueva("],[onclick^="bitEditar("],[onclick^="bitBorrar("],[onclick^="bitOtroRegistro("],[onclick^="fenNuevo("],[onclick^="fenEditar("],[onclick^="formNota("],[onclick^="eliminarNota("],[onclick^="cfGuardarRegistro("]){display:none !important;}
 </style>
-<style id="bitacora2">
-/* ===== Bitácora de campo · Etapa 1: Día a día (22-10-2026) =====
-   Vista #lcVista (funciones lc*): cabecera con buscador, filtros en chips, «Por confirmar», días → fundos → filas y el detalle
-   que se abre en el lugar. Solo variables (--t-* por categoría, --borde, --card…); el color de especie llega como --esp desde
-   <style id="lcEsp"> (lcEspCss). Va al final de los estilos para ganar en la cascada. */
-.lc-sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;}
-/* cabecera: buscador + Dictar, Anotar, Exportar */
-.lc-cab{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 10px;}
-.lc-q{position:relative; flex:1 1 320px; min-width:0;}
-.lc-q > .i{position:absolute; left:13px; top:50%; transform:translateY(-50%); width:18px; height:18px; color:var(--txt2); pointer-events:none;}
-.lc-q input{display:block; width:100%; height:44px; margin:0; padding:0 46px 0 40px; font:inherit; font-size:16px; color:var(--txt); background:var(--card);
-  border:1px solid var(--borde2); border-radius:var(--rad-s);}
-.lc-q input::placeholder{color:var(--txt2);}
-.lc-q input:focus{outline:none; border-color:var(--p); box-shadow:0 0 0 3px var(--foco);}
-.lc-q-x{position:absolute; right:4px; top:4px; width:36px; height:36px; padding:0; border:0; border-radius:8px; background:none; color:var(--txt2);
-  display:none; align-items:center; justify-content:center; cursor:pointer;}
-.lc-q-x .i{width:16px; height:16px;}
-.lc-q.lleno .lc-q-x{display:flex;}
-@media (hover:hover){ .lc-q-x:hover{background:var(--hover);} }
-.lc-cab-bs{display:flex; align-items:center; gap:8px; flex:0 0 auto;}
-.lc-cab-b{min-height:44px; gap:6px; font:inherit; font-weight:600;}
-.lc-cab-b .i{width:18px; height:18px;}
-.lc-chev .i{width:15px; height:15px;}
-.lc-exp{position:relative;}
-.lc-menu{position:absolute; right:0; top:calc(100% + 6px); z-index:30; min-width:250px; padding:6px; background:var(--card);
-  border:1px solid var(--borde2); border-radius:var(--rad-s); box-shadow:var(--som-h);}
-.lc-menu[hidden]{display:none;}
-.lc-menu-it{display:flex; align-items:center; gap:10px; width:100%; min-height:44px; padding:8px 12px; border:0; border-radius:8px; background:none;
-  font:inherit; font-size:14px; font-weight:600; color:var(--txt); text-align:left; cursor:pointer;}
-.lc-menu-it .i{width:18px; height:18px; color:var(--txt2);}
-@media (hover:hover){ .lc-menu-it:hover{background:var(--hover);} }
-/* filtros en chips */
-.lc-fil{display:flex; flex-direction:column; gap:6px; margin:0 0 10px;}
-.lc-chips{display:flex; flex-wrap:wrap; align-items:center; gap:6px;}
-.lc-grp{display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px;}
-.lc-et{font-size:12px; font-weight:650; color:var(--txt2); margin:0 2px 0 2px;}
-.lc-sep{flex:0 0 auto; width:1px; height:24px; background:var(--borde); margin:0 4px;}
-.lc-chip{font:inherit; font-size:13.5px; display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:6px 13px; cursor:pointer;}
-.lc-chip.lc-dest{margin-left:auto;}
-.lc-pt{width:9px; height:9px; border-radius:50%; flex:0 0 auto; background:var(--esp, var(--txt2));}
-.lc-rango{display:flex; flex-wrap:wrap; gap:10px;}
-.lc-rango label{display:flex; flex-direction:column; gap:4px; flex:0 1 200px; font-size:12.5px; font-weight:600; color:var(--txt2);}
-.lc-mir{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 10px; font-size:13px; color:var(--txt2);}
-.lc-mir b{color:var(--txt); font-weight:650;}
-.lc-limpiar{display:inline-flex; align-items:center; gap:4px; min-height:34px; padding:4px 11px; border:1px solid var(--borde2); border-radius:999px;
-  background:var(--card); font:inherit; font-size:13px; font-weight:600; color:var(--txt); cursor:pointer;}
-.lc-limpiar .i{width:14px; height:14px;}
-/* «Por confirmar» */
-.lc-pend{margin:0 0 12px; padding:8px 14px; border:1px solid var(--t-apl); border-radius:var(--rad); background:var(--t-apl-bg);}
-.lc-pend-t{display:flex; align-items:center; gap:8px; margin:2px 0 4px; font-size:14px; font-weight:700; color:var(--t-apl);}
-.lc-pend-t .i{width:17px; height:17px;}
-.lc-pend-it{display:flex; align-items:center; gap:10px; padding:6px 0; border-top:1px solid var(--borde); font-size:13.5px;}
-.lc-pend-t + .lc-pend-it{border-top:0;}
-.lc-pend-tx{flex:1; min-width:0;}
-.lc-pend-tx b{font-weight:650;}
-.lc-pend-tx span{color:var(--txt2);}
-.lc-pend-it .btn{flex:0 0 auto; min-height:40px;}
-.lc-atr{color:var(--rojo); font-weight:650;}
-/* días, fundos y filas */
-.lc-bus{margin:0 2px 10px; font-size:13px; color:var(--txt2);}
-.lc-dia{margin:0 0 6px;}
-.lc-dia-h{display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:2px 12px; margin:16px 2px 6px;}
-.lc-dia-t{margin:0; font-size:15.5px; font-weight:700; color:var(--txt);}
-.lc-clima{font-size:12.5px; color:var(--txt2); font-variant-numeric:tabular-nums; white-space:nowrap;}
-.lc-helada{color:var(--t-riego); font-weight:700;}
-.lc-fu{margin:0 0 8px; padding:2px 0; background:var(--card); border:1px solid var(--borde); border-radius:var(--rad); overflow:hidden;}
-.lc-fu-t{margin:0; padding:8px 14px 2px; font-size:12px; font-weight:700; color:var(--txt2); letter-spacing:.02em;}
-.lc-it{--c:var(--t-otro); --bg:var(--t-otro-bg); border-top:1px solid var(--borde);}
-.lc-fu-t + .lc-it{border-top:0;}
-.lc-it.c-apl{--c:var(--t-apl); --bg:var(--t-apl-bg);}
-.lc-it.c-lab{--c:var(--t-lab); --bg:var(--t-lab-bg);}
-.lc-it.c-fen{--c:var(--t-fen); --bg:var(--t-fen-bg);}
-.lc-it.c-nota{--c:var(--t-nota); --bg:var(--t-nota-bg);}
-.lc-it.c-riego{--c:var(--t-riego); --bg:var(--t-riego-bg);}
-.lc-it.c-fert{--c:var(--t-fert); --bg:var(--t-fert-bg);}
-.lc-it.c-lluvia{--c:var(--t-lluvia); --bg:var(--t-lluvia-bg);}
-.lc-it.nueva{background:var(--p-tinte);}
-.lc-it-b{display:flex; align-items:center; gap:10px; width:100%; min-height:54px; margin:0; padding:8px 12px 8px 14px; border:0; background:none;
-  font:inherit; color:var(--txt); text-align:left; cursor:pointer;}
-@media (hover:hover){ .lc-it-b:hover{background:var(--hover);} }
-.lc-it-b:focus-visible{outline:3px solid var(--foco); outline-offset:-3px;}
-.lc-it-i{width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; background:var(--bg); color:var(--c);}
-.lc-it-i .i{width:16px; height:16px;}
-.lc-it-tx{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px;}
-.lc-it-t{display:flex; align-items:center; flex-wrap:wrap; gap:4px 6px; min-width:0;}
-.lc-it-t > b{min-width:0; max-width:100%; font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-.lc-star{color:var(--acc); font-size:14px; line-height:1;}
-.lc-it-d{font-size:12px; color:var(--txt2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-.lc-cus{display:inline-flex; flex-wrap:wrap; gap:4px; min-width:0;}
-.lc-cu{display:inline-block; max-width:180px; padding:1px 8px; border:1px solid var(--borde); border-radius:999px; background:var(--hover);
-  font-size:11.5px; font-weight:600; color:var(--txt); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-.lc-cu.fu{font-weight:500; color:var(--txt2);}
-.lc-cu.mas-m{display:none;}
-.lc-it-m{display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:4px; flex:0 1 auto; max-width:46%;}
-.lc-b{display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; background:var(--hover); font-size:11.5px; font-weight:650; color:var(--txt2); white-space:nowrap;}
-.lc-b.or{background:var(--card); border:1px solid var(--borde2);}
-.lc-b.ok{background:var(--t-lab-bg); color:var(--t-lab);}
-.lc-b.car{background:var(--t-apl-bg); color:var(--t-apl);}
-.lc-b.sd{background:var(--t-otro-bg); color:var(--t-otro);}
-.lc-b.urg{background:var(--t-nota-bg); color:var(--t-nota);}
-.lc-ths{display:flex; gap:4px; flex:0 0 auto;}
-.lc-th{display:inline-flex; width:40px; height:40px; flex:0 0 auto; padding:0; border:0; border-radius:8px; overflow:hidden; background:var(--hover);}
-.lc-th img{display:block; width:100%; height:100%; object-fit:cover;}
-.lc-it-ch{display:flex; flex:0 0 auto; color:var(--txt2); transition:transform .15s var(--ease);}
-.lc-it-ch .i{width:18px; height:18px;}
-.lc-it.abierta .lc-it-ch{transform:rotate(180deg);}
-.lc-it.abierta > .lc-it-b{background:var(--hover);}
-/* detalle en el lugar */
-.lc-det{padding:4px 14px 14px 56px;}
-.lc-det-h{margin:0 0 6px; font-size:13px; font-weight:600; color:var(--txt2);}
-.lc-dl{display:grid; grid-template-columns:minmax(96px,132px) minmax(0,1fr); gap:2px 14px; padding:6px 0; border-top:1px solid var(--borde); font-size:14px; line-height:1.45;}
-.lc-dt{font-size:13px; font-weight:600; color:var(--txt2);}
-.lc-dd{min-width:0; overflow-wrap:anywhere;}
-.lc-no{color:var(--txt2);}
-.lc-pre{white-space:pre-wrap;}
-.lc-ok{color:var(--t-lab); font-weight:600;}
-.lc-dict{display:block; margin-top:4px; padding:8px 10px; border-radius:8px; background:var(--hover); font-style:italic; white-space:pre-wrap;}
-.lc-chk{list-style:none; margin:0; padding:0;}
-.lc-chk li.ok{color:var(--txt2); text-decoration:line-through;}
-.lc-lote{margin:6px 0; border:1px solid var(--borde); border-radius:var(--rad-s); overflow:hidden;}
-.lc-lr{display:flex; align-items:center; flex-wrap:wrap; gap:4px 12px; padding:6px 10px; border-top:1px solid var(--borde); font-size:13.5px;}
-.lc-lr:first-child{border-top:0;}
-.lc-lr-cu{flex:1 1 150px; min-width:0; font-weight:650;}
-.lc-lr > span:not(.lc-lr-cu){color:var(--txt2);}
-.lc-lr .btn{margin-left:auto; min-height:36px;}
-.lc-fotos{display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 2px;}
-.lc-foto{width:84px; height:84px; border-radius:10px; cursor:zoom-in;}
-.lc-acc{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px;}
-.lc-acc .btn{min-height:44px; font:inherit; font-weight:600;}
-.lc-estr.on{color:var(--acc);}
-.lc-estr.on .i{fill:currentColor;}
-.lc-hint{margin-top:6px; font-size:12.5px; color:var(--txt2);}
-.lc-star-ro{color:var(--acc); font-weight:650;}
-/* semanas y meses plegados */
-.lc-blq{margin:0 0 8px;}
-.lc-blq-b{display:flex; align-items:center; gap:10px; width:100%; min-height:48px; margin:0; padding:8px 14px; border:1px solid var(--borde); border-radius:var(--rad);
-  background:var(--card); font:inherit; font-size:14px; color:var(--txt2); text-align:left; cursor:pointer;}
-.lc-blq-b b{font-weight:650; color:var(--txt);}
-.lc-blq-b .i{width:18px; height:18px; flex:0 0 auto; transition:transform .15s var(--ease);}
-.lc-blq-b[aria-expanded="true"] .i{transform:rotate(90deg);}
-@media (hover:hover){ .lc-blq-b:hover{background:var(--hover);} }
-.lc-blq-c{padding:2px 0 0 12px;}
-.lc-mas{width:100%; margin:6px 0 4px; font:inherit; font-weight:600;}
-.lc-tope{padding:6px 4px; font-size:12.5px; color:var(--txt2);}
-@media (prefers-reduced-motion:reduce){ .lc-it-ch, .lc-blq-b .i{transition:none;} }
-/* hoja «+ Anotar» (y la pregunta del lote al destacar) */
-.lc-hoja .mf{display:none;}
-.lc-hoja-bs{display:grid; grid-template-columns:minmax(0,1fr); gap:8px;}
-.lc-hoja-bs.g2{grid-template-columns:repeat(2,minmax(0,1fr));}
-.lc-hoja-bs .btn{min-height:44px;}
-.lc-op{display:flex; align-items:flex-start; gap:12px; min-height:72px; padding:12px 14px; border:1px solid var(--borde2); border-radius:var(--rad);
-  background:var(--card); font:inherit; color:var(--txt); text-align:left; cursor:pointer;}
-@media (hover:hover){ .lc-op:hover{border-color:var(--p); background:var(--hover);} }
-.lc-op-i{width:36px; height:36px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; border-radius:10px; background:var(--p-tinte); color:var(--p);}
-.lc-op-i .i{width:19px; height:19px;}
-.lc-op-tx{display:flex; flex-direction:column; gap:2px; min-width:0;}
-.lc-op-tx b{font-size:15px;}
-.lc-op-tx small{font-size:12.5px; color:var(--txt2);}
-.lc-hoja-t{margin:12px 0 0; font-size:13.5px; color:var(--txt2);}
-.lc-hoja-t:first-child{margin:0 0 12px;}
-.lc-borrar-dia{margin-top:12px;}
-/* celular: una columna, chips deslizables, el primer día cerca del borde */
-html.movil .lc-cab{flex-wrap:nowrap; gap:6px; margin-bottom:8px;}
-html.movil .lc-q{flex:1 1 auto;}
-html.movil .lc-cab-bs{gap:6px;}
-html.movil .lc-cab-b{width:44px; min-width:44px; padding:0;}
-html.movil .lc-cab-b > span{display:none;}
-html.movil .lc-fil{margin-bottom:8px;}
-html.movil .lc-chips{flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; margin:0 -12px; padding:0 12px;}
-html.movil .lc-chips::-webkit-scrollbar{display:none;}
-html.movil .lc-grp{flex-wrap:nowrap;}
-html.movil .lc-chip{flex:0 0 auto; min-height:34px; padding:5px 12px;}
-html.movil .lc-chip.lc-dest{margin-left:0;}
-html.movil .lc-dia-h{flex-direction:column; align-items:flex-start; gap:0; margin-top:12px;}
-html.movil .lc-dia-t{font-size:15px;}
-html.movil .lc-fu-t{padding:8px 12px 2px;}
-html.movil .lc-it-b{flex-wrap:wrap; row-gap:4px; padding:8px 10px;}
-html.movil .lc-it-tx{flex-basis:0;}
-html.movil .lc-it-m{order:5; flex:1 1 100%; max-width:none; justify-content:flex-start; padding-left:42px;}
-html.movil .lc-cus .lc-cu:not(:first-child){display:none;}
-html.movil .lc-cus .lc-cu.mas-m{display:inline-block;}
-html.movil .lc-cu{max-width:150px;}
-html.movil .lc-det{padding:2px 12px 12px;}
-html.movil .lc-dl{grid-template-columns:minmax(0,1fr); gap:0;}
-html.movil .lc-pend{padding:8px 12px;}
-html.movil .lc-pend-it{flex-wrap:wrap;}
-html.movil .lc-hoja-bs.g2{grid-template-columns:minmax(0,1fr);}
-html.movil .lc-op{min-height:60px; padding:10px 12px;}
-/* modo sol: bordes más marcados (los colores ya cambian con las variables --t-* de html.sol) */
-html.sol .lc-fu, html.sol .lc-blq-b, html.sol .lc-lote, html.sol .lc-q input, html.sol .lc-op{border-width:1.5px; border-color:var(--borde);}
-html.sol .lc-it, html.sol .lc-dl, html.sol .lc-lr, html.sol .lc-pend-it{border-top-color:var(--borde);}
-html.sol .lc-cu, html.sol .lc-b{border:1px solid var(--borde);}
-html.sol .lc-pend{border-width:1.5px;}
-html.sol .lc-it.nueva{background:var(--pclaro);}
-</style>
 <script id="libLeaflet">
 /* @preserve
  * Leaflet 1.9.4, a JS library for interactive maps. https://leafletjs.com
@@ -6337,7 +6138,7 @@ const ic=n=>'<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+(IKO[n]||''
 
 function renderInterno(){
   if(nav.tab==="reg") nav.tab="bitacora";   // Registros se fusionó con Bitácora (29-09-2026)
-  const t = {panel:saludo(), asist:"Asistente", notas:"Notas de terreno", bitacora:"Bitácora de campo", fenologia:"Registro fenológico", listas:"Mis listas", gantt:"Carta Gantt de labores", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", riego:"Programación de riego", datos:"Datos y ajustes"}[nav.tab];
+  const t = {panel:saludo(), asist:"Asistente", notas:"Notas de terreno", bitacora:"Bitácora y registros", fenologia:"Registro fenológico", listas:"Mis listas", gantt:"Carta Gantt de labores", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", riego:"Programación de riego", datos:"Datos y ajustes"}[nav.tab];
   document.getElementById("topbar").innerHTML =
     `<div style="flex:1;min-width:180px"><h1>${t}<span class="sub">${PROY? esc(PROY.nombre) : "AgroNotas"} · ${fmtF(hoy())}</span></h1></div>
     <div class="acciones">
@@ -6358,7 +6159,7 @@ function renderInterno(){
   document.getElementById("app").innerHTML = (typeof syncBannerHTML==="function"? syncBannerHTML():"") + vistas[nav.tab]();
   if(typeof syncIniciar==="function") syncIniciar();
   if(nav.tab!=="panel" && geoWatch){ navigator.geolocation.clearWatch(geoWatch); geoWatch = null; } // ahorra batería fuera del mapa
-  const posrender = {notas:posNotas, panel:posPanel, reg:posNotas, bitacora:lcPos, noti:posNoticias, datos:espacioPintar}[nav.tab];   // Bitácora: solo las miniaturas visibles (lcPos)
+  const posrender = {notas:posNotas, panel:posPanel, reg:posNotas, bitacora:posNotas, noti:posNoticias, datos:espacioPintar}[nav.tab];
   if(posrender) posrender();
 }
 /* Bots de prueba (01-10-2026): bots.js se carga solo cuando se pide (Datos → Respaldo, o abrir la app con ?bots) */
@@ -8569,7 +8370,7 @@ function ctGuardarRegistro(){
         obs, gps:null, pin:"baja", fotos:[], audios:[], docs:(i===0? docs : [])});   // el PDF va una sola vez, en el primer cuartel
     });
     cerrarVisor();                                   // cierra la calculadora
-    nav.tab="bitacora"; nav.regTipo=""; lcVerNueva(lid, f1);  // guardarModal() guarda y repinta: cae en Bitácora (Día a día, 7 días, la fila nueva resaltada)
+    nav.tab="bitacora"; nav.regTipo=""; nav.bit={fundo:"",desde:"",hasta:"",tipo:""};  // guardarModal() guarda y repinta: cae en Bitácora
     setTimeout(()=>gtAviso("\u2705 "+m.labor+" guardada en la Bitácora ("+m.filas.length+" cuartel"+(m.filas.length>1?"es":"")+")", 4000), 60);
   }, ic("save")+" Guardar");
 }
@@ -8754,10 +8555,9 @@ function ctServGuardar(){
       const dc = await ctServPDFGuardar(s);
       if(dc) docs=[dc]; else gtAviso("No se pudo adjuntar el PDF; las labores se guardan igual.", 4000);
     }
-    let n=0, lid0="", f0="";
+    let n=0;
     s.items.forEach(x=>{
       const lid="L"+nid();
-      if(!lid0){ lid0=lid; f0=x.fini||hoy(); }      // la primera labor queda resaltada en la Bitácora
       const filas = (x.filas&&x.filas.length)? x.filas : [{fundo:GENERAL, cuartel:"", cant:x.tot, dias:x.diasNec, costo:x.costo}];
       const f1 = x.fini || hoy(), f2 = x.ffin || f1;
       filas.forEach((f,i)=>{
@@ -8772,7 +8572,7 @@ function ctServGuardar(){
     const cuantas=s.items.length;
     if((document.getElementById("cg_vac")||{}).checked) s.items=[];
     cerrarVisor();
-    nav.tab="bitacora"; nav.regTipo=""; lcVerNueva(lid0, f0);
+    nav.tab="bitacora"; nav.regTipo=""; nav.bit={fundo:"",desde:"",hasta:"",tipo:""};
     setTimeout(()=>gtAviso("✅ Servicio guardado: "+cuantas+(cuantas===1?" labor":" labores")+" en la Bitácora", 4000), 60);
   }, ic("save")+" Guardar");
 }
@@ -9669,16 +9469,6 @@ function sumarDiasISO(iso, n){ const d=new Date(String(iso).slice(0,10)+"T12:00:
    aplicada sin dato de carencia (gris durante 60 días desde la aplicación, nunca rojo: decisión del usuario 22-10-2026); si no, libre (null).
    La carencia es la del registro o, si no la trae, la del catálogo para la especie del cuartel → src "registro" | "catalogo". */
 const CAR_SINDATO_DIAS = 60;
-/* carencia de UNA aplicación para la especie k (clave de cfEspKey) → {d: días (null = sin dato), src:"registro"|"catalogo"|"sindato"}.
-   La del registro; si no la trae, o si el asistente la copió del catálogo (carOrigen), la del catálogo para esa especie
-   (un dictado con varias especies o a todo el fundo guarda una sola). p: el producto ya buscado (opcional; lo usa el índice de la Bitácora) */
-function carDeReg(r, k, p){
-  const prod=()=> p!==undefined? p : (p=cfProdDeReg(r));
-  let c=parseInt(r.carencia,10), src=r.carOrigen==="catalogo"? "catalogo" : "registro";
-  if(src==="catalogo" && prod()){ const cc=cfCarEsp(prod(), k); c= cc!=null? cc : NaN; }   // copiada del catálogo: vale la de la especie de ESTE cuartel
-  if(isNaN(c)){ const cc=cfCarEsp(prod(), k); return cc!=null? {d:cc, src:"catalogo"} : {d:null, src:"sindato"}; }   // sin carencia: la del catálogo para esta especie
-  return {d:c, src};
-}
 function carenciaDe(q){
   const hoyK=hoy(), k=cfEspKey(q.especie), desde=sumarDiasISO(hoyK, -400); let vig=null, pend=null, sd=null;
   for(const r of (D.registros||[])){
@@ -9687,12 +9477,17 @@ function carenciaDe(q){
     if(cus.length && cus.indexOf(q.nombre)<0) continue;            // sin cuartel = todo el fundo
     if(r.estado!=="aplicado"){ if(!pend || String(aplFecha(r))<String(pend.fecha)) pend={fecha:aplFecha(r), prod:r.producto||""}; continue; }   // la misma fecha que Aplic.
     const base=r.fechaReal||r.fecha; if(!base) continue;
-    if(String(base)<desde && isNaN(parseInt(r.carencia,10))) continue;   // sin carencia anotada y de hace más de un año: ya no puede estar en carencia
-    const c=carDeReg(r, k);
-    if(c.d==null){ const fin=sumarDiasISO(base, CAR_SINDATO_DIAS); if(fin>=hoyK && (!sd || String(base)>String(sd.fecha))) sd={fecha:base, fin, prod:r.producto||""}; continue; }
-    if(c.d<=0) continue;
-    const fin=sumarDiasISO(base, c.d);
-    if(fin>hoyK && (!vig || fin>vig.fin)) vig={fin, prod:r.producto||"", src:c.src};
+    let c=parseInt(r.carencia,10), src=r.carOrigen==="catalogo"? "catalogo" : "registro";   // el asistente pudo copiarla del catálogo al guardar
+    if(src==="catalogo"){ const p=cfProdDeReg(r); if(p){ const cc=cfCarEsp(p, k); c= cc!=null? cc : NaN; } }   // copiada del catálogo: vale la de la especie de ESTE cuartel (un dictado con varias especies o a todo el fundo guarda una sola)
+    if(isNaN(c)){                                                   // el registro no trae carencia: la del catálogo para esta especie
+      if(String(base)<desde) continue;                              // (una aplicación de hace más de un año ya no puede estar en carencia)
+      const cc=cfCarEsp(cfProdDeReg(r), k);
+      if(cc!=null){ c=cc; src="catalogo"; }
+      else{ const fin=sumarDiasISO(base, CAR_SINDATO_DIAS); if(fin>=hoyK && (!sd || String(base)>String(sd.fecha))) sd={fecha:base, fin, prod:r.producto||""}; continue; }
+    }
+    if(c<=0) continue;
+    const fin=sumarDiasISO(base, c);
+    if(fin>hoyK && (!vig || fin>vig.fin)) vig={fin, prod:r.producto||"", src};
   }
   return vig? {tipo:"carencia", ...vig} : pend? {tipo:"pendiente", ...pend} : sd? {tipo:"sindato", src:"sindato", ...sd} : null;
 }
@@ -14160,215 +13955,6 @@ async function fenCargarThumbs(){
   }
 }
 
-/* ================== BITÁCORA DE CAMPO: ÍNDICE ÚNICO DE EVENTOS (Etapa 1) ==================
-   lcIdx() junta en una sola forma de evento todo lo hecho en el campo: registros (también las aplicaciones, dictadas
-   o no), bitácora, fenología, notas y lo realizado de la Carta Gantt. Solo lee: no migra nada y nunca se guarda en D.
-   Caché: guardar() sube _lcVer; cargar(), syncAplicar y Deshacer cambian la identidad de D (idx.D!==D).
-   Evento: {k, st (colección de D), id, fecha, fin, hora, fundo, cu ('' = todo el fundo), cuK ('fundo|cuartel', siempre con
-   el fundo: Corte 5 está en dos fundos), cat, tit, det, est, car {d, fin, src}, prodId, dest, origen, dictado, grupo, fotos,
-   txt (gtNorm, para buscar), abrir (la llamada que lo edita)}. Las aplicaciones por confirmar van en idx.pend, no en ev. */
-let _lcVer=0, _lcIdx=null;
-const LC_SIN=Object.freeze([]);   // sin fotos (compartida, solo lectura)
-const LC_CAT_REG={"Aplicación":"apl","Labor":"lab","Riego":"riego","Fertilización":"fert","Lluvia":"lluvia","Fenología":"fen"};
-function lcCatTipo(t){ return t==="Riego"? "riego" : t==="Fertilización"? "fert" : t==="Aplicación fitosanitaria"? "apl" : "lab"; }   // tipo de labor (bitácora y Gantt) → categoría
-function lcOrigenReg(r){ return r.origen==="asis"? "asis" : Array.isArray(r.mezcla)? "calcfito" : /^L/.test(String(r.laborId||""))? "calc" : "manual"; }   // lo antiguo no trae origen: se deduce
-let _lcNF=null;
-function lcNum(x){ if(!_lcNF){ try{ _lcNF=new Intl.NumberFormat("es-CL"); }catch(e){ _lcNF={format:n=>String(n)}; } } return _lcNF.format(Math.round(x*100)/100); }   // = num(), sin crear un formato por cada número
-function lcLinea(s, n){ n=n||80; s=String(s||"").trim().split(/\r?\n/)[0]; return s.length>n? s.slice(0,n-1)+"…" : s; }
-function lcSem(f){ const d=gtD(f); d.setDate(d.getDate()-(d.getDay()+6)%7); return gtI(d); }   // lunes de la semana (ISO), fecha local
-function lcEvNuevo(st, k, id, fecha, fundo, cat, tit, abrir){
-  return {k, st, id, fecha:fecha||"", fin:"", hora:"", fundo:fundo||"", cu:"", cuK:"", cat, tit:tit||"", det:"", est:"", car:null, prodId:null,
-    dest:false, origen:"manual", dictado:"", grupo:"", fotos:LC_SIN, txt:"", abrir};
-}
-function lcFuente(e){ return e? ((D[e.st]||[]).find(x=>x.id===e.id) || null) : null; }   // el objeto guardado de donde salió un evento
-function lcIdx(){
-  const hoyK=hoy();
-  if(_lcIdx && _lcIdx.ver===_lcVer && _lcIdx.D===D && _lcIdx.hoy===hoyK) return _lcIdx;   // el día también cuenta: «atrasada» depende de hoy
-  const _t=()=>(typeof performance!=="undefined"? performance.now() : Date.now()), t0=_t();
-  const ev=[], pend=[], cuQ=new Map(), espK=new Map(), nCuM=new Map(), prodM=new Map(), fenCol=new Map(), fuKs=new Map();
-  (D.cuarteles||[]).forEach(q=>cuQ.set(q.fundo+"|"+q.nombre, q));
-  const kEsp=cuK=>{ const q=cuQ.get(cuK), e=q? (q.especie||"") : ""; let k=espK.get(e); if(k===undefined){ k=cfEspKey(e); espK.set(e,k); } return k; };
-  const ksFundo=f=>{ let s=fuKs.get(f); if(!s){ s=[...new Set((D.cuarteles||[]).filter(q=>q.fundo===f).map(q=>kEsp(q.fundo+"|"+q.nombre)))]; fuKs.set(f,s); } return s; };
-  const nCu=cu=>{ let s=nCuM.get(cu); if(s===undefined){ s=gtNorm(cu); nCuM.set(cu,s); } return s; };
-  const txt=a=>gtNorm(a.filter(Boolean).join(" "));
-  /* un evento por cuartel: 'C1, C2' → dos (k con «|cuartel»); '' = todo el fundo. fn(e) completa lo propio de cada cuartel */
-  const porCuartel=(b, cuStr, lista, fn)=>{
-    let cus=cuLista(cuStr); if(cus.length>1) cus=[...new Set(cus)];
-    const n=cus.length||1, k0=b.k, t0=b.txt;
-    for(let i=0;i<n;i++){
-      const e=(i===n-1)? b : Object.assign({}, b), cu=cus[i]||"";
-      e.cu=cu; e.cuK=e.fundo+"|"+cu;
-      if(cus.length>1) e.k=k0+"|"+cu;
-      if(t0 && cu) e.txt=t0+" "+nCu(cu);                     // la nota oculta (txt vacío) sigue fuera de la búsqueda
-      if(fn) fn(e);
-      lista.push(e);
-    }
-  };
-  /* --- registros (todos los tipos, también Aplicación) --- */
-  const prodDe=r=>{ const key=(r.prodId!=null? r.prodId : "")+"|"+(r.producto||""); let p=prodM.get(key); if(p===undefined){ p=cfProdDeReg(r)||null; prodM.set(key,p); } return p; };
-  const carEv=(r, p, base, ks)=>{   // carencia del cuartel (su especie); a todo el fundo: la mayor de sus especies, como la revisión del asistente
-    let m=null;
-    for(const k of ks){ const c=carDeReg(r, k, p); if(!m || (c.d!=null && (m.d==null || c.d>m.d))) m=c; }
-    if(!m) m=carDeReg(r, "otro", p);
-    return {d:m.d, src:m.src, fin:!base? "" : m.d==null? sumarDiasISO(base, CAR_SINDATO_DIAS) : m.d>0? sumarDiasISO(base, m.d) : base};   // sin dato: fin = término de los 60 días en gris
-  };
-  for(const r of (D.registros||[])){
-    const t=r.tipo||"Otro", ob=re=>{ const m=String(r.obs||"").match(re); return m? m[1] : ""; };
-    const b=lcEvNuevo("registros", "r:"+r.id, r.id, r.fecha, r.fundo, LC_CAT_REG[t]||"otro", "", "formReg("+r.id+")");
-    b.dest=r.dest===true; b.origen=lcOrigenReg(r); b.dictado=r.dictado? String(r.dictado) : ""; if(r.fotos) b.fotos=r.fotos;
-    let det=[], extra=[], lista=ev, fn=null;
-    if(t==="Aplicación"){
-      const p=prodDe(r), mz=(r.mezcla||[]).map(m=>m&&m.n).filter(Boolean);
-      b.fecha=aplFecha(r); b.tit=r.producto||"Aplicación"; b.grupo=r.aplId||""; b.prodId=p? p.id : (r.prodId!=null? r.prodId : null);
-      b.est=r.estado==="aplicado"? "aplicado" : (b.fecha && b.fecha<hoyK? "atrasada" : "pendiente");
-      det=[r.dosis, r.objetivo, mz.length? "+ "+mz.join(", ") : ""]; extra=[p && p.ia, r.objetivo, mz.join(" ")];
-      const sup=numES(ob(REG_OBS_RE.sup)), cos=+ob(REG_OBS_RE.costo).replace(/[$.]/g,"");   // lo que Calc Fito anota en obs (como el Excel)
-      if(sup>0) b.sup=sup; if(cos>0) b.costo=cos;
-      if(b.est!=="aplicado") lista=pend;                     // lo planificado no es historia: va a «Por confirmar»
-      fn=e=>{ e.car=carEv(r, p, e.fecha, e.cu? [kEsp(e.cuK)] : ksFundo(e.fundo)); };
-    }else if(t==="Labor"){                                   // labor de la calculadora: del fini al ffin
-      b.fecha=r.fini||r.fecha; if(r.ffin && r.ffin>b.fecha) b.fin=r.ffin;
-      b.tit=r.labor||"Labor"; b.grupo=r.laborId||"";
-      det=[r.cantidad, +r.personas>0? lcNum(+r.personas)+" pers." : "", +r.dias>0? lcNum(+r.dias)+" días" : ""]; extra=[r.labor, r.resp];
-      if(+r.costo>0) b.costo=+r.costo;
-    }else if(t==="Riego"){ b.tit="Riego"+(r.horas? " · "+r.horas+" h" : ""); det=[r.sector? "sector "+r.sector : ""]; }
-    else if(t==="Fertilización"){ b.tit=r.producto||"Fertilización"; det=[r.dosis, r.via]; }
-    else if(t==="Lluvia") b.tit="Lluvia"+(r.mm? " · "+r.mm+" mm" : "");
-    else if(t==="Fenología") b.tit="Fenología"+(r.estado? " · "+r.estado : "");   // registro antiguo: fenología, nunca «Aplicado»
-    else b.tit=(t==="Otro"? lcLinea(r.obs) : t) || "Registro";
-    b.det=det.filter(Boolean).join(" · ") || (t==="Otro"? "" : lcLinea(r.obs, 140));
-    if(r.dictadoFh && fhDia(r.dictadoFh)===b.fecha) b.hora=fhHora(r.dictadoFh);
-    b.txt=txt([b.tit, b.det, r.obs, r.fundo, b.dictado].concat(extra));
-    porCuartel(b, r.cuartel, lista, fn);
-  }
-  /* --- bitácora: un evento por línea y la «nota del día» (entradas sin líneas o con nota) --- */
-  const bitLab=new Map(), bitTipo=new Map();   // días de bitácora por labor (vínculo) o por tipo|fundo|cuartel: lo mismo que calza gtRealDias
-  const marca=(m,k,f)=>{ let s=m.get(k); if(!s){ s=new Set(); m.set(k,s); } s.add(f); };
-  for(const e of (D.bitacora||[])){
-    const ls=e.lineas||[], dict=e.dictado? String(e.dictado) : "", asis=e.origen==="asis", nt=String(e.nota||"").trim();
-    const hora=(e.dictadoFh && fhDia(e.dictadoFh)===e.fecha)? fhHora(e.dictadoFh) : "";
-    ls.forEach((l,i)=>{
-      if(l.laborId) marca(bitLab, l.laborId, e.fecha); else marca(bitTipo, l.tipo+"|"+e.fundo+"|"+(l.cuartel||""), e.fecha);
-      const b=lcEvNuevo("bitacora", "b:"+e.id+":"+(l.uid||i), e.id, e.fecha, e.fundo, lcCatTipo(l.tipo), l.tipo||"Labor", "bitEditar("+e.id+")");
-      const cant=+l.cantidad||0, pers=+l.personas||0;
-      b.det=[cant>0? lcNum(cant)+(l.unidad? " "+l.unidad : "") : "", pers>0? lcNum(pers)+" pers." : ""].filter(Boolean).join(" · ");
-      b.cant=cant; b.uni=l.unidad||""; b.pers=pers; b.integ=!!l.laborId;   // integ: sumada a la Carta Gantt
-      b.dest=l.dest===true; b.origen=(asis||l.asisId)? "asis" : "manual"; b.dictado=dict; b.hora=hora; b.grupo="bit:"+e.id;
-      b.txt=txt([l.tipo, nt, e.fundo, dict]);
-      porCuartel(b, l.cuartel, ev);
-    });
-    if(!ls.length || nt){
-      const b=lcEvNuevo("bitacora", "b:"+e.id+":nota", e.id, e.fecha, e.fundo, "nota", lcLinea(nt)||"Día anotado", "bitEditar("+e.id+")");
-      b.det="Nota del día"+(ls.length? " · "+ls.length+(ls.length===1? " labor" : " labores") : "");
-      b.dest=e.dest===true; b.origen=asis? "asis" : "manual"; b.dictado=dict; b.hora=hora; b.grupo="bit:"+e.id;
-      b.txt=txt([nt, e.fundo, dict]);
-      porCuartel(b, "", ev);
-    }
-  }
-  /* --- fenología --- */
-  for(const f of (D.fenologia||[])){
-    const b=lcEvNuevo("fenologia", "f:"+f.id, f.id, f.fecha, f.fundo, "fen", "BBCH "+(f.bbch||"—")+(f.estado? " · "+f.estado : ""), "fenEditar("+f.id+")");
-    b.det=lcLinea(f.nota, 140); if(f.fotos) b.fotos=f.fotos; b.dest=f.dest===true; b.origen=f.origen==="asis"? "asis" : "manual"; b.dictado=f.dictado? String(f.dictado) : "";
-    const ck=(f.especie||"")+"|"+(f.bbch||""); let col=fenCol.get(ck); if(col===undefined){ col=fenColor(f.especie, f.bbch); fenCol.set(ck,col); }
-    b.bbch=f.bbch||""; b.col=col;
-    b.txt=txt([b.tit, f.nota, f.fundo, b.dictado]);
-    porCuartel(b, f.cuartel, ev);
-  }
-  /* --- notas: fecha y hora LOCALES (fhDia/fhHora); 'General' va aparte; la oculta sin texto y fuera de la búsqueda --- */
-  for(const n of (D.notas||[])){
-    const oc=!!n.oculta;
-    const b=lcEvNuevo("notas", "n:"+n.id, n.id, fhDia(n.fh), n.fundo, "nota", oc? "Nota oculta" : (lcLinea(n.titulo)||lcLinea(n.texto)||"Nota"), "verNota("+n.id+")");
-    b.hora=fhHora(n.fh); b.dest=!!n.fijada; b.origen=n.origen==="asis"? "asis" : "manual"; b.ncat=n.cat||""; b.urg=n.cat==="Urgente" && !n.resuelta;
-    if(!oc){
-      b.det=n.titulo? lcLinea(n.texto, 140) : ""; if(n.fotos) b.fotos=n.fotos; b.dictado=n.dictado? String(n.dictado) : "";
-      b.txt=txt([n.titulo, n.texto, (n.check||[]).map(c=>c && c.t).join(" "), n.cat, n.fundo, b.dictado]);
-    }
-    porCuartel(b, n.cuartel, ev);
-  }
-  /* --- Carta Gantt: solo lo realizado (las pendientes son plan y viven en la Gantt) --- */
-  for(const l of (D.labores||[])){
-    if(l.autoBit) continue;                                  // la creó la Bitácora al integrar: copia de sus líneas
-    const tipo=l.tipo||"Labor", cat=lcCatTipo(tipo), ab="gtEditar("+l.id+")";
-    const comun=b=>{ b.dest=l.dest===true; b.origen=l.origen==="asis"? "asis" : "gantt"; b.grupo=l.gid||""; b.txt=txt([tipo, l.desc, l.nota, l.resp, l.fundo]); return b; };
-    (l.avances||[]).forEach((a,i)=>{
-      if(a.bitId || !a.fecha) return;                         // con bitId es copia de una línea de la bitácora
-      const b=comun(lcEvNuevo("labores", "l:"+l.id+":av"+i, l.id, a.fecha, l.fundo, cat, tipo, ab)), cant=+a.cantidad||0, pers=+a.personas||0;
-      b.det=[cant>0? lcNum(cant)+(l.unidad? " "+l.unidad : "") : "", pers>0? lcNum(pers)+" pers." : "", a.obs||""].filter(Boolean).join(" · ");
-      b.cant=cant; b.uni=l.unidad||""; b.pers=pers;
-      porCuartel(b, l.cuartel, ev);
-    });
-    const dias=(l.real && Array.isArray(l.real.dias))? l.real.dias : LC_SIN;
-    if(dias.length){                                         // días marcados en la grilla que no vienen de la bitácora: uno por labor y mes
-      const sL=bitLab.get(l.id), sT=bitTipo.get(l.tipo+"|"+l.fundo+"|"+(l.cuartel||"")), mes={};
-      dias.forEach(d=>{ if(!d || (sL && sL.has(d)) || (sT && sT.has(d))) return; const m=String(d).slice(0,7); (mes[m]=mes[m]||[]).push(d); });
-      Object.keys(mes).forEach(m=>{
-        const ds=mes[m].sort(), b=comun(lcEvNuevo("labores", "l:"+l.id+":dias-"+m, l.id, ds[0], l.fundo, cat, tipo, ab));
-        if(ds.length>1) b.fin=ds[ds.length-1];
-        b.det=ds.length+(ds.length===1? " día trabajado" : " días trabajados")+" según la Gantt"; b.dias=ds.length;
-        porCuartel(b, l.cuartel, ev);
-      });
-    }
-    if(l.estado==="hecha" || l.estado==="finalizada"){       // hito sin cantidad (lo hecho ya está en sus avances y días)
-      const rl=l.real||{}, b=comun(lcEvNuevo("labores", "l:"+l.id+":fin", l.id, rl.ts? fhDia(rl.ts) : (rl.fecha2||gtFin(l)||""), l.fundo, cat, "Labor terminada · "+tipo, ab));
-      b.aprox=!rl.ts; b.det=[lcLinea(l.desc, 100), b.aprox? "fecha aprox." : ""].filter(Boolean).join(" · ");
-      porCuartel(b, l.cuartel, ev);
-    }
-  }
-  /* --- orden (fecha, hora e id desc: nid es correlativo) y mapas, en una sola pasada --- */
-  ev.sort((a,b)=> a.fecha<b.fecha? 1 : a.fecha>b.fecha? -1 : a.hora<b.hora? 1 : a.hora>b.hora? -1 : (+b.id||0)-(+a.id||0));
-  pend.sort((a,b)=> a.fecha<b.fecha? -1 : a.fecha>b.fecha? 1 : (+a.id||0)-(+b.id||0));
-  const porDia=new Map(), porCu=new Map(), porFu=new Map(), porSem=new Map(), porMes=new Map(), ult=new Map(), huer=new Map(), perM=new Map();
-  const add=(m,k,x)=>{ const a=m.get(k); if(a) a.push(x); else m.set(k,[x]); };
-  const cuenta=(m,k,e)=>{   // riego suma también la fertilización (chip «Riego y fert.»)
-    let c=m.get(k); if(!c){ c={apl:0, lab:0, fen:0, nota:0, riego:0, dest:0, n:0}; m.set(k,c); }
-    const g=e.cat==="fert"? "riego" : e.cat; if(g==="apl"||g==="lab"||g==="fen"||g==="nota"||g==="riego") c[g]++;
-    if(e.dest) c.dest++; c.n++;
-  };
-  const huerf=e=>{ if(e.cu && !cuQ.has(e.cuK)) huer.set(e.cuK, (huer.get(e.cuK)||0)+1); };
-  for(let i=0;i<ev.length;i++){
-    const e=ev[i];
-    add(porDia, e.fecha, i);
-    if(e.cu) add(porCu, e.cuK, e); else add(porFu, e.fundo, e);
-    if(e.fecha){
-      let p=perM.get(e.fecha); if(!p){ p=[lcSem(e.fecha), e.fecha.slice(0,7)]; perM.set(e.fecha,p); }
-      cuenta(porSem, e.cuK+"|"+p[0], e); cuenta(porMes, e.cuK+"|"+p[1], e);
-    }
-    let u=ult.get(e.cuK); if(!u){ u={apl:null, fen:null, lab:null, act:e}; ult.set(e.cuK,u); }
-    if(e.cat==="apl"){ if(!u.apl) u.apl=e; } else if(e.cat==="fen"){ if(!u.fen) u.fen=e; } else if(e.cat==="lab"){ if(!u.lab) u.lab=e; }
-    huerf(e);
-  }
-  pend.forEach(huerf);
-  _lcIdx={ver:_lcVer, D, hoy:hoyK, ev, porDia, porCu, porFu, porSem, porMes, ult, pend, huer, ms:Math.round((_t()-t0)*10)/10};
-  return _lcIdx;
-}
-/* temporada agrícola: septiembre a agosto por defecto (D.bitCfg.tempIni = 9, decisión del usuario 22-10-2026). Clave «26/27» */
-function lcTempIni(){ const c=bitCfg(); if(!(+c.tempIni>=1 && +c.tempIni<=12)) c.tempIni=9; return +c.tempIni; }
-function lcTemp(f){
-  f=String(f||""); if(!/^\d{4}-\d{2}/.test(f)) return "";
-  const ini=lcTempIni(), y=+f.slice(0,4), y1=(+f.slice(5,7))>=ini? y : y-1;
-  return ini===1? String(y1) : String(y1%100).padStart(2,"0")+"/"+String((y1+1)%100).padStart(2,"0");   // de enero a diciembre: «2026»
-}
-function lcTempRango(clave){
-  const s=String(clave||""), ini=lcTempIni(); let y1;
-  if(/^\d{4}$/.test(s)) y1=+s; else if(/^\d{2}\/\d{2}$/.test(s)) y1=2000+(+s.slice(0,2)); else return null;
-  return {desde:y1+"-"+String(ini).padStart(2,"0")+"-01", hasta:gtI(new Date(y1+1, ini-1, 0))};   // día 0 = último del mes anterior
-}
-/* preferencias de la vista (vista, fundo, cuartel, período…): por equipo en localStorage, nunca en D (no gastan sincronización) */
-const LC_PREFS="agronotasBitacora";
-function lcPrefs(){ try{ const o=JSON.parse(localStorage.getItem(LC_PREFS)||"null"); return (o && typeof o==="object" && !Array.isArray(o))? o : {}; }catch(e){ return {}; } }
-function lcPrefsGuardar(o){ try{ localStorage.setItem(LC_PREFS, JSON.stringify(o||{})); }catch(e){} }
-/* cascada (cuartelCascada / renombrarFundo): nav.lc y la preferencia guardada siguen al cuartel o fundo renombrado (n0 null = fundo) */
-function lcRenombrar(f0, n0, f1, n1){
-  const sigue=o=>{
-    if(!o || typeof o!=="object" || o.fundo!==f0) return false;
-    if(n0==null){ o.fundo=f1; return true; }
-    if(o.cu!==n0) return false;
-    o.fundo=f1; o.cu=n1; return true;
-  };
-  sigue(nav.lc);
-  const p=lcPrefs(); if(sigue(p)) lcPrefsGuardar(p);
-}
-
 /* ================== BITÁCORA DEL CAMPO ==================
    Diario rápido: marcas las labores que se hicieron hoy y, si quieres,
    cuánto y con cuánta gente. El rendimiento sale de cantidad/personas.
@@ -14416,7 +14002,6 @@ function bitForm(titulo){
       <span style="font-size:13px;color:var(--txt)">Integrar a la Carta Gantt
         <span class="muted" style="display:block;font-size:11.5px;font-weight:500">Suma lo anotado como avance de la labor planificada. Si no existe, la crea.</span></span>
     </label>
-    ${BIT.id? `<button type="button" class="btn peligro chico lc-borrar-dia" onclick="bitBorrar(${BIT.id})">${ic("trash")} Eliminar el día</button>` : ""}
   `, bitGuardar, ic("save")+" Guardar el día");
   const ff=document.getElementById("bit_fundo");
   if(ff) ff.onchange=()=>{ BIT.fundo=ff.value; BIT.lineas.forEach(l=>{ l.cuartel=""; }); bitPinta(); };
@@ -14533,7 +14118,8 @@ function bitBorrar(id){
   guardar(); cerrarModal(); render();
 }
 /* --- vista: diario --- */
-function bitNav(){ nav.bit = nav.bit || {fundo:"", desde:"", hasta:"", tipo:""}; return nav.bit; }   // filtros de la vista anterior (vBitacoraAnt); bitSetF ahora va a nav.lc
+function bitNav(){ nav.bit = nav.bit || {fundo:"", desde:"", hasta:"", tipo:""}; return nav.bit; }
+function bitSetF(k,val){ bitNav()[k]=val; render(); }
 function bitFiltradas(){
   const f=bitNav();
   return (D.bitacora||[]).filter(e=>{
@@ -14565,10 +14151,20 @@ function bitTiposFiltro(){
   (D.registros||[]).forEach(r=>{ if(r.tipo==="Aplicación") return; if(r.tipo==="Labor" && r.labor) s.add(r.labor); else if(r.tipo) s.add(r.tipo); });
   return [...s].sort((a,b)=>a.localeCompare(b));
 }
-/* elegir qué anotar: desde la Etapa 1 es la hoja «+ Anotar» de la Bitácora (lcAnotar); queda el nombre por compatibilidad */
-function bitOtroRegistro(){ lcAnotar(); }
-/* vista anterior de la Bitácora (diario por fecha): respaldo por una etapa, sin pestaña y sin llamarla; se borra en la Etapa 4 */
-function vBitacoraAnt(){
+/* elegir qué tipo de registro anotar (lo que no es "labores del día") */
+function bitOtroRegistro(){
+  const tipos=tiposReg().filter(t=>t!=="Aplicación" && t!=="Labor" && t!=="Fenología");
+  abrirModal(ic("clipboard")+" ¿Qué quieres registrar?", `
+    <div class="bitopc">
+      ${tipos.map(t=>`<button type="button" class="btn sec" onclick="cerrarModal();nav.regTipo='${jsq(t)}';formReg();nav.regTipo=''">${icoReg(t)} ${esc(t)}</button>`).join("")}
+      <button type="button" class="btn sec" onclick="cerrarModal();abrirCalc('cuad')">${ic("calc")} Labor con costo (calculadora)</button>
+      <button type="button" class="btn sec" onclick="cerrarModal();ir('fenologia')">${ic("flower")} Estado fenológico</button>
+    </div>
+    <div class="muted" style="font-size:12.5px;margin-top:10px">Las labores del día (poda, cosecha, riego manual…) se anotan más rápido con <b>Anotar lo de hoy</b>. Las aplicaciones fitosanitarias van en <b>Calc Fito → Aplic.</b></div>`,
+    null, null);
+  const mf=document.querySelector("#capaModal .mf"); if(mf) mf.style.display="none";   // aquí no hay nada que guardar: se elige y se abre el formulario
+}
+function vBitacora(){
   const f=bitNav(), es=bitFiltradas(), regs=bitRegsFiltrados(), hoyISO=hoy(), ayer=bitAyer();
   const nHoy=(D.bitacora||[]).filter(e=>e.fecha===hoyISO).length + (D.registros||[]).filter(r=>r.fecha===hoyISO && r.tipo!=="Aplicación").length;
   /* resumen: cuánto se ha hecho de cada labor (bitácora + labores guardadas desde la calculadora) */
@@ -14693,581 +14289,6 @@ function vBitacoraAnt(){
   }).join("");
   h += `<button class="btn-fab" onclick="bitNueva('${hoyISO}')" aria-label="Anotar lo de hoy">${ic("plus")}</button>`;
   return h;
-}
-
-/* ================== BITÁCORA DE CAMPO: VISTA «DÍA A DÍA» (Etapa 1) ==================
-   #lcVista = cabecera fija (buscador, Dictar, + Anotar, Exportar) + #lcCuerpo (filtros en chips, «Por confirmar» y la lista:
-   día → fundo → filas). Solo lee el índice lcIdx(). Los filtros viven en nav.lc (y por equipo en localStorage, lcPrefs) y
-   repintan solo #lcCuerpo, sin render(); lo único que escribe en D es destacar. Un solo onclick delegado (lcClic) lee
-   data-acc / data-f / data-i: ningún nombre de cuartel va dentro de un onclick. La portada Cuarteles (nav.lc.v) es la Etapa 2. */
-const LC_TOPE=150, LC_ABIERTOS=14;   // filas dibujadas como máximo · días abiertos al comienzo del período
-const LC_PERS=[["7","7 días"],["30","30 días"],["temp","Temporada"],["rango","Rango…"]];
-const LC_CATS=[["","Todo"],["apl","Aplicaciones"],["lab","Labores"],["fen","Fenología"],["nota","Notas"],["riego","Riego y fert."]];
-const LC_ICO={apl:"flask", lab:"users", fen:"flower", nota:"note", riego:"drop", fert:"sprout", lluvia:"rain", otro:"doc"};
-const LC_QUE={apl:"Aplicación ya hecha", lab:"Labor", fen:"Estado fenológico", nota:"Nota", riego:"Riego", fert:"Fertilización", lluvia:"Lluvia", otro:"Registro"};
-const LC_DIAS=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
-let _lcFilas=new Map(), _lcN=0, _lcPend=[], _lcFus=[], _lcCus=[], _lcPasa=null, _lcEspI=new Map(), _lcEspCss="", _lcBusT=null;
-/* --- estado de la vista: nav.lc (sobrevive al render) + preferencias del equipo --- */
-function lcNav(){
-  if(!nav.lc || typeof nav.lc!=="object"){ const p=lcPrefs(); nav.lc={v:p.v, fundo:p.fundo, cu:p.cu, per:p.per, cat:p.cat, dest:p.dest, rango:p.rango}; }
-  const L=nav.lc;
-  if(L.v!=="dia" && L.v!=="cuarteles") L.v="dia";   // Etapa 1: siempre se pinta Día a día
-  if(typeof L.fundo!=="string") L.fundo=""; if(typeof L.cu!=="string") L.cu="";
-  if(L.fundo && L.fundo!==GENERAL && fundos().indexOf(L.fundo)<0) L.fundo="";   // un fundo que ya no existe
-  if(!L.fundo || L.fundo===GENERAL) L.cu="";
-  if(!LC_PERS.some(x=>x[0]===L.per)) L.per="30";
-  if(!LC_CATS.some(x=>x[0]===L.cat)) L.cat="";
-  L.dest=L.dest===true;
-  if(typeof L.q!=="string") L.q="";
-  if(!L.abiertos || typeof L.abiertos!=="object") L.abiertos={};
-  if(L.abierta===undefined) L.abierta=null;
-  if(!L.rango || typeof L.rango!=="object") L.rango={desde:"", hasta:""};
-  L.extra=Math.max(0, Math.floor(+L.extra||0)); L.lim=Math.max(LC_TOPE, +L.lim||0);
-  return L;
-}
-function lcGuardarPrefs(L){ lcPrefsGuardar({v:L.v, fundo:L.fundo, cu:L.cu, per:L.per, cat:L.cat, dest:L.dest, rango:L.rango}); }
-function lcSet(k, v){
-  const L=lcNav();
-  if(k==="limpiar"){
-    Object.assign(L, {fundo:"", cu:"", per:"30", cat:"", dest:false, q:"", extra:0, lim:LC_TOPE});
-    const i=document.getElementById("lcQ"); if(i) i.value=""; lcQEstado("");
-  }else if(k==="fundo"){ L.fundo=v||""; L.cu=""; }
-  else if(k==="per"){
-    L.per=v; L.extra=0;
-    if(v==="rango" && !L.rango.desde && !L.rango.hasta){ const H=hoy(); L.rango={desde:sumarDiasISO(H,-29), hasta:H}; }
-  }
-  else if(k==="dest") L.dest=!!v;
-  else L[k]=v;
-  lcGuardarPrefs(L);
-  lcPintarCuerpo();
-}
-function bitSetF(k, val){   // compatibilidad: la vista anterior filtraba con selects (fundo, tipo, desde, hasta); ahora son los chips de nav.lc
-  const L=lcNav();
-  if(k==="desde" || k==="hasta"){ L.rango=Object.assign({desde:"", hasta:""}, L.rango); L.rango[k]=val||""; lcSet("per", "rango"); return; }
-  if(k==="tipo"){ const c=!val? "" : LC_CATS.some(x=>x[0]===val)? val : lcCatChip(LC_CAT_REG[val]||lcCatTipo(val)); lcSet("cat", LC_CATS.some(x=>x[0]===c)? c : ""); return; }
-  lcSet(k, val);
-}
-/* después de guardar desde la calculadora: Día a día en «7 días» con la fila nueva resaltada (si es más antigua, un rango que la incluya) */
-function lcVerNueva(grupo, fecha){
-  const H=hoy(), vieja=!!fecha && fecha<sumarDiasISO(H,-6);
-  nav.lc={v:"dia", per:vieja? "rango" : "7", resalta:grupo||""};
-  if(vieja) nav.lc.rango={desde:fecha, hasta:H};
-}
-/* --- utilidades --- */
-function lcCatChip(c){ return c==="fert"? "riego" : c; }   // el chip «Riego y fert.» junta las dos
-function lcKBase(e){ const i=e.k.indexOf("|"); return i<0? e.k : e.k.slice(0,i); }   // 'r:812|C1' → 'r:812'
-function lcGrupoK(e){ return e.fecha+"|"+e.fundo+"|"+(e.grupo || lcKBase(e))+"|"+e.cat+"|"+e.tit; }   // una fila = mismo día, fundo, lote y labor
-function lcMes1(f){ return String(f).slice(0,8)+"01"; }
-function lcMesFin(f){ return gtI(new Date(+f.slice(0,4), +f.slice(5,7), 0)); }
-function lcDM(f){ return fmtF(f).slice(0,5); }   // «22-10»
-function lcDelAl(a, b){   // «del 20 al 21-10» · «del 28-09 al 02-10» · con el año si cambia
-  if(!b || b===a) return lcDM(a);
-  if(a.slice(0,4)!==b.slice(0,4)) return "del "+fmtF(a)+" al "+fmtF(b);
-  return "del "+(a.slice(0,7)===b.slice(0,7)? a.slice(8,10) : lcDM(a))+" al "+lcDM(b);
-}
-function lcFechaLarga(f){ return f? LC_DIAS[gtD(f).getDay()]+" "+fmtF(f) : "sin fecha"; }
-function lcDiasTxt(n){ return n===1? "1 día" : n+" días"; }
-function lcRango(L, H){   // período → {desde, hasta ('' = sin tope: lo con fecha futura también se ve), ref (fin de la ventana), nom}
-  if(L.per==="7") return {desde:sumarDiasISO(H,-6), hasta:"", ref:H, nom:"7 días"};
-  if(L.per==="temp"){ const t=lcTemp(H), r=lcTempRango(t); return {desde:r? r.desde : sumarDiasISO(H,-364), hasta:"", ref:H, nom:"temporada "+t}; }
-  if(L.per==="rango"){
-    let d=L.rango.desde||"", h=L.rango.hasta||""; if(d && h && h<d){ const x=d; d=h; h=x; }
-    return {desde:d||"0000-01-01", hasta:h, ref:(h && h<H)? h : H, nom:d && h? lcDelAl(d,h) : d? "desde el "+fmtF(d) : h? "hasta el "+fmtF(h) : "todo"};
-  }
-  return {desde:sumarDiasISO(H,-29), hasta:"", ref:H, nom:"30 días"};
-}
-function lcContar(evs){   // filas (no eventos) de un tramo plegado: una aplicación en 4 cuarteles cuenta 1
-  const s=new Map(); let apl=0, dest=0;
-  for(const e of evs){ const k=lcGrupoK(e); let g=s.get(k); if(!g){ g={d:false}; s.set(k,g); if(e.cat==="apl") apl++; } if(e.dest && !g.d){ g.d=true; dest++; } }
-  return {n:s.size, apl, dest};
-}
-function lcEspCss(){   // color de cada especie (gtColEsp, ajustable en la Gantt) como --esp en un <style id="lcEsp"> propio: sin estilos en línea
-  const es=[...new Set((D.cuarteles||[]).map(q=>q.especie||""))];
-  _lcEspI=new Map(es.map((e,i)=>[e,i]));
-  const css=es.map((e,i)=>{ const c=String(gtColEsp(e)||""); return `#lcVista [data-e="${i}"]{--esp:${/^#[0-9a-f]{3,8}$/i.test(c)? c : "#94a3b8"};}`; }).join("\n");
-  if(css===_lcEspCss) return; _lcEspCss=css;
-  let st=document.getElementById("lcEsp"); if(!st){ st=document.createElement("style"); st.id="lcEsp"; document.head.appendChild(st); }
-  st.textContent=css;
-}
-/* --- pintar --- */
-function vBitacora(){ return `<div id="lcVista" onclick="lcClic(event)" onchange="lcCambio(event)" onkeydown="lcTecla(event)">${lcVistaHTML()}</div>`; }
-function lcVistaHTML(){ const L=lcNav(); return lcCabHTML(L)+`<div id="lcCuerpo">${lcCuerpoHTML()}</div>`; }
-function lcPintar(){   // repinta toda la vista (sin render()); el buscador conserva el foco y el cursor
-  const el=document.getElementById("lcVista"); if(!el) return;
-  const a=document.activeElement, foco=a && a.id==="lcQ"? [a.selectionStart, a.selectionEnd] : null;
-  el.innerHTML=lcVistaHTML();
-  if(foco){ const q=document.getElementById("lcQ"); if(q){ q.focus(); try{ q.setSelectionRange(foco[0], foco[1]); }catch(e){} } }
-  lcPos();
-}
-function lcPintarCuerpo(){ const c=document.getElementById("lcCuerpo"); if(!c){ lcPintar(); return; } c.innerHTML=lcCuerpoHTML(); lcPos(); }   // filtros y búsqueda: la cabecera no se toca (no se pierde el teclado)
-function lcCabHTML(L){
-  return `<div class="lc-cab">
-    <div class="lc-q${L.q? " lleno" : ""}" role="search">${ic("search")}<input id="lcQ" type="text" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="${uiEsMovil()? "Buscar…" : "Buscar en toda la historia…"}" aria-label="Buscar en toda la historia de la Bitácora" value="${esc(L.q)}" oninput="lcBuscar(this.value)"><button type="button" class="lc-q-x" data-acc="qx" aria-label="Borrar la búsqueda">${ic("x")}</button></div>
-    <div class="lc-cab-bs">
-      <button type="button" class="btn sec lc-cab-b" data-acc="dictar" aria-label="Dictar">${ic("mic")}<span>Dictar</span></button>
-      <button type="button" class="btn lc-cab-b" data-acc="anotar" aria-label="Anotar">${ic("plus")}<span>Anotar</span></button>
-      <div class="lc-exp"><button type="button" class="btn sec lc-cab-b" data-acc="exportar" aria-label="Exportar" aria-expanded="false" aria-controls="lcExp">${ic("download")}<span>Exportar</span><span class="lc-chev">${ic("chevronDown")}</span></button>
-        <div class="lc-menu" id="lcExp" hidden><button type="button" class="lc-menu-it" data-acc="avances">${ic("chartUp")} Avances de labores (PDF)</button></div></div>
-    </div>
-  </div>`;
-}
-function lcFiltrosHTML(L, idx){
-  const fus=fundos().filter(f=>f!==GENERAL);
-  if(L.fundo===GENERAL || idx.ev.some(e=>e.fundo===GENERAL)) fus.push(GENERAL);
-  _lcFus=fus;
-  const chip=(acc, dat, act, txt, cls)=>`<button type="button" class="chip lc-chip${cls||""}${act? " act" : ""}" data-acc="${acc}" ${dat} aria-pressed="${act}">${txt}</button>`;
-  let h=`<div class="lc-fil">
-    <div class="lc-chips" role="group" aria-label="Fundo">${chip("fundo",'data-i=""',!L.fundo,"Todos")}${fus.map((f,i)=>chip("fundo",`data-i="${i}"`,L.fundo===f,esc(f))).join("")}${chip("solodest","",L.dest,"★ Destacados"," lc-dest")}</div>`;
-  _lcCus=[];
-  if(L.fundo && L.fundo!==GENERAL){
-    const cus=cuartelesDe(L.fundo).filter(q=>gtNorm(q.especie||"")!=="por plantar" || q.nombre===L.cu);
-    _lcCus=cus.map(q=>q.nombre);
-    h+=`<div class="lc-chips" role="group" aria-label="Cuartel">${chip("cu",'data-i=""',!L.cu,"Todos los cuarteles")}${cus.map((q,i)=>chip("cu",`data-i="${i}"`,L.cu===q.nombre,`<span class="lc-pt" data-e="${_lcEspI.get(q.especie||"")}"></span>${esc(q.nombre)}`)).join("")}</div>`;
-  }
-  h+=`<div class="lc-chips lc-chips2"><span class="lc-grp" role="group" aria-label="Período"><span class="lc-et" aria-hidden="true">Período</span>${LC_PERS.map(([k,t])=>chip("per",`data-v="${k}"`,L.per===k,t)).join("")}</span><span class="lc-sep" aria-hidden="true"></span><span class="lc-grp" role="group" aria-label="Qué"><span class="lc-et" aria-hidden="true">Qué</span>${LC_CATS.map(([k,t])=>chip("cat",`data-v="${k}"`,L.cat===k,t)).join("")}</span></div>`;
-  if(L.per==="rango") h+=`<div class="lc-rango"><label><span>Desde</span>${fechaHTML("lcR_d", L.rango.desde)}</label><label><span>Hasta</span>${fechaHTML("lcR_h", L.rango.hasta)}</label></div>`;
-  return h+`</div>`;
-}
-function lcMirandoHTML(L, R){   // «Mirando: San Joaquín · Aplicaciones · 7 días ✕ Limpiar»
-  const p=[];
-  if(L.fundo) p.push(esc(L.fundo)); if(L.cu) p.push(esc(L.cu));
-  if(L.cat) p.push(esc((LC_CATS.find(x=>x[0]===L.cat)||[])[1]||""));
-  if(L.q.trim()) p.push("«"+esc(L.q.trim())+"» en toda la historia"); else if(L.per!=="30") p.push(esc(R.nom));
-  if(L.dest) p.push("★ Destacados");
-  if(!p.length) return "";
-  return `<div class="lc-mir"><span>Mirando: <b>${p.join(" · ")}</b></span><button type="button" class="lc-limpiar" data-acc="limpiar">${ic("x")} Limpiar</button></div>`;
-}
-function lcPendHTML(L, idx, esp){   // «Por confirmar»: aplicaciones atrasadas o de los próximos 7 días, por lote (aplId) o por registro
-  _lcPend=[];
-  if(L.cat && L.cat!=="apl") return "";
-  const H=idx.hoy, lim=sumarDiasISO(H,7), G=new Map();
-  for(const e of idx.pend){
-    if(e.fecha && e.fecha>lim) continue;
-    if((L.fundo && e.fundo!==L.fundo) || (L.cu && e.cu!==L.cu)) continue;
-    const k=e.grupo || lcKBase(e); let g=G.get(k); if(!g){ g={evs:[]}; G.set(k,g); } g.evs.push(e);
-  }
-  if(!G.size) return "";
-  _lcPend=[...G.values()];
-  return `<section class="lc-pend" aria-labelledby="lcPendT"><h2 class="lc-pend-t" id="lcPendT">${ic("clock")} Por confirmar (${_lcPend.length})</h2>${_lcPend.map((g,i)=>{
-    const e=g.evs[0], cus=[...new Set(g.evs.map(x=>x.cu||"todo el fundo"))], fus=[...new Set(g.evs.map(x=>x.fundo))];
-    const cuando=e.est==="atrasada"? `<b class="lc-atr">atrasada ${lcDiasTxt(gtDif(e.fecha,H))}</b>` : e.fecha===H? "programada para hoy" : e.fecha? "programada "+lcDM(e.fecha) : "sin fecha";
-    return `<div class="lc-pend-it"><div class="lc-pend-tx"><b>${esc(e.tit)}</b> <span>· ${esc(fus.join(", "))} › ${esc(cus.slice(0,4).join(", "))}${cus.length>4? " +"+(cus.length-4) : ""} ·</span> ${cuando}</div>${esp? "" : `<button type="button" class="btn sec chico" data-acc="conf" data-i="${i}">${ic("check")} Confirmar</button>`}</div>`;
-  }).join("")}</section>`;
-}
-function lcCuerpoHTML(){
-  const L=lcNav(), idx=lcIdx(), H=idx.hoy, esp=syncEspejo(), R=lcRango(L, H);
-  lcEspCss(); _lcFilas=new Map(); _lcN=0;
-  const ts=gtNorm(L.q).trim().split(/\s+/).filter(Boolean);
-  const pasa=_lcPasa=e=>(!L.fundo || e.fundo===L.fundo) && (!L.cu || e.cu===L.cu) && (!L.cat || lcCatChip(e.cat)===L.cat) && (!L.dest || e.dest)
-    && (!ts.length || (!!e.txt && ts.every(t=>e.txt.indexOf(t)>=0)));
-  let h=lcFiltrosHTML(L, idx)+lcMirandoHTML(L, R)+lcPendHTML(L, idx, esp);
-  if(!idx.ev.length) return h+`<div class="vacio">Todavía no hay nada anotado.<br>Toca <b>Anotar</b> o <b>Dictar</b> para empezar.</div>`;
-  if(ts.length){   // búsqueda: en TODA la historia, sin importar el período (y lo dice)
-    const lst=idx.ev.filter(e=>e.fecha && pasa(e)), c=lcContar(lst);
-    h+=`<div class="lc-bus" role="status">«${esc(L.q.trim())}» en toda la historia: ${c.n? c.n+(c.n===1? " registro" : " registros")+" · el último del "+fmtF(lst[0].fecha) : "sin resultados"}</div>`;
-    if(!lst.length) return h+`<div class="vacio">No encontré «${esc(L.q.trim())}»${L.fundo||L.cat||L.dest? " con estos filtros" : ""}.<br>Prueba con otra palabra (sin tildes también sirve).</div>`;
-    const r=lcDiasHTML(lst, L.lim); h+=r.h;
-    if(r.i<lst.length) h+=`<button type="button" class="btn sec lc-mas" data-acc="mas">${ic("chevronDown")} Ver más resultados</button>`;
-    return h;
-  }
-  /* período: los últimos 14 días abiertos; las semanas anteriores y los meses van plegados y se arman al abrirse */
-  const lst=[]; for(const e of idx.ev){ if(e.fecha && (!R.hasta || e.fecha<=R.hasta) && pasa(e)) lst.push(e); }
-  let Lb=R.desde; for(let k=0;k<L.extra;k++) Lb=lcMes1(sumarDiasISO(Lb,-1));   // «Ver meses anteriores» suma de a un mes
-  const viejo=lst.length? lst[lst.length-1].fecha : "";
-  const w0=sumarDiasISO(R.ref, -(LC_ABIERTOS-1)), W=R.desde>w0? R.desde : w0;
-  let p=0; while(p<lst.length && lst[p].fecha>=W) p++;
-  const ab=lst.slice(0,p), r=lcDiasHTML(ab, LC_TOPE);
-  let lista=r.h, nBl=0;
-  const resto=lst.slice(r.i);                                // lo que no cupo abierto (tope de filas) y lo anterior a la ventana
-  let cur=r.i<ab.length? ab[r.i].fecha : sumarDiasISO(W,-1);
-  const m1W=lcMes1(W), tope=viejo>Lb? viejo : Lb, bl=[];
-  while(cur>=tope){ const lun=lcSem(cur); if(sumarDiasISO(lun,6)<m1W || cur<R.desde) break; bl.push({k:"s:"+lun, d:lun<Lb? Lb : lun, h:cur, sem:true}); cur=sumarDiasISO(lun,-1); }
-  while(cur>=tope){ const m1=lcMes1(cur); bl.push({k:"m:"+cur.slice(0,7), d:m1<Lb? Lb : m1, h:cur}); cur=sumarDiasISO(m1,-1); }
-  let q=0;
-  for(const b of bl){
-    const evs=[]; while(q<resto.length && resto[q].fecha>b.h) q++;
-    while(q<resto.length && resto[q].fecha>=b.d) evs.push(resto[q++]);
-    if(!evs.length) continue;
-    const c=lcContar(evs), abto=!!L.abiertos[b.k]; nBl++;
-    const tit=b.sem? "Semana "+lcDM(b.d)+" al "+lcDM(b.h) : MESES_L[+b.d.slice(5,7)-1]+" "+b.d.slice(0,4)+((b.d.slice(8)!=="01" || b.h!==lcMesFin(b.h))? " ("+lcDelAl(b.d, b.h)+")" : "");
-    lista+=`<div class="lc-blq"><button type="button" class="lc-blq-b" data-acc="bloque" data-b="${b.k}" aria-expanded="${abto}">${ic("chevronRight")}<span><b>${tit}</b> · ${c.n} ${c.n===1? "registro" : "registros"}${c.apl? " · "+c.apl+(c.apl===1? " aplicación" : " aplicaciones") : ""}${c.dest? " · "+c.dest+(c.dest===1? " destacado" : " destacados") : ""}</span></button>${abto? lcBloqueHTML(evs) : ""}</div>`;
-  }
-  if(!r.h && !nBl) lista+=`<div class="vacio">No hay nada anotado ${L.per==="30"? "en los últimos 30 días" : L.per==="7"? "en los últimos 7 días" : "en "+esc(R.nom)}${L.fundo||L.cat||L.dest? " con estos filtros" : ""}.</div>`;
-  if(viejo && viejo<Lb) lista+=`<button type="button" class="btn sec lc-mas" data-acc="anteriores">${ic("chevronDown")} Ver meses anteriores</button>`;
-  return h+lista;
-}
-function lcBloqueHTML(evs){   // semana o mes abierto: se arma recién al abrirlo
-  const r=lcDiasHTML(evs, LC_TOPE);
-  return `<div class="lc-blq-c">${r.h}${r.i<evs.length? `<div class="lc-tope">Se muestran los días más recientes (${LC_TOPE} filas como máximo). Usa los filtros o la búsqueda para ver el resto.</div>` : ""}</div>`;
-}
-/* evs ya filtrados y en orden (fecha, hora e id desc) → días con su cabecera, un subtítulo por fundo y las filas; corta en «tope» filas */
-function lcDiasHTML(evs, tope){
-  let h="", n=0, i=0;
-  while(i<evs.length){
-    const f=evs[i].fecha; let j=i+1; while(j<evs.length && evs[j].fecha===f) j++;
-    const secs=lcAgrupar(evs.slice(i,j)), ng=secs.reduce((s,x)=>s+x.grupos.length,0);
-    if(n && n+ng>tope) break;
-    h+=lcDiaHTML(f, secs, n? 0 : tope); n+=ng; i=j;
-  }
-  return {h, n, i};   // i: hasta dónde se dibujó
-}
-function lcAgrupar(evs){   // eventos de un día → [{fundo, grupos}] en el orden fijo de los fundos («General» al final)
-  const M=new Map();
-  for(const e of evs){
-    let s=M.get(e.fundo); if(!s){ s={fundo:e.fundo, m:new Map(), grupos:[]}; M.set(e.fundo, s); }
-    const gk=lcGrupoK(e); let g=s.m.get(gk);
-    if(!g){ g={gk, id:"", fecha:e.fecha, fundo:e.fundo, cat:e.cat, tit:e.tit, evs:[]}; s.m.set(gk, g); s.grupos.push(g); }
-    g.evs.push(e);
-  }
-  const fs=fundos(), pos=f=> f===GENERAL? 1e6 : (fs.indexOf(f)<0? 5e5 : fs.indexOf(f));
-  return [...M.values()].sort((a,b)=>pos(a.fundo)-pos(b.fundo) || String(a.fundo).localeCompare(String(b.fundo)));
-}
-function lcGrupoFin(g, id){   // lo que muestra la fila (cuarteles, estrella, detalle, carencia, fotos) y su id para el onclick delegado
-  const ev=g.evs, e=ev[0];
-  g.id=id || ("lf"+(++_lcN)); _lcFilas.set(g.id, g);
-  g.cus=[...new Set(ev.map(x=>x.cu).filter(Boolean))];
-  g.dest=ev.some(x=>x.dest); g.origen=e.origen; g.hora=e.hora;
-  g.fin=ev.reduce((m,x)=>x.fin>m? x.fin : m, "");
-  const dets=[...new Set(ev.map(x=>x.det))];
-  g.det= dets.length===1? dets[0]+(ev.length>1 && e.cant>0? " en cada cuartel" : "")
-    : (ev.every(x=>x.cant>0) && new Set(ev.map(x=>x.uni)).size===1)? lcNum(ev.reduce((s,x)=>s+x.cant,0))+(e.uni? " "+e.uni : "")+" en total" : "";
-  g.car=null;
-  if(g.cat==="apl") ev.forEach(x=>{ const c=x.car; if(c && (!g.car || (c.d!=null && (g.car.d==null || c.fin>g.car.fin)))) g.car=c; });   // la que termina más tarde
-  g.fotos=(e.fotos||[]).filter(Boolean);
-  return g;
-}
-function lcClimaHTML(f){   // el clima de la estación (D.wl.dias) a la derecha del día
-  const w=D.wl && D.wl.dias && D.wl.dias[f]; if(!w) return "";
-  const r1=x=>lcNum(Math.round(x*10)/10), p=[];
-  if(w.ll!=null && w.ll!=="" && !isNaN(+w.ll)) p.push(r1(+w.ll)+" mm");
-  if(w.tmin!=null && w.tmax!=null) p.push(Math.round(w.tmin)+"° / "+Math.round(w.tmax)+"°");
-  if(w.et!=null && !isNaN(+w.et)) p.push("ET₀ "+r1(+w.et));
-  const hel=w.tmin!=null && +w.tmin<=0;
-  if(!p.length && !hel) return "";
-  return `<span class="lc-clima"><span class="lc-sr">Estación: </span>${p.join(" · ")}${hel? (p.length? " · " : "")+`<b class="lc-helada">helada</b>` : ""}</span>`;
-}
-function lcDiaHTML(f, secs, max){   // «Hoy · jueves 22-10», «Ayer · …», «Martes 20-10»; max: tope de filas de un día muy cargado
-  const H=hoy(), dif=gtDif(f, H), dia=LC_DIAS[gtD(f).getDay()], fd=f.slice(0,4)===H.slice(0,4)? lcDM(f) : fmtF(f);
-  const tit= dif===0? "Hoy · "+dia+" "+fd : dif===1? "Ayer · "+dia+" "+fd : dif===-1? "Mañana · "+dia+" "+fd : dia.charAt(0).toUpperCase()+dia.slice(1)+" "+fd;
-  let n=0, resto=0;
-  const cuerpo=secs.map(s=>{
-    const gs=[];
-    s.grupos.forEach(g=>{ if(max && n>=max){ resto++; return; } n++; gs.push(lcFilaHTML(lcGrupoFin(g))); });
-    return gs.length? `<div class="lc-fu"><h3 class="lc-fu-t">${esc(s.fundo||"Sin fundo")}</h3>${gs.join("")}</div>` : "";
-  }).join("");
-  return `<section class="lc-dia" data-dia="${esc(f)}"><div class="lc-dia-h"><h2 class="lc-dia-t">${tit}</h2>${lcClimaHTML(f)}</div>${cuerpo}${resto? `<div class="lc-tope">Y ${resto} más este día: usa los filtros o la búsqueda.</div>` : ""}</section>`;
-}
-/* --- la fila: un solo renderizador para todo (anatomía de .hoy-it: cuadrito de ícono teñido, título, detalle) --- */
-function lcFilaHTML(g){
-  const L=lcNav(), ab=L.abierta===g.gk, H=hoy(), e=g.evs[0], cus=g.cus, n=cus.length;
-  const nueva=!!L.resalta && g.evs.some(x=>x.grupo===L.resalta);
-  const chips= n? cus.slice(0,4).map(c=>`<span class="lc-cu">${esc(c)}</span>`).join("")+(n>4? `<span class="lc-cu mas">+${n-4}</span>` : "")+(n>1? `<span class="lc-cu mas-m">+${n-1}</span>` : "")
-    : (g.fundo===GENERAL? "" : `<span class="lc-cu fu">todo el fundo</span>`);
-  const m=[], ori={asis:"dictado"+(g.hora? " "+g.hora : ""), calcfito:"Calc Fito", calc:"Calculadora", gantt:"Gantt"}[g.origen];
-  if(ori) m.push(`<span class="lc-b or">${esc(ori)}</span>`);
-  if(g.cat==="apl"){
-    if(n>1) m.push(`<span class="lc-b">lote de ${n} cuarteles</span>`);
-    m.push(`<span class="lc-b ok">aplicada</span>`);
-    const c=g.car;
-    if(c && c.d!=null && c.d>0 && c.fin>=H) m.push(`<span class="lc-b car">carencia hasta ${lcDM(c.fin)}</span>`);
-    else if(c && c.d==null && c.fin>=H) m.push(`<span class="lc-b sd">sin dato de carencia</span>`);
-  }
-  if(e.urg) m.push(`<span class="lc-b urg">urgente</span>`);
-  const det=[g.det, g.fin? lcDelAl(g.fecha, g.fin) : ""].filter(Boolean).join(" · ");
-  const ths=g.fotos.length? `<span class="lc-ths" aria-hidden="true">${g.fotos.slice(0,2).map(id=>`<span class="lc-th" data-fid="${esc(id)}"></span>`).join("")}</span>` : "";
-  return `<div class="lc-it c-${g.cat}${ab? " abierta" : ""}${nueva? " nueva" : ""}" id="${g.id}"><button type="button" class="lc-it-b" data-acc="fila" data-f="${g.id}" aria-expanded="${ab}"${ab? ` aria-controls="${g.id}d"` : ""}>`+
-    `<span class="lc-it-i">${ic(LC_ICO[g.cat]||"doc")}</span>`+
-    `<span class="lc-it-tx"><span class="lc-it-t"><b>${esc(g.tit)}</b>${g.dest? `<span class="lc-star" aria-hidden="true">★</span><span class="lc-sr">(destacado)</span>` : ""}${chips? `<span class="lc-cus">${chips}</span>` : ""}</span>${det? `<span class="lc-it-d">${esc(det)}</span>` : ""}</span>`+
-    (m.length? `<span class="lc-it-m">${m.join("")}</span>` : "")+ths+`<span class="lc-it-ch">${ic("chevronDown")}</span></button>`+
-    (ab? `<div class="lc-det" id="${g.id}d">${lcDetHTML(g)}</div>` : "")+`</div>`;
-}
-/* --- el detalle en el lugar (una fila abierta a la vez): todo el registro según su fuente, el origen y las acciones --- */
-function lcCarTxt(c, esp){
-  if(!c) return `<span class="lc-no">sin dato</span>`;
-  const sp=esp? "para "+esc(String(esp).toLowerCase()) : "para esta especie";
-  if(c.d==null) return `sin dato: el catálogo no trae carencia ${sp}. Consulta el LMR con la exportadora antes de cosechar.`+(c.fin && c.fin>=hoy()? ` <span class="lc-no">Se ve en gris hasta el ${fmtF(c.fin)}.</span>` : "");
-  const org=c.src==="catalogo"? "según catálogo "+sp : "del registro";
-  if(!c.d) return "0 días ("+org+")";
-  return `${c.d} días · ${c.fin>=hoy()? "hasta el" : "terminó el"} ${fmtF(c.fin)} (${org})`;
-}
-function lcCarCorto(c){ if(!c) return ""; if(c.d==null) return "sin dato de carencia"; if(!c.d) return "sin carencia"; return "carencia "+c.d+" d → "+lcDM(c.fin); }
-function lcAplTemp(e, p){   // cuántas aplicaciones de ese producto van en el cuartel en la temporada (contando esta)
-  const t=lcTemp(e.fecha), nk=cfNomK(p.n);
-  return (lcIdx().porCu.get(e.cuK)||[]).filter(x=>x.cat==="apl" && x.fecha<=e.fecha && lcTemp(x.fecha)===t && (x.prodId===p.id || cfNomK(x.tit)===nk)).length || 1;
-}
-function lcMismoDictado(o){   // otros ítems guardados del mismo dictado (sin contar los cuarteles del mismo lote)
-  let n=0;
-  ["registros","bitacora","notas","fenologia","labores"].forEach(k=>(D[k]||[]).forEach(x=>{
-    if(x && x!==o && x.asisLote===o.asisLote && !(o.aplId && x.aplId===o.aplId) && !(o.gid && x.gid===o.gid)) n++;
-  }));
-  return n;
-}
-function lcFotosHTML(fs){ fs=(fs||[]).filter(Boolean); return fs.length? `<div class="lc-fotos">${fs.slice(0,12).map((id,i)=>`<button type="button" class="lc-th lc-foto" data-acc="foto" data-fid="${esc(id)}" aria-label="Ver la foto ${i+1} en grande"></button>`).join("")}</div>` : ""; }
-function lcLoteHTML(g, esp){   // un lote (aplId): un renglón por cuartel con su estado y [Editar] o [Confirmar]
-  const e=g.evs[0];
-  g.pendL=e.grupo? lcIdx().pend.filter(x=>x.grupo===e.grupo) : [];
-  if(g.evs.length<2 && !g.pendL.length) return "";
-  const espDe=x=>{ const q=(D.cuarteles||[]).find(z=>z.fundo===x.fundo && z.nombre===x.cu); return q? [q.especie, q.variedad].filter(Boolean).join(" ") : ""; };
-  const ren=(x, est, acc)=>`<div class="lc-lr" role="listitem"><span class="lc-lr-cu">${esc(x.cu||"todo el fundo")}${x.fundo!==g.fundo? " · "+esc(x.fundo) : ""}${x.dest? ` <span class="lc-star" aria-hidden="true">★</span><span class="lc-sr">(destacado)</span>` : ""}</span><span>${esc(espDe(x))}</span><span>${est}</span><span>${esc(lcCarCorto(x.car))}</span>${acc}</div>`;
-  return `<div class="lc-lote" role="list" aria-label="Cuarteles de esta aplicación">`+
-    g.evs.map((x,i)=>ren(x, "aplicada "+lcDM(x.fecha), esp? "" : `<button type="button" class="btn sec chico" data-acc="editar" data-f="${g.id}" data-i="${i}">${ic("edit")} Editar</button>`)).join("")+
-    g.pendL.map((x,j)=>ren(x, x.est==="atrasada"? `<b class="lc-atr">atrasada</b> (plan ${lcDM(x.fecha)})` : "por confirmar (plan "+lcDM(x.fecha)+")", esp? "" : `<button type="button" class="btn sec chico" data-acc="confr" data-f="${g.id}" data-i="${j}">${ic("check")} Confirmar</button>`)).join("")+`</div>`;
-}
-function lcDetHTML(g){
-  const e=g.evs[0], o=lcFuente(e)||{}, esp=syncEspejo();
-  const dd=(t,v)=>`<div class="lc-dl"><span class="lc-dt">${t}</span><span class="lc-dd">${v}</span></div>`;
-  const no=`<span class="lc-no">no se anotó</span>`, pre=s=>`<span class="lc-pre">${esc(s)}</span>`;
-  const cuQ=cu=>(D.cuarteles||[]).find(q=>q.fundo===g.fundo && q.nombre===cu) || null;
-  let lugar=esc(g.fundo);
-  if(g.cus.length>1) lugar+=" › "+g.cus.length+" cuarteles";
-  else if(g.cus[0]){ const q=cuQ(g.cus[0]); lugar+=" › "+esc(g.cus[0])+(q? " ("+[q.especie, q.variedad, +q.ha>0? lcNum(+q.ha)+" ha" : ""].filter(Boolean).map(esc).join(", ")+")" : ` <span class="lc-no">(ya no está en la lista de cuarteles)</span>`); }
-  else if(g.fundo!==GENERAL) lugar+=" › todo el fundo";
-  let h=`<div class="lc-det-h">${esc(LC_QUE[g.cat]||"Registro")} · ${lcFechaLarga(g.fecha)}${g.fin? " al "+lcFechaLarga(g.fin) : ""} · ${lugar}</div>`;
-  if(e.st==="registros" && o.tipo==="Aplicación"){
-    const p=cfProdDeReg(o), m=p? moaDeProducto(p) : null;
-    h+=dd("Producto", esc(o.producto||"—")+(p? ` <span class="lc-no">· ${[p.ia, p.emp, p.sag? "SAG "+p.sag : "", p.t, m && m.l.length? moaTxt(m.l) : ""].filter(Boolean).map(esc).join(" · ")}</span>` : ` <span class="lc-no">(no está en el catálogo de productos)</span>`));
-    h+=dd("Dosis", o.dosis? esc(o.dosis) : no)+dd("Objetivo", o.objetivo? esc(o.objetivo) : no)+dd("Mojamiento", o.mojamiento? esc(o.mojamiento)+" L/ha" : no);
-    if((o.mezcla||[]).length) h+=dd("Mezcla", o.mezcla.map(x=>esc((x && x.n)||"")+(x && x.dosis? " ("+esc(x.dosis)+")" : "")).join(" · "));
-    if(g.evs.length===1) h+=dd("Carencia", lcCarTxt(e.car, (cuQ(e.cu)||{}).especie));
-    const rein=p? (p.rein || (p.r!=null && p.r!==""? p.r+" h" : "")) : "";
-    if(rein) h+=dd("Reingreso", esc(rein)+" (según catálogo)");
-    if(p && p.maxApl) h+=dd("Máx. por temporada", "catálogo: «"+esc(p.maxApl)+"»"+(g.evs.length===1 && e.cu? " · esta temporada: "+lcAplTemp(e, p)+".ª en este cuartel" : ""));
-    const sup=g.evs.reduce((s,x)=>s+(+x.sup||0),0), cos=g.evs.reduce((s,x)=>s+(+x.costo||0),0);
-    if(sup>0 || cos>0) h+=dd("Superficie y costo", [sup>0? lcNum(sup)+" ha" : "", cos>0? "$ "+lcNum(cos) : ""].filter(Boolean).join(" · "));
-    h+=lcLoteHTML(g, esp);
-    if(o.obs) h+=dd("Observaciones", pre(o.obs));
-    h+=lcFotosHTML(o.fotos);
-  }else if(e.st==="bitacora"){
-    if(/:nota$/.test(lcKBase(e))){
-      h+=dd("Nota del día", String(o.nota||"").trim()? pre(o.nota) : no);
-      const ls=o.lineas||[]; if(ls.length) h+=dd("Labores del día", ls.map(l=>esc(l.tipo||"")+" ("+(l.cuartel? esc(l.cuartel) : "todo el fundo")+")").join(" · "));
-    }else{
-      h+=dd("Labor", esc(e.tit)+(g.evs.some(x=>x.integ)? ` · <span class="lc-ok">✓ integrada a la Carta Gantt</span>` : ""));
-      h+=`<div class="lc-lote" role="list" aria-label="Lo anotado en cada cuartel">${g.evs.map(x=>`<div class="lc-lr" role="listitem"><span class="lc-lr-cu">${esc(x.cu||"todo el fundo")}</span><span>${x.cant>0? lcNum(x.cant)+" "+esc(x.uni||"") : "sin cantidad"}</span><span>${x.pers>0? lcNum(x.pers)+(x.pers===1? " persona" : " personas") : "sin personas"}</span></div>`).join("")}</div>`;
-      if(String(o.nota||"").trim()) h+=dd("Nota del día", pre(o.nota));
-    }
-  }else if(e.st==="fenologia"){
-    h+=dd("Estado", esc(e.tit)+(o.especie? " · "+esc(o.especie) : ""));
-    if(o.nota) h+=dd("Nota", pre(o.nota));
-    h+=lcFotosHTML(o.fotos);
-  }else if(e.st==="notas"){
-    if(o.oculta) h+=`<div class="lc-no">Nota oculta: se ve en la pestaña Notas.</div>`;
-    else{
-      h+=dd("Categoría", esc(o.cat||"—")+(o.cat==="Urgente"? (o.resuelta? " · resuelta" : ` · <b class="lc-atr">sin resolver</b>`) : ""));
-      if(o.titulo) h+=dd("Título", esc(o.titulo));
-      h+=dd("Texto", o.texto? pre(o.texto) : no);
-      if((o.check||[]).length) h+=dd("Lista", `<ul class="lc-chk">${o.check.map(c=>`<li${c && c.ok? ` class="ok"` : ""}>${c && c.ok? "✓" : "○"} ${esc((c && c.t)||"")}</li>`).join("")}</ul>`);
-      h+=lcFotosHTML(o.fotos);
-      const na=(o.audios||[]).length; if(na) h+=dd("Audios", na+(na===1? " audio: se escucha" : " audios: se escuchan")+" al abrir la nota");
-    }
-  }else if(e.st==="labores"){
-    h+=dd("Labor", esc(o.tipo||e.tit)+(o.desc? " · "+esc(o.desc) : ""));
-    if(o.fecha) h+=dd("Plan", lcDelAl(o.fecha, gtFin(o)));
-    if(o.resp) h+=dd("Responsable", esc(o.resp));
-    if(e.det) h+=dd("Lo hecho", esc(e.det));
-  }else if(e.st==="registros"){
-    if(o.tipo==="Labor" && o.fini) h+=dd("Fechas", lcDelAl(o.fini, o.ffin||o.fini));
-    (CAMPOS_REG[o.tipo]||[]).forEach(([k,lab])=>{ const v=o[k]; if(v==null || v==="") return; h+=dd(esc(lab.replace(/\s*\*$/,"")), esc(k==="costo" && !isNaN(+v)? "$ "+lcNum(+v) : String(v))); });
-    if(o.resp) h+=dd("Responsable", esc(o.resp));
-    if(g.evs.length>1) h+=`<div class="lc-lote" role="list" aria-label="Cada cuartel">${g.evs.map((x,i)=>`<div class="lc-lr" role="listitem"><span class="lc-lr-cu">${esc(x.cu||"todo el fundo")}</span><span>${esc(x.det||"")}</span>${esp || x.id===e.id && i>0? "" : `<button type="button" class="btn sec chico" data-acc="editar" data-f="${g.id}" data-i="${i}">${ic("edit")} Editar</button>`}</div>`).join("")}</div>`;
-    if(o.obs) h+=dd("Observaciones", pre(o.obs));
-    h+=lcFotosHTML(o.fotos);
-  }
-  return h+lcOrigenHTML(e, o)+lcAccHTML(g, e, o, esp);
-}
-function lcOrigenHTML(e, o){   // siempre el origen; si vino del asistente, desde dónde, cuándo y el texto dictado entre comillas
-  let t;
-  if(e.origen==="asis"){
-    t="dictado al asistente desde el "+(o.equipo==="celular"? "celular" : "iPad")+(o.dictadoFh? " · "+fmtFH(o.dictadoFh) : "");
-    const d=e.dictado || o.dictado; if(d) t+=`<span class="lc-dict">«${esc(d)}»</span>`;
-    if(o.asisLote){ const n=lcMismoDictado(o); if(n) t+=` <span class="lc-no">Del mismo dictado: ${n} ${n===1? "ítem más" : "ítems más"}.</span>`; }
-  }else t={calcfito:"guardada desde Calc Fito", calc:"guardada desde la Calculadora de labores", gantt:"anotada en la Carta Gantt"}[e.origen] || ("anotado a mano"+(e.st==="notas" && o.fh? " · "+fmtFH(o.fh) : ""));
-  return `<div class="lc-dl"><span class="lc-dt">Origen</span><span class="lc-dd">${t}</span></div>`;
-}
-function lcAccHTML(g, e, o, esp){   // botones de 44 px; nada de Eliminar aquí (queda en cada formulario, con Deshacer)
-  const ver= e.st==="registros" && o.tipo==="Aplicación"? `<button type="button" class="btn sec" data-acc="ver" data-v="aplic">${ic("flask")} Ver en Aplic.</button>`
-    : e.st==="labores"? `<button type="button" class="btn sec" data-acc="gantt" data-f="${g.id}">${ic("chart")} Ver en la Carta Gantt</button>`
-    : e.st==="fenologia"? `<button type="button" class="btn sec" data-acc="ver" data-v="fenologia">${ic("flower")} Ver en Fenología</button>`
-    : e.st==="notas" && !o.oculta? `<button type="button" class="btn sec" data-acc="nota" data-f="${g.id}">${ic("note")} Abrir la nota</button>` : "";
-  if(esp) return `<div class="lc-acc">${g.dest? `<span class="lc-star-ro">★ Destacado</span>` : ""}${ver}</div><div class="lc-hint">En el celular solo se consulta: lo que quieras cambiar, díctalo y se envía al iPad.</div>`;
-  const bit=e.st==="bitacora", nl=bit? (o.lineas||[]).length : 0;
-  const ed= bit? "Editar el día" : (e.st==="registros" && o.tipo==="Aplicación" && (!o.dosis || !o.objetivo))? "Completar dosis y objetivo" : "Editar";
-  return `<div class="lc-acc"><button type="button" class="btn sec" data-acc="editar" data-f="${g.id}" data-i="0">${ic("edit")} ${ed}</button>`+
-    `<button type="button" class="btn sec lc-estr${g.dest? " on" : ""}" data-acc="estrella" data-f="${g.id}" aria-pressed="${g.dest}">${ic("star")} ${g.dest? "Quitar destacado" : "Destacar"}</button>${ver}</div>`+
-    (bit? `<div class="lc-hint">Editar abre el día completo${nl>1? " ("+nl+" labores)" : ""}; ahí también se puede eliminar el día, con Deshacer.</div>` : "");
-}
-/* --- acciones (un solo onclick delegado en #lcVista) --- */
-function lcClic(ev){
-  const b=ev.target && ev.target.closest? ev.target.closest("[data-acc]") : null, a=b? b.getAttribute("data-acc") : "";
-  if(a!=="exportar") lcMenu(false);
-  if(!b) return;
-  const L=lcNav(), f=b.getAttribute("data-f")||"", si=b.getAttribute("data-i"), i=(si==null || si==="")? -1 : +si;
-  if(a==="fila") lcFilaTgl(f);
-  else if(a==="fundo") lcSet("fundo", i<0? "" : (_lcFus[i]||""));
-  else if(a==="cu") lcSet("cu", i<0? "" : (_lcCus[i]||""));
-  else if(a==="per" || a==="cat") lcSet(a, b.getAttribute("data-v")||"");
-  else if(a==="solodest") lcSet("dest", !L.dest);
-  else if(a==="limpiar") lcSet("limpiar");
-  else if(a==="qx") lcBuscarYa("");
-  else if(a==="dictar") ir("asist");
-  else if(a==="anotar") lcAnotar();
-  else if(a==="exportar") lcMenu();
-  else if(a==="avances") abrirAvances();
-  else if(a==="bloque"){ const k=b.getAttribute("data-b")||""; L.abiertos[k]=!L.abiertos[k]; lcPintarCuerpo(); }
-  else if(a==="anteriores"){ L.extra++; lcPintarCuerpo(); }
-  else if(a==="mas"){ L.lim+=LC_TOPE; lcPintarCuerpo(); }
-  else if(a==="conf") lcConfirmar(i);
-  else if(a==="confr"){ const g=_lcFilas.get(f), x=g && g.pendL && g.pendL[i]; if(x) regConfirmar(x.id); }
-  else if(a==="editar") lcEditar(f, i<0? 0 : i);
-  else if(a==="estrella") lcDestacar(f);
-  else if(a==="foto"){ const id=b.getAttribute("data-fid"); if(id) abrirVisor(id); }
-  else if(a==="ver"){ const t=b.getAttribute("data-v"); if(t==="aplic" || t==="fenologia") ir(t); }
-  else if(a==="gantt") lcVerGantt(f);
-  else if(a==="nota"){ const g=_lcFilas.get(f); if(g) verNota(g.evs[0].id); }
-}
-function lcCambio(ev){   // fechas del «Rango…» (texto dd/mm/aaaa o calendario)
-  const t=ev.target, id=t && t.id? t.id.replace(/_t$/,"") : "";
-  if(id!=="lcR_d" && id!=="lcR_h") return;
-  const n=document.getElementById(id), L=lcNav();
-  L.rango=Object.assign({desde:"", hasta:""}, L.rango); L.rango[id==="lcR_d"? "desde" : "hasta"]=(n && n.value)||"";
-  lcGuardarPrefs(L); lcPintarCuerpo();
-}
-function lcTecla(ev){ if(ev.key==="Escape") lcMenu(false); }
-function lcMenu(on){   // menú Exportar ▾
-  const m=document.getElementById("lcExp"); if(!m) return;
-  const v= on===undefined? m.hidden : !!on; if(m.hidden===!v) return;
-  m.hidden=!v;
-  const b=document.querySelector('#lcVista [data-acc="exportar"]'); if(b) b.setAttribute("aria-expanded", String(v));
-}
-function lcQEstado(v){ const w=document.querySelector("#lcVista .lc-q"); if(w) w.classList.toggle("lleno", !!v); }
-function lcBuscar(v){   // 150 ms después de la última tecla; repinta solo el cuerpo (el cuadro de texto no se toca)
-  lcQEstado(v); clearTimeout(_lcBusT);
-  _lcBusT=setTimeout(()=>{ const L=lcNav(); L.q=String(v||""); L.lim=LC_TOPE; lcPintarCuerpo(); }, 150);
-}
-function lcBuscarYa(v){
-  clearTimeout(_lcBusT);
-  const L=lcNav(), i=document.getElementById("lcQ"); L.q=v; L.lim=LC_TOPE;
-  if(i) i.value=v; lcQEstado(v); lcPintarCuerpo();
-  if(i) try{ i.focus(); }catch(e){}
-}
-function lcFilaTgl(fid){   // abre o cierra el detalle en el lugar: solo una fila abierta a la vez, sin repintar la lista
-  const L=lcNav(), g=_lcFilas.get(fid); if(!g) return;
-  const prev=L.abierta, el0=document.getElementById(fid), top0=el0? el0.getBoundingClientRect().top : 0;
-  L.abierta= prev===g.gk? null : g.gk;
-  if(prev && prev!==g.gk) for(const [id,x] of _lcFilas){ if(x.gk===prev){ const el=document.getElementById(id); if(el) el.outerHTML=lcFilaHTML(x); } }
-  const el=document.getElementById(fid); if(!el) return;
-  el.outerHTML=lcFilaHTML(g);
-  const el2=document.getElementById(fid);
-  if(el2){
-    const d=el2.getBoundingClientRect().top-top0; if(Math.abs(d)>1) window.scrollBy(0, d);   // la fila tocada no salta si se cerró otra más arriba
-    const b=el2.querySelector(".lc-it-b"); if(b) try{ b.focus({preventScroll:true}); }catch(e){}
-  }
-  lcFotosObservar();
-}
-function lcFilaRepintar(fid){   // después de destacar: solo esa fila, con el índice ya rehecho
-  const g0=_lcFilas.get(fid), el=document.getElementById(fid), L=lcNav();
-  if(!g0 || !el || L.dest){ lcPintarCuerpo(); return; }
-  const idx=lcIdx(), evs=(idx.porDia.get(g0.fecha)||[]).map(i=>idx.ev[i]).filter(e=>e.fundo===g0.fundo && lcGrupoK(e)===g0.gk && (!_lcPasa || _lcPasa(e)));
-  if(!evs.length){ lcPintarCuerpo(); return; }
-  const g=lcGrupoFin({gk:g0.gk, id:"", fecha:g0.fecha, fundo:g0.fundo, cat:g0.cat, tit:g0.tit, evs}, fid);
-  el.outerHTML=lcFilaHTML(g);
-  lcFotosObservar();
-}
-function lcEditar(fid, i){   // el formulario de siempre (formReg, bitEditar, fenEditar, formNota o gtEditar)
-  const g=_lcFilas.get(fid), e=g && (g.evs[i] || g.evs[0]); if(!e) return;
-  if(e.st==="notas"){ formNota(e.id); return; }
-  if(e.st==="bitacora") aviso("Se abre el día completo: todas las labores de ese día y fundo", {tipo:"info"});
-  const m=/^(\w+)\(/.exec(e.abrir||""), fn=m && {formReg, bitEditar, fenEditar, gtEditar, verNota}[m[1]];
-  if(fn) fn(e.id);
-}
-function lcConfirmar(i){   // «Por confirmar»: el lote completo (regConfirmarBatch, elige los cuarteles) o el registro solo (regConfirmar)
-  const g=_lcPend[i]; if(!g) return;
-  const r=lcFuente(g.evs[0]); if(!r) return;
-  if(new Set(g.evs.map(e=>e.id)).size>1) regConfirmarBatch(String(r.aplId||regSig(r))); else regConfirmar(r.id);
-}
-function lcVerGantt(fid){ const g=_lcFilas.get(fid), a=gtAj(); a.per="semana"; a.ancla=(g && g.fecha) || hoy(); a.est=""; guardar(); ir("gantt"); }   // como hoyGanttHoy, en la semana de la labor
-/* ★ destacar: dest en la fuente (en notas, fijada; en la bitácora, la línea por su uid o índice) y se repinta solo la fila */
-function lcDestFuente(e, on){
-  const o=lcFuente(e); if(!o) return;
-  if(e.st==="notas"){ o.fijada=on; return; }
-  let t=o;
-  if(e.st==="bitacora"){
-    const x=lcKBase(e).split(":")[2]||"";
-    if(x!=="nota") t=(o.lineas||[]).find(l=>l.uid===x) || (/^\d+$/.test(x)? (o.lineas||[])[+x] : null);
-  }
-  if(!t) return;
-  if(on) t.dest=true; else delete t.dest;
-}
-function lcDestacar(fid, cual){   // cual: sin dar = preguntar si es un lote; "todos"; o el índice del cuartel
-  if(espejoNo()) return;
-  const g=_lcFilas.get(fid); if(!g) return;
-  const on=!g.dest, lote=g.evs.length>1 && g.evs[0].st==="registros" && !!g.evs[0].grupo;
-  if(lote && cual===undefined){
-    abrirModal(ic("star")+" "+(on? "Destacar" : "Quitar destacado"), `<div class="lc-hoja-t">Esta aplicación está en ${g.evs.length} cuarteles. ¿${on? "Destacar" : "Quitar el destacado de"} solo uno o todos?</div>
-      <div class="lc-hoja-bs"><button type="button" class="btn" onclick="lcDestacar('${fid}','todos')">${ic("star")} Los ${g.evs.length} cuarteles</button>${g.evs.map((x,i)=>`<button type="button" class="btn sec" onclick="lcDestacar('${fid}',${i})">Solo ${esc(x.cu||"todo el fundo")}</button>`).join("")}</div>`, null, null);
-    lcHoja(); return;
-  }
-  if(cual!==undefined) cerrarModal();
-  const evs= (cual===undefined || cual==="todos")? g.evs : [g.evs[cual]].filter(Boolean);
-  evs.forEach(e=>lcDestFuente(e, on));
-  guardar();
-  lcFilaRepintar(fid);
-}
-/* --- hoja «+ Anotar»: los formularios de siempre (en el celular espejo: díctalo) --- */
-function lcHoja(){ const m=document.querySelector("#capaModal .modal"); if(m) m.classList.add("lc-hoja"); }   // sin pie Guardar/Cancelar: se elige y se abre
-function lcAnotar(){
-  if(syncEspejo()){
-    abrirModal(ic("plus")+" Anotar", `<div class="lc-hoja-t">En el celular solo se consulta. Lo que quieras anotar, <b>díctaselo al asistente</b>: llega al iPad por la bandeja, aunque estés sin señal.</div>
-      <div class="lc-hoja-bs"><button type="button" class="btn" onclick="cerrarModal();ir('asist')">${ic("mic")} Dictar al asistente</button></div>`, null, null);
-    lcHoja(); return;
-  }
-  const H=hoy(), ops=[
-    ["flask","Aplicación","Producto, dosis, objetivo y carencia","nav.regTipo='Aplicación';formReg();nav.regTipo=''"],
-    ["clipboard","Labor del día","Poda, cosecha, riego manual… con cuartel, cantidad y personas",`bitNueva('${H}')`],
-    ["flower","Estado fenológico","BBCH y foto del cuartel","fenNuevo()"],
-    ["note","Nota","Lo que viste: plagas, problemas, ideas","formNota()"],
-    ["drop","Riego, fertilización, lluvia u otro","Registro técnico del cuartel o del fundo","formReg()"],
-    ["calc","Labor con costo","Calculadora: superficie, rendimiento y pago","cerrarModal();abrirCalc('cuad')"]];
-  abrirModal(ic("plus")+" ¿Qué quieres anotar?", `<div class="lc-hoja-bs g2">${ops.map(([i,t,s,on])=>`<button type="button" class="lc-op" onclick="${on}"><span class="lc-op-i">${ic(i)}</span><span class="lc-op-tx"><b>${t}</b><small>${s}</small></span></button>`).join("")}</div>
-    <div class="lc-hoja-t">Más rápido: <b>dictarlo</b>. Claude lo ordena y lo guarda en su lugar.</div>`, null, null);
-  lcHoja();
-}
-/* --- miniaturas: solo de lo que se ve (IntersectionObserver), de a 3 lecturas a la vez y achicadas a 120 px en memoria --- */
-let _lcObs=null, _lcCola=[], _lcAct=0;
-const _lcMini=new Map();
-function lcPos(){   // después de pintar: miniaturas visibles y la fila recién guardada (calculadora) a la vista
-  lcFotosObservar();
-  const L=lcNav();
-  if(L.resalta){ L.resalta=""; const el=document.querySelector("#lcVista .lc-it.nueva"); if(el) setTimeout(()=>{ try{ el.scrollIntoView({block:"center"}); }catch(e){} }, 80); }
-}
-function lcFotosObservar(){
-  if(_lcObs) _lcObs.disconnect();
-  const els=document.querySelectorAll("#lcVista .lc-th[data-fid]:not(.ok)");
-  if(!els.length) return;
-  if(typeof IntersectionObserver==="undefined"){ els.forEach(lcFotoEncolar); return; }
-  if(!_lcObs) _lcObs=new IntersectionObserver(xs=>xs.forEach(x=>{ if(x.isIntersecting){ _lcObs.unobserve(x.target); lcFotoEncolar(x.target); } }), {rootMargin:"200px 0px"});
-  els.forEach(el=>_lcObs.observe(el));
-}
-function lcFotoEncolar(el){ if(el._lcEn) return; el._lcEn=1; _lcCola.push(el); lcFotoSig(); }
-function lcFotoSig(){
-  while(_lcAct<3 && _lcCola.length){
-    const el=_lcCola.shift(); if(!el.isConnected) continue;
-    _lcAct++;
-    lcMini(el.getAttribute("data-fid")).then(u=>{
-      if(u && el.isConnected && !el.querySelector("img")){ const im=document.createElement("img"); im.alt=""; im.src=u; el.appendChild(im); }
-    }, ()=>{}).then(()=>{ el.classList.add("ok"); _lcAct--; lcFotoSig(); });
-  }
-}
-function lcMini(fid){   // el iPad no decodifica la foto de 1.600 px por cada fila: se guarda una de 120 px
-  if(_lcMini.has(fid)) return Promise.resolve(_lcMini.get(fid));
-  return Promise.resolve().then(()=>fotoGet(fid)).then(d=>new Promise(res=>{
-    if(!d || !/^data:image\//.test(d)){ res(null); return; }
-    const im=new Image();
-    im.onload=()=>{ try{ const s=Math.min(1, 120/Math.max(im.width, im.height, 1)), c=document.createElement("canvas");
-      c.width=Math.max(1, Math.round(im.width*s)); c.height=Math.max(1, Math.round(im.height*s)); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
-      const u=c.toDataURL("image/jpeg", .75); if(_lcMini.size>300) _lcMini.clear(); _lcMini.set(fid, u); res(u); }catch(e){ res(d); } };
-    im.onerror=()=>res(null); im.src=d;
-  }));
 }
 /* ================== AVISOS FLOTANTES (reemplazan a alert) ==================
    aviso("Guardado") · aviso("⚠️ Falta la fecha") · aviso("Nota eliminada",{accion:{txt:"Deshacer",fn}})
