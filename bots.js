@@ -23,7 +23,7 @@ let botActual = null, pasoActual = "", vel = "mirar", enMono = false;
 const LS_INFORME = "agronotasBotsUltimo";
 const XSS = `<img src="x-bot" onerror="window.__xss=(window.__xss||0)+1">`;
 /* funciones que ningún bot debe tocar nunca (aunque esté en la copia de prueba) */
-const PELIGROSAS = /\b(borrarTodo|restaurar|inpRest|sync[A-Z]\w*|asisMic|asisOrdenar|asisBandejaMirar|asisColaEnviar|asisLeer|wlConectar|guardarIA|probarIA|iaAnalizar\w*|iaBuscar|importarGesAgro|quitarGesAgro|ortoOff\w*|salirProyecto|nuevoProyecto|pedirEntrar|lluviaGPS|mapaVerEarth|mapaMedRelieve|botsAbrir|espacioContarNube|cfPDFRedactarIA|lluviaOficialIA|lluviaAnalizar|cfReset|AgroBots)\b/;
+const PELIGROSAS = /\b(borrarTodo|restaurar|inpRest|sync[A-Z]\w*|asisMic|asisOrdenar|asisBandejaMirar|asisColaEnviar|asisLeer|fenSugerir|wlConectar|guardarIA|probarIA|iaAnalizar\w*|iaBuscar|iaIdentificar|iaEscanearEtiqueta|iaInterpretarDoc|iaTranscribir|iaResumenInforme|importarGesAgro|quitarGesAgro|ortoOff\w*|salirProyecto|nuevoProyecto|pedirEntrar|lluviaGPS|mapaVerEarth|mapaMedRelieve|botsAbrir|espacioContarNube|cfPDFRedactarIA|lluviaOficialIA|lluviaAnalizar|cfReset|AgroBots)\b/;
 
 /* ------------------------------------------------------------------ utilidades */
 const esperar = ms => new Promise(r=>setTimeout(r, ms));
@@ -52,6 +52,35 @@ const fmtCL = (x, d=0)=> Number(x).toLocaleString("es-CL", {minimumFractionDigit
 /* ¿aparece en el texto un número (formato chileno) igual a «valor» con tolerancia relativa? */
 function numsDe(t){ return (String(t).match(/-?\d{1,3}(?:\.\d{3})+(?:,\d+)?|-?\d+(?:,\d+)?/g)||[]).map(numCL).filter(x=>!isNaN(x)); }
 function tieneNum(t, valor, tol){ const e = tol==null? Math.max(0.01, Math.abs(valor)*0.002) : tol; return numsDe(t).some(x=>Math.abs(x-valor)<=e); }
+/* archivos de prueba para los adjuntos (23-10-2026): un PDF mínimo válido armado como texto y una foto dibujada en un canvas */
+function pdfMinimo(nombre){
+  const flujo = "BT /F1 14 Tf 20 150 Td (Orden de aplicacion - Bot) Tj ET";
+  const objs = ["<</Type/Catalog/Pages 2 0 R>>", "<</Type/Pages/Kids[3 0 R]/Count 1>>",
+    "<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>",
+    "<</Length "+flujo.length+">>\nstream\n"+flujo+"\nendstream", "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>"];
+  let s = "%PDF-1.4\n"; const offs = [];
+  objs.forEach((o,i)=>{ offs.push(s.length); s += (i+1)+" 0 obj\n"+o+"\nendobj\n"; });
+  const x = s.length;
+  s += "xref\n0 "+(objs.length+1)+"\n0000000000 65535 f \n"+offs.map(o=>String(o).padStart(10,"0")+" 00000 n \n").join("")+"trailer\n<</Size "+(objs.length+1)+"/Root 1 0 R>>\nstartxref\n"+x+"\n%%EOF\n";
+  return new File([s], nombre||"orden_aplicacion_bot.pdf", {type:"application/pdf"});
+}
+async function fotoBot(w, h, nombre){
+  const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d");
+  x.fillStyle = "#3a7d44"; x.fillRect(0, 0, w, h); x.fillStyle = "#f6f0f3";
+  for(let i=0;i<60;i++){ x.beginPath(); x.arc((i*197)%w, (i*131)%h, 18+(i%5)*6, 0, 7); x.fill(); }
+  const b = await new Promise(r=>c.toBlob(r, "image/png"));
+  return new File([b], nombre||"planta_bot.png", {type:"image/png"});
+}
+function dims(src){ return new Promise(res=>{ const im = new Image(); im.onload = ()=>res({w:im.naturalWidth, h:im.naturalHeight}); im.onerror = ()=>res({w:0, h:0}); im.src = src; }); }
+/* elige archivos en un <input type=file> como lo haría la persona (DataTransfer) y dispara su onchange */
+async function adjuntarArchivos(obj, files){
+  const inp = necesito(obj instanceof Element? obj : document.querySelector(obj), "el selector de archivos");
+  try{ const dt = new DataTransfer(); files.forEach(f=>dt.items.add(f)); inp.files = dt.files; }
+  catch(e){ throw new SinProbar("Este navegador no deja simular archivos elegidos"); }
+  accion("elige "+files.map(f=>f.name).join(", "));
+  inp.dispatchEvent(new Event("change", {bubbles:true}));
+  await pausa();
+}
 
 /* ------------------------------------------------------------------ registro */
 function dondeEstoy(){
@@ -836,7 +865,7 @@ BOTS.push({id:"hoy", modulo:"Hoy y widgets", nombre:"Carla, administradora de tu
 }});
 
 /* 🧪 CALC FITO Y APLICACIONES ------------------------------------------------------------ */
-BOTS.push({id:"aplicador", modulo:"Calc Fito y Aplicaciones", nombre:"Pedro, aplicador", ico:"🧪", que:"Calc Fito: cálculo exacto contra la fórmula, unidades, punto de miles, negativos, base de productos, plagas, mezcla, registro SAG, duplicados, rotación, PDF; Aplicaciones: confirmar, carencia en Hoy y mapa, Excel, editar y borrar", correr: async ()=>{
+BOTS.push({id:"aplicador", modulo:"Calc Fito y Aplicaciones", nombre:"Pedro, aplicador", ico:"🧪", que:"Calc Fito: cálculo exacto contra la fórmula, unidades, punto de miles, negativos, base de productos, plagas, mezcla, registro SAG, duplicados, rotación, PDF; Aplicaciones: confirmar, carencia en Hoy y mapa, Excel, editar y borrar; escanear etiqueta con Claude simulado (foto JPEG de 1.600 px, llena la aplicación)", correr: async ()=>{
   const ponCF = async (k, v)=>{ const el = necesito(document.querySelector(`#app input[oninput="cfSet('${k}',this.value)"]`), "el campo "+k); await escribir(el, v, k); };
   let incl = [];
   await paso("Parte de cero", async ()=>{
@@ -992,6 +1021,37 @@ BOTS.push({id:"aplicador", modulo:"Calc Fito y Aplicaciones", nombre:"Pedro, apl
     await escribir("m_producto", "Bot manual"); const n0=D.registros.length; await guardarModal_();
     const r = D.registros[D.registros.length-1];
     if(D.registros.length>n0) bug("Una aplicación creada a mano no queda «pendiente» ni se puede confirmar", !r.estado, "", "leve");
+  });
+  /* la IA de la app es Claude por el puente (23-10-2026): Claude y el puente se simulan (window.syncFetch), nunca se llama a la API real */
+  await paso("Escanear etiqueta con IA: la foto va a Claude por el puente y llena la aplicación", async ()=>{
+    const s = syncCfg(), s0 = {url:s.url, clave:s.clave}, sf0 = window.syncFetch, ic0 = HTMLInputElement.prototype.click, ia0 = D.ia;
+    let pedido = null, inpIA = null;
+    window.syncFetch = async function(ruta, opt){
+      if(ruta!=="asistente") throw new Error("bots: ruta "+ruta+" no simulada");
+      pedido = asisCuerpoLeer(opt.body); await esperar(80);   // con la foto va en el formato liviano del puente
+      return {ok:true, modelo:"claude-opus-5-5", adjuntos:(pedido.adjuntos||[]).length, usage:{input_tokens:1800, output_tokens:200}, datos:{respuesta:JSON.stringify({producto:"Bot Etiqueta Abamectina", ingrediente_activo:"abamectina", dosis:"50 cc/100 L", objetivo:"Arañita roja", carencia_dias:"7 días", reingreso:"12 h", mojamiento:"2000 L/ha", banda_toxicologica:"", notas:""})}};
+    };
+    try{
+      s.url = "https://bots.invalid"; s.clave = "bots"; D.ia = {key:"", modelo:""};   // sin clave de Gemini: todo debe ir por el puente
+      await tocar('#topbar [onclick="formReg()"]', "+ Registro");
+      await elegir("m_tipo", "Aplicación"); await pausa();
+      necesito(buscar({texto:/Escanear etiqueta/}), "el botón «Escanear etiqueta / receta con IA»");
+      /* el botón abre la cámara: se atrapa el selector de archivo y se le da una foto dibujada (iaEscanearEtiqueta está en PELIGROSAS: se llama directo) */
+      HTMLInputElement.prototype.click = function(){ if(this.type==="file"){ inpIA = this; return; } return ic0.call(this); };
+      accion("Escanear etiqueta (simulado)"); iaEscanearEtiqueta();
+      HTMLInputElement.prototype.click = ic0;
+      necesito(inpIA, "el selector de la foto de la etiqueta");
+      await adjuntarArchivos(inpIA, [await fotoBot(2600, 1950, "etiqueta_bot.png")]);
+      chk(await esperarQue(()=>v("m_producto")==="Bot Etiqueta Abamectina", 6000), "La etiqueta leída por Claude no llenó el producto de la aplicación", "grave");
+      chk(v("m_carencia")==="7" && /50 cc/.test(v("m_dosis")) && /12 h/.test(v("m_obs")), "La etiqueta no llenó la carencia (solo el número), la dosis o el reingreso en observaciones");
+      const ad = ((pedido && pedido.adjuntos)||[])[0]||{}, dd = ad.data? await dims("data:image/jpeg;base64,"+ad.data) : {w:0, h:0};
+      chk(ad.media_type==="image/jpeg" && !/^data:/.test(ad.data||"") && Math.max(dd.w, dd.h)===1600, "La foto de la etiqueta no fue a Claude como JPEG de 1.600 px sin prefijo: "+ad.media_type+" "+dd.w+"×"+dd.h, "grave");
+      chk(pedido && /ETIQUETA/.test(pedido.texto||"") && pedido.schema && pedido.schema.required && pedido.schema.required[0]==="respuesta", "El pedido de la etiqueta no lleva la instrucción como texto o el formato {respuesta}");
+      await cancelarModal();
+    } finally {
+      HTMLInputElement.prototype.click = ic0; window.syncFetch = sf0; s.url = s0.url; s.clave = s0.clave; D.ia = ia0;
+      if(modalAbierto()){ try{ cerrarModal(); }catch(e){} }
+    }
   });
 }});
 
@@ -1214,74 +1274,422 @@ BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"�
     chk(D.fenologia.length===n0-1, "No se borró el registro");
     if(await undoVisible()){ await deshacer(); chk(D.fenologia.length===n0, "Deshacer no recuperó el registro"); } else falla("Sin Deshacer","Al borrar un registro fenológico no apareció Deshacer");
   });
+  await paso("Sugerir estado con Claude (simulado): marca el BBCH sugerido con su explicación y confianza", async ()=>{
+    const q = plantados(fu).find(x=>fenLista(x.especie||"").length>4) || plantados(fu)[0];
+    if(!q) throw new SinProbar("Hace falta un cuartel plantado");
+    const lista = fenLista(q.especie||""), sug = lista[Math.min(4, lista.length-1)];
+    const s = syncCfg(), s0 = {url:s.url, clave:s.clave, rol:s.rol}, sf0 = window.syncFetch;
+    let pedido = null, n0 = fenAll().length, nuevo = null;
+    window.syncFetch = async function(ruta, opt){
+      if(ruta==="asistente"){ pedido = asisCuerpoLeer(opt.body); await esperar(120);   // formato liviano del puente
+        return {ok:true, modelo:"claude-opus-5-5", adjuntos:(pedido.adjuntos||[]).length, usage:{input_tokens:2500, output_tokens:120}, datos:{bbch:sug.c, confianza:"media", explicacion:"Bot: se ven flores abiertas "+XSS, foto_recibida:true}}; }
+      throw new Error("bots: ruta "+ruta+" no simulada");
+    };
+    try{
+      s.url = "https://bots.invalid"; s.clave = "bots"; s.rol = "off"; guardar();
+      await irA("fenologia"); await tocar("[onclick='fenNuevo()']", "Registrar estado");
+      await fecha("fen_fecha", HOY()); await elegir("fen_fundo", fu); await pausa(); await elegir("fen_cuartel", q.nombre); await pausa();
+      chk(!buscar("#fenSugBtn"), "«Sugerir estado con Claude» aparece sin fotos", "leve");
+      const inp = necesito([...document.querySelectorAll('#capaModal input[type="file"]')].find(x=>!x.hasAttribute("capture")), "el botón Galería");
+      await adjuntarArchivos(inp, [await fotoBot(2000, 1500, "flor_bot.png")]);
+      chk(await esperarQue(()=>buscar("#fenSugBtn"), 6000), "Con cuartel y foto no aparece «Sugerir estado con Claude»", "grave");
+      s.url = ""; fenSugPintar(); chk(!buscar("#fenSugBtn"), "Sin puente sigue apareciendo «Sugerir estado con Claude»", "leve");
+      s.url = "https://bots.invalid"; fenSugPintar();
+      const on0 = Object.getOwnPropertyDescriptor(navigator, "onLine"), a0 = R.alerts.length;
+      try{ Object.defineProperty(navigator, "onLine", {configurable:true, get:()=>false}); accion("Sugerir sin señal"); await fenSugerir(); }
+      finally{ if(on0) Object.defineProperty(navigator, "onLine", on0); else delete navigator.onLine; }
+      chk(huboMsg(a0, /sin señal/i) && !pedido, "Sin señal no avisa (o igual intentó llamar a Claude)", "media");
+      accion("Sugerir estado con Claude (simulado)"); await fenSugerir(); await pausa();
+      necesito(pedido, "el pedido a Claude");
+      const a = (pedido.adjuntos||[])[0], en = (((pedido.schema||{}).properties||{}).bbch||{}).enum||[];
+      chk(a && a.media_type==="image/jpeg" && !/^data:/.test(a.data) && atob(a.data.slice(0,4)).charCodeAt(0)===0xFF, "La foto no va a Claude como image/jpeg en base64 sin prefijo", "grave");
+      chk(en.length===lista.length && en.indexOf(sug.c)>=0 && pedido.system.indexOf(sug.n)>=0 && pedido.system.indexOf(q.especie||"")>=0, "Claude no recibe la especie y la lista BBCH del cuartel", "media");
+      const on = buscar("#fenEstados .fenchip.on");
+      chk(FEN && FEN.bbch===sug.c && on && txtDe(on).indexOf(sug.c)===0, "No quedó marcado el estado que sugirió Claude ("+sug.c+")", "grave");
+      const t = txtDe(buscar("#fenSug"));
+      chk(/confianza media/i.test(t) && /Bot: se ven flores abiertas/.test(t), "No se muestran la explicación y la confianza de Claude", "media");
+      /* si se marca otro estado, el recuadro ya no dice «Quedó marcado» */
+      const otro = lista.find(e=>e.c!==sug.c);
+      fenSel(otro.c); chk(/Marcaste otro estado/.test(txtDe(buscar("#fenSug"))) && !/Quedó marcado/.test(txtDe(buscar("#fenSug"))), "Al elegir otro estado el recuadro sigue diciendo que quedó marcado el sugerido", "leve");
+      fenSel(sug.c);
+      /* la explicación de Claude pasa a la Observación (antes se perdía al guardar) */
+      await tocar("#fenSug .fen-sug-obs", "Usar como observación");
+      chk(/Bot: se ven flores abiertas/.test(v("fen_nota")) && !buscar("#fenSug .fen-sug-obs"), "«Usar como observación» no pasó la explicación a la Observación", "media");
+      chk(await guardarModal_(), "No se guardó con el estado sugerido");
+      nuevo = fenAll().length===n0+1? fenAll()[fenAll().length-1] : null;
+      chk(nuevo && nuevo.bbch===sug.c && nuevo.cuartel===q.nombre && (nuevo.fotos||[]).length===1 && /Bot: se ven flores abiertas/.test(nuevo.nota||""), "El registro no quedó con el estado sugerido, la foto y la explicación");
+    } finally {
+      window.syncFetch = sf0; s.url = s0.url; s.clave = s0.clave; s.rol = s0.rol;
+      if(nuevo) D.fenologia = fenAll().filter(x=>x.id!==nuevo.id);
+      guardar();
+    }
+  });
 }});
 
 /* 📓 BITÁCORA ---------------------------------------------------------------------------- */
-BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitácora", ico:"📓", que:"Bitácora: validaciones, día con labor, cuartel, cantidad y personas, rendimiento por persona, integrar con la Gantt, decimales, «Otro día», filtros, otros registros, avances, editar, borrar y deshacer", correr: async ()=>{
-  const fu = fundosConCuarteles()[0], q1 = plantados(fu)[0];
-  await paso("Validación: día sin labores", async ()=>{
-    await irA("bitacora"); await tocar(`[onclick="bitNueva('${HOY()}')"]`, "Anotar hoy");
-    const a0=R.alerts.length; await guardarModal_();
-    chk(modalAbierto() && huboMsg(a0,/al menos una labor/i), "Un día sin labores se guardó o no avisó");
-  });
-  await paso("Día con labor, cuartel, cantidad y personas (rendimiento e integración)", async ()=>{
-    const n0 = (D.bitacora||[]).length, l0 = D.labores.length;
-    if(!modalAbierto()){ await irA("bitacora"); await tocar(`[onclick="bitNueva('${HOY()}')"]`, "Anotar hoy"); }
-    await elegir("bit_fundo", fu); await pausa();
-    const chip = necesito(buscar("#capaModal .bitchip"), "una labor para marcar"); await tocar(chip, "labor "+txtDe(chip));
-    const lin = necesito(buscar("#capaModal .bitlin"), "la línea de la labor");
-    const sel = lin.querySelector("select"); if(sel && q1) await elegir(sel, q1.nombre, "cuartel");
-    const ins = [...lin.querySelectorAll("input")].filter(visible);
-    if(ins.length<3) throw new SinProbar("La línea no tiene cantidad / unidad / personas");
-    await escribir(ins[0], "600", "cantidad"); await escribir(ins[1], "plantas", "unidad"); await escribir(ins[2], "10", "personas"); await pausa(1);
-    chk(/\b60\b/.test(txtDe(document.querySelector("#capaModal [id^='rin_']")||lin.parentElement)), "No muestra el rendimiento 60 por persona (600 / 10)");
-    const ig = document.getElementById("bit_integrar"); if(ig) await marcar(ig, true, "Integrar a la Carta Gantt");
-    await escribir("bit_nota", "Bot: día normal "+XSS);
-    chk(await guardarModal_(), "No se guardó el día");
-    const b = D.bitacora[D.bitacora.length-1];
-    chk(D.bitacora.length===n0+1 && b.lineas && b.lineas[0].cantidad===600 && b.lineas[0].personas===10, "El día no quedó con 600 de cantidad y 10 personas");
-    if(ig) chk(b.lineas[0].laborId || D.labores.length>l0, "Con «Integrar» no se ligó a ninguna labor de la Gantt");
-  });
-  await paso("Decimales: «2.5» personas", async ()=>{
-    if(typeof bitNum!=="function") throw new SinProbar("No existe el lector de números de la bitácora");
-    bug("La bitácora lee «2.5» como 25 (el punto se toma como miles)", bitNum("2.5")===25, "bitNum(«2.5») = "+bitNum("2.5"), "media");
-  });
-  await paso("«Otro día» propone una fecha distinta de hoy", async ()=>{
-    await irA("bitacora"); await tocar("[onclick='bitNueva()']", "Otro día");
-    const f = v("bit_fecha");
-    bug("«Otro día» abre con la fecha de hoy (igual que «Anotar hoy»)", f===HOY(), "", "leve");
-  });
-  await paso("Filtros por fundo y fechas", async ()=>{
-    await irA("bitacora");
-    const sf = buscar("#app select[onchange^=\"bitSetF('fundo'\"]"); if(sf) await elegir(sf, fu, "fundo");
-    if(document.getElementById("bit_d_t")) await fecha("bit_d", masDias(HOY(),-7));
-    chk(/día normal|Hoy/i.test(txtApp()), "Con filtros que incluyen hoy, no aparece el día anotado", "leve");
-    const lim = buscar({texto:/limpiar/i}, "#app"); if(lim) await tocar(lim, "Limpiar");
-  });
-  await paso("Otro registro: riego", async ()=>{
-    await irA("bitacora"); await tocar("[onclick='bitOtroRegistro()']", "Riego, lluvia…");
-    const b = necesito(buscar("#capaModal [onclick*=\"nav.regTipo='Riego'\"]"), "la opción Riego"); await tocar(b, "Riego");
-    chk(modalAbierto() && v("m_tipo")==="Riego", "No abrió el registro con el tipo «Riego»");
-    await elegir("m_fundo", fu); const n0 = D.registros.length; const a0 = R.alerts.length; await guardarModal_();
-    if(modalAbierto() && await completarFaltantes(a0)) await guardarModal_();
-    chk(D.registros.length===n0+1, "No se guardó el registro de riego (mensajes: "+msgsDesde(a0).join(" / ").slice(0,120)+")");
-  });
-  await paso("Costos y avances", async ()=>{
-    await irA("bitacora"); await tocar("[onclick='abrirAvances()']", "Costos y avances");
-    necesito(visorAbierto(), "la pantalla de avances");
-    for(const p of ["hoy","semana","mes","todo"]){ const b = buscar(`[onclick="avSet('avPeriodo','${p}')"]`); if(b) await tocar(b, p); }
-    const t = txtDe(visorAbierto());
-    chk(/600/.test(t), "Los avances no muestran las 600 unidades anotadas hoy", "media");
-  });
-  await paso("Editar el día, borrar y deshacer", async ()=>{
-    await irA("bitacora"); const b = necesito(D.bitacora.filter(x=>/Bot: día normal/.test(x.nota||"")).pop(), "el día anotado");
-    await tocar(`[onclick="bitEditar(${b.id})"]`, "Editar"); await escribir("bit_nota", "Bot: día normal (editado)"); await guardarModal_();
-    chk(/editado/.test((D.bitacora.find(x=>x.id===b.id)||{}).nota||""), "La edición no quedó");
-    const n0 = D.bitacora.length, lab = b.lineas[0] && b.lineas[0].laborId;
-    await tocar(`[onclick="bitBorrar(${b.id})"]`, "Eliminar"); chk(D.bitacora.length===n0-1, "No se borró el día");
-    if(lab){ const l = D.labores.find(x=>x.id===lab); bug("Al borrar el día queda una labor «en curso» creada por la integración, sin avances", l && l.estado==="encurso" && !(l.avances||[]).length, "", "leve"); }
-    if(await undoVisible()){ await deshacer(); chk(D.bitacora.length===n0, "Deshacer no recuperó el día"); } else falla("Sin Deshacer","Al borrar un día de bitácora no apareció Deshacer");
-  });
+BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitácora", ico:"📓", que:"Bitácora de campo (Día a día): + Anotar › Labor del día (validación, cuartel, cantidad, personas, rendimiento, Gantt, decimales), la fila bajo su día y fundo, filtros en chips (fundo, cuartel, período, rango, qué, ★) sin repintar la cabecera, búsqueda en toda la historia, aplicaciones (la del asistente y un lote de 3 cuarteles en una fila), «Por confirmar», detalle en el lugar, destacar y quitar, Editar, editar y borrar el día con Deshacer, nota de las 22:30 en su día, espejo sin botones que escriben, avances en Exportar y código inyectado que no se ejecuta", correr: async ()=>{
+  const fu = fundosConCuarteles()[0], qs = plantados(fu), q1 = qs[0], H = HOY();
+  const lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null, p0 = localStorage.getItem("agronotasBitacora");
+  const T = {bit:null, asis:null, regs:[], notas:[], fens:[], ap:"apBotLc"+Date.now(), prod:"Bot Movento Lote"};
+  const reExacto = s=>new RegExp("^"+String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"$");
+  const filas = re=>[...document.querySelectorAll("#lcVista .lc-it")].filter(el=>re.test(txtDe(el.querySelector(".lc-it-t b"))));
+  const fila = re=>filas(re)[0] || null;
+  const cusDe = el=>el? [...el.querySelectorAll(".lc-it-t .lc-cu:not(.mas):not(.mas-m)")].map(c=>c.textContent.trim()) : [];
+  const chipLc = (acc, re)=>buscar({texto:re, sel:`#lcVista [data-acc="${acc}"]`});
+  const abrir = async (el, desc)=>{ el = necesito(el, desc); const b = el.querySelector(".lc-it-b"); if(b.getAttribute("aria-expanded")!=="true") await tocar(b, "abrir "+desc); return necesito(document.getElementById(el.id), desc+" abierta"); };
+  const limpiarFiltros = async ()=>{ const b = buscar('#lcVista [data-acc="limpiar"]'); if(b) await tocar(b, "Limpiar filtros"); };
+  const filaBit = ()=>{ const b = T.bit && (D.bitacora||[]).find(x=>x.id===T.bit); if(!b) return null; const t = b.lineas[0].tipo;
+    return filas(reExacto(t)).find(el=>el.closest(".lc-dia") && el.closest(".lc-dia").getAttribute("data-dia")===H && cusDe(el).indexOf(q1.nombre)>=0) || null; };
+  nav.lc = {v:"dia"};
+  try{
+    await paso("+ Anotar › Labor del día: la hoja y la validación del día sin labores", async ()=>{
+      if(!q1 || qs.length<4) throw new SinProbar("Hace falta un fundo con al menos 4 cuarteles plantados");
+      const p = lcPrefs(); delete p.aviso1; lcPrefsGuardar(p);   // como la primera vez en este equipo
+      await irA("bitacora");
+      const av = buscar('#lcVista [data-acc="aviso1"]');
+      chk(av && /Anotar lo de hoy/.test(txtDe(document.querySelector("#lcVista .lc-aviso"))), "La primera vez no aparece el aviso de dónde quedó «Anotar lo de hoy»", "leve");
+      if(av){ await tocar(av, "Entendido"); await irA("bitacora"); chk(!document.querySelector("#lcVista .lc-aviso") && lcPrefs().aviso1===true, "El aviso de la primera vez vuelve a salir después de «Entendido»", "leve"); }
+      await tocar('#lcVista [data-acc="anotar"]', "+ Anotar");
+      const ops = [...document.querySelectorAll("#capaModal .lc-op")].filter(visible);
+      chk(ops.length===6, "La hoja «+ Anotar» no tiene los 6 botones (tiene "+ops.length+")");
+      chk(!buscar("#capaModal .mf .btn"), "La hoja «+ Anotar» muestra Guardar/Cancelar (ahí no hay nada que guardar)", "leve");
+      await tocar(`#capaModal [onclick="bitNueva('${H}')"]`, "Labor del día");
+      chk(modalAbierto() && v("bit_fecha")===H, "«Labor del día» no abrió el formulario del día con la fecha de hoy");
+      const a0 = R.alerts.length; await guardarModal_();
+      chk(modalAbierto() && huboMsg(a0,/al menos una labor/i), "Un día sin labores se guardó o no avisó");
+    });
+    await paso("Día con labor, cuartel, cantidad y personas (rendimiento e integración con la Gantt)", async ()=>{
+      const n0 = (D.bitacora||[]).length, l0 = D.labores.length;
+      if(!modalAbierto()){ await irA("bitacora"); await tocar('#lcVista [data-acc="anotar"]', "+ Anotar"); await tocar(`#capaModal [onclick="bitNueva('${H}')"]`, "Labor del día"); }
+      await elegir("bit_fundo", fu); await pausa();
+      const chip = necesito(buscar("#capaModal .bitchip"), "una labor para marcar"); await tocar(chip, "labor "+txtDe(chip));
+      const lin = necesito(buscar("#capaModal .bitlin"), "la línea de la labor");
+      const sel = lin.querySelector("select"); if(sel && q1) await elegir(sel, q1.nombre, "cuartel");
+      const ins = [...lin.querySelectorAll("input")].filter(visible);
+      if(ins.length<3) throw new SinProbar("La línea no tiene cantidad / unidad / personas");
+      await escribir(ins[0], "600", "cantidad"); await escribir(ins[1], "plantas", "unidad"); await escribir(ins[2], "10", "personas"); await pausa(1);
+      chk(/\b60\b/.test(txtDe(document.querySelector("#capaModal [id^='rin_']")||lin.parentElement)), "No muestra el rendimiento 60 por persona (600 / 10)");
+      const ig = document.getElementById("bit_integrar"); if(ig) await marcar(ig, true, "Integrar a la Carta Gantt");
+      await escribir("bit_nota", "Bot bitácora: día normal "+XSS);
+      chk(await guardarModal_(), "No se guardó el día");
+      const b = D.bitacora[D.bitacora.length-1]; T.bit = b && b.id;
+      chk(D.bitacora.length===n0+1 && b.lineas && b.lineas[0].cantidad===600 && b.lineas[0].personas===10, "El día no quedó con 600 de cantidad y 10 personas");
+      if(ig) chk(b.lineas[0].laborId || D.labores.length>l0, "Con «Integrar» no se ligó a ninguna labor de la Gantt");
+    });
+    await paso("La labor aparece en Día a día bajo «Hoy» y su fundo, en una sola fila", async ()=>{
+      await irA("bitacora"); await limpiarFiltros();
+      const b = necesito(T.bit && D.bitacora.find(x=>x.id===T.bit), "el día anotado");
+      const dia = document.querySelector(`#lcVista .lc-dia[data-dia="${H}"]`);
+      chk(dia && /^Hoy · /.test(txtDe(dia.querySelector(".lc-dia-t"))), "No aparece la cabecera «Hoy · …» con lo anotado hoy", "grave");
+      const sec = dia && [...dia.querySelectorAll(".lc-fu")].find(s=>txtDe(s.querySelector(".lc-fu-t"))===fu);
+      const f = filaBit();
+      chk(!!sec && !!f && sec.contains(f), "La labor «"+b.lineas[0].tipo+"» de "+q1.nombre+" no aparece bajo «Hoy › "+fu+"»", "grave");
+      chk(f && /600/.test(txtDe(f)), "La fila no muestra la cantidad (600 plantas)", "leve");
+      chk(!document.querySelector("#lcVista .btn-fab") && !/Lo que llevas hecho/.test(txtApp()) && !document.querySelector("#lcVista select"), "Siguen el botón flotante, «Lo que llevas hecho» o los selects de la vista anterior", "leve");
+    });
+    await paso("Avances de labores (PDF) desde Exportar ▾", async ()=>{
+      await irA("bitacora"); await tocar('#lcVista [data-acc="exportar"]', "Exportar ▾");
+      const m = document.getElementById("lcExp");
+      chk(m && !m.hidden && buscar('#lcVista [data-acc="exportar"]').getAttribute("aria-expanded")==="true", "Exportar no despliega su menú (o no marca aria-expanded)");
+      await tocar('#lcVista [data-acc="avances"]', "Avances de labores (PDF)");
+      necesito(visorAbierto(), "la pantalla de avances");
+      for(const p of ["hoy","semana","mes","todo"]){ const b = buscar(`[onclick="avSet('avPeriodo','${p}')"]`); if(b) await tocar(b, p); }
+      chk(/600/.test(txtDe(visorAbierto())), "Los avances no muestran las 600 unidades anotadas hoy", "media");
+    });
+    await paso("Aplicaciones: un lote de 3 cuarteles en UNA fila con chips, la pendiente en «Por confirmar» y la dictada al asistente con su cuartel", async ()=>{
+      if(qs.length<4) throw new SinProbar("Hace falta un fundo con al menos 4 cuarteles plantados");
+      const base = {tipo:"Aplicación", aplId:T.ap, fundo:fu, producto:T.prod, dosis:"50 cc/100 L", objetivo:"Escamas", carencia:"14", mojamiento:"2000", mezcla:[{n:"Bot aceite", dosis:"1 L/100 L"}], obs:"", pin:"baja", gps:null, fotos:[], docs:[], audios:[]};
+      qs.slice(0,3).forEach(q=>{ const r = Object.assign({id:nid(), estado:"aplicado", fecha:H, fechaPlan:H, fechaReal:H, cuartel:q.nombre}, base); D.registros.push(r); T.regs.push(r.id); });
+      const rp = Object.assign({id:nid(), estado:"pendiente", fecha:masDias(H,2), fechaPlan:masDias(H,2), cuartel:qs[3].nombre}, base); D.registros.push(rp); T.regs.push(rp.id);
+      /* la del asistente, por el mismo camino que usa al guardar (origen «asis», lote del dictado y texto dictado) */
+      const vacio = {hora:"",cuarteles:[],titulo:"",texto:"",categoria:"",urgente:false,labor_tipo:"",fecha_fin:"",cantidad:null,unidad:"",personas:null,estado_labor:"",producto:"",dosis:"",objetivo:"",mojamiento:null,carencia:null,aplicado:false,registro_tipo:"",registro_valor:null,bbch:"",faltante:"",confianza:"alta",importante:false};
+      const n0 = D.registros.length;
+      asisAplicarTodos([{...vacio, id:"asBotLc1", tipo:"aplicacion", fecha:H, fundo:fu, cuarteles:[qs[1].nombre], producto:"Bot Esterón dictado", aplicado:true,
+        dictado:"se aplicó bot esterón en "+qs[1].nombre+" "+XSS, dictadoFh:new Date().toISOString(), asisLote:"alBotLc"}], "ipad");
+      guardar();
+      const nuevos = D.registros.slice(n0); nuevos.forEach(r=>T.regs.push(r.id)); T.asis = nuevos[0] && nuevos[0].id;
+      chk(nuevos.length===1 && nuevos[0].tipo==="Aplicación" && nuevos[0].origen==="asis" && nuevos[0].dictado && nuevos[0].estado==="aplicado", "El asistente no guardó la aplicación con origen «asis», ya aplicada y con su texto dictado");
+      await irA("bitacora"); await limpiarFiltros();
+      const lote = filas(reExacto(T.prod));
+      chk(lote.length===1, "La aplicación de 3 cuarteles no quedó en UNA fila (hay "+lote.length+")", "grave");
+      const ch = cusDe(lote[0]);
+      chk(qs.slice(0,3).every(q=>ch.indexOf(q.nombre)>=0), "La fila del lote no muestra los 3 cuarteles como chips ("+ch.join(", ")+")", "media");
+      chk(lote[0] && /lote de 3 cuarteles/i.test(txtDe(lote[0])), "La fila del lote no dice «lote de 3 cuarteles»", "leve");
+      const pend = buscar("#lcVista .lc-pend");
+      chk(pend && reExacto(T.prod).test(txtDe(pend.querySelector(".lc-pend-it b")||{})) || (pend && new RegExp(T.prod).test(txtDe(pend))), "La aplicación pendiente (en 2 días) no aparece en «Por confirmar»");
+      chk(pend && buscar('#lcVista .lc-pend [data-acc="conf"]'), "«Por confirmar» no tiene el botón Confirmar", "leve");
+      const fa = fila(/^Bot Esterón dictado$/);
+      chk(fa && cusDe(fa).indexOf(qs[1].nombre)>=0 && /dictado/i.test(txtDe(fa.querySelector(".lc-it-m")||{})), "La aplicación dictada al asistente no aparece con su cuartel y el chip «dictado»", "grave");
+    });
+    await paso("Detalle en el lugar: producto, carencia, origen y texto dictado; una fila abierta a la vez; el lote cuartel por cuartel", async ()=>{
+      await irA("bitacora");
+      let el = await abrir(fila(/^Bot Esterón dictado$/), "la aplicación dictada");
+      const det = txtDe(el.querySelector(".lc-det"));
+      chk(el.querySelector(".lc-it-b").getAttribute("aria-expanded")==="true", "La fila abierta no marca aria-expanded", "leve");
+      chk(/Producto/.test(det) && /Carencia/.test(det), "El detalle de la aplicación no muestra producto y carencia");
+      chk(/sin dato/i.test(det), "Sin carencia (ni en el catálogo) el detalle no dice «sin dato»", "leve");
+      chk(/dictado al asistente/i.test(det) && /se aplicó bot esterón/i.test(det), "El detalle no dice que vino dictado ni muestra el texto dictado");
+      const el2 = await abrir(fila(reExacto(T.prod)), "el lote");
+      chk(document.querySelectorAll("#lcVista .lc-det").length===1, "Quedaron dos filas abiertas a la vez");
+      const lr = el2.querySelectorAll(".lc-lote .lc-lr");
+      chk(lr.length===4, "El detalle del lote no tiene un renglón por cuartel (3 aplicados + 1 por confirmar): "+lr.length);
+      chk(el2.querySelectorAll('.lc-lote [data-acc="editar"]').length===3 && el2.querySelector('.lc-lote [data-acc="confr"]'), "El lote no tiene [Editar] en cada cuartel aplicado y [Confirmar] en el pendiente");
+      chk(!el2.querySelector(".lc-det .btn.peligro"), "El detalle trae un botón rojo de eliminar (eliminar va en cada formulario)", "leve");
+    });
+    await paso("★ Destacar y quitar el destacado (en la fuente, repintando solo la fila; en el lote pregunta)", async ()=>{
+      await irA("bitacora");
+      let el = await abrir(fila(/^Bot Esterón dictado$/), "la aplicación dictada");
+      const r = ()=>D.registros.find(x=>x.id===T.asis) || {};
+      await tocar(el.querySelector('[data-acc="estrella"]'), "★ Destacar");
+      chk(r().dest===true, "Destacar no dejó dest:true en el registro");
+      el = fila(/^Bot Esterón dictado$/);
+      chk(el && el.querySelector(".lc-it-t .lc-star") && el.classList.contains("abierta"), "Después de destacar la fila no muestra la ★ o se cerró (debía repintarse solo esa fila)");
+      await tocar(el.querySelector('[data-acc="estrella"]'), "Quitar destacado");
+      chk(!r().dest, "Quitar destacado no borró dest del registro");
+      el = await abrir(fila(reExacto(T.prod)), "el lote");
+      await tocar(el.querySelector('.lc-acc [data-acc="estrella"]'), "★ Destacar el lote");
+      chk(modalAbierto() && /cuarteles/i.test(txtDe(modalAbierto())), "En un lote no preguntó si destacar solo un cuartel o todos");
+      await tocar({texto:/^Solo /, sel:"#capaModal .lc-hoja-bs button"}, "Solo un cuartel");
+      const L3 = ()=>D.registros.filter(x=>x.aplId===T.ap && x.estado==="aplicado");
+      chk(L3().filter(x=>x.dest).length===1, "«Solo un cuartel» destacó "+L3().filter(x=>x.dest).length+" cuarteles");
+      el = fila(reExacto(T.prod)); await tocar(el.querySelector('.lc-acc [data-acc="estrella"]'), "Quitar destacado del lote");
+      await tocar({texto:/^Los 3 cuarteles/, sel:"#capaModal .lc-hoja-bs button"}, "Los 3 cuarteles");
+      chk(L3().every(x=>!x.dest), "Quitar el destacado de los 3 cuarteles no se los quitó a todos");
+      el = await abrir(filaBit(), "la labor anotada hoy");
+      await tocar(el.querySelector('[data-acc="estrella"]'), "★ Destacar la labor");
+      const lin = ()=>((D.bitacora.find(x=>x.id===T.bit)||{}).lineas||[])[0]||{};
+      chk(lin().dest===true, "Destacar una labor no dejó dest en su línea de la bitácora");
+      el = filaBit(); if(el) await tocar(el.querySelector('[data-acc="estrella"]'), "Quitar destacado de la labor");
+      chk(!lin().dest, "Quitar el destacado no lo borró de la línea de la bitácora");
+    });
+    await paso("Una aplicación anotada a mano en 2 cuarteles (un solo registro): ★ sin preguntar y un solo [Editar]", async ()=>{
+      const r = {id:nid(), tipo:"Aplicación", aplId:"apBotUno"+Date.now(), estado:"aplicado", fecha:H, fechaPlan:H, fechaReal:H, fundo:fu, cuartel:qs[0].nombre+", "+qs[1].nombre,
+        producto:"Bot Uno Dos", dosis:"1 L/ha", objetivo:"Bot", carencia:"7", obs:"", pin:"baja", gps:null, fotos:[], docs:[], audios:[]};
+      D.registros.push(r); T.regs.push(r.id); guardar();
+      await irA("bitacora"); await limpiarFiltros();
+      let el = await abrir(fila(/^Bot Uno Dos$/), "la aplicación en 2 cuarteles");
+      chk(cusDe(el).length===2, "La aplicación en «C1, C2» no muestra sus 2 cuarteles en la fila", "leve");
+      chk(el.querySelectorAll('.lc-lote [data-acc="editar"]').length===1, "Un solo registro en 2 cuarteles muestra un [Editar] por cuartel (los dos abren el mismo formulario)", "leve");
+      await tocar(el.querySelector('.lc-acc [data-acc="estrella"]'), "★ Destacar");
+      chk(!modalAbierto() && r.dest===true, "Con un solo registro en 2 cuarteles preguntó «¿solo uno o todos?» (destacaría los dos igual)", "media");
+      el = fila(/^Bot Uno Dos$/); if(el) await tocar(el.querySelector('.lc-acc [data-acc="estrella"]'), "Quitar destacado");
+      chk(!r.dest, "No se quitó el destacado de la aplicación en 2 cuarteles");
+    });
+    await paso("Fenología del mismo día y estado en 2 cuarteles: UNA fila; ★ pregunta y queda en cada registro; editar la conserva", async ()=>{
+      const mk = q=>({id:nid(), fecha:H, fundo:fu, cuartel:q.nombre, especie:q.especie, bbch:"67", estado:"Bot fin de flor", fotos:[], nota:"Bot fen "+q.nombre});
+      const f1 = mk(qs[0]), f2 = mk(qs[1]); D.fenologia = D.fenologia||[]; D.fenologia.push(f1, f2); T.fens.push(f1.id, f2.id); guardar();
+      await irA("bitacora"); await limpiarFiltros();
+      const fs = filas(/^BBCH 67 · Bot fin de flor$/);
+      chk(fs.length===1 && cusDe(fs[0]).length===2, "Los 2 registros fenológicos del mismo día y estado no quedaron en UNA fila con 2 chips ("+fs.length+" filas)", "media");
+      let el = await abrir(fs[0], "la fenología");
+      chk(el.querySelectorAll('.lc-lote [data-acc="editar"]').length===2, "El detalle de la fenología no tiene un [Editar] por registro", "leve");
+      await tocar(el.querySelector('.lc-acc [data-acc="estrella"]'), "★ Destacar la fenología");
+      chk(modalAbierto() && /2 cuarteles/.test(txtDe(modalAbierto())), "Con 2 registros en la fila no preguntó si destacar uno o los dos");
+      if(modalAbierto()) await tocar({texto:/^Los 2 cuarteles/, sel:"#capaModal .lc-hoja-bs button"}, "Los 2 cuarteles");
+      chk(f1.dest===true && f2.dest===true, "Destacar los 2 no dejó dest en los dos registros de fenología");
+      el = await abrir(fila(/^BBCH 67 · Bot fin de flor$/), "la fenología");
+      await tocar(el.querySelector('.lc-lote [data-acc="editar"]'), "Editar la fenología");
+      chk(modalAbierto(), "Editar no abrió el formulario de fenología");
+      if(modalAbierto()) await guardarModal_();
+      chk((D.fenologia.find(x=>x.id===f1.id)||{}).dest===true, "Al guardar la fenología (fenEditar) se perdió la estrella", "media");
+    });
+    await paso("Editar abre el formulario de siempre", async ()=>{
+      await irA("bitacora");
+      const el = await abrir(fila(/^Bot Esterón dictado$/), "la aplicación dictada");
+      await tocar(el.querySelector('.lc-acc [data-acc="editar"]'), "Editar / Completar dosis y objetivo");
+      chk(modalAbierto() && v("m_tipo")==="Aplicación" && v("m_producto")==="Bot Esterón dictado", "Editar no abrió el formulario de registros con la aplicación");
+      await cancelarModal();
+    });
+    await paso("Filtros en chips (fundo, cuartel, período, rango, qué, ★) sin repintar la cabecera", async ()=>{
+      await irA("bitacora"); await limpiarFiltros();
+      const q0 = necesito(document.getElementById("lcQ"), "el buscador");
+      const tipo = ((D.bitacora.find(x=>x.id===T.bit)||{}).lineas||[{}])[0].tipo;
+      await tocar(chipLc("fundo", reExacto(fu)), "fundo "+fu);
+      chk(nav.lc.fundo===fu && [...document.querySelectorAll("#lcVista .lc-fu-t")].every(h=>txtDe(h)===fu), "Con el fundo elegido aparecen filas de otros fundos");
+      chk(document.getElementById("lcQ")===q0, "Elegir un chip repintó la cabecera (se perdería lo escrito en el buscador)", "media");
+      chk(/Mirando:/.test(txtApp()) && buscar('#lcVista [data-acc="limpiar"]'), "Con filtros no aparece «Mirando: … Limpiar»", "leve");
+      chk(buscar(`#lcVista [data-acc="fundo"][aria-pressed="true"]`), "El chip elegido no marca aria-pressed", "leve");
+      await tocar(chipLc("cu", reExacto(q1.nombre)), "cuartel "+q1.nombre);
+      chk(nav.lc.cu===q1.nombre && filas(/./).every(el=>cusDe(el).indexOf(q1.nombre)>=0), "Con el cuartel elegido aparecen filas de otros cuarteles");
+      chk(!!filaBit(), "Con el cuartel elegido no aparece la labor anotada hoy en él");
+      await tocar(chipLc("per", /^7 días$/), "7 días"); chk(nav.lc.per==="7" && !!filaBit(), "Con «7 días» no aparece lo de hoy");
+      await tocar(chipLc("per", /^Temporada$/), "Temporada"); chk(nav.lc.per==="temp" && !!filaBit(), "Con «Temporada» no aparece lo de hoy");
+      await tocar(chipLc("per", /^Rango/), "Rango…");
+      chk(document.getElementById("lcR_d_t"), "«Rango…» no muestra las fechas");
+      await fecha("lcR_d", masDias(H,-3), "desde"); await fecha("lcR_h", masDias(H,-1), "hasta");
+      chk(nav.lc.per==="rango" && nav.lc.rango.desde===masDias(H,-3) && nav.lc.rango.hasta===masDias(H,-1) && !document.querySelector(`#lcVista .lc-dia[data-dia="${H}"]`), "El rango (de hace 3 días a ayer) no filtra: sigue apareciendo hoy");
+      await tocar(chipLc("per", /^30 días$/), "30 días");
+      await tocar(chipLc("cu", /^Todos los cuarteles$/), "Todos los cuarteles");
+      await tocar(chipLc("cat", /^Aplicaciones$/), "Aplicaciones");
+      chk(filas(/./).length && filas(/./).every(el=>el.classList.contains("c-apl")), "Con «Aplicaciones» aparecen filas de otro tipo (o ninguna)");
+      await tocar(chipLc("cat", /^Labores$/), "Labores");
+      chk(filas(/./).every(el=>el.classList.contains("c-lab")) && !!filas(reExacto(tipo)).length && !buscar("#lcVista .lc-pend"), "Con «Labores» aparecen otros tipos, falta la labor o sigue «Por confirmar»");
+      await tocar(chipLc("cat", /^Todo$/), "Todo");
+      await tocar(chipLc("solodest", /Destacados/), "★ Destacados");
+      chk(nav.lc.dest && filas(/./).every(el=>el.querySelector(".lc-it-t .lc-star")), "Con «★ Destacados» aparecen filas sin estrella");
+      await tocar(chipLc("solodest", /Destacados/), "★ Destacados (quitar)");
+      await tocar('#lcVista [data-acc="limpiar"]', "Limpiar");
+      chk(!nav.lc.fundo && !nav.lc.cu && nav.lc.per==="30" && !nav.lc.cat && !nav.lc.dest && !buscar('#lcVista [data-acc="limpiar"]'), "Limpiar no quitó todos los filtros");
+      chk(/"per":"30"/.test(localStorage.getItem("agronotasBitacora")||""), "Los filtros no se recuerdan en este equipo (localStorage «agronotasBitacora»)", "leve");
+    });
+    await paso("«Rango…» sin «Desde» y sin resultados (★ Destacados en un cuartel): la vista no se cuelga y el campo «Hasta» conserva el foco", async ()=>{
+      await irA("bitacora"); await limpiarFiltros();
+      await tocar(chipLc("per", /^Rango/), "Rango…");
+      await fecha("lcR_d", "", "desde (vacío)");
+      const ht = document.getElementById("lcR_h_t"); if(ht) ht.focus();
+      await fecha("lcR_h", masDias(H,-400), "hasta hace 400 días");
+      chk(document.getElementById("lcR_h_t")===ht, "Al cambiar una fecha del rango se repintaron sus campos (en el iPad se cerraría el teclado)", "media");
+      chk(nav.lc.per==="rango" && !nav.lc.rango.desde && nav.lc.rango.hasta===masDias(H,-400), "Al borrar «Desde» el rango no quedó sin piso (o no tomó «Hasta»)");
+      await tocar(chipLc("fundo", reExacto(fu)), "fundo "+fu);
+      await tocar(chipLc("cu", reExacto(q1.nombre)), "cuartel "+q1.nombre);
+      const t0 = performance.now(); await tocar(chipLc("solodest", /Destacados/), "★ Destacados"); const ms = performance.now()-t0;
+      chk(ms<4000 && (document.querySelector("#lcVista .vacio") || filas(/./).length), "Con un rango sin «Desde» y sin resultados la vista tardó "+Math.round(ms)+" ms o quedó en blanco", "grave");
+      chk(/hasta el/i.test(txtDe(document.querySelector("#lcVista .lc-mir"))), "«Mirando» no dice «hasta el …» con un rango sin «Desde»", "leve");
+      const L0 = JSON.stringify(nav.lc);   // directo: rango vacío por los dos lados, solo destacados de fenología en un cuartel
+      try{ nav.lc = {v:"dia", per:"rango", rango:{desde:"", hasta:""}, dest:true, cat:"fen", fundo:fu, cu:q1.nombre};
+        const t1 = performance.now(), html = lcCuerpoHTML(), ms1 = performance.now()-t1;
+        chk(typeof html==="string" && ms1<1500, "lcCuerpoHTML con «Rango…» vacío y sin resultados tardó "+Math.round(ms1)+" ms", "grave");
+      } finally { nav.lc = JSON.parse(L0); }
+      await limpiarFiltros(); await irA("bitacora");
+    });
+    await paso("Búsqueda en toda la historia (fuera del período, sin tildes y sin perder el teclado)", async ()=>{
+      const vieja = {id:nid(), tipo:"Aplicación", aplId:"", estado:"aplicado", fecha:masDias(H,-50), fechaPlan:masDias(H,-50), fechaReal:masDias(H,-50), fundo:fu, cuartel:qs[2].nombre,
+        producto:"Esterón Bot 10-10", dosis:"2 L/ha", objetivo:"Malezas", carencia:"", obs:"", pin:"baja", gps:null, fotos:[], docs:[], audios:[]};
+      D.registros.push(vieja); T.regs.push(vieja.id); guardar();
+      await irA("bitacora"); await limpiarFiltros();
+      chk(!fila(/^Esterón Bot 10-10$/), "Una aplicación de hace 50 días aparece abierta con el período «30 días»", "leve");
+      const inp = necesito(document.getElementById("lcQ"), "el buscador");
+      await escribir(inp, "esteron bot", "buscar"); await esperar(450);
+      chk(document.getElementById("lcQ")===inp && document.activeElement===inp, "Al buscar se repintó el buscador (se pierde el teclado)", "media");
+      const f = fila(/^Esterón Bot 10-10$/);
+      chk(!!f, "Buscar «esteron bot» no encuentra la aplicación de hace 50 días (debe buscar en toda la historia)", "grave");
+      chk(f && f.closest(".lc-dia").getAttribute("data-dia")===masDias(H,-50), "El resultado no aparece bajo su día", "media");
+      chk(/en toda la historia/i.test(txtApp()), "La búsqueda no dice que busca en toda la historia", "leve");
+      await escribir(inp, XSS, "buscar código"); await esperar(450);
+      await escribir(inp, "bot esterón dictado", "buscar"); await esperar(450);
+      chk(!!fila(/^Bot Esterón dictado$/), "La búsqueda no encuentra la aplicación dictada por su producto");
+      await tocar('#lcVista [data-acc="qx"]', "Borrar la búsqueda");
+      chk(!nav.lc.q && !document.getElementById("lcQ").value, "× no borró la búsqueda");
+    });
+    await paso("Una nota de las 22:30 (hora local) cae en su día", async ()=>{
+      const ayer = masDias(H,-1), dt = gtD(ayer); dt.setHours(22,30,0,0);
+      const n = {id:nid(), fh:dt.toISOString(), titulo:"Bot nota de las 22:30 "+XSS, texto:"Bot: revisar el riego de noche "+XSS, fundo:fu, cuartel:q1.nombre, cat:catsNota()[0]||"",
+        aviso:"", avisoFin:"", fijada:false, fotos:[], docs:[], audios:[], check:[{t:"Bot ítem "+XSS, ok:false}], pins:[], gps:null, pin:"baja", resuelta:false};
+      D.notas.push(n); T.notas.push(n.id); guardar();
+      await irA("bitacora"); await limpiarFiltros(); await tocar(chipLc("per", /^7 días$/), "7 días");
+      const f = fila(/^Bot nota de las 22:30/), dia = f && f.closest(".lc-dia");
+      chk(dia && dia.getAttribute("data-dia")===ayer && /^Ayer · /.test(txtDe(dia.querySelector(".lc-dia-t"))), "La nota de las 22:30 de ayer no cae bajo «Ayer» (cayó en "+(dia? dia.getAttribute("data-dia") : "ninguno")+")", "grave");
+      const el = await abrir(f, "la nota");
+      chk(/revisar el riego de noche/.test(txtDe(el.querySelector(".lc-det"))) && /Bot ítem/.test(txtDe(el.querySelector(".lc-det"))), "El detalle de la nota no muestra el texto completo y su lista");
+      await limpiarFiltros();
+    });
+    await paso("★ en una nota usa «fijada» (no dest) y editarla con formNota la conserva", async ()=>{
+      const n = necesito(D.notas.find(x=>x.id===T.notas[0]), "la nota de prueba");
+      await irA("bitacora"); await limpiarFiltros(); await tocar(chipLc("per", /^7 días$/), "7 días");
+      let el = await abrir(fila(/^Bot nota de las 22:30/), "la nota");
+      await tocar(el.querySelector('.lc-acc [data-acc="estrella"]'), "★ Destacar la nota");
+      chk(n.fijada===true && !("dest" in n), "Destacar una nota no la dejó fijada (o le puso dest)");
+      el = fila(/^Bot nota de las 22:30/);
+      if(el && el.querySelector('.lc-acc [data-acc="editar"]')){ await tocar(el.querySelector('.lc-acc [data-acc="editar"]'), "Editar la nota"); if(modalAbierto()) await guardarModal_(); }
+      chk((D.notas.find(x=>x.id===n.id)||{}).fijada===true, "Al guardar la nota con formNota se perdió «fijada»", "media");
+      await irA("bitacora"); await tocar(chipLc("per", /^7 días$/), "7 días");
+      el = await abrir(fila(/^Bot nota de las 22:30/), "la nota");
+      await tocar(el.querySelector('.lc-acc [data-acc="estrella"]'), "Quitar destacado de la nota");
+      chk(!(D.notas.find(x=>x.id===n.id)||{}).fijada, "Quitar el destacado no le quitó «fijada» a la nota");
+      await limpiarFiltros();
+    });
+    await paso("Editar el día y borrarlo desde el formulario, con Deshacer", async ()=>{
+      await irA("bitacora"); await limpiarFiltros();
+      const b = necesito(T.bit && D.bitacora.find(x=>x.id===T.bit), "el día anotado");
+      let el = await abrir(filaBit(), "la labor anotada hoy");
+      chk(/día completo/i.test(txtDe(el.querySelector(".lc-det"))), "El detalle de la labor no avisa que se edita el día completo", "leve");
+      await tocar(el.querySelector('.lc-acc [data-acc="editar"]'), "Editar el día");
+      chk(modalAbierto() && v("bit_fecha")===H, "Editar no abrió el formulario del día");
+      await escribir("bit_nota", "Bot bitácora: día normal (editado) "+XSS); await guardarModal_();
+      chk(/editado/.test((D.bitacora.find(x=>x.id===b.id)||{}).nota||""), "La edición no quedó");
+      el = await abrir(filaBit(), "la labor anotada hoy");
+      await tocar(el.querySelector('.lc-acc [data-acc="editar"]'), "Editar el día");
+      const n0 = D.bitacora.length, lab = b.lineas[0] && b.lineas[0].laborId;
+      await tocar(`#capaModal [onclick="bitBorrar(${b.id})"]`, "Eliminar el día");
+      chk(D.bitacora.length===n0-1 && !filaBit(), "«Eliminar el día» no borró el día (o sigue en Día a día)");
+      if(lab){ const l = D.labores.find(x=>x.id===lab); bug("Al borrar el día queda una labor «en curso» creada por la integración, sin avances", l && l.estado==="encurso" && !(l.avances||[]).length, "", "leve"); }
+      if(await undoVisible()){ await deshacer(); chk(D.bitacora.length===n0 && !!filaBit(), "Deshacer no recuperó el día (o no volvió a Día a día)"); } else falla("Sin Deshacer", "Al borrar un día de bitácora no apareció Deshacer");
+    });
+    await paso("Celular espejo: sin botones que escriben y la hoja «+ Anotar» manda a dictar", async ()=>{
+      const s0 = JSON.stringify(D.sync||{});
+      try{
+        D.sync = Object.assign({}, D.sync||{}, {rol:"receptor"}); uiAplicar();
+        await irA("bitacora");
+        const esc_ = '#lcVista [data-acc="editar"], #lcVista [data-acc="estrella"], #lcVista [data-acc="conf"], #lcVista [data-acc="confr"]';
+        chk(![...document.querySelectorAll(esc_)].filter(visible).length, "En el espejo hay botones que escriben en la Bitácora");
+        const f = fila(/^Bot Esterón dictado$/) || filas(/./)[0];
+        if(f){ const el = await abrir(f, "una fila (espejo)"); chk(![...el.querySelectorAll(esc_.replace(/#lcVista /g,""))].length && /solo se consulta/i.test(txtDe(el.querySelector(".lc-det"))), "El detalle en el espejo no es de solo lectura"); }
+        await tocar('#lcVista [data-acc="anotar"]', "+ Anotar (espejo)");
+        chk(modalAbierto() && !document.querySelector('#capaModal [onclick^="bitNueva"], #capaModal [onclick^="formReg"], #capaModal .lc-op') && /dict/i.test(txtDe(modalAbierto())), "En el espejo la hoja «+ Anotar» ofrece los formularios (debía decir que se dicte)");
+        await cancelarModal();
+      } finally { D.sync = JSON.parse(s0); uiAplicar(); render(); }
+    });
+    await paso("Celular: [Período ▾] [Qué ▾] [★] a la vista, «Por confirmar» plegado y el detalle en una hoja desde abajo", async ()=>{
+      const u0 = JSON.stringify(D.ui||{});
+      try{
+        D.ui = Object.assign({}, D.ui||{}, {movil:"si"}); uiAplicar(); await irA("bitacora"); await limpiarFiltros();
+        const fbs = [...document.querySelectorAll("#lcVista .lc-fbs button")].filter(visible);
+        chk(fbs.length===3 && fbs.every(b=>{ const r = b.getBoundingClientRect(); return r.left>=0 && r.right<=innerWidth+1 && r.height>=34; }), "En el celular no se ven los 3 botones [Período ▾] [Qué ▾] [★] (o se salen de la pantalla)", "media");
+        const pb = buscar('#lcVista [data-acc="pend"]');
+        if(pb){
+          chk(pb.getAttribute("aria-expanded")==="false" && !document.querySelector("#lcVista .lc-pend-it"), "«Por confirmar» no parte plegado en una línea en el celular", "leve");
+          await tocar(pb, "Por confirmar (desplegar)");
+          chk(buscar('#lcVista [data-acc="pend"]').getAttribute("aria-expanded")==="true" && document.querySelector("#lcVista .lc-pend-it"), "«Por confirmar» no se despliega en el celular");
+        }
+        await tocar('#lcVista [data-acc="hcat"]', "Qué ▾");
+        chk(modalAbierto() && document.querySelectorAll("#capaModal .lc-hoja-chips .lc-chip").length===6, "[Qué ▾] no abrió la hoja con los 6 chips");
+        if(modalAbierto()) await tocar({texto:/^Aplicaciones$/, sel:"#capaModal .lc-chip"}, "Aplicaciones");
+        chk(!modalAbierto() && nav.lc.cat==="apl" && /Aplicaciones/.test(txtDe(buscar('#lcVista [data-acc="hcat"]'))), "Elegir en la hoja de [Qué ▾] no aplicó «Aplicaciones»");
+        await tocar('#lcVista [data-acc="hper"]', "Período ▾");
+        if(modalAbierto()) await tocar({texto:/^7 días$/, sel:"#capaModal .lc-chip"}, "7 días");
+        chk(nav.lc.per==="7", "Elegir «7 días» en la hoja de [Período ▾] no cambió el período");
+        const f = fila(/^Bot Esterón dictado$/) || filas(/./)[0];
+        if(f){
+          await tocar(f.querySelector(".lc-it-b"), "una fila (celular)");
+          chk(modalAbierto() && buscar("#capaModal .lc-hdet .lc-dl") && !document.querySelector("#lcVista .lc-det"), "En el celular la fila no abrió el detalle en una hoja desde abajo");
+          await cancelarModal();
+        }
+      } finally { D.ui = JSON.parse(u0); uiAplicar(); render(); }
+      await irA("bitacora"); await limpiarFiltros();
+    });
+    await paso("Otro registro (riego) desde «+ Anotar» y su fila en Día a día", async ()=>{
+      await irA("bitacora"); await tocar('#lcVista [data-acc="anotar"]', "+ Anotar");
+      await tocar('#capaModal .lc-op[onclick="formReg()"]', "Riego, fertilización, lluvia u otro");
+      await elegir("m_tipo", "Riego"); await pausa();
+      await elegir("m_fundo", fu); const n0 = D.registros.length, a0 = R.alerts.length; await guardarModal_();
+      if(modalAbierto() && await completarFaltantes(a0)) await guardarModal_();
+      chk(D.registros.length===n0+1, "No se guardó el registro de riego (mensajes: "+msgsDesde(a0).join(" / ").slice(0,120)+")");
+      const r = D.registros[D.registros.length-1]; if(D.registros.length===n0+1 && r) T.regs.push(r.id);
+      await irA("bitacora");
+      chk(r && filas(/^Riego/).some(el=>el.closest(".lc-dia") && el.closest(".lc-dia").getAttribute("data-dia")===r.fecha && el.classList.contains("c-riego")), "El riego no aparece en Día a día bajo su día", "media");
+    });
+    await paso("Decimales: «2.5» personas", async ()=>{
+      if(typeof bitNum!=="function") throw new SinProbar("No existe el lector de números de la bitácora");
+      bug("La bitácora lee «2.5» como 25 (el punto se toma como miles)", bitNum("2.5")===25, "bitNum(«2.5») = "+bitNum("2.5"), "media");
+    });
+    await paso("El código inyectado (nota, dictado, búsqueda) no se ejecuta", async ()=>{
+      await irA("bitacora"); await limpiarFiltros(); await tocar(chipLc("per", /^7 días$/), "7 días");
+      const f = fila(/^Bot nota de las 22:30/); if(f) await abrir(f, "la nota con código");
+      await esperar(600);
+      chk(!window.__xss, "Un texto con código se ejecutó en la Bitácora (falta escapar)", "grave");
+      await limpiarFiltros();
+    });
+  } finally {
+    try{ if(T.bit && typeof bitQuitaAvances==="function"){ bitQuitaAvances(T.bit); bitLimpiarAuto(); } }catch(e){}
+    D.registros = D.registros.filter(r=>T.regs.indexOf(r.id)<0);
+    D.bitacora = (D.bitacora||[]).filter(b=>b.id!==T.bit);
+    D.notas = D.notas.filter(n=>T.notas.indexOf(n.id)<0);
+    D.fenologia = (D.fenologia||[]).filter(f=>T.fens.indexOf(f.id)<0);
+    guardar();
+    if(lc0) nav.lc = JSON.parse(lc0); else delete nav.lc;
+    if(p0==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", p0);
+    render();
+  }
 }});
 
 /* 🧮 CALCULADORA DE TERRENO -------------------------------------------------------------- */
@@ -1605,7 +2013,7 @@ BOTS.push({id:"mapa", modulo:"Mapa", nombre:"Claudia, agrónoma", ico:"🗺", qu
 }});
 
 /* ✨ ASISTENTE ---------------------------------------------------------------------------- */
-BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta desde el tractor", ico:"✨", que:"Asistente: aviso sin puente, lo que se le pide a Claude (fecha, fundos, formato), revisión con ítems dudosos, corregir un ítem, guardar cada cosa en su módulo (notas, Gantt, Bitácora con avance, aplicaciones, registros, recordatorios, fenología) con su origen, lote y texto dictado, deshacer, aplicación dictada sin fundo (fundo deducido, producto del catálogo, carencia «sin dato» en el mapa y en Hoy, ☆ destacar), borrador que no se pierde, envío desde el celular a la bandeja e importación en el iPad sin duplicar. Claude se simula: no gasta créditos", correr: async ()=>{
+BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta desde el tractor", ico:"✨", que:"Asistente: aviso sin puente, lo que se le pide a Claude (fecha, fundos, formato), revisión con ítems dudosos, corregir un ítem, guardar cada cosa en su módulo (notas, Gantt, Bitácora con avance, aplicaciones, registros, recordatorios, fenología) con su origen, lote y texto dictado, deshacer, aplicación dictada sin fundo (fundo deducido, producto del catálogo, carencia «sin dato» en el mapa y en Hoy, ☆ destacar), borrador que no se pierde, envío desde el celular a la bandeja e importación en el iPad sin duplicar, adjuntos (PDF y foto: chips, foto achicada, formato liviano del puente, puente viejo y puente sin respuesta, ✕ bloqueados mientras ordena, cada archivo solo con su ítem y elegible en la ventana, mezcla con «+ Agregar producto» y su carencia mayor, el original guardado y abrible desde la Bitácora, Deshacer sin copias; desde el celular el PDF y la foto se guardan, suben al puente y viajan como ids, sin señal esperan en la cola sin base64, en dos partes no se duplican y el iPad los baja una vez); la IA de la app por Claude (foto como adjunto JPEG de 1.600 px, PDF como documento, respuesta que se sigue leyendo como JSON, Identificar e Interpretar, búsqueda Oficial con búsqueda web, gasto del mes, errores del puente, audio sin clave de Gemini y sin puente con avisos claros, Gemini de respaldo). Claude se simula: no gasta créditos", correr: async ()=>{
   const fu = fundosConCuarteles()[0], cus = plantados(fu).map(q=>q.nombre);
   if(cus.length<2) throw new SinProbar("Hace falta un fundo con al menos dos cuarteles plantados");
   const qf = plantados(fu).find(q=>fenLista(q.especie||"").length>2) || plantados(fu)[0], bb = fenLista(qf.especie||"")[2].c;
@@ -1625,9 +2033,22 @@ BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta 
     {...base, tipo:"registro", fecha:HOY(), fundo:fu, cuarteles:[cus[0]], registro_tipo:"riego", registro_valor:4.5},
     {...base, tipo:"fenologia", fecha:HOY(), fundo:fu, cuarteles:[qf.nombre], bbch:bb, texto:"Bot fenología"},
     {...base, tipo:"labor", fecha:HOY(), fundo:"Fundo Fantasma", cuarteles:["C99"], labor_tipo:"Poda", texto:"Bot fantasma", confianza:"baja"}]}});
-  let pedido = null, bandeja = [], borrados = [];
+  let pedido = null, pedidoTipo = "", bandeja = [], borrados = [];
+  const lotesAdj = [];   // lo que guardan los pasos de adjuntos (se quita al final)
+  /* archivos que el celular sube al puente (PUT /foto/<id>) y que el iPad baja al importar */
+  const archivos = new Map(); let puts = [], gets = [], fallaFoto = false, fallaBajar = false;
   window.syncFetch = async function(ruta, opt){
-    if(ruta==="asistente"){ pedido = JSON.parse(opt.body); await esperar(150); return respEsp? respEsp() : resp(); }
+    if(ruta==="asistente"){   // el formato liviano (con archivos) se lee con asisCuerpoLeer; el puente nuevo dice cuántos archivos le llegaron a Claude
+      pedido = asisCuerpoLeer(opt.body); pedidoTipo = ((opt.headers||{})["Content-Type"])||""; await esperar(150);
+      const r = respEsp? respEsp() : resp();
+      return (r && r.ok && r.adjuntos===undefined)? Object.assign({adjuntos:(pedido.adjuntos||[]).length}, r) : r;
+    }
+    if(ruta.indexOf("foto/")===0){
+      const id = decodeURIComponent(ruta.slice(5));
+      if(opt && opt.method==="PUT"){ if(fallaFoto) throw new Error("Failed to fetch"); puts.push(id); archivos.set(id, String(opt.body)); return {ok:true, id}; }
+      if(fallaBajar) throw new Error("Failed to fetch");
+      gets.push(id); return archivos.has(id)? archivos.get(id) : null;
+    }
     if(ruta==="bandeja" && opt && opt.method==="POST"){ bandeja = bandeja.concat(JSON.parse(opt.body).items); return {ok:true}; }
     if(ruta==="bandeja") return {items:bandeja.map(x=>({id:x.id, ts:Date.now(), origen:"bot", item:x.item}))};
     if(ruta==="bandeja/borrar"){ const ids = JSON.parse(opt.body).ids; borrados = borrados.concat(ids); bandeja = bandeja.filter(x=>ids.indexOf(x.id)<0); return {ok:true}; }
@@ -1681,7 +2102,7 @@ BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta 
       chk(A.items.every(x=>x.importante===false) && document.querySelectorAll(".asis-it .asis-est").length===8, "Falta la estrella ☆ Destacar en cada ítem, o algún ítem quedó destacado sin que se pidiera", "leve");
       const ap = document.querySelector('.asis-it[data-tipo="aplicacion"]');
       chk(ap && /no está en el catálogo/i.test(txtDe(ap)) && A.items[2].prodId==null && A.items[2].carOrigen==="registro", "Un producto que no está en el catálogo no avisa, o quedó con prodId, o la carencia dicha no quedó como del registro", "leve");
-      await esperar(200); chk((window.__xss||0)===xss0, "Un texto de Claude se ejecutó como código", "alta");
+      await esperar(200); chk((window.__xss||0)===xss0, "Un texto de Claude se ejecutó como código", "grave");
     });
     await paso("Corregir el ítem dudoso", async ()=>{
       await tocar(".asis-it.falta .asis-cuerpo", "ítem dudoso"); necesito(modalAbierto(), "la ventana para corregir");
@@ -1732,7 +2153,7 @@ BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta 
         await irA("asist"); await escribir("asis_txt", dictado, "dictado sin fundo");
         accion("Ordenar con Claude (simulado)"); await asisOrdenar(); await pausa();
         const A4 = asisCfg(), it = necesito(A4.items && A4.items.length===1 && A4.items[0], "el ítem ordenado");   // asisCfg() de nuevo: Deshacer reemplazó D
-        chk(it.fundo===qU.fundo && it.cuarteles[0]===qU.nombre && !asisFaltan(it).length, "La aplicación dictada sin fundo no quedó en "+qU.fundo+" › "+qU.nombre+" (fundo «"+it.fundo+"»; "+asisFaltan(it).join("; ")+")", "alta");
+        chk(it.fundo===qU.fundo && it.cuarteles[0]===qU.nombre && !asisFaltan(it).length, "La aplicación dictada sin fundo no quedó en "+qU.fundo+" › "+qU.nombre+" (fundo «"+it.fundo+"»; "+asisFaltan(it).join("; ")+")", "grave");
         chk(it.prodId===pSD.id && it.producto===pSD.n, "El producto del catálogo no quedó reconocido con su nombre (prodId "+it.prodId+", «"+it.producto+"»)", "media");
         chk(it.carencia==null && it.carOrigen==="sindato", "Sin carencia dicha ni en el catálogo debía quedar «sin dato» (carencia "+it.carencia+", origen "+it.carOrigen+")");
         const fila = necesito(buscar(".asis-it"), "el ítem en la revisión");
@@ -1744,10 +2165,10 @@ BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta 
         await tocar(".asis-rev .btn", "Guardar en AgroNotas"); await pausa();
         const r = D.registros.filter(x=>x.tipo==="Aplicación" && x.asisId===it.id);
         chk(r.length===1 && r[0].fundo===qU.fundo && r[0].cuartel===qU.nombre && r[0].estado==="aplicado" && r[0].fechaReal===HOY() && r[0].prodId===pSD.id && r[0].producto===pSD.n && r[0].carencia==="" && r[0].carOrigen==="sindato" && r[0].dest===true,
-          "La aplicación no quedó guardada como aplicada, con prodId, carencia «sin dato» y destacada: "+JSON.stringify(r[0]||{}).slice(0,220), "alta");
+          "La aplicación no quedó guardada como aplicada, con prodId, carencia «sin dato» y destacada: "+JSON.stringify(r[0]||{}).slice(0,220), "grave");
         chk(r[0] && r[0].origen==="asis" && /^al/.test(r[0].asisLote||"") && r[0].dictado===dictado && r[0].dictadoFh && r[0].equipo==="ipad", "La aplicación no lleva origen «asis», asisLote, texto dictado y equipo", "media");
         const c = carenciaDe(qU);
-        chk(c && c.tipo==="sindato", "Con una aplicación sin carencia (ni en el catálogo) el cuartel quedó «"+(c? c.tipo : "libre para cosechar")+"» y no «sin dato de carencia»", "alta");
+        chk(c && c.tipo==="sindato", "Con una aplicación sin carencia (ni en el catálogo) el cuartel quedó «"+(c? c.tipo : "libre para cosechar")+"» y no «sin dato de carencia»", "grave");
         chk(/sin dato de carencia/i.test((mapaTemaDe(qU, "carencia")||{}).ley||""), "El mapa de carencias no pinta el cuartel como «Aplicado, sin dato de carencia»", "media");
         if(!hoyFundo() || hoyFundo()===qU.fundo){ await irA("panel"); const t = txtDe(buscar(".hoy-ac.carencia")); chk(/sin dato/i.test(t) && !/libre/i.test(t), "La tarjeta «Carencias» de Hoy no avisa el cuartel sin dato de carencia: «"+t+"»", "media"); }
       } finally {
@@ -1782,8 +2203,329 @@ BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta 
       const nc = D.notas[D.notas.length-1]; chk(nc && nc.origen==="asis" && nc.equipo==="celular" && nc.dictado==="Bot borrador que no se pierde" && nc.asisLote===copia[0].item.asisLote, "Lo que llegó del celular no quedó con origen «asis», equipo «celular», su lote y el texto dictado", "media");
       chk(bandeja.length===0 && borrados.length===7, "El iPad no vació la bandeja después de importar");
       bandeja = copia; await asisBandejaMirar(true); await pausa();
-      chk(JSON.stringify(cuenta())===JSON.stringify(c1), "Al volver a leer los mismos ítems se duplicaron", "alta");
+      chk(JSON.stringify(cuenta())===JSON.stringify(c1), "Al volver a leer los mismos ítems se duplicaron", "grave");
       await irA("asist"); chk(/desde el celular/.test(txtApp()), "El historial no muestra lo que llegó desde el celular", "leve");
+    });
+    /* ---- adjuntos (23-10-2026): PDF + foto → aplicación con mezcla y fenología, con el original guardado ---- */
+    const kQ = cfEspKey((plantados(fu).find(q=>q.nombre===cus[0])||{}).especie||"");
+    const conCar = cfCatProd().filter(p=>p.n && cfCarEsp(p, kQ)!=null).sort((a,b)=>cfCarEsp(a,kQ)-cfCarEsp(b,kQ));
+    const pLo = conCar[0] || null, pHiC = conCar[conCar.length-1], pHi = pLo && pHiC && cfCarEsp(pHiC,kQ)>cfCarEsp(pLo,kQ)? pHiC : null;
+    const nPri = pLo? pLo.n : "Bot Producto A", nSeg = pHi? pHi.n : "Bot Aceite Mineral";
+    const respAdj = ()=>({ok:true, modelo:"claude-opus-5-5", usage:{input_tokens:9000, output_tokens:500}, datos:{resumen:"Bot: orden de aplicación con mezcla y foto del cuartel.", preguntas:[], items:[
+      {...base, tipo:"aplicacion", fecha:HOY(), fundo:fu, cuarteles:[cus[0]], producto:"", dosis:"", objetivo:"Escama", mojamiento:2000, aplicado:true, texto:"Bot orden adjunta",
+        mezcla:[{producto:nPri.toUpperCase(), dosis:"100 cc/100 L"}, {producto:nSeg, dosis:"1 L/100 L"}, {producto:"Bot Coadyuvante", dosis:"20 cc/100 L"}], adjuntos:[1]},
+      {...base, tipo:"fenologia", fecha:HOY(), fundo:fu, cuarteles:[qf.nombre], bbch:bb, texto:"Bot: se ven flores abiertas", confianza:"media", mezcla:[], adjuntos:[2]}]}});
+    let regAdj = null;
+    await paso("Adjuntar un PDF y una foto: chips, foto achicada a 1.600 px y el pedido con los dos archivos", async ()=>{
+      syncCfg().rol = "off"; asisAdjFin(); const A6 = asisCfg(); A6.items = null; A6.borrador = ""; guardar();
+      await irA("asist");
+      await tocar("#asisAdjB", "Adjuntar PDF o foto");   // el selector de archivos se simula
+      const foto = await fotoBot(2400, 1800, "planta_bot.png");
+      await adjuntarArchivos("#asisArch", [pdfMinimo(), foto]);
+      chk(await esperarQue(()=>document.querySelectorAll(".asis-adj").length===2, 6000), "Los 2 archivos no aparecieron como chips");
+      let chips = [...document.querySelectorAll(".asis-adj")];
+      chk(chips[0] && /orden_aplicacion_bot\.pdf/.test(txtDe(chips[0])) && /\d+ (KB|MB)/.test(txtDe(chips[0])), "El chip del PDF no muestra nombre y tamaño", "leve");
+      chk(chips[1] && !!chips[1].querySelector("img") && /planta_bot/.test(txtDe(chips[1])), "El chip de la foto no muestra la miniatura y el nombre", "leve");
+      chk(chips.every(c=>c.querySelector(".asis-x[aria-label]") && c.querySelector(".asis-x").getBoundingClientRect().height>=34), "Los chips no tienen ✕ de 34 px con aria-label", "leve");
+      const im = _asisAdj.find(a=>a.tipo==="imagen"), d = im? await dims("data:image/jpeg;base64,"+im.data) : {w:0, h:0};
+      chk(im && Math.max(d.w, d.h)===1600 && im.media_type==="image/jpeg", "La foto de 2.400 px no quedó achicada a 1.600 px en JPEG ("+d.w+"×"+d.h+")", "media");
+      await tocar(chips[1].querySelector(".asis-x"), "✕ quitar la foto");
+      chk(document.querySelectorAll(".asis-adj").length===1, "✕ no quitó la foto", "leve");
+      await adjuntarArchivos("#asisArch", [foto]);
+      await esperarQue(()=>document.querySelectorAll(".asis-adj").length===2, 6000);
+      await escribir("asis_txt", "", "texto vacío (solo archivos)");
+      /* un puente viejo no entiende el formato liviano (400 «no es JSON válido») o pierde los archivos (no dice cuántos llegaron): aviso claro, sin revisión */
+      respEsp = ()=>{ const e = new Error("el contenido no es JSON válido"); e.status = 400; throw e; };
+      accion("Ordenar con un puente viejo (simulado)"); await asisOrdenar(); await pausa();
+      chk(/pega el código nuevo de puente_sync/.test(asisCfg().error||"") && !asisCfg().items, "Con un puente viejo no avisa que hay que actualizarlo: "+(asisCfg().error||""), "media");
+      respEsp = ()=>Object.assign(respAdj(), {adjuntos:0});
+      await asisOrdenar(); await pausa();
+      chk(/todavía no recibe archivos/.test(asisCfg().error||"") && !asisCfg().items, "Si a Claude no le llegaron los archivos igual muestra una revisión: "+(asisCfg().error||""), "media");
+      respEsp = ()=>{ throw new Error("Load failed"); };   // Cloudflare cortó el puente (pedido muy pesado): llega sin respuesta
+      await asisOrdenar(); await pausa();
+      chk(/pese demasiado para el puente/.test(asisCfg().error||""), "Sin respuesta del puente con archivos no sugiere que pesan demasiado: "+(asisCfg().error||""), "leve");
+      respEsp = respAdj; pedido = null;
+      accion("Ordenar con Claude (simulado)"); const prom = asisOrdenar(); await esperar(40);
+      chk([...document.querySelectorAll(".asis-adj .asis-x")].every(b=>b.disabled) && !!document.querySelector(".asis-adj .asis-x"), "Mientras Claude ordena se pueden quitar los archivos (✕ activos)", "leve");
+      await prom; await pausa();
+      necesito(pedido, "el pedido a Claude");
+      const ad = pedido.adjuntos||[], ap = ad.find(a=>a.tipo==="pdf"), ai = ad.find(a=>a.tipo==="imagen");
+      chk(pedidoTipo==="application/x-agronotas-adjuntos", "Los archivos no van en el formato liviano del puente (el puente gratis se queda sin CPU): "+pedidoTipo, "grave");
+      chk(ad.length===2, "El pedido no lleva los 2 adjuntos (lleva "+ad.length+")", "grave");
+      chk(/1\) orden_aplicacion_bot\.pdf \(PDF\); 2\) planta_bot\.png \(foto\)/.test(pedido.texto||""), "El texto no lleva la lista numerada de los archivos: "+(pedido.texto||""), "leve");
+      const adS = ((((pedido.schema.properties||{}).items||{}).items||{}).properties||{}).adjuntos;
+      chk(adS && adS.type==="array" && adS.items && adS.items.type==="integer" && /adjuntos = los números/.test(pedido.system), "No se le pide a Claude de qué archivos sale cada ítem", "media");
+      chk(ap && ap.media_type==="application/pdf" && !/^data:/.test(ap.data) && atob(ap.data.slice(0,8)).indexOf("%PDF")===0 && ap.nombre==="orden_aplicacion_bot.pdf", "El PDF no va como application/pdf en base64 sin prefijo", "grave");
+      chk(ai && ai.media_type==="image/jpeg" && !/^data:/.test(ai.data) && atob(ai.data.slice(0,4)).charCodeAt(0)===0xFF, "La foto no va como image/jpeg en base64 sin prefijo", "grave");
+      chk(/orden_aplicacion_bot\.pdf/.test(pedido.texto||""), "Con el texto vacío el pedido no nombra los archivos adjuntos", "leve");
+      chk(/mezcla/i.test(pedido.system) && /foto de plantas/i.test(pedido.system) && /programa fitosanitario/i.test(pedido.system), "Faltan reglas para Claude sobre documentos y fotos (mezcla, programa, foto de plantas)", "media");
+      const mzS = ((((pedido.schema.properties||{}).items||{}).items||{}).properties||{}).mezcla;
+      chk(mzS && mzS.type==="array" && mzS.items && mzS.items.additionalProperties===false && JSON.stringify((mzS.items.required||[]).slice().sort())==='["dosis","producto"]', "El formato pedido no tiene «mezcla» [{producto, dosis}]", "media");
+      chk(asisCfg().items && asisCfg().items.length===2 && !asisCfg().error, "Con solo archivos (sin texto) no se ordenó: "+(asisCfg().error||""), "grave");
+    });
+    await paso("La revisión muestra la mezcla; corregir una dosis y quitar un producto", async ()=>{
+      const A7 = asisCfg(), it = necesito((A7.items||[]).find(x=>x.tipo==="aplicacion"), "la aplicación en la revisión");
+      chk(it.mezcla.length===3 && it.producto===nPri && it.dosis==="100 cc/100 L" && (!pLo || (it.prodId===pLo.id && it.mezcla[0].prodId===pLo.id)), "El principal no quedó como el primero de la mezcla con su nombre del catálogo («"+it.producto+"»)", "media");
+      if(pHi) chk(it.carencia===cfCarEsp(pHi,kQ) && it.carOrigen==="catalogo", "La carencia de la mezcla no es la mayor de sus productos según el catálogo ("+it.carencia+"; debía ser "+cfCarEsp(pHi,kQ)+")", "grave");
+      const fila = necesito(buscar('.asis-it[data-tipo="aplicacion"]'), "la aplicación");
+      chk(/Bot Coadyuvante/.test(txtDe(fila)) && /1 L\/100 L/.test(txtDe(fila)), "La revisión no muestra los productos de la mezcla con su dosis");
+      /* cada archivo va solo con su ítem (lo dijo Claude en «adjuntos»): el PDF con la aplicación, la foto con la fenología */
+      const kP = (_asisAdj.find(a=>a.tipo==="pdf")||{}).k, kF = (_asisAdj.find(a=>a.tipo==="imagen")||{}).k, itF = (A7.items||[]).find(x=>x.tipo==="fenologia");
+      chk(JSON.stringify(it.adjK)===JSON.stringify([kP]) && itF && JSON.stringify(itF.adjK)===JSON.stringify([kF]), "Los archivos no quedaron solo con su ítem: "+JSON.stringify({apl:it.adjK, fen:itF && itF.adjK}), "grave");
+      chk(/orden_aplicacion_bot\.pdf/.test(txtDe(fila.querySelector(".asis-adj-it"))) && !/planta_bot/.test(txtDe(fila)) && /planta_bot/.test(txtDe(buscar('.asis-it[data-tipo="fenologia"] .asis-adj-it'))), "La revisión no muestra con 📎 qué archivo se guarda con cada ítem", "media");
+      /* el principal dicho más corto en la mezcla («vertimec» y «Vertimec 018 EC») no se repite */
+      const w0 = gtNorm(nPri).split(/\s+/)[0];
+      if(w0.length>=4){ const n2 = asisNorm({tipo:"aplicacion", fundo:fu, cuarteles:[cus[0]], producto:nPri, dosis:"", mezcla:[{producto:w0, dosis:"80 cc/100 L"}, {producto:nSeg, dosis:"1 L/100 L"}]});
+        chk(n2.mezcla.length===2 && n2.mezcla[0].producto===nPri && n2.mezcla[0].dosis==="80 cc/100 L", "El principal dicho más corto en la mezcla quedó repetido: "+JSON.stringify(n2.mezcla), "media"); }
+      await tocar('.asis-it[data-tipo="aplicacion"] .asis-cuerpo', "abrir la aplicación"); necesito(modalAbierto(), "la ventana para corregir");
+      chk(!!document.getElementById("ai_mz_d_2") && !document.getElementById("ai_producto"), "La ventana no muestra un renglón con dosis por cada producto de la mezcla");
+      const cks = [...document.querySelectorAll("#capaModal .ai-adj")];
+      chk(cks.length===2 && cks.filter(x=>x.checked).length===1 && cks.find(x=>x.checked).value===kP, "La ventana no deja elegir qué archivos van con este ítem", "media");
+      await escribir("ai_mz_d_1", "1,5 L/100 L", "dosis del 2.º producto");
+      await tocar('#capaModal [onclick="asisEdMzQuitar(2)"]', "✕ quitar Bot Coadyuvante");
+      chk(!document.getElementById("ai_mz_d_2") && v("ai_mz_d_1")==="1,5 L/100 L", "Quitar un producto no lo sacó o se perdió la dosis corregida");
+      await tocar('#capaModal [onclick="asisEdMzAgregar()"]', "+ Agregar producto");
+      chk(document.getElementById("ai_mz_p_2") && v("ai_mz_p_2")==="" && document.activeElement===document.getElementById("ai_mz_p_2") && v("ai_mz_d_1")==="1,5 L/100 L", "«+ Agregar producto» no agrega un renglón vacío (o se pierde lo escrito)", "media");
+      await tocar('#capaModal [onclick="asisEdMzQuitar(2)"]', "✕ quitar el renglón vacío");
+      chk(!document.getElementById("ai_mz_p_2") && document.getElementById("ai_mz_p_1") && v("ai_mz_p_1")===nSeg, "✕ en un renglón vacío quitó otro producto", "media");
+      await guardarModal_();
+      const it2 = asisCfg().items.find(x=>x.tipo==="aplicacion");
+      chk(it2 && it2.mezcla.length===2 && it2.mezcla[1].dosis==="1,5 L/100 L" && !it2.mezcla.some(m=>/Coadyuvante/.test(m.producto)) && it2.incl && JSON.stringify(it2.adjK)===JSON.stringify([kP]), "La corrección de la mezcla no quedó: "+JSON.stringify(it2 && it2.mezcla));
+      /* una aplicación de un solo producto se puede volver mezcla */
+      const ix1 = asisCfg().items.indexOf(it2); asisCfg().items[ix1] = asisNorm(Object.assign({}, it2, {mezcla:[]})); asisPintar();
+      try{
+        await tocar('.asis-it[data-tipo="aplicacion"] .asis-cuerpo', "abrir la aplicación de un producto");
+        necesito(document.getElementById("ai_producto"), "el campo Producto de una aplicación de un producto");
+        await tocar('#capaModal [onclick="asisEdMzAgregar()"]', "+ Agregar otro producto (mezcla)");
+        chk(document.getElementById("ai_mz_p_1") && v("ai_mz_p_0")===it2.producto && v("ai_mz_p_1")==="", "En una aplicación de un producto no se puede agregar otro a la mezcla", "media");
+      } finally { if(modalAbierto()) await cancelarModal(); asisCfg().items[ix1] = it2; asisPintar(); }
+    });
+    await paso("Guardar: la aplicación con su mezcla y el PDF en docs, la foto en la fenología (cada uno con lo suyo); Deshacer y volver a guardar no duplica", async ()=>{
+      let r0 = D.registros.length, f0 = fenAll().length;
+      await tocar(".asis-rev .btn", "Guardar en AgroNotas");
+      chk(await esperarQue(()=>asisCfg().items===null, 6000), "No terminó de guardar");
+      const r1 = D.registros.slice(r0).find(x=>x.tipo==="Aplicación"), d1 = r1 && (r1.docs||[])[0];
+      /* Deshacer: vuelve la revisión con sus archivos; al guardar otra vez se usan los mismos (no quedan copias sueltas) */
+      accion("Deshacer el guardado"); undoRestaurar(); await pausa();
+      chk(asisCfg().items && asisCfg().items.length===2 && _asisAdj.length===2 && !D.registros.slice(r0).some(x=>x.tipo==="Aplicación"), "Deshacer no devolvió la revisión con sus archivos", "media");
+      await irA("asist"); r0 = D.registros.length; f0 = fenAll().length;
+      await tocar(".asis-rev .btn", "Guardar en AgroNotas otra vez");
+      chk(await esperarQue(()=>asisCfg().items===null, 6000), "No terminó de guardar (2.ª vez)");
+      const r = D.registros.slice(r0).find(x=>x.tipo==="Aplicación"), fe = fenAll().slice(f0)[0];
+      necesito(r, "la aplicación guardada"); regAdj = r; lotesAdj.push(r.asisLote);
+      chk(d1 && (r.docs||[])[0] && r.docs[0].id===d1.id, "Al guardar de nuevo después de Deshacer, el PDF se guardó otra vez (copia suelta)", "leve");
+      chk(r.producto===nPri && r.dosis==="100 cc/100 L" && Array.isArray(r.mezcla) && r.mezcla.length===1 && r.mezcla[0].n===nSeg && r.mezcla[0].dosis==="1,5 L/100 L",
+        "La aplicación no quedó con el principal + mezcla [{n, dosis}] como Calc Fito: "+JSON.stringify({p:r.producto, d:r.dosis, m:r.mezcla}), "grave");
+      if(pHi) chk(r.carencia===String(cfCarEsp(pHi,kQ)) && r.carOrigen==="catalogo" && carDeReg(r, kQ).d===cfCarEsp(pHi,kQ) && r.mezcla[0].carencia===cfCarEsp(pHi,kQ),
+        "La carencia guardada (o la que calcula la app para el mapa) no es la mayor de la mezcla: "+r.carencia+" / "+carDeReg(r, kQ).d, "grave");
+      const dc = (r.docs||[])[0], ft = fe && (fe.fotos||[])[0];
+      chk(dc && /^d/.test(dc.id) && dc.nombre==="orden_aplicacion_bot.pdf" && !(r.fotos||[]).length, "La aplicación no quedó solo con el PDF en docs: "+JSON.stringify({d:r.docs, f:r.fotos}), "grave");
+      chk(fe && ft && /^f/.test(ft) && (fe.fotos||[]).length===1 && !(fe.docs||[]).length && fe.bbch===bb, "La fenología no quedó solo con la foto adjunta: "+JSON.stringify(fe && {f:fe.fotos, d:fe.docs}), "grave");
+      const dPdf = dc? await fotoGet(dc.id) : "", dFoto = ft? await fotoGet(ft) : "";
+      chk(/^data:application\/pdf;base64,JVBER/.test(dPdf||""), "El PDF no quedó guardado en el equipo (IndexedDB)", "grave");
+      chk(/^data:image\/jpeg;base64,/.test(dFoto||""), "La foto no quedó guardada en el equipo (IndexedDB)", "grave");
+      chk(!/base64/.test(JSON.stringify([r, fe, D.asist])), "Quedó base64 dentro de los datos del cuaderno (D)", "grave");
+      chk(_asisAdj.length===0 && !document.querySelector(".asis-adj"), "Los archivos siguen en pantalla después de guardar", "leve");
+    });
+    await paso("Bitácora: el detalle muestra la mezcla y «Documento adjunto», que abre el PDF", async ()=>{
+      const r = necesito(regAdj, "la aplicación guardada"), lc0 = JSON.stringify(nav.lc||null);
+      try{
+        nav.lc = {v:"dia"}; await irA("bitacora");
+        const el = necesito([...document.querySelectorAll("#lcVista .lc-it")].find(x=>txtDe(x.querySelector(".lc-it-t b"))===r.producto && x.closest('.lc-dia[data-dia="'+HOY()+'"]')), "la fila de la aplicación de hoy");
+        const b = el.querySelector(".lc-it-b"); if(b.getAttribute("aria-expanded")!=="true") await tocar(b, "abrir la aplicación");
+        const det = necesito(document.querySelector("#"+el.id+" .lc-det"), "el detalle abierto"), t = txtDe(det);
+        chk(/Mezcla/.test(t) && t.indexOf(nSeg)>=0 && /1,5 L\/100 L/.test(t), "El detalle de la Bitácora no muestra la mezcla con su dosis", "media");
+        chk(/Documento adjunto/.test(t) && /orden_aplicacion_bot\.pdf/.test(t), "El detalle de la Bitácora no muestra «Documento adjunto»", "grave");
+        await tocar(det.querySelector('[data-acc="doc"]'), "abrir el documento adjunto");
+        chk(await esperarQue(()=>visorAbierto() && document.querySelector("#capaVisor iframe"), 4000), "«Documento adjunto» no abrió el PDF", "grave");
+        try{ cerrarVisor(); }catch(e){}
+        /* una orden por hacer (pendiente) va en «Por confirmar»: ahí también se abre el documento */
+        r.estado = "pendiente"; const fr0 = r.fechaReal; delete r.fechaReal; guardar();
+        try{
+          await irA("bitacora");
+          const pd = buscar('#lcVista .lc-pend [data-acc="doc"]');
+          chk(pd && /orden_aplicacion_bot/.test(pd.getAttribute("data-v")||""), "Una orden pendiente en «Por confirmar» no tiene el botón de su documento", "media");
+        } finally { r.estado = "aplicado"; r.fechaReal = fr0; guardar(); }
+      } finally { nav.lc = JSON.parse(lc0) || {v:"dia"}; }
+    });
+    let idPdfC = "", idFotoC = "";
+    await paso("Desde el celular: el PDF y la foto se guardan en el celular y suben al puente; por la bandeja van solo sus ids (sin señal esperan en la cola, en dos partes no se duplican)", async ()=>{
+      asisAdjFin(); asisCfg().items = null; syncCfg().rol = "receptor"; guardar(); await irA("asist");
+      await adjuntarArchivos("#asisArch", [pdfMinimo(), await fotoBot(2400, 1800, "planta_bot2.png")]);
+      chk(await esperarQue(()=>document.querySelectorAll(".asis-adj").length===2, 6000), "Los archivos no aparecieron en el celular");
+      chk(!/queda en este celular/i.test(txtApp()), "El celular todavía dice que el PDF «queda en este celular»", "leve");
+      await escribir("asis_txt", "Bot adjuntos desde el celular", "texto");
+      respEsp = respAdj; accion("Ordenar con Claude (simulado)"); await asisOrdenar(); await pausa();
+      chk(/se sube al puente/.test(txtDe(buscar(".asis-adj-pie"))), "La revisión del celular no dice que los archivos se suben al puente", "leve");
+      /* la foto de la fenología también lleva la orden en PDF: se marca en la ventana del ítem */
+      await tocar('.asis-it[data-tipo="fenologia"] .asis-cuerpo', "abrir la fenología");
+      const ckP = necesito([...document.querySelectorAll("#capaModal .ai-adj")].find(x=>!x.checked), "la casilla del PDF");
+      ckP.checked = true; accion("marca el PDF también para la fenología"); await guardarModal_();
+      const ixF = asisCfg().items.findIndex(x=>x.tipo==="fenologia");
+      chk(ixF>=0 && asisCfg().items[ixF].adjK.length===2, "La ventana del ítem no dejó agregar el PDF a la fenología");
+      /* 1.ª parte: solo la aplicación, sin señal para los archivos */
+      asisIncl(ixF, false); bandeja = []; borrados = []; puts = []; fallaFoto = true;
+      await tocar(".asis-rev .btn", "Enviar 1 al iPad (sin señal)");
+      chk(await esperarQue(()=>asisCfg().cola.length===1, 4000) && bandeja.length===0, "Sin señal lo enviado no quedó esperando en la cola");
+      const c1 = asisCfg().cola[0]||{};
+      idPdfC = ((c1.subir||[])[0])||"";
+      chk(/^dc/.test(idPdfC) && /^data:application\/pdf;base64,JVBER/.test((await fotoGetLocal(idPdfC))||""), "El PDF no quedó guardado en el celular esperando la señal", "grave");
+      chk(!/base64/.test(JSON.stringify(D.asist)) && !/data:application\/pdf|data:image/.test(JSON.stringify(D)), "Lo que espera en la cola dejó base64 dentro del cuaderno (localStorage)", "grave");
+      /* 2.ª parte: la fenología, ya con señal: sube todo y cada archivo una sola vez */
+      fallaFoto = false; asisIncl(asisCfg().items.findIndex(x=>x.tipo==="fenologia"), true);
+      await tocar(".asis-rev .btn", "Enviar 1 al iPad (con señal)");
+      chk(await esperarQue(()=>bandeja.length===2, 5000), "Lo ordenado no llegó a la bandeja");
+      const iA = (bandeja.find(x=>x.item.tipo==="aplicacion")||{}).item||{}, iF = (bandeja.find(x=>x.item.tipo==="fenologia")||{}).item||{};
+      idFotoC = ((iF.adjIds||{}).fotos||[])[0]||"";
+      chk(puts.length===2 && puts.indexOf(idPdfC)>=0 && puts.indexOf(idFotoC)>=0, "Los archivos no subieron una sola vez cada uno: "+JSON.stringify(puts), "grave");
+      chk(iA.adjIds && JSON.stringify(iA.adjIds.docs.map(d=>d.id))===JSON.stringify([idPdfC]) && !iA.adjIds.fotos.length && iF.adjIds && iF.adjIds.docs[0].id===idPdfC && /^fc/.test(idFotoC), "Los ítems no llevan los ids de sus archivos: "+JSON.stringify({a:iA.adjIds, f:iF.adjIds}), "grave");
+      chk(!/base64/.test(JSON.stringify(bandeja)), "Viajó base64 por la bandeja (debían ir solo los ids)", "grave");
+      const dF = archivos.get(idFotoC)||"", dd = dF? await dims(dF) : {w:0, h:0};
+      chk(/^data:application\/pdf;base64,JVBER/.test(archivos.get(idPdfC)||"") && /^data:image\/jpeg;base64,/.test(dF) && Math.max(dd.w, dd.h)===1600, "Lo subido al puente no es el PDF y la foto que vio Claude (1.600 px): "+dd.w+"×"+dd.h, "grave");
+      chk(_asisAdj.length===0 && !asisCfg().cola.length, "Los archivos o la cola siguen en el celular después de enviar", "leve");
+    });
+    await paso("El iPad baja los archivos del celular una sola vez, los enlaza a cada ítem y no deja base64 en D; sin señal no importa nada", async ()=>{
+      syncCfg().rol = "emisor"; guardar();
+      for(const id of [idPdfC, idFotoC]) if(id) await fotoDelAhora(id);   // en el iPad no están (los bots usan un solo navegador)
+      const resto = bandeja.filter(x=>x.item.tipo!=="aplicacion"); bandeja = bandeja.filter(x=>x.item.tipo==="aplicacion"); gets = [];
+      /* sin señal al bajar: no se importa nada y la bandeja queda */
+      let r0 = D.registros.length; fallaBajar = true;
+      accion("revisar la bandeja sin señal"); await asisBandejaMirar(false); await pausa();
+      chk(D.registros.length===r0 && bandeja.length===1 && !!asisCfg().bandErr, "Sin señal para bajar los archivos igual importó (o vació la bandeja)", "media");
+      fallaBajar = false; asisCfg().bandErr = "";
+      accion("revisar la bandeja (1.ª parte)"); await asisBandejaMirar(true); await pausa();
+      const r = D.registros.slice(r0).find(x=>x.tipo==="Aplicación");
+      necesito(r, "la aplicación importada del celular"); lotesAdj.push(r.asisLote);
+      chk((r.docs||[])[0] && r.docs[0].id===idPdfC && r.docs[0].nombre==="orden_aplicacion_bot.pdf" && /^data:application\/pdf;base64,JVBER/.test((await fotoGetLocal(idPdfC))||""), "El PDF del celular no quedó guardado en el iPad y enlazado a la aplicación", "grave");
+      chk(r.mezcla && r.mezcla.length===2 && r.mezcla[0].n===nSeg && r.equipo==="celular", "Lo importado no quedó con su mezcla (principal + 2): "+JSON.stringify({m:r.mezcla, e:r.equipo}).slice(0,240), "media");
+      const f0 = fenAll().length; bandeja = resto;
+      accion("revisar la bandeja (2.ª parte)"); await asisBandejaMirar(true); await pausa();
+      const fe = fenAll().slice(f0)[0];
+      necesito(fe, "la fenología importada del celular");
+      chk((fe.fotos||[])[0]===idFotoC && (fe.docs||[])[0] && fe.docs[0].id===idPdfC && /^data:image\/jpeg;base64,/.test((await fotoGetLocal(idFotoC))||""), "La fenología del celular no quedó con su foto y el PDF", "grave");
+      chk(gets.filter(x=>x===idPdfC).length===1 && gets.filter(x=>x===idFotoC).length===1, "El iPad bajó un archivo más de una vez: "+JSON.stringify(gets), "media");
+      chk(!/base64/.test(JSON.stringify([r, fe, D.asist])), "Quedó base64 dentro de los datos del cuaderno (D) al importar", "grave");
+      chk(bandeja.length===0, "El iPad no vació la bandeja", "leve");
+      /* un archivo que no está en el puente: se importa igual y lo dice */
+      bandeja = [{id:"botfalta1", item:Object.assign({}, base, {id:"botfalta1", tipo:"nota", fecha:HOY(), fundo:fu, titulo:"Bot nota con foto perdida", texto:"Bot", asisLote:"botlote-falta", adjIds:{fotos:["fcnohay1"], docs:[]}})}];
+      lotesAdj.push("botlote-falta"); const n0 = D.notas.length;
+      await asisBandejaMirar(true); await pausa();
+      const nf = D.notas.slice(n0)[0];
+      chk(nf && !(nf.fotos||[]).length && /No llegó desde el celular: una foto/.test(nf.texto||""), "Una foto que no está en el puente no se avisa en lo importado", "leve");
+    });
+    /* la IA de la app (Identificar, etiquetas, documentos, resúmenes) ahora es Claude por el puente (23-10-2026) */
+    await paso("La IA de la app va a Claude por el puente: foto como adjunto JPEG, texto de datos.respuesta, JSON que se sigue leyendo", async ()=>{
+      syncCfg().rol = "off"; const A1 = asisCfg(); guardar();
+      const ia0 = D.ia, g0 = {n:A1.gasto.n, usd:A1.gasto.usd}, pedidos = [];
+      let respIA = "ok";
+      D.ia = {key:"", modelo:""};   // sin clave de Gemini: todo debe ir por el puente
+      respEsp = ()=>{ pedidos.push(pedido); return {ok:true, modelo:A1.modelo, usage:{input_tokens:1500, output_tokens:300}, datos:{respuesta:respIA}}; };
+      try{
+        chk(asisListo(), "El bot no dejó el puente conectado para la prueba");
+        const png = await fotoBot(2400, 1800, "plaga_bot.png"), duPng = "data:image/png;base64,"+(await asisLeerB64(png));
+        respIA = JSON.stringify({producto:"Bot Abamectina 1,8 EC", ingrediente_activo:"abamectina", dosis:"50 cc/100 L", objetivo:"Arañita roja", carencia_dias:"7 días", reingreso:"", mojamiento:"", banda_toxicologica:"", notas:""});
+        const txt = await iaLlamar(iaPartes("Lee la ETIQUETA (bot). Responde SOLO un objeto JSON.", [duPng]), {json:true});
+        const p = necesito(pedidos[pedidos.length-1], "el pedido de la IA al puente"), ad = (p.adjuntos||[])[0]||{};
+        chk(p.adjuntos && p.adjuntos.length===1 && ad.media_type==="image/jpeg" && ad.tipo==="imagen", "La foto no viajó como un adjunto image/jpeg: "+JSON.stringify((p.adjuntos||[]).map(a=>({t:a.tipo, m:a.media_type}))), "grave");
+        chk(typeof ad.data==="string" && ad.data.length>100 && !/^data:/.test(ad.data) && /^[A-Za-z0-9+/]+=*$/.test(ad.data), "El adjunto de la foto trae el prefijo data: o no es base64 limpio", "grave");
+        const dd = await dims("data:image/jpeg;base64,"+(ad.data||""));
+        chk(Math.max(dd.w, dd.h)===1600, "La foto no se achicó a 1.600 px antes de ir a Claude: "+dd.w+"×"+dd.h, "media");
+        chk(/ETIQUETA \(bot\)/.test(p.texto||""), "La instrucción no llegó como texto del pedido");
+        const sc = p.schema||{};
+        chk(sc.type==="object" && sc.additionalProperties===false && JSON.stringify(sc.required)==='["respuesta"]' && sc.properties && sc.properties.respuesta && sc.properties.respuesta.type==="string" && Object.keys(sc.properties).length===1, "El formato pedido a Claude no es {respuesta: string} con additionalProperties:false: "+JSON.stringify(sc).slice(0,160), "grave");
+        chk(p.modelo===A1.modelo && p.esfuerzo==="medium", "La IA no usa el modelo de los Ajustes del asistente o el esfuerzo 'medium': "+p.modelo+" / "+p.esfuerzo);
+        chk(/asistente técnico de AgroNotas/.test(p.system||"") && /JSON/.test(p.system||"") && /SIN_ADJUNTO/.test(p.system||""), "El system de la IA no dice qué es, cómo responder JSON o qué hacer si no llegan los archivos");
+        chk(txt===respIA, "iaLlamar no devolvió el texto de datos.respuesta");
+        const r = iaJSON(txt);
+        chk(r && r.producto==="Bot Abamectina 1,8 EC" && iaNum(r.carencia_dias)==="7", "Lo que devuelve Claude ya no se puede leer con iaJSON (etiqueta)", "grave");
+        chk(A1.gasto.n===g0.n+1 && A1.gasto.usd>g0.usd, "El costo de la consulta de IA no se sumó al gasto del mes del asistente");
+        /* tarea corta (resúmenes, análisis): esfuerzo 'low', sin adjuntos ni la regla SIN_ADJUNTO */
+        respIA = "Resumen bot.";
+        const t2 = await iaLlamar([{text:"Resume (bot)"}], {corto:true}), p2 = pedidos[pedidos.length-1];
+        chk(t2==="Resumen bot." && p2.esfuerzo==="low" && !p2.adjuntos && !/SIN_ADJUNTO/.test(p2.system||""), "Una tarea corta no va con esfuerzo 'low' o lleva adjuntos que no tiene");
+        /* PDF: va como documento, tal cual */
+        const pdf64 = await asisLeerB64(pdfMinimo("analisis_bot.pdf"));
+        respIA = "Bot: análisis foliar";
+        await iaLlamar(iaPartes("Interpreta (bot)", ["data:application/pdf;base64,"+pdf64]));
+        const p3 = pedidos[pedidos.length-1], a3 = (p3.adjuntos||[])[0]||{};
+        chk(a3.media_type==="application/pdf" && a3.tipo==="pdf" && a3.data===pdf64, "Un PDF no viajó a Claude como documento application/pdf sin prefijo", "grave");
+        /* «Identificar» en una foto guardada: la ventana muestra lo que dijo Claude */
+        const fid = "fbotia"+Date.now().toString(36); await fotoPut(fid, duPng);
+        respIA = JSON.stringify({tipo:"plaga", nombre_comun:"Bot chanchito blanco", nombre_cientifico:"Pseudococcus bot", confianza:"media", organo:"fruto", sintomas:"Bot: masas algodonosas", posibles_confusiones:"", que_monitorear:"", recomendacion:""});
+        accion("Identificar con IA (simulado)"); await iaIdentificar(fid); await pausa();
+        chk(await esperarQue(()=>modalAbierto() && /Bot chanchito blanco/.test(txtDe(modalAbierto())), 4000), "«Identificar» no mostró lo que respondió Claude", "grave");
+        const pI = pedidos[pedidos.length-1];
+        chk(pI && pI.adjuntos && pI.adjuntos[0] && pI.adjuntos[0].media_type==="image/jpeg", "«Identificar» no mandó la foto a Claude como JPEG");
+        try{ cerrarModal(); }catch(e){}
+        /* «Interpretar» un documento guardado */
+        const did = "dbotia"+Date.now().toString(36); await fotoPut(did, "data:application/pdf;base64,"+pdf64);
+        respIA = "Bot: análisis foliar con nitrógeno bajo.";
+        accion("Interpretar documento (simulado)"); await iaInterpretarDoc(did, "analisis_bot.pdf"); await pausa();
+        chk(await esperarQue(()=>modalAbierto() && /nitrógeno bajo/.test(txtDe(modalAbierto())), 4000), "«Interpretar» no mostró lo que respondió Claude sobre el PDF", "media");
+        try{ cerrarModal(); }catch(e){}
+        /* un puente viejo descarta los archivos: Claude responde SIN_ADJUNTO y la app avisa que hay que actualizarlo */
+        respIA = "SIN_ADJUNTO";
+        let e1 = null; try{ await iaLlamar(iaPartes("Mira la foto (bot)", [duPng])); }catch(e){ e1 = e; }
+        chk(e1 && /pega el código nuevo de puente_sync/i.test(e1.msg||""), "Con un puente que no pasa la foto no avisa que hay que actualizarlo: "+JSON.stringify(e1));
+        chk(pedidoTipo==="application/x-agronotas-adjuntos", "La foto de la IA no va en el formato liviano del puente: "+pedidoTipo, "media");
+        /* puente viejo que no entiende el formato liviano (400 sin llamar a Claude): aviso claro */
+        respEsp = ()=>{ const e = new Error("el contenido no es JSON válido"); e.status = 400; throw e; };
+        let e4 = null; try{ await iaLlamar(iaPartes("Mira la foto (bot)", [duPng])); }catch(e){ e4 = e; }
+        chk(e4 && /pega el código nuevo de puente_sync/i.test(e4.msg||""), "Con el puente viejo la IA con foto no avisa que hay que actualizarlo: "+JSON.stringify(e4), "media");
+        /* Cloudflare cortó el puente (pedido pesado): «sin respuesta» se explica */
+        respEsp = ()=>{ throw new Error("Failed to fetch"); };
+        let e5 = null; try{ await iaLlamar(iaPartes("Interpreta (bot)", ["data:application/pdf;base64,"+pdf64])); }catch(e){ e5 = e; }
+        chk(e5 && /pese demasiado para el puente/.test(e5.msg||""), "Sin respuesta del puente con un PDF no sugiere que pesa demasiado: "+JSON.stringify(e5), "leve");
+        /* búsqueda «Oficial» de lluvia: Claude con búsqueda web ({web:true}, sin formato), con fuentes y el costo de la búsqueda */
+        const g1 = A1.gasto.usd;
+        respEsp = ()=>({ok:true, modelo:A1.modelo, texto:'Según la DMC: {"meses":{"1":0,"2":3.5}}', fuentes:["DMC Climatología", "Agromet INIA"], busquedas:2, usage:{input_tokens:5000, output_tokens:400, server_tool_use:{web_search_requests:2}}});
+        const w1 = await iaBuscarWeb("Busca la lluvia (bot)");
+        chk(pedido && pedido.web===true && !pedido.schema && /lluvia \(bot\)/.test(pedido.texto||"") && w1 && /"2":3\.5/.test(w1.text) && w1.fuentes.length===2, "La búsqueda Oficial no va a Claude con búsqueda web o no devuelve texto y fuentes: "+JSON.stringify(w1), "grave");
+        chk(A1.gasto.usd - g1 >= 0.02, "El costo de las búsquedas web no se sumó al gasto del mes", "leve");
+        respEsp = ()=>{ const e = new Error("falta el formato de respuesta"); e.status = 400; throw e; };   // puente v2: no conoce {web:true}
+        let e6 = null; try{ await iaBuscarWeb("Busca la lluvia (bot)"); }catch(e){ e6 = e; }
+        chk(e6 && /todavía no busca en internet/.test(e6.msg||""), "Con el puente viejo la búsqueda Oficial no avisa que hay que actualizarlo: "+JSON.stringify(e6), "media");
+        respEsp = ()=>{ pedidos.push(pedido); return {ok:true, modelo:A1.modelo, usage:{input_tokens:1500, output_tokens:300}, datos:{respuesta:respIA}}; };
+        /* los errores del puente (ya traducidos) llegan como {msg} */
+        respEsp = ()=>{ const e = new Error("Claude está ocupado o se llegó al límite: prueba en un minuto"); e.status = 429; throw e; };
+        let e2 = null; try{ await iaLlamar([{text:"hola (bot)"}]); }catch(e){ e2 = e; }
+        chk(e2 && e2.msg==="Claude está ocupado o se llegó al límite: prueba en un minuto", "Un error del puente no llega como {msg} a quien llama: "+JSON.stringify(e2));
+        respEsp = ()=>{ const e = new Error("ruta no permitida"); e.status = 404; throw e; };
+        let e3 = null; try{ await iaLlamar([{text:"hola (bot)"}]); }catch(e){ e3 = e; }
+        chk(e3 && /pega el código nuevo de puente_sync/i.test(e3.msg||""), "Un puente sin la ruta /asistente no avisa que hay que actualizarlo");
+      } finally { D.ia = ia0; respEsp = null; if(modalAbierto()){ try{ cerrarModal(); }catch(e){} } guardar(); }
+    });
+    await paso("IA con audio sin clave de Gemini y sin puente: avisos claros; Gemini queda de respaldo", async ()=>{
+      const s2 = syncCfg(), u0 = s2.url, c0 = s2.clave, ia0 = D.ia, f0 = window.fetch;
+      let llamadas = 0, gem = [];
+      D.ia = {key:"", modelo:""};
+      respEsp = ()=>{ llamadas++; return {ok:true, modelo:"claude-opus-5-5", usage:{}, datos:{respuesta:"ok bot"}}; };
+      try{
+        const audio = "data:audio/webm;codecs=opus;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAAA";
+        let e1 = null; try{ await iaLlamar(iaPartes("Transcribe (bot)", [audio])); }catch(e){ e1 = e; }
+        chk(e1 && /necesita la clave de Gemini/.test(e1.msg||"") && /Claude no escucha audio/.test(e1.msg||"") && /dictado del teclado/.test(e1.msg||""), "Un audio sin clave de Gemini no da el aviso claro: "+JSON.stringify(e1), "grave");
+        chk(llamadas===0, "Un audio se mandó a Claude (no escucha audio)", "grave");
+        const a0 = R.alerts.length; accion("Transcribir sin clave de Gemini"); await iaTranscribir("abot");
+        chk(huboMsg(a0, /transcripci[oó]n de audios necesita la clave de Gemini/i), "«Transcribir» sin clave de Gemini no avisa qué falta");
+        /* sin puente ni clave */
+        s2.url = ""; s2.clave = "";
+        let e2 = null; try{ await iaLlamar([{text:"hola (bot)"}]); }catch(e){ e2 = e; }
+        chk(e2 && /Conecta el puente de sincronizaci[oó]n para usar la IA con Claude \(Datos → Conexiones\)/.test(e2.msg||""), "Sin puente ni clave no pide conectar el puente: "+JSON.stringify(e2), "grave");
+        const a1 = R.alerts.length; accion("Interpretar sin puente"); await iaInterpretarDoc("dbot-no", "bot.pdf");
+        chk(huboMsg(a1, /Conecta el puente/), "«Interpretar» sin puente ni clave no pide conectar el puente");
+        chk(llamadas===0, "Sin puente igual se llamó al puente");
+        /* sin puente pero con clave de Gemini: sigue con Gemini (fetch simulado: no sale nada) */
+        D.ia = {key:"bot-clave-falsa", modelo:""};
+        window.fetch = async (u, o)=>{ gem.push({u:String(u), b:String((o && o.body)||"")}); return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"respuesta gemini bot"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}}); };
+        const t3 = await iaLlamar([{text:"hola (bot)"}]);
+        chk(t3==="respuesta gemini bot" && gem.length===1 && /generativelanguage\.googleapis\.com/.test(gem[0].u) && llamadas===0, "Sin puente y con clave de Gemini no sigue funcionando con Gemini de respaldo");
+        /* con puente y clave: lo normal va a Claude y el audio a Gemini */
+        s2.url = u0; s2.clave = c0; gem = [];
+        await iaLlamar([{text:"hola (bot)"}], {corto:true});
+        chk(llamadas===1 && gem.length===0, "Con el puente conectado la IA siguió yendo a Gemini");
+        await iaLlamar(iaPartes("Transcribe (bot)", [audio]));
+        chk(gem.length===1 && llamadas===1 && /audio\/webm/.test(gem[0].b), "Un audio con clave de Gemini no fue a Gemini");
+      } finally { window.fetch = f0; s2.url = u0; s2.clave = c0; D.ia = ia0; respEsp = null; guardar(); }
     });
     await paso("Dictar sin soporte de voz avisa cómo hacerlo", async ()=>{
       syncCfg().rol="off"; guardar(); await irA("asist");
@@ -1794,7 +2536,230 @@ BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta 
     });
   } finally {
     window.syncFetch = sf0; const s1 = syncCfg(); s1.url = s0.url; s1.clave = s0.clave; s1.rol = s0.rol;
+    /* lo que el iPad importó de la bandeja (nota, recordatorio, fenología…) no se deshace en los pasos: se quita aquí (si no, el revisor de pantallas lo encuentra en la Gantt) */
+    ["notas","registros","recordatorios","fenologia","labores","bitacora"].forEach(k=>{ if(Array.isArray(D[k])) D[k] = D[k].filter(x=>!(x && (x.dictado==="Bot borrador que no se pierde" || /orden_aplicacion_bot\.pdf/.test(x.dictado||"") || (x.asisLote && lotesAdj.indexOf(x.asisLote)>=0)))); });
+    respEsp = null; try{ asisAdjFin(); }catch(e){}
     const A3 = asisCfg(); A3.items = null; A3.borrador = ""; A3.cola = []; guardar();
+  }
+}});
+
+/* 🗂 BITÁCORA: ÍNDICE -------------------------------------------------------------------- */
+BOTS.push({id:"indice", modulo:"Bitácora: índice", nombre:"Inés, auditora del historial", ico:"🗂", que:"Índice único de la Bitácora (lcIdx): cada colección con su cantidad, sin dobles (labores autoBit y avances con bitId), 'C1, C2' en dos eventos, nota de las 22:30 en su día, día de bitácora sin labores con su nota, huérfanos, aplicación atrasada en «Por confirmar», caché que se rehace al guardar o al cambiar los datos, temporada sep-ago, cascada de cuarteles y velocidad con 5.000 eventos", correr: async ()=>{
+  const fu = fundosConCuarteles().find(f=>plantados(f).length>=2), cs = fu? plantados(fu) : [];
+  const parte = s=>String(s||"").split(",").map(x=>x.trim()).filter(Boolean), nCu = s=>Math.max(1, new Set(parte(s)).size);
+  const corre = (iso, n)=>{ const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+  const todos = ix=>ix.ev.concat(ix.pend), GEN = (typeof GENERAL!=="undefined"? GENERAL : "General");
+  const hoyK = HOY(), ayer = corre(hoyK,-1), h5 = corre(hoyK,-5), h8 = corre(hoyK,-8), h9 = corre(hoyK,-9), h10 = corre(hoyK,-10);
+  const nuevos = [], T = {};
+  const meter = (col, o)=>{ D[col] = D[col]||[]; D[col].push(o); nuevos.push(o); return o; };
+  const vacios = ()=>({fotos:[], docs:[], audios:[], pin:"baja", gps:null});
+  try{
+    if(fu && typeof lcIdx==="function"){
+      const c1 = cs[0].nombre, c2 = cs[1].nombre; T.c1 = c1; T.c2 = c2;
+      T.apl = meter("registros", Object.assign({id:nid(), tipo:"Aplicación", aplId:"apBotIdx"+Date.now(), estado:"aplicado", fecha:hoyK, fechaReal:hoyK, fechaPlan:hoyK, fundo:fu, cuartel:c1+", "+c2,
+        producto:"Producto Bot Índice", dosis:"1 L/ha", objetivo:"pulgón", carencia:"14", carOrigen:"registro", mojamiento:"", obs:"Sup 2,5 ha · producto 2,5 L · costo $12.345"}, vacios()));
+      T.atr = meter("registros", Object.assign({id:nid(), tipo:"Aplicación", aplId:"apBotIdxP"+Date.now(), estado:"pendiente", fecha:h5, fechaPlan:h5, fundo:fu, cuartel:c1,
+        producto:"Producto Bot Atrasado", dosis:"", objetivo:"", carencia:"", mojamiento:"", obs:""}, vacios()));
+      T.fan = meter("registros", Object.assign({id:nid(), tipo:"Riego", fecha:hoyK, fundo:fu, cuartel:"Cuartel Bot Fantasma", horas:"3", sector:"", obs:""}, vacios()));
+      T.bVacia = meter("bitacora", {id:nid(), fecha:ayer, fundo:fu, nota:"Bot índice: día sin labores", lineas:[]});
+      T.lab = meter("labores", {id:nid(), gid:"", estado:"hecha", avances:[], meta:0, av:"", fecha:h10, fecha2:h8, tipo:"Poda", fundo:fu, cuartel:c1, desc:"Bot índice poda", resp:"", nota:"", unidad:"plantas",
+        real:{ok:"si", ts:new Date().toISOString(), dias:[h10, h9, h8]}});
+      T.bLab = meter("bitacora", {id:nid(), fecha:h8, fundo:fu, nota:"", lineas:[{tipo:"Poda", cuartel:c1, cantidad:7, unidad:"plantas", personas:1, laborId:T.lab.id, uid:"bBotIdx1"}]});
+      T.lab.avances.push({fecha:h9, cantidad:5, personas:1, obs:"Gantt bot"}, {fecha:h8, cantidad:7, personas:1, obs:"Bitácora", bitId:T.bLab.id});
+      T.auto = meter("labores", {id:nid(), gid:"", estado:"encurso", avances:[{fecha:h8, cantidad:3, personas:1, obs:"Bitácora", bitId:T.bLab.id}], meta:0, av:"", autoBit:true, unidad:"plantas",
+        fecha:h8, fecha2:h8, tipo:"Cosecha", fundo:fu, cuartel:c2, desc:"", resp:"", nota:""});
+      T.plan = meter("labores", {id:nid(), gid:"", estado:"pendiente", avances:[], meta:0, av:"", fecha:corre(hoyK,3), fecha2:corre(hoyK,5), tipo:"Raleo", fundo:fu, cuartel:c1, desc:"Bot índice plan", resp:"", nota:"", unidad:""});
+      /* una barra que creó la Bitácora (autoBit) y que después se confirmó en la Gantt: su término sí entra (sus avances con bitId, no) */
+      T.autoOk = meter("labores", {id:nid(), gid:"", estado:"hecha", avances:[{fecha:h9, cantidad:2, personas:1, obs:"Bitácora", bitId:T.bLab.id}], meta:0, av:"", autoBit:true, unidad:"plantas",
+        fecha:h9, fecha2:h9, tipo:"Amarre", fundo:fu, cuartel:c2, desc:"", resp:"", nota:"", real:{ok:"si", ts:new Date().toISOString()}});
+      /* «⚠ Se hizo distinto»: el término es la fecha que se escribió, no el día en que se tocó Confirmar */
+      T.labDif = meter("labores", {id:nid(), gid:"", estado:"finalizada", avances:[], meta:0, av:"", fecha:h10, fecha2:h8, tipo:"Desbrote", fundo:fu, cuartel:c1, desc:"Bot índice distinto", resp:"", nota:"", unidad:"",
+        real:{ok:"dif", fecha:h10, fecha2:h9, nota:"solo la mitad", ts:new Date().toISOString()}});
+      /* un avance dictado «terminamos el raleo en C1 y C2» (como lo deja asisAvances): líneas con nota, dos labores «hecha» sin sello del asistente */
+      T.bAs = meter("bitacora", {id:nid(), fecha:h5, fundo:fu, nota:"Raleo: 8 en total, repartido en partes iguales entre 2 cuarteles", origen:"asis", asisLote:"alBotIdx", dictado:"terminamos el raleo en los dos", lineas:[]});
+      T.labAs1 = meter("labores", {id:nid(), gid:"", estado:"hecha", avances:[{fecha:h5, cantidad:4, personas:1, obs:"Asistente", bitId:T.bAs.id}], meta:0, av:"", unidad:"plantas", fecha:h5, fecha2:h5, tipo:"Raleo", fundo:fu, cuartel:c1, desc:"", resp:"", nota:""});
+      T.labAs2 = meter("labores", {id:nid(), gid:"", estado:"hecha", avances:[{fecha:h5, cantidad:4, personas:1, obs:"Asistente", bitId:T.bAs.id}], meta:0, av:"", unidad:"plantas", fecha:h5, fecha2:h5, tipo:"Raleo", fundo:fu, cuartel:c2, desc:"", resp:"", nota:""});
+      T.bAs.lineas = [{tipo:"Raleo", cuartel:c1, cantidad:4, unidad:"plantas", personas:1, laborId:T.labAs1.id, asisId:"asBotIdx1", uid:"bBotIdxA1"}, {tipo:"Raleo", cuartel:c2, cantidad:4, unidad:"plantas", personas:1, laborId:T.labAs2.id, asisId:"asBotIdx2", uid:"bBotIdxA2"}];
+      T.fen = meter("fenologia", {id:nid(), fecha:hoyK, fundo:fu, cuartel:c1, especie:cs[0].especie, bbch:"65", estado:"Plena flor", fotos:[], nota:"Bot índice fenología"});
+      T.fen2 = meter("fenologia", {id:nid(), fecha:hoyK, fundo:fu, cuartel:c2, especie:cs[1].especie, bbch:"65", estado:"Plena flor", fotos:[], nota:""});
+      const noche = new Date(); noche.setHours(22,30,0,0);   // 22:30 hora local: en UTC ya es el día siguiente
+      const nota = (o)=>meter("notas", Object.assign({id:nid(), fh:new Date().toISOString(), titulo:"", fundo:fu, cuartel:"", cat:"Observación", texto:"", fotos:[], docs:[], audios:[], check:[], pins:[], gps:null, pin:"normal", resuelta:false}, o));
+      T.n2230 = nota({fh:noche.toISOString(), titulo:"Bot nota 22:30", cuartel:c1, texto:"Bot índice: nota de la noche"});
+      T.nOc = nota({texto:"Secreto bot índice", oculta:true});
+      T.nGen = nota({fundo:GEN, texto:"Bot índice: nota general"});
+      guardar();
+    }
+    const pre = ()=>{ if(typeof lcIdx!=="function") throw new SinProbar("No existe lcIdx() en la app (Etapa 1)"); if(!fu) throw new SinProbar("No hay un fundo con 2 cuarteles plantados para los datos de prueba"); return lcIdx(); };
+    await paso("Cada colección aparece en el índice con su cantidad esperada", async ()=>{
+      const ix = pre(), por = {}, esp = {registros:0, bitacora:0, fenologia:0, notas:0, labores:0};
+      todos(ix).forEach(e=>{ por[e.st] = (por[e.st]||0)+1; });
+      (D.registros||[]).forEach(r=>{ esp.registros += nCu(r.cuartel); });
+      (D.bitacora||[]).forEach(e=>{ const ls = e.lineas||[]; ls.forEach(l=>{ esp.bitacora += nCu(l.cuartel); }); if(!ls.length) esp.bitacora++; });   // plan: la «nota del día» es fila solo sin líneas
+      (D.fenologia||[]).forEach(f=>{ esp.fenologia += nCu(f.cuartel); });
+      (D.notas||[]).forEach(n=>{ esp.notas += nCu(n.cuartel); });
+      (D.labores||[]).forEach(l=>{   // también las autoBit: sus avances traen bitId y los días que ya vienen de la bitácora los dice la propia Gantt (gtRealDias)
+        const deBit = new Set(gtRealDias(l).map(d=>d.fecha));
+        let n = (l.avances||[]).filter(a=>!a.bitId && a.fecha).length + new Set(((l.real && l.real.dias)||[]).filter(d=>d && !deBit.has(d)).map(d=>String(d).slice(0,7))).size;
+        if(l.estado==="hecha" || l.estado==="finalizada") n++;
+        esp.labores += n*nCu(l.cuartel); });
+      Object.keys(esp).forEach(k=>chk((por[k]||0)===esp[k], "El índice tiene "+(por[k]||0)+" eventos de "+k+" y se esperaban "+esp[k], "grave"));
+      const raras = Object.keys(por).filter(k=>!(k in esp));
+      chk(!raras.length, "El índice trae eventos de colecciones que no corresponden: "+raras.join(", "));
+      chk(ix.ev.every(e=>e.cuK===e.fundo+"|"+e.cu && typeof e.txt==="string" && typeof e.abrir==="string" && /^(formReg|bitEditar|fenEditar|verNota|gtEditar)\(/.test(e.abrir)), "Hay eventos sin clave fundo|cuartel, sin texto para buscar o sin «abrir»");
+    });
+    await paso("Sin dobles: labores autoBit y avances con bitId no se cuentan", async ()=>{
+      const ix = pre(), all = todos(ix), vistos = new Set(), dup = [];
+      all.forEach(e=>{ if(vistos.has(e.k)) dup.push(e.k); vistos.add(e.k); });
+      chk(!dup.length, dup.length+" evento(s) con la clave repetida: "+dup.slice(0,4).join(", "), "grave");
+      chk(!all.some(e=>e.st==="labores" && e.id===T.auto.id), "Una labor creada por la Bitácora (autoBit) sin nada propio aparece en el índice: se contaría doble", "grave");
+      const eAo = all.filter(e=>e.st==="labores" && e.id===T.autoOk.id);
+      chk(eAo.length===1 && /:fin$/.test(eAo[0].k) && eAo[0].fecha===hoyK, "Una barra de la Bitácora (autoBit) confirmada en la Gantt no dio solo su «Labor terminada» ("+eAo.map(e=>e.k).join(", ")+")", "media");
+      const eDf = all.find(e=>e.k==="l:"+T.labDif.id+":fin");
+      chk(eDf && eDf.fecha===h9 && !eDf.aprox, "Con «Se hizo distinto» el término no quedó en la fecha escrita ("+(eDf? eDf.fecha : "sin hito")+", se esperaba "+h9+")", "media");
+      const eAs = all.filter(e=>e.st==="labores" && (e.id===T.labAs1.id || e.id===T.labAs2.id));
+      chk(eAs.length===2 && eAs.every(e=>/:fin$/.test(e.k) && e.fecha===h5 && !e.aprox && e.origen==="asis") && lcGrupoK(eAs[0])===lcGrupoK(eAs[1]),
+        "Las labores que un dictado dejó «hechas» no dieron un término el día del avance, sin «fecha aprox.», con origen del asistente y en una sola fila ("+eAs.map(e=>e.fecha+"/"+e.origen+(e.aprox? "/aprox" : "")).join(", ")+")", "media");
+      chk(!all.some(e=>e.k==="b:"+T.bAs.id+":nota"), "Una entrada de bitácora CON líneas dio además su fila «nota del día» (la nota va en el detalle de las líneas)", "media");
+      chk(all.filter(e=>e.st==="bitacora" && e.id===T.bAs.id).every(e=>e.txt.indexOf("repartido")>=0), "La nota del día no quedó en el texto para buscar de sus líneas", "leve");
+      const conBit = all.filter(e=>{ const m = e.st==="labores" && /:av(\d+)$/.exec(e.k); if(!m) return false; const l = (D.labores||[]).find(x=>x.id===e.id), a = l && (l.avances||[])[+m[1]]; return !!(a && a.bitId); });
+      chk(!conBit.length, "Un avance que viene de la Bitácora (bitId) aparece también como labor: se contaría doble", "grave");
+      const deLab = all.filter(e=>e.st==="labores" && e.id===T.lab.id);
+      chk(deLab.some(e=>/:av0$/.test(e.k)) && !deLab.some(e=>/:av1$/.test(e.k)), "La labor de prueba no quedó con su avance de la Gantt (av0) y sin el de la bitácora (av1)", "grave");
+      chk(deLab.some(e=>/:fin$/.test(e.k) && e.fecha===hoyK && !e.aprox && /Labor terminada/.test(e.tit)), "La labor terminada no dio su hito «Labor terminada» en la fecha de la confirmación");
+      const deBit = new Set(gtRealDias(T.lab).map(d=>d.fecha)), fuera = T.lab.real.dias.filter(d=>!deBit.has(d)), evD = deLab.filter(e=>/:dias-/.test(e.k));
+      chk(evD.length===new Set(fuera.map(d=>d.slice(0,7))).size && evD.reduce((s,e)=>s+(e.dias||0),0)===fuera.length && !evD.some(e=>deBit.has(e.fecha) || deBit.has(e.fin)),
+        "Los días de la Gantt que no vienen de la bitácora no quedaron agrupados por mes ("+evD.length+" evento(s) para "+fuera.length+" día(s))");
+      chk(!all.some(e=>e.st==="labores" && e.id===T.plan.id), "Una labor pendiente (plan de la Gantt) entró al historial");
+      const el = ix.ev.filter(e=>e.st==="bitacora" && e.id===T.bLab.id);
+      chk(el.length===1 && el[0].k==="b:"+T.bLab.id+":bBotIdx1" && el[0].cat==="lab" && el[0].integ, "La línea de bitácora no dio un solo evento con su uid (o dio una «nota del día» sin tener nota)");
+    });
+    await paso("'C1, C2' se separa en un evento por cuartel, con su carencia", async ()=>{
+      const ix = pre(), ea = ix.ev.filter(e=>e.st==="registros" && e.id===T.apl.id), k1 = fu+"|"+T.c1, k2 = fu+"|"+T.c2;
+      chk(ea.length===2 && ea.some(e=>e.cuK===k1) && ea.some(e=>e.cuK===k2), "La aplicación en «"+T.apl.cuartel+"» dio "+ea.length+" evento(s): debían ser 2, uno por cuartel con clave fundo|cuartel", "grave");
+      chk(ea.every(e=>e.est==="aplicado" && e.car && e.car.d===14 && e.car.src==="registro" && e.car.fin===corre(hoyK,14)), "La carencia de la aplicación no quedó en el evento (14 días, del registro, hasta el "+corre(hoyK,14)+")", "media");
+      chk(ea.every(e=>e.sup===2.5 && e.costo===12345 && e.origen==="manual" && e.abrir==="formReg("+T.apl.id+")" && e.grupo===T.apl.aplId), "Superficie, costo, origen, grupo o «abrir» de la aplicación no quedaron bien");
+      chk(ea.every(e=>e.txt.indexOf("producto bot indice")>=0 && e.txt.indexOf("pulgon")>=0), "El texto para buscar no lleva el producto y el objetivo sin tildes");
+      chk((ix.porCu.get(k1)||[]).some(e=>e.id===T.apl.id) && (ix.porCu.get(k2)||[]).some(e=>e.id===T.apl.id), "La aplicación no quedó en el historial de cada cuartel (porCu)");
+      const s1 = ix.porSem.get(k1+"|"+lcSem(hoyK)), m1 = ix.porMes.get(k1+"|"+hoyK.slice(0,7));
+      chk(s1 && s1.apl>=1 && s1.fen>=1 && m1 && m1.apl>=1, "Los conteos por semana o por mes del cuartel no suman la aplicación y la fenología de hoy");
+    });
+    await paso("Una nota de las 22:30 (hora local) cae en su día; la oculta no se busca; General aparte", async ()=>{
+      const ix = pre(), en = ix.ev.find(e=>e.k==="n:"+T.n2230.id);
+      chk(en && en.fecha===hoyK && en.hora==="22:30", "La nota de las 22:30 quedó el "+(en? en.fecha+" a las "+en.hora : "—")+" (debía ser hoy "+hoyK+" a las 22:30)", "grave");
+      const eo = ix.ev.find(e=>e.k==="n:"+T.nOc.id);
+      chk(eo && eo.tit==="Nota oculta" && !eo.txt && !eo.det, "La nota oculta muestra su texto o entra en la búsqueda", "media");
+      chk(!ix.ev.some(e=>e.txt.indexOf("secreto bot indice")>=0), "El texto de una nota oculta se puede buscar", "media");
+      const eg = ix.ev.find(e=>e.k==="n:"+T.nGen.id);
+      chk(eg && eg.fundo===GEN && eg.cu==="" && (ix.porFu.get(GEN)||[]).indexOf(eg)>=0, "La nota General no quedó aparte (fundo General, sin cuartel)");
+    });
+    await paso("Un día de bitácora sin labores da su evento de nota", async ()=>{
+      const ix = pre(), eb = ix.ev.find(e=>e.k==="b:"+T.bVacia.id+":nota");
+      chk(eb && eb.cat==="nota" && eb.cu==="" && eb.fecha===ayer && eb.abrir==="bitEditar("+T.bVacia.id+")" && (ix.porFu.get(fu)||[]).indexOf(eb)>=0, "La entrada de bitácora con lineas:[] y nota no dio su evento «nota del día»", "media");
+    });
+    await paso("Un cuartel que ya no existe aparece en huérfanos", async ()=>{
+      const ix = pre(), ok = new Set((D.cuarteles||[]).map(q=>q.fundo+"|"+q.nombre));
+      chk((ix.huer.get(fu+"|Cuartel Bot Fantasma")||0)>=1, "El registro de un cuartel que no existe no aparece en huérfanos (huer)", "media");
+      chk(![...ix.huer.keys()].some(k=>ok.has(k)), "Un cuartel que sí existe quedó entre los huérfanos");
+    });
+    await paso("Una aplicación pendiente atrasada va a «Por confirmar» y no al historial", async ()=>{
+      const ix = pre(), ep = ix.pend.find(e=>e.id===T.atr.id);
+      chk(ep && ep.est==="atrasada" && ep.fecha===h5 && ep.cuK===fu+"|"+T.c1, "La aplicación pendiente de hace 5 días no quedó en pend como «atrasada» ("+(ep? ep.est : "no está")+")", "media");
+      chk(!ix.ev.some(e=>e.st==="registros" && e.id===T.atr.id), "La aplicación pendiente entró al historial (debía quedar solo en «Por confirmar»)", "media");
+      chk(!ix.ev.some(e=>e.est==="pendiente" || e.est==="atrasada"), "Hay aplicaciones sin confirmar en el historial");
+    });
+    await paso("Los mapas del índice cuadran (día, cuartel, fundo, último)", async ()=>{
+      const ix = pre(); let nd = 0, nc = 0, nf = 0;
+      ix.porDia.forEach(a=>{ nd += a.length; }); ix.porCu.forEach(a=>{ nc += a.length; }); ix.porFu.forEach(a=>{ nf += a.length; });
+      chk(nd===ix.ev.length && nc+nf===ix.ev.length, "porDia, porCu y porFu no suman todos los eventos ("+nd+", "+nc+"+"+nf+" de "+ix.ev.length+")");
+      let bien = true; ix.porCu.forEach(a=>{ if(a.some(e=>!e.cu)) bien = false; }); ix.porFu.forEach(a=>{ if(a.some(e=>e.cu)) bien = false; });
+      chk(bien, "porCu tiene eventos de todo el fundo o porFu tiene eventos de un cuartel");
+      let orden = true; for(let i=1;i<ix.ev.length;i++){ if(ix.ev[i-1].fecha<ix.ev[i].fecha){ orden = false; break; } }
+      ix.porDia.forEach(is=>{ const es = is.map(i=>ix.ev[i]), h = es.filter(e=>e.hora), s = es.filter(e=>!e.hora);   // en el día: lo que tiene hora, por hora; lo demás, por id (el orden en que se anotó)
+        for(let i=1;i<h.length;i++) if(h[i-1].hora<h[i].hora) orden = false;
+        for(let i=1;i<s.length;i++) if((+s[i-1].id||0)<(+s[i].id||0)) orden = false; });
+      chk(orden, "Los eventos no van ordenados por fecha y, dentro del día, por hora (cuando se conoce) o por id, del más nuevo al más antiguo");
+      const f1 = ix.ev.find(e=>e.k==="f:"+T.fen.id), f2 = ix.ev.find(e=>e.k==="f:"+T.fen2.id);
+      chk(f1 && f2 && lcGrupoK(f1)===lcGrupoK(f2), "El mismo estado fenológico el mismo día en dos cuarteles no va en una sola fila (grupo distinto)", "leve");
+      const k1 = fu+"|"+T.c1, u = ix.ult.get(k1);
+      chk(u && u.act===(ix.porCu.get(k1)||[])[0] && u.fen && u.fen.cat==="fen" && u.apl && u.apl.cat==="apl", "El último de cada cosa (ult) del cuartel no cuadra con su historial");
+    });
+    await paso("La caché se rehace al guardar y al cambiar los datos (nunca se guarda en D)", async ()=>{
+      const a = pre();
+      chk(lcIdx()===a, "Pedir el índice dos veces seguidas lo volvió a armar (la caché no sirve)");
+      guardar(); const b = lcIdx();
+      chk(b!==a && b.ev.length===a.ev.length, "Después de guardar() el índice no se rehízo");
+      const D0 = D; let c = null;
+      try{ D = JSON.parse(JSON.stringify(D0)); c = lcIdx(); } finally { D = D0; }   // como cargar(), syncAplicar o Deshacer: otro objeto D
+      chk(c && c!==b && c.D!==D0 && c.ev.length===b.ev.length, "Al cambiar los datos (otro objeto D, como al cargar o sincronizar) el índice no se rehízo");
+      const d = lcIdx();
+      chk(d!==c && d.D===D0 && d.ev.length===b.ev.length, "Al volver a los datos originales el índice no se rehízo igual");
+      chk(!Object.keys(D).some(k=>/^_?lc/i.test(k)) && JSON.stringify(D).indexOf('"porDia"')<0, "El índice quedó guardado dentro de los datos (D)", "grave");
+    });
+    await paso("Temporada de septiembre a agosto (lcTemp, lcTempRango)", async ()=>{
+      if(typeof lcTemp!=="function" || typeof lcTempRango!=="function") throw new SinProbar("No existen lcTemp/lcTempRango");
+      const c = bitCfg(), ini0 = c.tempIni;
+      try{
+        delete c.tempIni;
+        chk(lcTempIni()===9 && c.tempIni===9, "Sin configurar, la temporada no parte en septiembre (D.bitCfg.tempIni = 9)");
+        chk(lcTemp("2026-10-22")==="26/27" && lcTemp("2027-08-31")==="26/27" && lcTemp("2026-08-31")==="25/26" && lcTemp("2026-09-01")==="26/27", "La temporada no va de septiembre a agosto («26/27» = sep-2026 a ago-2027)");
+        const r = lcTempRango("26/27");
+        chk(r && r.desde==="2026-09-01" && r.hasta==="2027-08-31", "El rango de la temporada 26/27 no es del 01-09-2026 al 31-08-2027 ("+(r? r.desde+" a "+r.hasta : "nulo")+")");
+      } finally { if(ini0===undefined) delete c.tempIni; else c.tempIni = ini0; }
+    });
+    await paso("Renombrar un cuartel actualiza lo que mira la Bitácora y su preferencia guardada", async ()=>{
+      if(typeof lcRenombrar!=="function" || typeof lcPrefs!=="function") throw new SinProbar("No existen lcRenombrar/lcPrefs");
+      const tenia = ("lc" in nav), lc0 = nav.lc, p0 = localStorage.getItem("agronotasBitacora");
+      const q = {id:nid(), fundo:fu, nombre:"Bot Índice Viejo", especie:"Naranjo", variedad:"", portainjerto:"", ha:1, marco:"", anio:"", plantas:0};
+      D.cuarteles.push(q);
+      try{
+        nav.lc = {v:"dia", fundo:fu, cu:"Bot Índice Viejo"}; lcPrefsGuardar({v:"dia", fundo:fu, cu:"Bot Índice Viejo", per:"30"});
+        cuartelCascada(fu, "Bot Índice Viejo", fu, "Bot Índice Nuevo");
+        chk(nav.lc.fundo===fu && nav.lc.cu==="Bot Índice Nuevo", "La cascada del cuartel no actualizó nav.lc (quedó «"+nav.lc.cu+"»)", "media");
+        const p = lcPrefs();
+        chk(p.cu==="Bot Índice Nuevo" && p.per==="30", "La cascada del cuartel no actualizó la preferencia guardada (agronotasBitacora)", "media");
+      } finally {
+        if(tenia) nav.lc = lc0; else delete nav.lc;
+        if(p0==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", p0);
+        D.cuarteles = D.cuarteles.filter(x=>x!==q);
+      }
+    });
+    await paso("Velocidad: el índice con 5.000 eventos sintéticos en memoria", async ()=>{
+      pre();
+      const cus = (D.cuarteles||[]).length? D.cuarteles : [{fundo:"F", nombre:"C1", especie:"Naranjo"}], prods = cfCatProd().map(p=>p.n).filter(Boolean);
+      const S = {cuarteles:D.cuarteles, catalogos:D.catalogos, fundos:D.fundos, bitCfg:D.bitCfg, registros:[], bitacora:[], fenologia:[], notas:[], labores:[]};
+      let id = 1e8; const dia = i=>corre(hoyK, -(i%365)), otro = (q,j)=>{ const x = cus[(cus.indexOf(q)+j)%cus.length]; return (x.fundo===q.fundo && x.nombre!==q.nombre)? x : null; };
+      for(let i=0;i<1400;i++){ const q = cus[i%cus.length], q2 = i%3===0? otro(q,1) : null;
+        S.registros.push({id:id++, tipo:"Aplicación", aplId:"apS"+(i>>1), estado:i%7===0? "pendiente" : "aplicado", fecha:dia(i), fechaReal:dia(i), fundo:q.fundo, cuartel:q2? q.nombre+", "+q2.nombre : q.nombre,
+          producto:prods.length? prods[i%prods.length] : "Producto "+i, dosis:"1 L/ha", objetivo:"plaga "+(i%9), carencia:i%4===0? "" : String(i%21), obs:"Sup 2,3 ha · costo $1.000", fotos:[], ...(i%5===0? {mezcla:[{n:"Aceite mineral"}]} : {})}); }
+      const tiposR = ["Riego","Labor","Lluvia","Fertilización","Otro"];
+      for(let i=0;i<700;i++){ const q = cus[i%cus.length], t = tiposR[i%5];
+        S.registros.push({id:id++, tipo:t, fecha:dia(i*2), fundo:q.fundo, cuartel:i%4===0? "" : q.nombre, horas:"4", mm:"2", labor:"Poda", cantidad:"100 plantas", personas:"3", fini:dia(i*2), ffin:dia(i*2),
+          producto:"Urea", obs:"registro sintético "+i, fotos:[], ...(t==="Labor"? {laborId:"L"+i} : {})}); }
+      for(let i=0;i<560;i++){ const q = cus[i%cus.length];   // la nota de un día con líneas ya no es fila propia: más días para llegar a 5.000
+        S.bitacora.push({id:id++, fecha:dia(i), fundo:q.fundo, nota:i%3===0? "nota sintética "+i : "", lineas:[{tipo:"Poda", cuartel:q.nombre, cantidad:50, unidad:"plantas", personas:2, laborId:null, uid:"s"+i+"a"},
+          {tipo:"Riego", cuartel:"", cantidad:0, unidad:"", personas:0, laborId:null, uid:"s"+i+"b"}]}); }
+      for(let i=0;i<700;i++){ const q = cus[i%cus.length], q2 = i%5===0? otro(q,3) : null;
+        S.notas.push({id:id++, fh:new Date(Date.now()-i*432e5).toISOString(), titulo:i%2? "Nota "+i : "", fundo:q.fundo, cuartel:q2? q.nombre+", "+q2.nombre : q.nombre, cat:"Observación",
+          texto:"Texto de la nota sintética número "+i+" con algo de detalle", oculta:i%50===0, fotos:[], check:[]}); }
+      for(let i=0;i<350;i++){ const q = cus[i%cus.length]; S.fenologia.push({id:id++, fecha:dia(i), fundo:q.fundo, cuartel:q.nombre, especie:q.especie, bbch:String(10+(i%80)), estado:"Estado", fotos:[], nota:""}); }
+      for(let i=0;i<80;i++){ const q = cus[i%cus.length], f0 = dia(i*3+10);
+        S.labores.push({id:id++, gid:"", estado:"hecha", fecha:f0, fecha2:corre(f0,4), tipo:"Poda", fundo:q.fundo, cuartel:q.nombre, desc:"", unidad:"plantas",
+          avances:[{fecha:f0, cantidad:10, personas:2}, {fecha:corre(f0,1), cantidad:12, personas:2}], real:{ok:"si", ts:new Date().toISOString(), dias:[f0, corre(f0,1), corre(f0,2), corre(f0,3)]}}); }
+      const D0 = D, ms = []; let ixS = null;
+      try{ for(let k=0;k<5;k++){ D = Object.assign({}, S); const t0 = performance.now(); ixS = lcIdx(); ms.push(performance.now()-t0); } }   // otro objeto D cada vez: se arma de cero
+      finally { D = D0; }
+      const nEv = ixS.ev.length+ixS.pend.length, med = ms.slice().sort((a,b)=>a-b)[2];
+      AB.lcMs = {eventos:nEv, ms:ms.map(x=>Math.round(x*10)/10)};
+      log("⏱ índice con "+nEv+" eventos: "+ms.map(x=>Math.round(x)).join(" / ")+" ms (mediana "+Math.round(med)+" ms)");
+      R.lentas.push({tab:"índice de la Bitácora con "+nEv+" eventos (lcIdx, mediana de 5)", max:Math.round(med), n:ms.length});
+      chk(nEv>=5000, "Los datos sintéticos dieron solo "+nEv+" eventos (se esperaban 5.000 o más)", "leve");
+      if(med>60) avisar("Índice lento", "lcIdx() tardó "+Math.round(med)+" ms con "+nEv+" eventos (meta: menos de 60 ms en el PC, 30 ms en el iPad)", "media"); else R.verif++;
+      chk(lcIdx().D===D0, "Después de medir, el índice no volvió a los datos reales");
+    });
+  } finally {
+    const fuera = new Set(nuevos);
+    ["registros","bitacora","labores","fenologia","notas"].forEach(k=>{ if(Array.isArray(D[k])) D[k] = D[k].filter(x=>!fuera.has(x)); });
+    guardar(); render();
   }
 }});
 
@@ -1802,12 +2767,36 @@ BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta 
 BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ico:"📱", que:"Todas las pestañas en iPad, celular, sol y texto grande: cosas que se salen, textos raros, botones muy chicos para el dedo, botones sin nombre e imágenes rotas", correr: async ()=>{
   const ui0 = JSON.stringify(D.ui||{});
   const modos = [["iPad",{movil:"no"}],["celular",{movil:"si"}],["sol",{movil:"no", sol:true}],["texto grande",{movil:"no", grande:true}]];
+  /* la Bitácora con algo que mostrar (el bot «bitacora» borra lo suyo al terminar): un lote, una pendiente, fenología con 2 cuarteles, una nota y un día */
+  const nuevos = [], meter = (col, o)=>{ D[col] = D[col]||[]; D[col].push(o); nuevos.push([col, o]); return o; };
+  const fuP = fundosConCuarteles()[0], qsP = fuP? plantados(fuP) : [], Hp = HOY(), lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null, pB0 = localStorage.getItem("agronotasBitacora");
+  if(qsP.length>=2){
+    const ap = "apBotPant"+Date.now(), base = {tipo:"Aplicación", aplId:ap, fundo:fuP, producto:"Bot Pantallas Movento 240 SC", dosis:"0,5 L/ha", objetivo:"Escama", carencia:"7", obs:"", pin:"baja", gps:null, fotos:[], docs:[], audios:[]};
+    qsP.slice(0,2).forEach(q=>meter("registros", Object.assign({id:nid(), estado:"aplicado", fecha:Hp, fechaPlan:Hp, fechaReal:Hp, cuartel:q.nombre}, base)));
+    meter("registros", Object.assign({id:nid(), estado:"pendiente", fecha:masDias(Hp,2), fechaPlan:masDias(Hp,2), cuartel:qsP[0].nombre}, base, {aplId:ap+"p", producto:"Bot Pantallas Aceite mineral"}));
+    qsP.slice(0,2).forEach(q=>meter("fenologia", {id:nid(), fecha:masDias(Hp,-1), fundo:fuP, cuartel:q.nombre, especie:q.especie, bbch:"65", estado:"Plena flor", fotos:[], nota:""}));
+    meter("notas", {id:nid(), fh:new Date().toISOString(), titulo:"Bot pantallas: gotero roto en la hilera 8 con un título bastante largo para ver si se sale", texto:"Bot", fundo:fuP, cuartel:qsP[0].nombre, cat:"Urgente", fotos:[], docs:[], audios:[], check:[], pins:[], gps:null, pin:"baja", resuelta:false});
+    meter("bitacora", {id:nid(), fecha:masDias(Hp,-2), fundo:fuP, nota:"Bot pantallas", lineas:[{tipo:"Poda", cuartel:qsP[1].nombre, cantidad:420, unidad:"plantas", personas:6, laborId:null, uid:"bBotPant1"}]});
+    guardar();
+  }
   try{
+    try{ const p = JSON.parse(pB0||"{}"); p.aviso1 = true; localStorage.setItem("agronotasBitacora", JSON.stringify(p)); }catch(e){}   // lo que se ve después de la primera vez
     for(const [nom, u] of modos){
       await paso("Todas las pestañas en modo "+nom, async ()=>{
         D.ui = Object.assign({}, JSON.parse(ui0), {sol:false, grande:false}, u); uiAplicar(); render(); await pausa(1.2);
         for(const t of TABS.map(x=>x.id)){
           await irA(t); await pausa(1);
+          if(t==="bitacora" && document.getElementById("lcVista")){
+            const det = buscar("#lcVista .lc-it-b"); if(det) await tocar(det, "abrir una fila de la Bitácora ("+nom+")");   // el detalle (en el celular, la hoja) también se revisa
+            if(nom==="celular"){
+              const fbs = [...document.querySelectorAll("#lcVista .lc-fbs button")].filter(visible);
+              if(fbs.length!==3 || fbs.some(b=>{ const r = b.getBoundingClientRect(); return r.left<0 || r.right>innerWidth+1; })) avisar("Filtros fuera de la pantalla", "Bitácora (celular): [Período ▾] [Qué ▾] [★] no se ven completos", "media");
+              const d1 = document.querySelector("#lcVista .lc-dia");
+              if(modalAbierto()) await cancelarModal();
+              if(d1){ window.scrollTo(0,0); await pausa(.3); const top = Math.round(d1.getBoundingClientRect().top); if(top>380) avisar("Primer día muy abajo", "Bitácora (celular): el primer día queda a "+top+" px del borde (el plan pide unos 260)", "leve"); }
+            }
+            if(modalAbierto()) await cancelarModal();
+          }
           if(nom==="iPad" || nom==="celular"){
             const bs = [...document.querySelectorAll("#app button, #app .chip, #app .btn, #tabbar button, #topbar .btn")].filter(visible);
             const chicos = bs.filter(b=>{ const r=b.getBoundingClientRect(); return r.height<30 || r.width<30; });
@@ -1820,7 +2809,12 @@ BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ic
         }
       });
     }
-  } finally { D.ui = JSON.parse(ui0); uiAplicar(); render(); }
+  } finally {
+    nuevos.forEach(([col, o])=>{ D[col] = (D[col]||[]).filter(x=>x!==o); }); if(nuevos.length) guardar();
+    if(lc0) nav.lc = JSON.parse(lc0); else delete nav.lc;
+    if(pB0==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", pB0);
+    D.ui = JSON.parse(ui0); uiAplicar(); render();
+  }
 }});
 
 /* 🔍 AUDITOR DE DATOS -------------------------------------------------------------------- */
