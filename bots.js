@@ -23,7 +23,7 @@ let botActual = null, pasoActual = "", vel = "mirar", enMono = false;
 const LS_INFORME = "agronotasBotsUltimo";
 const XSS = `<img src="x-bot" onerror="window.__xss=(window.__xss||0)+1">`;
 /* funciones que ningún bot debe tocar nunca (aunque esté en la copia de prueba) */
-const PELIGROSAS = /\b(borrarTodo|restaurar|inpRest|sync[A-Z]\w*|asisMic|asisOrdenar|asisBandejaMirar|asisColaEnviar|asisLeer|fenSugerir|wlConectar|guardarIA|probarIA|iaAnalizar\w*|iaBuscar|iaIdentificar|iaEscanearEtiqueta|iaInterpretarDoc|iaTranscribir|iaResumenInforme|importarGesAgro|quitarGesAgro|ortoOff\w*|salirProyecto|nuevoProyecto|pedirEntrar|lluviaGPS|mapaVerEarth|mapaMedRelieve|botsAbrir|espacioContarNube|cfPDFRedactarIA|lluviaOficialIA|lluviaAnalizar|cfReset|AgroBots)\b/;
+const PELIGROSAS = /\b(borrarTodo|restaurar|inpRest|sync[A-Z]\w*|asisMic|asisOrdenar|asisBandejaMirar|asisColaEnviar|asisLeer|fenSugerir|wlConectar|guardarIA|probarIA|iaAnalizar\w*|iaBuscar|iaIdentificar|iaEscanearEtiqueta|iaInterpretarDoc|iaTranscribir|iaResumenInforme|importarGesAgro|quitarGesAgro|ortoOff\w*|salirProyecto|nuevoProyecto|pedirEntrar|lluviaGPS|mapaVerEarth|mapaMedRelieve|botsAbrir|espacioContarNube|cfPDFRedactarIA|lluviaOficialIA|lluviaAnalizar|cfReset|estRebajarTodo|estBorrarLocal|AgroBots)\b/;
 
 /* ------------------------------------------------------------------ utilidades */
 const esperar = ms => new Promise(r=>setTimeout(r, ms));
@@ -110,7 +110,9 @@ function necesito(x, desc){ if(!x) throw new SinProbar("No encontré "+desc+" ("
 const _log = [];
 function log(t, cls){ _log.push({t, cls:cls||""}); if(_log.length>80) _log.shift(); pintarUI(); }
 function accion(t){ R.acciones.push(t); if(R.acciones.length>200) R.acciones.shift(); }
-function msgsDesde(i){ return R.alerts.slice(i).map(a=>a.t); }
+/* los avisos de la app: los alert() desde i y, además, los avisos dentro del formulario abierto (.f-aviso a la vista: formReg, fenología, bitForm…) */
+function avisosForm(){ return [...document.querySelectorAll("#capaModal .f-aviso")].filter(e=>!e.hidden && visible(e)).map(e=>txtDe(e)).filter(Boolean); }
+function msgsDesde(i){ return R.alerts.slice(i).map(a=>a.t).concat(avisosForm()); }
 function huboMsg(i, re){ return msgsDesde(i).some(t=>re.test(t)); }
 
 /* ------------------------------------------------------------------ caja de arena */
@@ -126,8 +128,9 @@ async function entrarCaja(){
   S.clear = function(){ if(this===localStorage){ mem.clear(); return; } return ORIG.ls.clear.call(this); };
 
   const syncUrl = (D && D.sync && D.sync.url) || "";
+  AB._orig = AB._orig || {};   // las originales quedan a mano (el bot de la estación prueba syncAplicar sobre la copia en memoria)
   ["syncSubir","syncBajar","syncProgramar","syncAplicar","syncFotosTanda","syncIniciar","syncSondear"].forEach(n=>{
-    if(typeof window[n]==="function") window[n] = async function(){ return false; };
+    if(typeof window[n]==="function"){ if(!AB._orig[n]) AB._orig[n] = window[n]; window[n] = async function(){ return false; }; }
   });
   ORIG.fetch = window.fetch;
   window.fetch = function(u, o){
@@ -140,6 +143,7 @@ async function entrarCaja(){
   cargar();
   D.sync = Object.assign({}, D.sync||{}, {rol:"off"});
   DBNOM = "tfFotosDB_bots"; idb = null;
+  if(typeof EST_DBNOM!=="undefined"){ EST_DBNOM = "agroClima_bots"; if(typeof estCerrarIDB==="function") estCerrarIDB(); }   // panel Estación: historial en una base aparte
   try{ await abrirIDB(); }catch(e){ avisar("Fotos", "No se pudo abrir la base de prueba de fotos: "+e.message); }
   guardar();
 
@@ -176,6 +180,11 @@ async function entrarCaja(){
     };
   }
   window.__xss = 0;
+  /* «Dictar», «Dictar aquí» y la hoja «+ Anotar» encienden el micrófono (asisMic, Etapa 3): se simula y se cuenta (AB.micN); sin dictado en el
+     navegador sigue el de la app (avisa que se use el micrófono del teclado) */
+  if(typeof asisMic==="function" && !ORIG.asisMic){ ORIG.asisMic = asisMic; AB.micN = 0;
+    window.asisMic = function(){ if(!(window.SpeechRecognition||window.webkitSpeechRecognition)) return ORIG.asisMic.apply(this, arguments);
+      AB.micN++; R.salidas.push({bot:botActual&&botActual.nombre, tipo:"micrófono", archivo:"dictado (simulado)"}); }; }
   window.addEventListener("error", e=>{ if(!R.inicio || R.fin) return; if(e.target && e.target!==window && (e.target.src||e.target.href)) return;
     falla("Error de JavaScript", (e.message||"error")+" · "+String(e.filename||"").split("/").pop().split("?")[0]+":"+(e.lineno||""), "grave"); }, true);
   window.addEventListener("unhandledrejection", e=>{ if(!R.inicio || R.fin) return; const m=(e.reason&&(e.reason.message||e.reason))||"rechazo";
@@ -1022,6 +1031,63 @@ BOTS.push({id:"aplicador", modulo:"Calc Fito y Aplicaciones", nombre:"Pedro, apl
     const r = D.registros[D.registros.length-1];
     if(D.registros.length>n0) bug("Una aplicación creada a mano no queda «pendiente» ni se puede confirmar", !r.estado, "", "leve");
   });
+  /* Etapa 3: formReg Aplicación con «Ya se aplicó», el producto del catálogo, su caja (avisos, maxApl, carencia por especie) y «usar» */
+  await paso("Aplicación ya hecha: «Ya se aplicó», la caja del catálogo de Esteron (uso técnico, sin registro SAG en naranjo, maxApl como texto), «usar» y Destacar", async ()=>{
+    if(typeof regFpPintar!=="function" || typeof cfFichaProdHTML!=="function") throw new SinProbar("La app no tiene la caja del catálogo en formReg (Etapa 3)");
+    const p = cfCatProd().find(x=>/esteron/i.test(x.n||"") && (x.usos||[]).some(u=>/uso t[eé]cnico/i.test(u.obs||"")));
+    const qN = plantados().find(q=>typeof cfEspKey==="function" && cfEspKey(q.especie)==="naranjo");
+    if(!p || !qN) throw new SinProbar("Hace falta Esteron Ten Ten (con su uso técnico) en el catálogo y un cuartel de naranjo");
+    const H = HOY(), ids = [];
+    try{
+      nav.regPre = {fecha:H, fundo:qN.fundo, cuarteles:[qN.nombre], tipo:"Aplicación", aplicado:true}; formReg(); await pausa();
+      const ya = document.getElementById("m_aplicado");
+      chk(!nav.regPre && v("m_tipo")==="Aplicación" && v("m_fundo")===qN.fundo && cuartsTmp.join()===qN.nombre && ya && ya.checked, "formReg no leyó la precarga nav.regPre (tipo, fundo, cuartel, «Ya se aplicó») o no la borró");
+      chk(document.getElementById("m_producto").getAttribute("list")==="regProdL" && document.querySelectorAll("#regProdL option").length===cfCatProd().filter(x=>x.n).length, "El producto no se elige de los nombres del catálogo");
+      await escribir("m_producto", p.n, "producto"); await pausa();
+      const caja = txtDe(document.getElementById("regFp"));
+      chk(/herbicida/i.test(caja) && (!p.sag || caja.indexOf("SAG "+p.sag)>=0) && /HRAC 4/.test(caja) && /reingreso 12 h/.test(caja), "La caja del catálogo no muestra tipo, SAG, modo de acción y reingreso: «"+caja.slice(0,160)+"»");
+      chk(/Sin registro SAG en naranjo: uso técnico/i.test(caja) && /Sin carencia oficial para naranjo/i.test(caja), "Falta el aviso de uso técnico / sin registro SAG / sin carencia oficial para naranjo: «"+caja.slice(0,220)+"»");
+      if(p.maxApl) chk(caja.indexOf("Catálogo: «"+p.maxApl+"»")>=0 && /sería la \d+\.ª esta temporada en /.test(caja), "El máximo por temporada no va como texto rotulado «Catálogo:» con la cuenta de la temporada en el cuartel");
+      chk(/naranjo: sin dato/i.test(caja), "La carencia por especie no dice «sin dato» para naranjo");
+      chk(v("m_dosis")==="" && v("m_objetivo")==="", "Las sugerencias se completaron solas");
+      const us = necesito(buscar("#regFp .cf-usar"), "una sugerencia «usar»"); await tocar(us, "usar");
+      chk(/cc\/100 L/.test(v("m_dosis")) && v("m_objetivo")!=="", "«usar» no copió la dosis y el objetivo sugeridos");
+      await marcar(document.getElementById("m_dest"), true, "Destacar en la bitácora");
+      const n0 = D.registros.length; chk(await guardarModal_(), "No se guardó la aplicación ya hecha");
+      const r = D.registros[D.registros.length-1]; if(D.registros.length>n0) ids.push(r.id);
+      chk(r && r.estado==="aplicado" && r.fechaReal===H && r.fecha===H && r.prodId===p.id && r.carOrigen==="sindato" && r.dest===true,
+        "La aplicación no quedó aplicada con fecha real, prodId, carencia «sin dato» y ★: "+JSON.stringify(r? {estado:r.estado, fechaReal:r.fechaReal, prodId:r.prodId, carOrigen:r.carOrigen, dest:r.dest} : null));
+      formReg(r.id); await pausa();
+      const nAnt = (caja.match(/sería la (\d+)\.ª/)||[])[1];   // al editar, la aplicación no se cuenta a sí misma: la misma n.ª que antes de guardarla
+      chk(document.getElementById("m_aplicado").checked && document.getElementById("m_dest").checked && (!nAnt || txtDe(document.getElementById("regFp")).indexOf("sería la "+nAnt+".ª")>=0), "Al editar no se ven «Ya se aplicó» y la ★, o la cuenta de la temporada se cuenta a sí misma");
+      await marcar(document.getElementById("m_aplicado"), false, "Ya se aplicó"); chk(await guardarModal_(), "No se guardó la edición");
+      const r2 = D.registros.find(x=>x.id===r.id);
+      chk(r2 && r2.estado==="pendiente" && !r2.fechaReal && r2.fechaPlan===H && r2.prodId===p.id && r2.dest===true, "Sin «Ya se aplicó» no quedó programada, o se perdieron el prodId o la ★");
+      /* corrector Etapa 3: «Ya se aplicó» con fecha futura se avisa dentro del formulario; una antigua sin estado (el índice la ve pendiente) no parte marcada */
+      formReg(r.id); await pausa();
+      await marcar(document.getElementById("m_aplicado"), true, "Ya se aplicó"); await fecha("m_fecha", masDias(H,1), "fecha (mañana)");
+      let a0 = R.alerts.length; await guardarModal_();
+      const avF = txtDe(document.getElementById("mAviso"));
+      chk(modalAbierto() && /fecha futura/i.test(avF) && R.alerts.length===a0 && D.registros.find(x=>x.id===r.id).estado==="pendiente", "«Ya se aplicó» con fecha futura se guardó, o no avisó dentro del formulario: «"+avF+"»", "media");
+      await fecha("m_fecha", H, "fecha (hoy)"); chk(await guardarModal_() && D.registros.find(x=>x.id===r.id).estado==="aplicado", "Con la fecha de hoy «Ya se aplicó» no se pudo guardar");
+      const rv = {id:nid(), tipo:"Aplicación", fecha:masDias(H,-3), fundo:qN.fundo, cuartel:qN.nombre, producto:"Bot aplicación sin estado", dosis:"", objetivo:"", carencia:"", obs:"", pin:"baja", gps:null, fotos:[], docs:[], audios:[]};
+      D.registros.push(rv); ids.push(rv.id); guardar();
+      formReg(rv.id); await pausa();
+      chk(!document.getElementById("m_aplicado").checked, "Una aplicación antigua sin estado (pendiente para la Bitácora y las carencias) aparece con «Ya se aplicó» marcado", "media");
+      await marcar(document.getElementById("m_aplicado"), true, "Ya se aplicó"); await guardarModal_();
+      chk(rv.estado==="aplicado" && rv.fechaReal===rv.fecha, "Una aplicación sin estado guardada con «Ya se aplicó» no quedó aplicada con su fecha real: "+JSON.stringify({estado:rv.estado, fechaReal:rv.fechaReal}), "media");
+      a0 = R.alerts.length; formReg(rv.id); await pausa(); await escribir("m_producto", "", "producto (vacío)"); await guardarModal_();
+      chk(modalAbierto() && /Completa: Producto/.test(txtDe(document.getElementById("mAviso"))) && R.alerts.length===a0, "Sin producto no avisó «Completa: Producto» dentro del formulario (o salió un alert)", "leve");
+      await cancelarModal();
+      nav.regPre ={fecha:H, fundo:qN.fundo, cuarteles:[qN.nombre], tipo:"Aplicación"}; formReg(); await pausa();
+      chk(!document.getElementById("m_aplicado").checked, "Una aplicación nueva parte marcada «Ya se aplicó» sin venir de «Aplicación ya hecha»");
+      const amb = cfCatProd().map(x=>String(x.n||"").split(/\s+/)[0]).find(w=>w.length>=4 && cfProdCandidatos(w).length>1);
+      if(amb){ await escribir("m_producto", amb, "producto parecido a varios"); await pausa();
+        chk(document.querySelectorAll("#regFp .cf-usar").length>1 && /¿Cuál es\?/.test(txtDe(document.getElementById("regFp"))), "«"+amb+"» calza con varios productos y no se pregunta cuál");
+        const b = buscar("#regFp .cf-usar"), nom = txtDe(b); await tocar(b, nom); chk(v("m_producto")===nom && document.querySelector("#regFp .cf-fp"), "Elegir uno de los parecidos no puso su nombre ni mostró su caja"); }
+      await cancelarModal();
+    } finally { D.registros = D.registros.filter(x=>ids.indexOf(x.id)<0); guardar(); }
+  });
   /* la IA de la app es Claude por el puente (23-10-2026): Claude y el puente se simulan (window.syncFetch), nunca se llama a la API real */
   await paso("Escanear etiqueta con IA: la foto va a Claude por el puente y llena la aplicación", async ()=>{
     const s = syncCfg(), s0 = {url:s.url, clave:s.clave}, sf0 = window.syncFetch, ic0 = HTMLInputElement.prototype.click, ia0 = D.ia;
@@ -1056,8 +1122,53 @@ BOTS.push({id:"aplicador", modulo:"Calc Fito y Aplicaciones", nombre:"Pedro, apl
 }});
 
 /* 💧 RIEGO ------------------------------------------------------------------------------- */
-BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que:"Riego: horas recalculadas con la fórmula, días (y que no salten), mínimo un día, bases y vistas, ficha (Kc %, sectores, cancelar), Kc manual, bomba y turnos, descuento por lluvia, PDF con sus validaciones", correr: async ()=>{
+BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que:"Riego: horas recalculadas con la fórmula, los 6 casos del pedido de Manuel (Pp por línea de riego, cobertura de copa, m³ y goteros/pl), prioridad de la Pp, semilla del plano, cadena del Kc, alertas de huerto joven, de 8 h y de 24 h, «horas por confirmar» en los PDF, días (y que no salten), mínimo un día, bases y vistas, ficha (Kc %, sectores, validaciones, cancelar), Kc manual, bomba y turnos, descuento por lluvia, PDF con sus validaciones", correr: async ()=>{
   let serie = null;
+  /* ---- Pedido de Manuel (27-10-2026): Pp por línea de riego, factor de cobertura y alertas de consistencia.
+     Casos de prueba EXACTOS con cuarteles de prueba en la caja de arena y una serie fija: ET₀ 3,586 mm/día los 7 días,
+     reposición 100 %, eficiencia 90 %, riega L-Mi-V, Kc de la tabla 0,70 (la tabla de cítricos se deja en 0,70 los 12 meses
+     solo durante el paso) y los generales que dan las horas «de hoy» (6 goteros/pl × 2 L/h). Todo vuelve a como estaba. */
+  const SERIE_BOT = [5,6,7,8,9,10,11].map(d=>({k:"2026-10-"+String(d).padStart(2,"0"), et:3.586, ll:0, src:"wl"}));
+  const FU_BOT = "Bot Riego", FU24 = "Bot Riego 24";
+  const norm = s=>String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").trim();
+  const txtHTML = h=>{ const d = document.createElement("div"); d.innerHTML = h; return (d.textContent||"").replace(/\s+/g," ").trim(); };
+  const SEM_BOT = {"san joaquin|cuesta vieja":{ent:5, lin:2, dg:0.5, caudal:2}, "santa rita|cerezos 2023":{ent:4, lin:2, dg:0.5, caudal:2}, "santa rita|cerezos 2024":{ent:4, lin:2, dg:0.5, caudal:2}};
+  /* la Pp escrita aparte de la app, tal como la pidió Manuel: medida > diseño (del cuartel, si no la semilla; entrehilera vacía = marco) > fórmula antigua */
+  const ppBot = q=>{
+    const r = riegoCfg(), o = r.cu[q.id]||{}, sd = SEM_BOT[norm(q.fundo)+"|"+norm(q.nombre)]||{}, pos = x=>(+x>0 && isFinite(+x))? +x : null;
+    const m = String(q.marco||"").toLowerCase().replace(/,/g,".").split(/[x×*]/).map(parseFloat);
+    if(pos(o.ppMed)) return {pp:+o.ppMed, src:"med"};
+    const ent = pos(o.ent)||pos(sd.ent)||(m.length===2 && m[0]>0? m[0] : null), lin = pos(o.lin)||pos(sd.lin), dg = pos(o.dg)||pos(sd.dg), cau = pos(o.caudal)||pos(sd.caudal);
+    if(ent && lin && dg && cau) return {pp:cau/((ent/lin)*dg), src:"dis", gpl:(m.length===2 && m[1]>0)? m[1]/dg*lin : null};
+    const dens = marcoDens(q.marco), gpp = +(o.gpp||r.def.gpp||0), c = +(o.caudal||r.def.caudal||0);
+    return {pp:(dens && gpp && c)? gpp*c/(10000/dens) : null, src:"sv"};
+  };
+  async function enCaja(fn){   // respalda D.riego, los cuarteles y la fenología; al final todo vuelve a como estaba (también si el paso falla)
+    const r0 = JSON.stringify(riegoCfg()), c0 = D.cuarteles.slice(), fe0 = Array.isArray(D.fenologia)? D.fenologia.slice() : null, f0 = nav.riegoFundo, v0 = nav.riegoVista;
+    try{ return await fn(); }
+    finally{
+      try{ if(modalAbierto()) cerrarModal(); }catch(e){}
+      D.riego = JSON.parse(r0); D.cuarteles.length = 0; c0.forEach(q=>D.cuarteles.push(q));
+      if(fe0){ D.fenologia.length = 0; fe0.forEach(x=>D.fenologia.push(x)); } else D.fenologia = [];
+      nav.riegoFundo = f0; nav.riegoVista = v0; guardar();
+      try{ if(nav.tab==="riego") riegoPintar(); }catch(e){}
+    }
+  }
+  const cuBot = o=>{ const q = Object.assign({id:nid(), fundo:FU_BOT, nombre:"Corte 4 Nuevo bot", especie:"Limonero", variedad:"Eureka", portainjerto:"Macrophylla", ha:4.05, marco:"6x4,5", anio:"2026"}, o||{}); D.cuarteles.push(q); return q; };
+  const prepBot = (q, extra)=>{ const r = riegoCfg(); r.kc.citricos = Array(12).fill(0.7); r.def = Object.assign({}, r.def, {gpp:6, caudal:2, ef:90}); delete r.umbralH;
+    r.cu[q.id] = Object.assign({modo:"mes", rep:100, ef:90, dias:[1,3,5]}, extra||{}); guardar(); };
+  const calcBot = q=>riegoCalcCuartel(q, SERIE_BOT);
+  const esperado = (nom, c, esp, grav)=>{ const got = {pp:fmtCL(c.pp,2), mm:fmtCL(c.lamRiego,1), h:fmtCL(c.hRiego,1)};
+    const mal = Object.keys(esp).filter(k=>got[k]!==esp[k]); return chk(!mal.length, nom+": "+mal.map(k=>k+" "+got[k]+" (esperado "+esp[k]+")").join(", "), grav||"grave"); };
+  async function fichaBot(q, campos){   // abre la ficha ⚙ del cuartel, escribe como una persona y guarda
+    riegoFicha(q.id); await pausa(); necesito(modalAbierto(), "la ficha de riego de «"+q.nombre+"»");
+    for(const [id, val] of campos){ const el = necesito(document.getElementById(id), "el campo «"+id+"» de la ficha");
+      if(el.tagName==="SELECT"){ if(val===""){ accion("elige «sin dato» en "+id); el.value = ""; el.dispatchEvent(new Event("change", {bubbles:true})); await pausa(.5); } else await elegir(el, val, id); }
+      else await escribir(el, val, id); }
+    return guardarModal_();
+  }
+  async function abrirCm(){ const d = necesito(document.querySelector("#capaModal details.rf-cm"), "«Calcular la Pp con el caudalímetro»"); if(!d.open) await tocar(d.querySelector("summary"), "Calcular la Pp con el caudalímetro"); }
+  const tarjetaBot = q=>{ nav.riegoFundo = q.fundo; nav.riegoVista = "cu"; riegoPintar(); return txtDe(document.querySelector(`#riegoScroll .rgcard[data-rgcu="${q.id}"]`)); };
   await paso("Abre Riego y revisa que haya clima para calcular", async ()=>{
     await irA("riego"); necesito(document.getElementById("riegoScroll"), "la programación de riego");
     serie = riegoSerieBase();
@@ -1067,16 +1178,300 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     if(!serie) throw new SinProbar("Sin datos de clima");
     let n=0; const malos=[];
     for(const q of plantados().slice(0,40)){
-      const c = riegoCalcCuartel(q, serie); const dens = marcoDens(q.marco), area = dens? 10000/dens : 0;
-      if(!area || c.hRiego==null) continue;
-      const p = riegoParam(q), pp = p.gpp*p.caudal/area; let etc=0;
+      const c = riegoCalcCuartel(q, serie), pb = ppBot(q);   // Pp: medida > diseño > fórmula antigua (27-10-2026)
+      if(c.hRiego==null || !pb.pp) continue;
+      if((c.ppInfo||{}).src!==pb.src) malos.push(q.fundo+" · "+q.nombre+": la Pp sale de «"+(c.ppInfo||{}).src+"» y debía salir de «"+pb.src+"»");
+      const p = riegoParam(q), pp = pb.pp; let etc=0;
       for(const d of serie){ if(d.et==null) continue; const e=d.et*riegoKc(q, new Date(d.k+"T12:00:00").getMonth()); etc += riegoCfg().descLluvia? Math.max(0, e-0.75*(d.ll||0)) : e; }
       const etcDia = etc/(serie.length||7), lam = etcDia*7*riegoRep(q)/100, bruta = lam/(p.ef/100), nD = (riegoDias(q).length||1), h = bruta/nD/pp;
       n++; if(Math.abs(h-c.hRiego) > Math.max(0.02, h*0.01)) malos.push(q.fundo+" · "+q.nombre+": app "+c.hRiego.toFixed(2)+" h, fórmula "+h.toFixed(2)+" h");
     }
-    if(!n) throw new SinProbar("Ningún cuartel tiene marco y goteros para calcular");
+    if(!n) throw new SinProbar("Ningún cuartel tiene Pp (marco y goteros, línea de riego o Pp medida) para calcular");
     chk(!malos.length, "Horas de riego distintas a la fórmula en "+malos.length+" de "+n+" cuarteles: "+malos.slice(0,4).join(" · "), "grave");
   });
+  await paso("Casos del pedido de Manuel: Pp por línea de riego, mm, horas, m³ y goteros/pl (ET₀ 3,586 · 100 % · 90 % · L-Mi-V)", ()=>enCaja(async ()=>{
+    await irA("riego");
+    /* Corte 4 Nuevo (Santa Sara): marco 6 × 4,5 = 27 m²/pl, 4,05 ha */
+    const q = cuBot(); prepBot(q);
+    const c0 = calcBot(q);
+    chk(c0.ppInfo && c0.ppInfo.src==="sv", "Sin línea de riego el cuartel no quedó «sin verificar» (quedó «"+(c0.ppInfo&&c0.ppInfo.src)+"»)", "grave");
+    esperado("Corte 4 Nuevo hoy (6 goteros/pl × 2 L/h ÷ 27 m², sin verificar)", c0, {pp:"0,44", mm:"6,5", h:"14,6"});
+    /* 1 línea; la entrehilera queda vacía = 6 m del marco */
+    riegoFicha(q.id); await pausa(); necesito(modalAbierto(), "la ficha de riego");
+    await elegir("rf_lin", "1", "líneas por hilera"); await escribir("rf_dg", "0,5", "distancia entre goteros"); await escribir("rf_caudal", "2", "caudal del gotero");
+    const viv = txtDe(document.getElementById("rfPpDis"));
+    chk(/= 0,67 mm\/h/.test(viv) && /6 m del marco/.test(viv), "Mientras se escribe, la ficha no mostró «… 6 m del marco … = 0,67 mm/h»: «"+viv+"»", "media");
+    chk(await guardarModal_(), "La ficha no se cerró al guardar la línea de riego", "grave");
+    const o = riegoCfg().cu[q.id]||{};
+    chk(o.lin===1 && o.dg===0.5 && o.caudal===2 && o.ent==null, "La ficha no guardó la línea de riego tal como se escribió: "+JSON.stringify({ent:o.ent, lin:o.lin, dg:o.dg, caudal:o.caudal}), "grave");
+    const c1 = calcBot(q);
+    chk(c1.ppInfo.src==="dis", "Con los 4 datos de la línea la Pp no quedó «diseño» (quedó «"+c1.ppInfo.src+"»)", "grave");
+    esperado("Corte 4 Nuevo, 1 línea (6 m, 0,5 m, 2 L/h; Kc 0,70)", c1, {pp:"0,67", mm:"6,5", h:"9,8"});
+    /* 2 líneas */
+    chk(await fichaBot(q, [["rf_lin","2"]]), "La ficha no se cerró al pasar a 2 líneas", "grave");
+    const c2 = calcBot(q);
+    esperado("Corte 4 Nuevo, 2 líneas (6 m, 0,5 m, 2 L/h; Kc 0,70)", c2, {pp:"1,33", mm:"6,5", h:"4,9"});
+    chk(c2.ppInfo.gpl===18 && ppBot(q).gpl===18, "Goteros por planta informativos (4,5 m ÷ 0,5 m × 2 líneas): "+c2.ppInfo.gpl+" (esperado 18)", "grave");
+    const tc = txtHTML(riegoCardHTML(q, c2, fmtCL));
+    chk(/18 got\.\/pl/.test(tc) && /Pp de diseño/.test(tc), "La tarjeta no muestra «18 got./pl» ni «Pp de diseño»: «"+tc.slice(0,220)+"»", "media");
+    /* Cuesta Vieja: 5 m, 2 líneas, 0,5 m, 2 L/h (cuartel de prueba con marco 5 × 2; la semilla real se prueba en el paso siguiente) */
+    const cv = cuBot({nombre:"Cuesta Vieja bot", especie:"Naranjo", variedad:"Cara Cara", ha:21.8, marco:"5x2", anio:"2023"}); prepBot(cv);
+    esperado("Cuesta Vieja hoy (6 × 2 L/h ÷ 10 m², sin verificar)", calcBot(cv), {pp:"1,20", h:"5,4"});
+    chk(await fichaBot(cv, [["rf_lin","2"],["rf_dg","0,5"],["rf_caudal","2"]]), "La ficha de Cuesta Vieja no se cerró", "grave");
+    esperado("Cuesta Vieja (5 m, 2 líneas, 0,5 m, 2 L/h; Kc 0,70)", calcBot(cv), {pp:"1,60", mm:"6,5", h:"4,1"});
+    /* huerto joven: factor de cobertura 0,357 → Kc efectivo 0,25 */
+    chk(await fichaBot(q, [["rf_cob","0,357"]]), "La ficha no se cerró al poner el factor de cobertura", "grave");
+    const c3 = calcBot(q), k3 = riegoKcInfo(q, 9);
+    chk(fmtCL(k3.kc,2)==="0,25" && Math.abs(k3.kc-0.7*0.357)<1e-4, "Kc efectivo con factor 0,357: "+fmtCL(k3.kc,3)+" (esperado 0,70 × 0,357 = 0,25)", "grave");
+    esperado("Corte 4 Nuevo joven (2 líneas, factor 0,357)", c3, {pp:"1,33", mm:"2,3", h:"1,7"});
+    /* el volumen no depende de la Pp */
+    const vol = [c0, c1, c2].map(x=>x.m3Sem);
+    chk(Math.abs(vol[0]-vol[1])<1e-9 && Math.abs(vol[1]-vol[2])<1e-9, "El volumen de la semana cambió con la Pp: "+vol.map(x=>fmtCL(x,1)).join(" / ")+" m³", "grave");
+    chk(Math.abs(vol[0]-c0.lamBruta*10*4.05)<1e-9 && Math.abs(vol[0]-790)<1, "m³/semana de Corte 4 Nuevo (4,05 ha, Kc 0,70): "+fmtCL(vol[0],1)+" (esperado ≈ 790: 19,52 mm brutos × 10 × 4,05 = 790,7)", "grave");
+  }));
+  await paso("Prioridad de la Pp: medida > diseño > sin verificar (caudalímetro, insignias, tabla y resumen del fundo)", ()=>enCaja(async ()=>{
+    await irA("riego");
+    const q = cuBot(); prepBot(q, {lin:2, dg:0.5, caudal:2});
+    let c = calcBot(q);
+    chk(c.ppInfo.src==="dis" && fmtCL(c.pp,2)==="1,33", "Con la línea de riego completa la Pp no es la de diseño 1,33 (es "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»)", "grave");
+    riegoFicha(q.id); await pausa(); necesito(modalAbierto(), "la ficha");
+    await abrirCm();
+    await escribir("rf_cmq", "5,4", "caudal del caudalímetro"); await escribir("rf_cmha", "4,05", "ha del sector");
+    chk(v("rf_ppmed")==="", "La Pp del caudalímetro se copió sola a la Pp medida (debe ser solo al tocar el botón)", "media");
+    chk(/= 0,13 mm\/h/.test(txtDe(document.getElementById("rfCmRes"))), "El caudalímetro (5,4 m³/h ÷ 4,05 ha ÷ 10) no mostró 0,13 mm/h: «"+txtDe(document.getElementById("rfCmRes"))+"»", "media");
+    await tocar({texto:/usar como pp medida/i}, "Usar como Pp medida", "#capaModal");
+    chk(v("rf_ppmed")==="0,13", "«Usar como Pp medida» dejó «"+v("rf_ppmed")+"» (esperado 0,13)", "media");
+    await escribir("rf_ppmed", "1,1", "Pp medida"); await fecha("rf_ppf", masDias(HOY(),-3), "fecha del aforo");
+    chk(await guardarModal_(), "La ficha no se cerró con la Pp medida", "grave");
+    c = calcBot(q);
+    chk(c.ppInfo.src==="med" && Math.abs(c.pp-1.1)<1e-9 && ppBot(q).src==="med", "Con Pp medida 1,1 y línea de diseño la app usó "+fmtCL(c.pp,2)+" («"+c.ppInfo.src+"»): manda la medida", "grave");
+    chk(riegoCfg().cu[q.id].ppFecha===masDias(HOY(),-3) && /^medida · /.test(c.ppInfo.lab), "La fecha del aforo no quedó guardada o no se ve con la fuente: «"+c.ppInfo.lab+"»", "leve");
+    let t = tarjetaBot(q);
+    chk(/Pp medida/.test(t) && /\(medida · /.test(t), "La tarjeta no dice de dónde sale la Pp («Pp medida»): «"+t.slice(0,200)+"»", "media");
+    chk(await fichaBot(q, [["rf_ppmed",""]]), "La ficha no se cerró al borrar la Pp medida", "grave");
+    c = calcBot(q); chk(c.ppInfo.src==="dis" && fmtCL(c.pp,2)==="1,33" && !riegoCfg().cu[q.id].ppFecha, "Sin Pp medida no volvió a la de diseño 1,33 (quedó "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»)", "grave");
+    chk(/Pp de diseño/.test(tarjetaBot(q)), "La tarjeta no dice «Pp de diseño»", "media");
+    chk(await fichaBot(q, [["rf_lin",""]]), "La ficha no se cerró al borrar las líneas por hilera", "grave");
+    c = calcBot(q); chk(c.ppInfo.src==="sv" && fmtCL(c.pp,2)==="0,44" && ppBot(q).src==="sv", "Sin líneas por hilera no quedó «sin verificar» con la fórmula antigua 0,44 (quedó "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»)", "grave");
+    t = tarjetaBot(q); const card = document.querySelector(`#riegoScroll .rgcard[data-rgcu="${q.id}"]`);
+    chk(card && /Pp sin verificar/.test(t) && card.querySelector('.badge.b-ambar[data-pp="sv"]'), "La tarjeta no muestra la insignia ámbar «Pp sin verificar»", "media");
+    const res = document.querySelector('#riegoScroll [data-res="sv"]');
+    chk(res && /1 de 1 cuartel/.test(txtDe(res)), "El resumen del fundo no cuenta los cuarteles sin verificar: «"+txtDe(res)+"»", "media");
+    await tocar(`[onclick="riegoVistaSet('tabla')"]`, "vista tabla");
+    const fila = document.querySelector(`#riegoScroll tr[data-rgcu="${q.id}"]`);
+    chk(fila && /Pp sin verificar/.test(txtDe(fila)) && /6 got\.\/pl general/.test(txtDe(fila)) && !document.querySelector(`#riegoScroll table [onchange*="'gpp'"]`), "La tabla no muestra la fuente de la Pp (o sigue la casilla got./pl editable): «"+txtDe(fila).slice(0,160)+"»", "media");
+    await tocar(`[onclick="riegoVistaSet('cu')"]`, "vista cuarteles");
+  }));
+  await paso("Semilla de la línea de riego: Cuesta Vieja 1,60 (plano 2021) y Cerezos 2023/2024 2,00; lo de la ficha manda", ()=>enCaja(async ()=>{
+    const casos = [["San Joaquín","Cuesta Vieja","1,60",/^diseño · plano de riego 2021$/,"5x2","Naranjo"], ["Santa Rita","Cerezos 2023","2,00",/^diseño$/,"4x2","Cerezo"], ["Santa Rita","Cerezos 2024","2,00",/^diseño$/,"4x2","Cerezo"]];
+    let creados = 0;
+    for(const [fu, nom, pp, re, marco, esp] of casos){
+      let q = (D.cuarteles||[]).find(z=>norm(z.fundo)===norm(fu) && norm(z.nombre)===norm(nom));
+      if(!q){ q = cuBot({fundo:fu, nombre:nom, marco, especie:esp, ha:5, anio:"2023"}); creados++; }
+      const r = riegoCfg(), o = r.cu[q.id] = r.cu[q.id]||{}; ["ent","lin","dg","caudal","ppMed","ppFecha"].forEach(k=>delete o[k]);   // solo la semilla (en la copia)
+      const pi = riegoCalcCuartel(q, SERIE_BOT).ppInfo, pb = ppBot(q);
+      chk(pi.src==="dis" && fmtCL(pi.pp,2)===pp && Math.abs(pb.pp-pi.pp)<1e-9 && re.test(pi.lab), nom+": Pp "+fmtCL(pi.pp,2)+" «"+pi.lab+"» (esperado "+pp+" de diseño)", "grave");
+      chk(!["ent","lin","dg","caudal"].some(k=>k in (riegoCfg().cu[q.id]||{})), nom+": la semilla se escribió en los datos del cuaderno (debe vivir solo en el código)", "media");
+    }
+    if(creados) log("○ "+creados+" cuartel(es) de la semilla no estaban en los datos: se crearon en la copia de prueba");
+    const cv = (D.cuarteles||[]).find(z=>norm(z.fundo)==="san joaquin" && norm(z.nombre)==="cuesta vieja");
+    chk(await fichaBot(cv, [["rf_caudal","4"]]), "La ficha de Cuesta Vieja no se cerró", "grave");
+    const pi = riegoPp(cv);
+    chk(fmtCL(pi.pp,2)==="3,20" && Math.abs(ppBot(cv).pp-3.2)<1e-9, "Con caudal 4 L/h escrito en la ficha, la Pp de Cuesta Vieja debía ser 3,20 (quedó "+fmtCL(pi.pp,2)+" «"+pi.lab+"»): lo de la ficha manda sobre la semilla", "media");
+    /* corrector 27-10: con un dato de la ficha distinto del plano, la fuente ya no dice solo «plano de riego 2021» y la ficha y la tarjeta avisan */
+    chk(pi.lab==="diseño · ficha + plano de riego 2021", "Con el caudal de la ficha (4) distinto del plano (2), la fuente debía decir «diseño · ficha + plano de riego 2021» y dice «"+pi.lab+"»", "media");
+    riegoFicha(cv.id); await pausa(); necesito(modalAbierto(), "la ficha de Cuesta Vieja");
+    const dif = txtDe(document.querySelector('#capaModal [data-fal="dif"]'));
+    chk(/no coincide con el plano de riego 2021/.test(dif) && /caudal del gotero 4 L\/h en la ficha y 2 L\/h en el plano/.test(dif), "La ficha no avisa que el caudal (4) no coincide con el plano (2): «"+dif+"»", "media");
+    await cancelarModal();
+    chk(/difiere del plano de riego 2021/.test(txtHTML(riegoCardHTML(cv, riegoCalcCuartel(cv, SERIE_BOT), fmtCL))), "La tarjeta de Cuesta Vieja no dice que la Pp difiere del plano", "leve");
+    /* un caudal heredado de antes (la columna L/h o la ficha antigua lo guardaban en el mismo campo) */
+    const r2 = riegoCfg(); r2.cu[cv.id] = Object.assign(r2.cu[cv.id]||{}, {caudal:3.5}); guardar();
+    const ph = riegoPp(cv);
+    chk(Math.abs(ph.pp-2.8)<1e-9 && /^diseño · ficha \+ plano de riego 2021$/.test(ph.lab) && ph.dif.length===1, "Con un caudal heredado de 3,5 L/h, Cuesta Vieja debía dar Pp 2,80 «diseño · ficha + plano de riego 2021» y dio "+fmtCL(ph.pp,2)+" «"+ph.lab+"»", "media");
+    r2.cu[cv.id].caudal = 2; guardar();   // igual al plano: no lo contradice
+    const pg = riegoPp(cv);
+    chk(pg.lab==="diseño · plano de riego 2021" && !pg.dif.length, "Con el caudal de la ficha igual al del plano (2 L/h) la fuente debía seguir «diseño · plano de riego 2021» y dice «"+pg.lab+"»", "leve");
+  }));
+  await paso("Factor de cobertura: cadena del Kc en la tarjeta, ayuda del diámetro y alerta «Kc de adulto en huerto joven»", ()=>enCaja(async ()=>{
+    await irA("riego");
+    const q = cuBot(); prepBot(q, {lin:2, dg:0.5, caudal:2});
+    let t = tarjetaBot(q);
+    chk(riegoJoven(q) && /Kc de adulto en huerto joven/.test(t), "Plantado en 2026 con factor 1 no avisa «Kc de adulto en huerto joven»: «"+t.slice(0,160)+"»", "media");
+    chk(/huerto joven/.test(txtDe(document.querySelector('#riegoScroll [data-res="joven"]'))), "El resumen del fundo no nombra el huerto joven", "leve");
+    riegoFicha(q.id); await pausa(); necesito(modalAbierto(), "la ficha");
+    chk(/Kc de adulto en huerto joven/.test(txtDe(document.querySelector('#capaModal [data-fal="joven"]'))), "La ficha no avisa «Kc de adulto en huerto joven»", "leve");
+    await escribir("rf_diam", "3", "diámetro de copa");
+    chk(/= 26,2 %/.test(txtDe(document.getElementById("rfCobRes"))), "Diámetro 3 m en 27 m²/pl: la ficha no mostró 26,2 % de cobertura («"+txtDe(document.getElementById("rfCobRes"))+"»)", "media");
+    chk(v("rf_cob")==="", "El % de cobertura se copió solo al factor (el factor lo fija el usuario)", "media");
+    const fao = txtDe(document.querySelector("#capaModal .rf-fao"));
+    chk(/FAO-56/.test(fao) && /70 %/.test(fao) && /0,65–0,70/.test(fao) && /0,45–0,55/.test(fao), "Falta la tabla de referencia FAO-56 en la ficha: «"+fao+"»", "leve");
+    await tocar({texto:/usar el % calculado/i}, "Usar el % calculado como factor", "#capaModal");
+    chk(v("rf_cob")==="0,262", "«Usar el % calculado» dejó «"+v("rf_cob")+"» (esperado 0,262)", "media");
+    await escribir("rf_cob", "0,4", "factor de cobertura");
+    chk(await guardarModal_(), "La ficha no se cerró con el factor de cobertura", "grave");
+    chk(riegoCfg().cu[q.id].diam===3 && riegoCfg().cu[q.id].cob===0.4, "La ficha no guardó el diámetro y el factor: "+JSON.stringify({diam:riegoCfg().cu[q.id].diam, cob:riegoCfg().cu[q.id].cob}), "media");
+    t = tarjetaBot(q);
+    chk(/Kc 0,70 \(mes\) × 0,40 \(cobertura\) = 0,28/.test(t), "La tarjeta no muestra «Kc 0,70 (mes) × 0,40 (cobertura) = 0,28»: «"+(t.match(/Kc \d[^·]*/)||[""])[0]+"»", "grave");
+    chk(!/Kc de adulto en huerto joven/.test(t) && !riegoJoven(q), "Con factor 0,40 sigue la alerta de huerto joven", "media");
+    chk(await fichaBot(q, [["rf_kcaj","110"]]), "La ficha no se cerró con el ajuste 110 %", "grave");
+    t = tarjetaBot(q);
+    chk(/Kc 0,70 \(mes\) × 0,40 \(cobertura\) × 110 % \(ajuste\) = 0,31/.test(t), "Con cobertura y ajuste la tarjeta no muestra la cadena completa: «"+(t.match(/Kc \d[^·]*/)||[""])[0]+"»", "media");
+    chk(await fichaBot(q, [["rf_cob",""],["rf_kcaj","80"]]), "La ficha no se cerró al cambiar a ajuste 80 %", "grave");
+    chk(!riegoJoven(q) && !/Kc de adulto en huerto joven/.test(tarjetaBot(q)), "Con el Kc ya reducido al 80 % igual avisa «Kc de adulto en huerto joven»", "leve");
+    chk(await fichaBot(q, [["rf_kcaj",""]]), "La ficha no se cerró al borrar el ajuste", "grave");
+    chk(riegoJoven(q), "Sin factor ni ajuste no volvió la alerta de huerto joven", "leve");
+    /* corrector 27-10: la tabla FAO-56 es de cítricos: en un cerezo no se muestra */
+    const qc = cuBot({nombre:"Cerezo joven bot", especie:"Cerezo", variedad:"Lapins", marco:"4x2"}); prepBot(qc, {lin:2, dg:0.5, caudal:2});
+    riegoFicha(qc.id); await pausa(); necesito(modalAbierto(), "la ficha del cerezo");
+    chk(!document.querySelector("#capaModal table.rf-fao") && /No hay tabla de referencia cargada para cerezo/.test(txtDe(document.querySelector('#capaModal [data-fao="no"]'))), "La ficha de un cerezo muestra la tabla FAO-56 de cítricos como referencia", "leve");
+    await cancelarModal();
+    /* la cobertura multiplica también el Kc de la fenología, y no toca el manual */
+    const r = riegoCfg(); r.cu[q.id].cob = 0.4; r.cu[q.id].modo = "fen";
+    D.fenologia = D.fenologia||[]; D.fenologia.push({id:nid(), fecha:HOY(), fundo:q.fundo, cuartel:q.nombre, especie:q.especie, bbch:"65", estado:"Plena flor", fotos:[], nota:""});
+    const kf = riegoKcInfo(q, new Date().getMonth()), base = (riegoKcFen(riegoGrupo(q), "65")||{}).kc;
+    chk(kf.src==="fen" && base>0 && Math.abs(kf.kc-base*0.4)<1e-4, "Con fenología (BBCH 65) el factor 0,40 no multiplicó el Kc: "+kf.kc+" (esperado "+(base*0.4)+")", "media");
+    r.cu[q.id].modo = "manual"; r.cu[q.id].kc = 0.5;
+    const km = riegoKcInfo(q, 9);
+    chk(km.src==="manual" && km.kc===0.5 && !riegoJoven(q), "El factor de cobertura cambió el Kc manual, o con Kc manual sigue la alerta (Kc "+km.kc+")", "media");
+  }));
+  await paso("Alertas: más de 8 h por riego (umbral editable) y más de 24 h por equipo en un día (sector compartido una vez)", ()=>enCaja(async ()=>{
+    await irA("riego");
+    const q = cuBot(); prepBot(q, {lin:1, dg:0.5, caudal:2});           // 9,8 h por riego
+    const q2 = cuBot({nombre:"Corte 4 Nuevo 2L bot"}); prepBot(q2, {lin:2, dg:0.5, caudal:2});   // 4,9 h
+    let t = txtHTML(riegoCardHTML(q, calcBot(q), fmtCL));
+    chk(/Más de 8 h por riego/.test(t) && /revisar Pp o Kc/.test(t), "Con 9,8 h por riego la tarjeta no dice «revisar Pp o Kc»: «"+t.slice(0,200)+"»", "media");
+    chk(!/revisar Pp o Kc/.test(txtHTML(riegoCardHTML(q2, calcBot(q2), fmtCL))), "Con 4,9 h por riego igual dice «revisar Pp o Kc»", "media");
+    /* el umbral se cambia en Configuración */
+    nav.riegoFundo = FU_BOT; nav.riegoVista = "cu"; riegoPintar(); await pausa();
+    const det = necesito([...document.querySelectorAll("#riegoScroll details")].find(d=>/Configuración del riego/i.test(txtDe(d.querySelector("summary")))), "la configuración del riego");
+    if(!det.open) await tocar(det.querySelector("summary"), "abrir configuración");
+    await escribir(necesito(buscar('#riegoScroll input[onchange^="riegoUmbralSet"]'), "el umbral de horas"), "4", "umbral de horas"); await pausa();
+    chk(riegoUmbral()===4 && /revisar Pp o Kc/.test(txtHTML(riegoCardHTML(q2, calcBot(q2), fmtCL))), "Con el umbral en 4 h, 4,9 h por riego no avisa (umbral "+riegoUmbral()+")", "media");
+    const det2 = [...document.querySelectorAll("#riegoScroll details")].find(d=>/Configuración del riego/i.test(txtDe(d.querySelector("summary"))));
+    if(det2 && det2.open) await tocar(det2.querySelector("summary"), "cerrar configuración");
+    delete riegoCfg().umbralH;
+    /* 24 h: A (BOT-1 + válvula BOT-C compartida) y B (BOT-C) en el mismo equipo, 10 h cada uno; C (BOT-3) 5 h. L-Mi-V */
+    const L = calcBot(q).lamRiego;
+    const mk = (nom, sect, h)=>{ const z = cuBot({fundo:FU24, nombre:nom, ha:sect.reduce((a,s)=>a+s.ha,0)}); prepBot(z, {ppMed:L/h, sectores:sect}); return z; };
+    const A = mk("A bot", [{cod:"BOT-1", nom:"Sector 1", ha:2}, {cod:"BOT-C", nom:"Compartido", ha:1}], 10);
+    const B = mk("B bot", [{cod:"BOT-C", nom:"Compartido", ha:0.5}], 10);
+    const C = mk("C bot", [{cod:"BOT-3", nom:"Sector 1", ha:1}], 5);
+    const filas = qs=>qs.map(z=>({q:z, c:calcBot(z)})), lunes = qs=>riegoCarga24(filas(qs)).filter(x=>x.i===1)[0], hh = x=>x? fmtCL(x.tot,1)+" h en "+x.nU+" sectores" : "nada";
+    let cg = lunes([A,B]);
+    chk(cg && Math.abs(cg.tot-20)<1e-6 && cg.nU===2 && !cg.pasa, "A + B con la válvula BOT-C compartida: el lunes debía sumar 20 h en 2 sectores, sin alerta, y dio "+hh(cg)+" (contando el compartido dos veces serían 30 h)", "grave");
+    cg = lunes([A,B,C]);
+    chk(cg && Math.abs(cg.tot-25)<1e-6 && cg.nU===3 && cg.pasa && !cg.varios, "A + B + C de a uno: el lunes debía sumar 25 h con alerta de 24 h y dio "+hh(cg), "grave");
+    chk(riegoCarga24(filas([A,B,C])).filter(x=>x.pasa).map(x=>x.i).join(",")==="1,3,5", "La alerta de 24 h debía salir solo lunes, miércoles y viernes", "media");
+    const ht = txtHTML(riegoTurnosHTML(filas([A,B,C]), fmtCL, FU24)), hd = txtHTML(riegoPorDiaHTML(filas([A,B,C]), fmtCL)), hr = txtHTML(riegoResumenHTML(FU24, filas([A,B,C]), fmtCL));
+    chk(/Más de 24 h en un día/.test(ht) && /25,0 h \(suma de las horas de 3 sectores/.test(ht), "Turnos no muestra la alerta de 24 h con «25,0 h (suma de las horas de 3 sectores…»", "media");
+    chk(/Más de 24 h en un día/.test(hd), "Por día no muestra la alerta de 24 h", "media");
+    /* corrector 27-10: un solo aviso rojo por día en Turnos, y la alerta explica por qué no cuadra con la suma de los cuarteles */
+    chk(!/No alcanza el día/.test(ht), "Con más de 24 h, Turnos muestra dos avisos rojos seguidos (el de 24 h y «No alcanza el día»)", "leve");
+    chk(/cada sector riega las horas de su cuartel/.test(hd), "La alerta de 24 h de Por día no explica que cada sector riega las horas de su cuartel", "leve");
+    const rc0 = riegoCfg(); rc0.bombas = Object.assign({}, rc0.bombas||{}, {[FU24]:{h:18}});
+    const ht3 = txtHTML(riegoTurnosHTML(filas([A,B]), fmtCL, FU24));
+    chk(/No alcanza el día/.test(ht3) && !/Más de 24 h en un día/.test(ht3), "Con 20 h y 18 h disponibles, Turnos debía mostrar solo «No alcanza el día»", "leve");
+    chk(/Más de 24 h en un día/.test(hr) && /hasta 25,0 h/.test(hr), "El resumen del fundo no muestra la alerta de 24 h: «"+hr.slice(0,200)+"»", "media");
+    /* bomba que riega 2 sectores a la vez: vale la duración real de los turnos */
+    const rc = riegoCfg(); rc.bombas = Object.assign({}, rc.bombas||{}, {[FU24]:{n:2}});
+    cg = lunes([A,B,C]);
+    chk(cg && Math.abs(cg.tot-15)<1e-6 && cg.varios && !cg.pasa, "Con 2 sectores a la vez el lunes debía durar 15 h (turnos de 10 y 5 h) y dio "+hh(cg), "grave");
+    [[A,20],[B,20],[C,10]].forEach(([z,h])=>{ rc.cu[z.id].ppMed = L/h; });
+    cg = lunes([A,B,C]); const ht2 = txtHTML(riegoTurnosHTML(filas([A,B,C]), fmtCL, FU24));
+    chk(cg && Math.abs(cg.tot-30)<1e-6 && cg.pasa && /duración real de los turnos, 2 sectores a la vez/.test(ht2), "Con 2 a la vez y 20 + 20 + 10 h el lunes debía durar 30 h (turnos de 20 y 10) con la alerta «duración real de los turnos» y dio "+hh(cg), "media");
+  }));
+  /* corrector 27-10: el texto de los PDF se lee envolviendo doc.text (jsPDF) durante el paso */
+  async function textoPDF(fn){
+    const J0 = window.jspdf && window.jspdf.jsPDF; if(!J0) throw new SinProbar("No cargó el motor de PDF");
+    const txt = [];
+    function JW(...a){ const d = new J0(...a), t = d.text; d.text = function(s){ txt.push([].concat(s).join(" ")); return t.apply(this, arguments); }; return d; }
+    Object.setPrototypeOf(JW, J0); JW.API = J0.API; JW.prototype = J0.prototype;
+    window.jspdf.jsPDF = JW;
+    try{ await fn(); } finally { window.jspdf.jsPDF = J0; }
+    return txt.join(" ").replace(/\s+/g," ");
+  }
+  await paso("PDF: «horas por confirmar» en la hoja del regador y nota de 24 h del PDF Pro con los mismos turnos de la hoja", ()=>enCaja(async ()=>{
+    if(!serie) throw new SinProbar("Sin datos de clima");
+    const sb = riegoSerieBase();
+    const q = cuBot({fundo:FU24, nombre:"Sin verificar bot"}); prepBot(q);                                  // fórmula antigua
+    const L = riegoCalcCuartel(q, sb).lamRiego; if(!(L>0)) throw new SinProbar("La serie de ET₀ no da lámina para probar el PDF");
+    const q2 = cuBot({fundo:FU24, nombre:"Medida bot"}); prepBot(q2, {ppMed:L/15});                            // 15 h por riego
+    const o = {lunes:riegoLunesProximo(), hora:"08:00", fundos:[FU24]};
+    const tr = await textoPDF(()=>riegoPDFRegador(o));
+    chk(/Sin verificar bot\s+\(horas por confirmar\)/.test(tr) && !/Medida bot\s+\(horas por confirmar\)/.test(tr), "La hoja del regador no marca «(horas por confirmar)» solo en el cuartel con Pp sin verificar", "media");
+    chk(/Pp sin verificar en 1 de 2 cuarteles: Sin verificar bot/.test(tr) && /confirmar con el encargado/.test(tr), "La hoja del regador no trae el recuadro «Pp sin verificar en 1 de 2 cuarteles…»", "media");
+    /* 24 h en el PDF Pro: la nota sale de los turnos de la hoja (bomba sin dato = de a uno) */
+    riegoCfg().cu[q.id].ppMed = L/12; guardar();                                                               // 12 + 15 = 27 h
+    const tp = await textoPDF(()=>riegoPDFPro(o));
+    chk(/Mas de 24 h en un dia \(los sectores compartidos cuentan una vez\): Equipo del fundo: L Mi V · hasta 27,0 h \(suma de los sectores de a uno\)/.test(tp), "La nota de 24 h del PDF Pro no dice «Equipo del fundo: L Mi V · hasta 27,0 h (suma de los sectores de a uno)»: «"+((tp.match(/Mas de 24 h[^.]*\./)||[""])[0])+"»", "media");
+  }));
+  await paso("Ficha: validaciones de la línea de riego, Pp medida y cobertura (avisos dentro de la ficha, sin alert y sin guardar nada)", ()=>enCaja(async ()=>{
+    await irA("riego");
+    const q = cuBot(); prepBot(q, {lin:2, dg:0.5, caudal:2});
+    const malos = [["rf_ent","15",/entrehilera va de 1 a 12 m/], ["rf_ent","0,5",/entrehilera va de 1 a 12 m/], ["rf_dg","3",/distancia entre goteros va de 0,1 a 2 m/], ["rf_dg","0,05",/distancia entre goteros/],
+      ["rf_caudal","20",/caudal del gotero va de 0,5 a 16 L\/h/], ["rf_caudal","abc",/caudal del gotero/], ["rf_ppmed","25",/Pp medida va de 0,1 a 20 mm\/h/], ["rf_cob","1,5",/factor de cobertura va de 0,01 a 1/],
+      ["rf_cob","0",/factor de cobertura/], ["rf_diam","20",/diámetro de copa va de 0,1 a 15 m/], ["rf_kcaj","1000",/30 % a 200 %/]];
+    const fallos = [];
+    for(const [id, val, re] of malos){
+      const d0 = JSON.stringify(riegoCfg().cu[q.id]), a0 = R.alerts.length;
+      riegoFicha(q.id); await pausa(); necesito(modalAbierto(), "la ficha");
+      await escribir(id, val, id); const cerro = await guardarModal_();
+      const av = txtDe(document.getElementById("rfAviso"));
+      if(cerro || !re.test(av) || R.alerts.length!==a0 || JSON.stringify(riegoCfg().cu[q.id])!==d0) fallos.push(id+" = «"+val+"»: "+(cerro? "la ficha se guardó" : R.alerts.length>a0? "avisó con alert()" : "aviso «"+av+"»"));
+      if(modalAbierto()) await cancelarModal();
+    }
+    chk(!fallos.length, "Valores fuera de rango que no se rechazaron dentro de la ficha: "+fallos.join(" · "), "media");
+    riegoFicha(q.id); await pausa();
+    const sel = necesito(document.getElementById("rf_lin"), "las líneas por hilera"); sel.insertAdjacentHTML("beforeend", '<option value="3">3 líneas</option>'); await elegir(sel, "3", "3 líneas (forzado)");
+    chk(!(await guardarModal_()) && /1 o 2/.test(txtDe(document.getElementById("rfAviso"))), "Se aceptaron 3 líneas por hilera", "media");
+    await cancelarModal();
+    riegoFicha(q.id); await pausa();
+    await escribir("rf_ppmed", "1,2", "Pp medida"); await fecha("rf_ppf", masDias(HOY(),5), "fecha del aforo futura");
+    chk(!(await guardarModal_()) && /no puede ser futura/.test(txtDe(document.getElementById("rfAviso"))), "Una fecha de aforo futura se aceptó", "leve");
+    await cancelarModal();
+    riegoFicha(q.id); await pausa(); const a0 = R.alerts.length;
+    await abrirCm();
+    await tocar({texto:/usar como pp medida/i}, "Usar como Pp medida sin datos", "#capaModal");
+    chk(modalAbierto() && /caudal que marca/.test(txtDe(document.getElementById("rfCmRes"))) && R.alerts.length===a0 && v("rf_ppmed")==="", "«Usar como Pp medida» sin datos no avisó al lado del botón: «"+txtDe(document.getElementById("rfCmRes"))+"»", "leve");
+    await cancelarModal();
+    /* corrector 27-10: el aviso también queda junto al campo con error, y el campo a la vista */
+    riegoFicha(q.id); await pausa();
+    await escribir("rf_cob", "1,5", "factor de cobertura fuera de rango"); await guardarModal_();
+    const err = document.querySelector("#capaModal .rf-err"), cobEl = document.getElementById("rf_cob"), mb = document.querySelector("#capaModal .mb");
+    const enVista = el=>{ if(!el || !mb) return false; const a = el.getBoundingClientRect(), b = mb.getBoundingClientRect(); return a.bottom>Math.max(b.top,0) && a.top<Math.min(b.bottom, innerHeight); };
+    chk(err && /factor de cobertura va de 0,01 a 1/.test(txtDe(err)) && enVista(cobEl), "Con el factor 1,5 el aviso no quedó junto al campo, o el campo no quedó a la vista", "leve");
+    await cancelarModal();
+    /* lo del caudalímetro sin pasarlo a la Pp medida, o una fecha de aforo sin Pp medida, no se pierden callados */
+    riegoFicha(q.id); await pausa(); await abrirCm();
+    await escribir("rf_cmq", "5,4", "caudal del caudalímetro"); const d1 = JSON.stringify(riegoCfg().cu[q.id]);
+    chk(!(await guardarModal_()) && /no quedó como Pp medida/.test(txtDe(document.getElementById("rfAviso"))) && JSON.stringify(riegoCfg().cu[q.id])===d1, "Con el caudalímetro anotado y sin tocar «Usar como Pp medida», la ficha guardó sin avisar", "leve");
+    await cancelarModal();
+    riegoFicha(q.id); await pausa(); await fecha("rf_ppf", masDias(HOY(),-2), "fecha del aforo sin Pp medida");
+    chk(!(await guardarModal_()) && /va con una Pp medida/.test(txtDe(document.getElementById("rfAviso"))), "Una fecha de aforo sin Pp medida se descartó sin avisar", "leve");
+    await cancelarModal();
+    /* goteros/pl antiguos de un cuartel sin verificar: se ven y se pueden borrar (vacío = el general) */
+    const r = riegoCfg(); ["lin","dg","caudal"].forEach(k=>delete r.cu[q.id][k]); r.cu[q.id].gpp = 8; guardar();
+    chk(fmtCL(riegoPp(q).pp,2)==="0,59" && riegoPp(q).gppPropio, "Con 8 goteros/pl antiguos del cuartel la Pp sin verificar debía ser 0,59 (8 × 2 ÷ 27) y es "+fmtCL(riegoPp(q).pp,2), "media");
+    riegoFicha(q.id); await pausa();
+    chk(v("rf_gpp")==="8", "La ficha no muestra los goteros/pl antiguos del cuartel para corregirlos («"+v("rf_gpp")+"»)", "media");
+    await escribir("rf_gpp", "", "goteros/pl antiguos (borrar)");
+    chk(await guardarModal_(), "La ficha no se cerró al borrar los goteros/pl antiguos", "media");
+    chk(!("gpp" in (riegoCfg().cu[q.id]||{})) && fmtCL(riegoPp(q).pp,2)==="0,44" && !riegoPp(q).gppPropio, "Al borrar los goteros/pl antiguos no volvió al general (Pp "+fmtCL(riegoPp(q).pp,2)+", esperado 0,44)", "media");
+    /* la casilla L/h de la tabla valida el mismo rango que la ficha, sin alert y sin guardar */
+    r.cu[q.id].caudal = 2; guardar();
+    nav.riegoFundo = FU_BOT; nav.riegoVista = "tabla"; riegoPintar(); await pausa();
+    const cel = necesito(document.querySelector(`#riegoScroll tr[data-rgcu="${q.id}"] input[onchange^="riegoSet(${q.id},'caudal'"]`), "la casilla L/h de la tabla");
+    const a1 = R.alerts.length; await escribir(cel, "40", "caudal 40 L/h en la tabla"); await pausa();
+    chk(riegoCfg().cu[q.id].caudal===2 && R.alerts.length===a1 && cel.value==="2", "La tabla aceptó 40 L/h (o avisó con alert): caudal guardado "+riegoCfg().cu[q.id].caudal+", casilla «"+cel.value+"»", "media");
+    nav.riegoVista = "cu"; riegoPintar();
+    /* un caudal antiguo fuera de rango no deja la ficha trabada sin explicación: avisa y ofrece borrarlo */
+    r.cu[q.id].caudal = 35; guardar();
+    riegoFicha(q.id); await pausa();
+    chk(/fuera de 0,5 a 16 L\/h/.test(txtDe(document.querySelector('#capaModal [data-fal="caudal"]'))), "Con un caudal guardado de 35 L/h la ficha no avisa que está fuera de rango", "leve");
+    await tocar({texto:/borrar el caudal guardado/i}, "Borrar el caudal guardado", "#capaModal");
+    chk(v("rf_caudal")==="" && await guardarModal_() && !("caudal" in riegoCfg().cu[q.id]), "«Borrar el caudal guardado» no dejó guardar la ficha sin el caudal", "leve");
+  }));
   await paso("Tocar días de riego: el botón no se mueve", async ()=>{
     await irA("riego");
     const sels = [...document.querySelectorAll("#riegoScroll .rgd")].filter(visible).slice(0,3).map(x=>x.getAttribute("data-rgd"));
@@ -1216,6 +1611,1000 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
   });
 }});
 
+/* ===== estación: datos falsos y parte A ===== */
+/* Puente v3, WeatherLink y Open-Meteo SIMULADOS: nada sale a la red. Modos del puente falso: "v3" (todo), "sinD1", "v2" (puente viejo) y "caido". */
+const EST_BOT = {modo:"v3", filas:[], pedidos:[], st:"215965"};
+/* lecturas cada 15 min (arrays en el orden EST_COLS), deterministas (sin azar): terminan 15 min antes de ahora (o en finSeg, exacto).
+   Temperatura diaria 6–26 °C, helada de −1,2 °C hace 10 días a las 07:15, lluvia de 12,4 mm hace 2 días, viento de la tarde del SO
+   con ráfagas de 30–45 km/h hace 3 días, calmas de noche sin dirección, hueco de 4 h hace 5 días, presión con tendencia, sin UV. */
+function estBotFilas(nDias, finSeg){
+  const fin = finSeg != null ? Math.round(finSeg) : Math.floor((Date.now() / 1000 - 900) / 900) * 900;
+  const n = Math.round(nDias * 96), ini = fin - (n - 1) * 900, hoyF = estFechaLocal(fin);
+  const fHel = estSumarDias(hoyF, -10), fLl = estSumarDias(hoyF, -2), fRaf = estSumarDias(hoyF, -3), fHue = estSumarDias(hoyF, -5);
+  const hueA = estLimitesDia(fHue).a + 10 * 3600, hueB = hueA + 4 * 3600;
+  const hora = s=>{ const hl = estHoraLocal(s); return +hl.slice(0, 2) + (+hl.slice(3, 5)) / 60; };
+  const barDe = s=>1015 + 3 * Math.sin(2 * Math.PI * s / (7 * 86400)) + 0.8 * Math.cos(2 * Math.PI * (hora(s) - 10) / 12);
+  const r1 = v=>Math.round(v * 10) / 10, r2 = v=>Math.round(v * 100) / 100;
+  const out = [], mesAcum = {}; let fPrev = null, lld = 0;
+  for(let k = 0; k < n; k++){
+    const ts = ini + k * 900; if(ts >= hueA && ts < hueB) continue;
+    const f = estFechaLocal(ts), hl = estHoraLocal(ts), h = hora(ts), mes = f.slice(0, 7);
+    if(f !== fPrev){ if(fPrev){ const mp = fPrev.slice(0, 7); mesAcum[mp] = r2((mesAcum[mp] || 0) + lld); } fPrev = f; lld = 0; }
+    const dn = Math.floor((ts - ini) / 86400);
+    let t = 16 + 10 * Math.sin(Math.PI * (h - 9) / 12) + ((dn % 5) - 2) * 0.3, hr = 55 - 30 * Math.sin(Math.PI * (h - 9) / 12);
+    if(f === fHel && Math.abs(h - 7.25) <= 3){ t = -1.2 + 0.9 * Math.abs(h - 7.25); hr = 92; }
+    let ll15 = 0, llr = 0, llrh = 0, rs = (h >= 7 && h <= 20) ? 900 * Math.sin(Math.PI * (h - 7) / 13) : 0;
+    if(f === fLl && h >= 6 && h < 13.75){ ll15 = 0.4; lld = r2(lld + 0.4); llr = 1.6; llrh = 1.6; hr = 95; rs *= 0.3; t -= 3; }
+    let v10, vu, vr, dv, dr;
+    if(h >= 21 || h < 7){ v10 = 1.0; vu = 0; vr = 3.2; dv = null; dr = null; }
+    else if(h >= 12 && h < 19){ const s = Math.sin(Math.PI * (h - 12) / 7);
+      if(f === fRaf){ v10 = 20 + 5 * s; vu = v10 + 2; vr = 30 + 15 * s; } else { v10 = 9 + 4 * s; vu = v10 + 1; vr = v10 * 1.7; }
+      dv = 225; dr = 230; }
+    else { v10 = 4; vu = 3.5; vr = 7.5; dv = 200; dr = 205; }
+    t = r1(t); hr = r1(Math.max(5, Math.min(100, hr)));
+    const tot = Object.keys(mesAcum).reduce((a, m)=>a + mesAcum[m], 0);
+    const o = {ts, f, hl, t, hr, pr:r1(estRocio(t, hr)), bh:null, ic:null, sv:null, thw:r1(t - 0.2), thsw:r1(t + rs * 0.003 - 1), vu:r1(vu), v10:r1(v10), vr:r1(vr), dv, dr,
+      rs:Math.round(rs), uv:null, lld, ll15, llr, llrh, llt:(f === fLl && lld > 0) ? lld : null, llti:null, llm:r2((mesAcum[mes] || 0) + lld), lla:r2(300 + tot + lld),
+      bar:r1(barDe(ts)), bart:r1(barDe(ts) - barDe(ts - 3 * 3600)), ti:21.5, hi:45, bat:0, rx:0, o:0, rec:ts + 120};
+    out.push(EST_COLS.map(c=>o[c] === undefined ? null : o[c]));
+  }
+  const L = out[out.length - 1]; if(L){ L[EST_I.t] = 24.5; L[EST_I.hr] = 55.1; L[EST_I.pr] = 14.9; L[EST_I.thw] = 24.8; L[EST_I.thsw] = 23.9; }   // como la captura de weatherlink.com
+  return out;
+}
+function estBotSalud(){ return {ts:Math.round(Date.now() / 1000), bat_mv:4100, ent_mv:5000, wifi:-61, uptime:123456, fw:"1663709736"}; }
+/* la última fila armada al revés como respuesta de WeatherLink /current (°F, mph, inHg) */
+function estBotCurrent(a){
+  if(!a) return {station_id:215965, sensors:[]};
+  const x = estFilaObj(a), F = c=>c == null ? null : c * 9 / 5 + 32, M = k=>k == null ? null : k / 1.609344, B = h=>h == null ? null : h / 33.8639;
+  return {station_id:215965, generated_at:Math.round(Date.now() / 1000), sensors:[
+    {lsid:1, sensor_type:43, data_structure_type:10, data:[{ts:x.ts, temp:F(x.t), hum:x.hr, dew_point:F(x.pr), wet_bulb:F(x.bh), heat_index:F(x.ic), wind_chill:F(x.sv), thw_index:F(x.thw), thsw_index:F(x.thsw),
+      wind_speed_last:M(x.vu), wind_speed_avg_last_10_min:M(x.v10), wind_speed_hi_last_10_min:M(x.vr), wind_dir_scalar_avg_last_10_min:x.dv, wind_dir_at_hi_speed_last_10_min:x.dr,
+      solar_rad:x.rs, uv_index:x.uv, rainfall_daily_mm:x.lld, rainfall_last_15_min_mm:x.ll15, rain_rate_last_mm:x.llr, rain_rate_hi_last_15_min_mm:x.llrh, rain_storm_mm:x.llt, rain_storm_start_at:x.llti,
+      rainfall_monthly_mm:x.llm, rainfall_year_mm:x.lla, trans_battery_flag:x.bat, rx_state:x.rx}]},
+    {lsid:2, sensor_type:242, data_structure_type:12, data:[{ts:x.ts, bar_sea_level:B(x.bar), bar_trend:B(x.bart), bar_absolute:x.bar == null ? null : B(x.bar - 22)}]},
+    {lsid:3, sensor_type:243, data_structure_type:12, data:[{ts:x.ts, temp_in:F(x.ti), hum_in:x.hi}]},
+    {lsid:4, sensor_type:504, data_structure_type:15, data:[{ts:x.ts, battery_voltage:4100, input_voltage:5000, wifi_rssi:-61, uptime:123456, firmware_version:1663709736}]}]};
+}
+/* puente falso: cumple las rutas del contrato (§5) con EST_BOT.filas y cuenta los pedidos en EST_BOT.pedidos */
+function estBotPuente(){
+  return async function(ruta, params, op){
+    params = params || {};
+    EST_BOT.pedidos.push({ruta:String(ruta), params:Object.assign({}, params), t:Date.now()});
+    await esperar(4);
+    const modo = EST_BOT.modo, F = EST_BOT.filas, ahora = Math.round(Date.now() / 1000), r0 = String(ruta).split("/")[0];
+    const fallo = (status, msg, codigo)=>{ const e = new Error(msg); e.status = status; e.codigo = codigo; return e; };
+    if(modo === "caido") throw new Error("sin conexión con el puente");
+    if(modo === "v2" && ["ahora", "historial", "resumen", "estado", "csv"].includes(r0)) throw fallo(400, "ruta no permitida", undefined);
+    if(modo === "sinD1" && ["historial", "resumen", "csv"].includes(r0)) throw fallo(503, "falta la base D1: créala y enlázala con el nombre DB (instrucciones, parte 5)", "sin_d1");
+    const base = {v:3, comun:EST_COMUN_V, esquema:modo === "v3" ? 1 : null, ahora};
+    if(r0 === "historial"){
+      let sel, lim;
+      if(params.despues != null){ const d = +params.despues; lim = Math.max(1, Math.min(3000, +params.max || 3000)); sel = F.filter(x=>x[0] > d).slice(0, lim); }
+      else if(params.desde && params.hasta){ const a = estLimitesDia(params.desde).a, b = estLimitesDia(params.hasta).b; lim = 3200; sel = F.filter(x=>x[0] >= a && x[0] < b).slice(0, lim); }
+      else throw fallo(400, "parámetros: usa despues=<número> o desde y hasta (AAAA-MM-DD)", "parametros");
+      const o = Object.assign(base, {desde:F.length ? F[0][0] : null, cols:EST_COLS.slice(), filas:sel.map(x=>x.slice()), n:sel.length, ult:sel.length ? sel[sel.length - 1][0] : null, mas:sel.length === lim});
+      if(params.vivo) o.vivo = {ok:true, nueva:false};
+      return JSON.parse(JSON.stringify(o));
+    }
+    if(r0 === "ahora"){ const u = F[F.length - 1];
+      return Object.assign(base, {d1:modo === "v3", cols:EST_COLS.slice(), fila:u ? u.slice() : null, motivo:u ? null : "la respuesta no trae el registro del sensor exterior (ISS)", guardada:modo === "v3", nueva:false, salud:estBotSalud()}); }
+    if(r0 === "estado"){
+      if(modo !== "v3") return Object.assign(base, {d1:false, kv:true, zona:EST_ZONA, estacion:EST_BOT.st, aviso:"falta la base D1"});
+      const u = F[F.length - 1];
+      return Object.assign(base, {d1:true, kv:true, zona:EST_ZONA, estacion:EST_BOT.st, creada:F.length ? F[0][0] - 600 : null, desde:F.length ? F[0][0] : null, ult_ts:u ? u[0] : null, ult_rec:u ? u[EST_I.rec] : null, n:F.length,
+        ult_intento:ahora - 60, ult_intento_o:0, ult_ok:ahora - 60, ult_error:null, ult_error_t:null, cron_t:ahora - 60, cron_prev:ahora - 360, cierre:estSumarDias(estFechaLocal(ahora), -1), dias_cerrados:Math.max(0, Math.round(F.length / 96) - 1),
+        campos:["10/43:temp", "10/43:hum"], salud:estBotSalud(), semana:{esperadas:672, recibidas:656, huecos:[]}});
+    }
+    if(r0 === "current") return estBotCurrent(F[F.length - 1]);
+    if(r0 === "dias"){
+      const hoyF = estFechaLocal(ahora), desde = params.desde || hoyF, dias = {}, fuente = {};
+      F.forEach(x=>{ if(x[1] < desde || x[1] > hoyF) return; const v = x[EST_I.v10] != null ? x[EST_I.v10] : x[EST_I.vu];
+        (dias[x[1]] = dias[x[1]] || {s:[]}).s.push([x[0], x[EST_I.t], x[EST_I.hr], v == null ? null : Math.round(v / 3.6 * 100) / 100, x[EST_I.rs], x[EST_I.lld] == null ? null : Math.round(x[EST_I.lld] * 10) / 10]); fuente[x[1]] = "d1"; });
+      return {dias, hoy:hoyF, zona:EST_ZONA, version:3, fuente};
+    }
+    if(r0 === "stations") return {stations:[{station_id:215965, station_name:"FUNDO STA SARA (bot)", latitude:-33.448, longitude:-71.028}]};
+    if(r0 === "resumen"){
+      const hoyF = estFechaLocal(ahora), porF = {}; F.forEach(x=>{ if(x[1] >= params.desde && x[1] <= params.hasta && x[1] < hoyF) (porF[x[1]] = porF[x[1]] || []).push(x); });
+      const cfg = {lat:-33.448, lon:-71.028, z:185, zw:2}, filas = Object.keys(porF).sort().map(f=>{ const r = estResumirDia(porF[f], f, cfg); return r ? estResumenArr(r).concat([ahora]) : null; }).filter(Boolean);
+      return Object.assign(base, {cierre:estSumarDias(hoyF, -1), cols:EST_RES_COLS.concat(["cerrado"]), filas, n:filas.length});
+    }
+    throw fallo(400, "ruta no permitida", "ruta");
+  };
+}
+/* pronóstico falso de Open-Meteo: ~100 horas; la primera noche despejada y calma, 6 mm de lluvia entre las 24 y 30 h, viento de 50 km/h a 10 m en 40 h */
+function estBotPron(){
+  return async function(url){
+    EST_BOT.pedidos.push({ruta:"pronóstico", params:{}, t:Date.now()});
+    await esperar(4);
+    const ahoraH = Math.floor(Date.now() / 3600000) * 3600, h0 = ahoraH - 2 * 3600;
+    const H = {time:[], temperature_2m:[], relative_humidity_2m:[], dew_point_2m:[], precipitation:[], precipitation_probability:[], cloud_cover:[], wind_speed_10m:[], wind_gusts_10m:[], wind_direction_10m:[], weather_code:[]};
+    for(let i = 0; i < 100; i++){
+      const ts = h0 + i * 3600, k = (ts - ahoraH) / 3600, h = +estHoraLocal(ts).slice(0, 2);
+      const noche1 = k >= -2 && k < 20 && (h >= 19 || h <= 8), lluvia = k >= 24 && k < 30, vto = k >= 40 && k < 43;
+      const t = 14 + 9 * Math.sin(Math.PI * (h - 9) / 12) - (noche1 ? 4 : 0), hr = lluvia ? 96 : Math.max(20, Math.min(98, 60 - 30 * Math.sin(Math.PI * (h - 9) / 12)));
+      H.time.push(ts); H.temperature_2m.push(Math.round(t * 10) / 10); H.relative_humidity_2m.push(Math.round(hr)); H.dew_point_2m.push(Math.round(estRocio(t, hr) * 10) / 10);
+      H.precipitation.push(lluvia ? 1 : 0); H.precipitation_probability.push(lluvia ? 80 : 5); H.cloud_cover.push(noche1 ? 5 : lluvia ? 100 : 40);
+      H.wind_speed_10m.push(vto ? 50 : noche1 ? 2 : 10); H.wind_gusts_10m.push(vto ? 70 : noche1 ? 4 : 18); H.wind_direction_10m.push(225); H.weather_code.push(lluvia ? 63 : noche1 ? 0 : 2);
+    }
+    return {latitude:-33.45, longitude:-71.03, hourly:H};
+  };
+}
+/* sincroniza como el botón: espera que no haya otra vuelta en curso y evita que el reloj de fondo (estTic) meta otra al medio */
+async function estBotSinc(){ await esperarQue(()=>!estDat.sinc, 60000); estDat.ultIntento = Date.now(); const n = await estSincronizar(true); estDat.ultIntento = Date.now(); return n; }
+async function estBotLimpio(){ await esperarQue(()=>!estDat.sinc, 60000); await estBorrarLocal(EST_BOT.st); }
+async function estBotCuenta(){ const recs = await _estRango("lect", EST_BOT.st + "|", EST_BOT.st + "|￿"); let n = 0; const s = new Set(); recs.forEach(r=>(r.filas || []).forEach(x=>{ n++; s.add(x[0]); })); return {n, u:s.size}; }
+async function estBotA(){
+  const ST = EST_BOT.st;
+  await paso("La pestaña Estación va justo después de Riego y abre en «Ahora»; la píldora de Hoy lleva a Estación", async ()=>{
+    const i = TABS.findIndex(t=>t.id === "estacion"), j = TABS.findIndex(t=>t.id === "riego");
+    chk(i >= 0 && i === j + 1, "La pestaña Estación no está justo después de Riego en el menú (posición " + i + ", Riego " + j + ")", "media");
+    delete nav.est;
+    await irA("estacion"); await esperarQue(()=>estDat.listo, 8000); await pausa(.5);
+    chk(nav.est && nav.est.sec === "ahora" && document.querySelector("#estTab-ahora.act"), "La pestaña Estación no abre en «Ahora»");
+    await irA("panel");
+    const p = necesito(buscar("#app .hoy-est"), "la píldora de la estación en Hoy");
+    chk(/estIrAhora\(\)|ir\('estacion'\)/.test(p.getAttribute("onclick") || ""), "La píldora de la estación en Hoy no lleva a la pestaña Estación");
+    estNav().sec = "inf"; await tocar(p, "píldora de la estación (Hoy)");
+    chk(nav.tab === "estacion" && document.getElementById("estRaiz"), "Tocar la píldora de Hoy no abrió la pestaña Estación");
+    chk(estNav().sec === "ahora", "La píldora de Hoy abre la última sección usada («" + estNav().sec + "») y no «Ahora»", "leve");
+  });
+  await paso("Primera descarga en 3 páginas sin repetir; la segunda vuelta pide desde la última menos media hora y no duplica", async ()=>{
+    const todas = estBotFilas(40);
+    EST_BOT.modo = "v3"; EST_BOT.filas = todas.slice(0, -2); EST_PAG = Math.ceil(EST_BOT.filas.length / 3) + 5;
+    await estBotLimpio(); EST_BOT.pedidos = [];
+    await estBotSinc();
+    const pg = EST_BOT.pedidos.filter(p=>p.ruta === "historial");
+    chk(pg.length === 3, "La primera descarga no se hizo en 3 páginas (fueron " + pg.length + ")");
+    chk(pg[0] && pg[0].params.despues === 0 && pg[0].params.vivo === 1 && pg[0].params.max === EST_PAG, "La primera página no pidió despues=0, vivo=1 y max (" + JSON.stringify(pg[0] && pg[0].params) + ")");
+    chk(pg[1] && !("vivo" in pg[1].params) && pg[1].params.despues === EST_BOT.filas[EST_PAG - 1][0], "La segunda página no siguió desde la última lectura de la primera o repitió «vivo» (" + JSON.stringify(pg[1] && pg[1].params) + ")");
+    let c = await estBotCuenta();
+    chk(c.n === EST_BOT.filas.length && c.u === c.n, "En la base de prueba quedaron " + c.n + " lecturas (" + c.u + " distintas) de " + EST_BOT.filas.length, "grave");
+    chk(EST_DBNOM === "agroClima_bots", "El panel no usa la base de prueba agroClima_bots (usa «" + EST_DBNOM + "»)", "grave");
+    chk(estDat.puente === "v3" && !estDat.err, "Tras bajar el historial el puente no quedó como v3 (" + estDat.puente + (estDat.err ? ", " + estDat.err.msg : "") + ")");
+    const ult = await estMetaGet(ST + "|ult");
+    chk(ult === EST_BOT.filas[EST_BOT.filas.length - 1][0], "La marca de la última lectura guardada no calza (" + ult + ")");
+    EST_BOT.filas = todas; EST_BOT.pedidos = [];
+    const n2 = await estBotSinc();
+    const pg2 = EST_BOT.pedidos.filter(p=>p.ruta === "historial");
+    chk(pg2.length === 1 && pg2[0].params.despues === ult - 1800, "La segunda vuelta no pidió desde la última lectura menos media hora (pidió " + JSON.stringify(pg2.map(p=>p.params.despues)) + ", se esperaba " + (ult - 1800) + ")");
+    c = await estBotCuenta();
+    chk(c.n === todas.length && c.u === c.n && n2 === 2, "La segunda vuelta duplicó o perdió lecturas (" + c.n + " guardadas de " + todas.length + ", " + n2 + " nuevas)", "grave");
+    chk(estDat.ult && estDat.ult.ts === todas[todas.length - 1][0] && estDat.hist.n === todas.length, "La memoria del panel no quedó con la última lectura o con la cuenta (" + estDat.hist.n + ")");
+  });
+  await paso("«Ahora»: la última lectura con coma decimal, 12 tarjetas, la franja lleva a su tarjeta y la rosa suma 100 % (calma bajo 3 km/h)", async ()=>{
+    estNav().sec = "ahora"; await irA("estacion"); await esperarQue(()=>!estDat.sinc, 20000);
+    await estPronCargar(true); estPintar(); await pausa(.5);
+    const fr = necesito(buscar("#estVista .est-franja"), "la franja de 6 cifras"), bs = [...fr.querySelectorAll("button")];
+    chk(bs.length === 6, "La franja no tiene 6 cifras (" + bs.length + ")");
+    chk(/24,5/.test(txtDe(bs[0])), "La temperatura de la franja no muestra «24,5» (" + txtDe(bs[0]).slice(0, 40) + ")");
+    const nc = document.querySelectorAll("#estVista .est-card").length;
+    chk(nc === 12, "«Ahora» no tiene las 12 tarjetas (" + nc + ")");
+    const ids = bs.map(b=>((b.getAttribute("onclick") || "").match(/estIrCard\('(\w+)'\)/) || [])[1]);
+    chk(ids.every(id=>id && document.getElementById(id)), "Alguna cifra de la franja no lleva a una tarjeta que exista (" + ids.join(", ") + ")");
+    await tocar(bs[1], "Humedad (franja)");
+    chk(document.activeElement && document.activeElement.id === ids[1], "Tocar «Humedad» en la franja no lleva a su tarjeta (el foco quedó en «" + ((document.activeElement && document.activeElement.id) || "") + "»)", "leve");
+    for(const p of ["sem", "mes", "dia"]){
+      await tocar('#estRosaCuerpo .chip[data-v="' + p + '"]', "rosa: " + p);
+      chk(estNav().rosa === p && document.querySelector('#estRosaCuerpo .chip.act[data-v="' + p + '"]'), "El chip «" + p + "» de la rosa no quedó elegido");
+      const L = estUlt(), lst = estLectDesde(L.ms - ({dia:1, sem:7, mes:30}[p]) * 86400000), R = estDatosRosa(lst);
+      const sect = R.tot.reduce((a, b)=>a + b, 0), calma = lst.filter(x=>{ const v = x.v10 != null ? x.v10 : x.vu; return v != null && (v < 3 || x.dv == null); }).length;
+      chk(R.n > 0 && R.calma + sect === R.n && Math.abs(R.pct(R.calma) + R.pct(sect) - 100) < 1e-6, "La rosa (" + p + ") no suma 100 % (calma " + R.calma + " + sectores " + sect + " de " + R.n + ")");
+      chk(R.calma === calma && calma > 0, "La calma de la rosa (" + p + ") no cuenta las lecturas bajo 3 km/h o sin dirección (" + R.calma + " de " + calma + ")");
+    }
+    chk(/calma: bajo 3 km\/h/.test(txtDe(document.getElementById("estRosaCuerpo"))), "La leyenda de la rosa no dice «calma: bajo 3 km/h»", "leve");
+    const tx = txtDe(document.getElementById("estRaiz")), m = tx.match(/.{0,30}\b(undefined|NaN|null|Infinity)\b.{0,30}/);
+    chk(!m, "«Ahora» muestra un texto raro: «" + (m ? m[0] : "") + "»");
+    chk(/Open-Meteo\.com \(licencia CC BY 4\.0\)/.test(tx), "La tarjeta Pronóstico no da el crédito a Open-Meteo", "leve");
+  });
+  await paso("Estado: al día (20 min), demorada (40 min, aviso ámbar) y atrasada (90 min, números grises y «dato de las HH:MM»)", async ()=>{
+    estNav().sec = "ahora";
+    for(const [min, n, txt] of [[20, "ok", "al día"], [40, "am", "demorada"], [90, "ro", "atrasada"]]){
+      EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(3, Date.now() / 1000 - min * 60);
+      await estBotLimpio(); await estBotSinc(); estPintar(); await pausa(.5);
+      const e = estEstado(), cab = txtDe(document.getElementById("estCab")), v = document.getElementById("estVista");
+      chk(e.n === n, "Con la última lectura de hace " + min + " min el estado es «" + e.txt + "» (se esperaba «" + txt + "»)");
+      chk(cab.indexOf("Estación " + txt) >= 0 && /hace \d+ (min|h)/.test(cab), "La cabecera no dice «Estación " + txt + " · … · hace N min» (" + cab.slice(-60) + ")");
+      if(n === "ok") chk(!v.classList.contains("est-viejo") && ![...v.querySelectorAll(".est-av.am, .est-av.ro")].some(a=>/demorada|atrasada/i.test(txtDe(a))), "Con la estación al día aparece un aviso de atraso o los números en gris");   // (Parte B) los avisos de aplicar o de lluvia en cosecha sí pueden salir
+      if(n === "am"){ const a = v.querySelector(".est-av.am"); chk(a && /demorada/.test(txtDe(a)) && !v.classList.contains("est-viejo"), "Con la estación demorada no aparece el aviso ámbar (o los números quedan en gris)"); }
+      if(n === "ro"){
+        chk(v.classList.contains("est-viejo"), "Con la estación atrasada los números no quedan en gris");
+        const em = v.querySelector(".est-franja em"), hh = estCuandoMs(estUlt().ms);   // (Parte B) pasada la medianoche la app agrega la fecha: «dato de las 27-10 22:35»
+        chk(em && txtDe(em).indexOf("dato de las " + hh) >= 0, "Con la estación atrasada la franja no dice «dato de las " + hh + "» (" + (em ? txtDe(em) : "—") + ")");
+        chk(v.querySelector(".est-av.ro") && /atrasada/.test(txtDe(v.querySelector(".est-av.ro"))), "Con la estación atrasada no aparece el aviso rojo");
+        const g = v.querySelector(".est-grande");
+        chk(g && getComputedStyle(g).color === getComputedStyle(document.documentElement).getPropertyValue("--est-viejo").trim().replace(/^#(..)(..)(..)$/, (_, a, b, c)=>"rgb(" + parseInt(a, 16) + ", " + parseInt(b, 16) + ", " + parseInt(c, 16) + ")"), "Con la estación atrasada las cifras grandes no quedan en gris", "leve");
+      }
+      revisarPantalla();
+    }
+  });
+  await paso("Puente viejo (v2), sin la base D1, puente caído y sin señal", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(2); await estBotLimpio(); await estBotSinc();
+    const u = EST_BOT.filas[EST_BOT.filas.length - 1];
+    EST_BOT.modo = "v2"; EST_BOT.pedidos = []; estDat.vivo = null;
+    await estBotSinc(); estPintar(); await pausa(.5);
+    chk(estDat.puente === "v2", "Con el puente viejo el panel no lo reconoce (" + estDat.puente + ")");
+    chk(EST_BOT.pedidos.some(p=>p.ruta === "current/" + ST), "Con el puente viejo la lectura del momento no sale de current/" + ST);
+    const vv = estDat.vivo;
+    chk(vv && vv.ts === u[0] && Math.abs(vv.t - u[EST_I.t]) < 0.05 && Math.abs(vv.bar - u[EST_I.bar]) < 0.05 && Math.abs(vv.v10 - u[EST_I.v10]) < 0.05, "La lectura convertida de current/ no calza con la del puente (" + (vv ? estF1(vv.t) + " °C, " + estF1(vv.bar) + " hPa" : "sin lectura") + ")");
+    chk(/Actualiza el puente/.test(txtApp()), "Con el puente viejo no aparece el aviso «Actualiza el puente»");
+    EST_BOT.modo = "sinD1"; EST_BOT.pedidos = []; estDat.vivo = null;
+    await estBotSinc(); estPintar(); await pausa(.5);
+    chk(estDat.puente === "sinD1" && EST_BOT.pedidos.some(p=>p.ruta === "ahora") && estDat.vivo && estDat.vivo.ts === u[0], "Sin la base D1 el panel no toma la lectura de la ruta «ahora» (" + estDat.puente + ")");
+    chk(/Falta un paso en Cloudflare/.test(txtApp()), "Sin la base D1 no aparece el aviso «Falta un paso en Cloudflare»");
+    EST_BOT.modo = "caido"; estDat.vivo = null; estDat.puente = "v3";
+    await estBotSinc(); estPintar(); await pausa(.5);
+    chk(estDat.err && /No se pudo consultar el puente/.test(txtApp()) && buscar("#estVista .est-franja") && /24,5/.test(txtDe(buscar("#estVista .est-franja"))), "Con el puente caído no se ven los datos guardados con su aviso");
+    EST_BOT.modo = "v3"; estDat.err = null; const p0 = EST_BOT.pedidos.length;
+    try{
+      Object.defineProperty(navigator, "onLine", {configurable:true, get:()=>false});
+      await estBotSinc(); estPintar(); await pausa(.5);
+      chk(EST_BOT.pedidos.length === p0, "Sin señal el panel igual llamó al puente");
+      chk(/Sin señal: se muestran los datos guardados en este equipo/.test(txtApp()) && buscar("#estVista .est-franja"), "Sin señal no se ven los datos guardados con el aviso de sin señal");
+    } finally { try{ delete navigator.onLine; }catch(e){} }
+    await estBotSinc(); estPintar();
+    chk(estDat.puente === "v3" && !estDat.err && !estDat.sinSenal, "Al volver la señal el panel no quedó al día (" + estDat.puente + ")");
+  });
+  await paso("D no crece (menos de 2 KB) al bajar más de 5.000 lecturas y el panel no llama a guardar()", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(53); EST_PAG = 3000;
+    const d0 = JSON.stringify(D).length, g0 = window.guardar; let ng = 0;
+    window.guardar = function(){ ng++; return g0.apply(this, arguments); };
+    try{
+      await estBotLimpio(); await estBotSinc();
+      for(const s of ["ahora", "campo", "graf", "inf", "como", "ahora"]){ estSec(s); await pausa(.4); }
+      estRosa("sem"); estRosa("dia"); await estActualizar(true); await estEstadoPuente(true);
+    } finally { window.guardar = g0; }
+    const c = await estBotCuenta(), d1 = JSON.stringify(D).length;
+    chk(c.n >= 5000, "La prueba no alcanzó a guardar 5.000 lecturas (" + c.n + ")", "leve");
+    chk(d1 - d0 < 2048, "El cuaderno (D) creció " + (d1 - d0) + " bytes al bajar el historial", "grave");
+    chk(ng === 0, "El panel llamó a guardar() " + ng + " vez/veces (solo debe hacerlo al cambiar un ajuste)", "media");
+    chk((D.est ? JSON.stringify(D.est) : null) === EST_BOT.est0, "El panel creó o cambió D.est sin que se cambiara un ajuste", "media");
+  });
+  await paso("Sincronización: lo que cambia solo en D.wl no provoca subidas; al recibir, el celular conserva la configuración del iPad y sus lecturas frescas", async ()=>{
+    if(typeof syncFirma !== "function") throw new SinProbar("La app no tiene syncFirma");
+    const p = JSON.parse(JSON.stringify(syncPayload())), h = o=>syncHash(JSON.stringify(syncFirma(o))), h0 = h(p);
+    const q = JSON.parse(JSON.stringify(p)); q.wl = Object.assign({}, q.wl, {hoy:{ts:1, temp:1}, ult:new Date().toISOString(), intento:new Date().toISOString(), errAct:{t:1, msg:"x"}, etHoy:{et:2}, om:{ts:"x", pron:{}}, dias:{"2026-01-01":{et:1}}});
+    chk(h(q) === h0, "Cambiar hoy/ult/intento/errAct/etHoy/om/dias de D.wl cambia la firma de la sincronización (subiría el cuaderno con cada lectura)", "media");
+    const r = JSON.parse(JSON.stringify(p)); r.wl = Object.assign({}, r.wl, {anemAlt:(+(p.wl && p.wl.anemAlt) || 2) + 1});
+    chk(h(r) !== h0, "Cambiar la altura del anemómetro no cambia la firma (no se subiría el cambio)", "media");
+    const aplicar = AB._orig && AB._orig.syncAplicar; if(typeof aplicar !== "function") throw new SinProbar("No quedó la syncAplicar original");
+    const tsL = Math.round(Date.now() / 1000), ultL = new Date().toISOString();
+    D.wl = Object.assign({}, D.wl, {hoy:{ts:tsL, temp:24.5}, ult:ultL, intento:ultL, anemAlt:2, elev:185});
+    const datos = JSON.parse(JSON.stringify(syncPayload()));
+    datos.wl = Object.assign({}, datos.wl, {anemAlt:3.5, elev:190, stNombre:"FUNDO STA SARA (iPad)", ult:new Date(Date.now() - 3600000).toISOString(), hoy:{ts:tsL - 3600, temp:10}});
+    aplicar(datos, Date.now()); await pausa(.5);
+    chk(D.wl.anemAlt === 3.5 && D.wl.elev === 190 && D.wl.stNombre === "FUNDO STA SARA (iPad)", "Al recibir el cuaderno, el celular perdió la configuración que mandó el iPad (anemómetro " + D.wl.anemAlt + ", altitud " + D.wl.elev + ")", "media");
+    chk(D.wl.hoy && D.wl.hoy.temp === 24.5 && D.wl.ult === ultL, "Al recibir el cuaderno, el celular perdió su lectura más fresca de la estación", "media");
+    D.wl = Object.assign({}, D.wl, {anemAlt:2, elev:185, stNombre:"FUNDO STA SARA (bot)"});
+  });
+  await paso("ET₀ por lectura = la del día (3 días) y días de 23, 24 y 25 horas", async ()=>{
+    const cfg = wlEtCfg(), porF = {}; EST_BOT.filas.forEach(x=>{ (porF[x[1]] = porF[x[1]] || []).push(x); });
+    const dias = Object.keys(porF).sort().slice(1, 4); if(dias.length < 3) throw new SinProbar("Faltan días de prueba");
+    for(const f of dias){
+      const l = estDerivar(porF[f], cfg), s = l.reduce((a, x)=>a + x.et, 0);
+      const d = ET0.dia(porF[f].map(x=>{ const v = x[EST_I.v10] != null ? x[EST_I.v10] : x[EST_I.vu]; return [x[0], x[EST_I.t], x[EST_I.hr], v == null ? null : v / 3.6, x[EST_I.rs], x[EST_I.lld]]; }), cfg);
+      chk(d && Math.abs(s - d.et) <= 0.01, "La ET₀ por lectura del " + f + " suma " + s.toFixed(3) + " mm y la del día da " + (d ? d.et : "—") + " mm");
+      const rr = estResumenApp(f, l); chk(rr && d && Math.abs(rr.et0 - d.et) <= 0.001 && rr.apt != null, "El resumen del " + f + " no trae la ET₀ del día o las horas aptas");
+    }
+    const hh = f=>{ const x = estLimitesDia(f); return (x.b - x.a) / 3600; };
+    chk(hh("2026-09-06") === 23 && hh("2026-10-27") === 24 && hh("2027-04-03") === 25, "Los días de cambio de hora no miden 23 / 24 / 25 h (" + [hh("2026-09-06"), hh("2026-10-27"), hh("2027-04-03")].join(", ") + ")");
+  });
+  await paso("Sin textos raros, sin nada que se salga y con tocables de 44 px en iPad, celular y modo sol", async ()=>{
+    const ui0 = JSON.stringify(D.ui || {});
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); await estBotLimpio(); await estBotSinc(); await estPronCargar(true);
+    try{
+      for(const [nom, u] of [["iPad", {movil:"no"}], ["celular", {movil:"si"}], ["sol", {movil:"no", sol:true}]]){
+        D.ui = Object.assign({}, JSON.parse(ui0), {sol:false, grande:false}, u); uiAplicar(); render(); await pausa(1);
+        await irA("estacion"); await esperarQue(()=>!estDat.sinc, 20000);
+        for(const s of EST_SECS.map(x=>x[0])){
+          await tocar("#estTab-" + s, "sección " + s + " (" + nom + ")");
+          const raiz = document.getElementById("estRaiz"), t = txtDe(raiz), m = t.match(/.{0,30}\b(undefined|NaN|null|Infinity)\b.{0,30}/);
+          chk(!m, "Texto raro en Estación › " + s + " (" + nom + "): «" + (m ? m[0] : "") + "»");
+          const chicos = [...raiz.querySelectorAll("button, .chip, summary, a.btn")].filter(visible).filter(b=>b.getBoundingClientRect().height < 44);
+          chk(!chicos.length, chicos.length + " tocable(s) de menos de 44 px en Estación › " + s + " (" + nom + "): " + chicos.slice(0, 3).map(b=>"«" + txtDe(b).slice(0, 16) + "» " + Math.round(b.getBoundingClientRect().height) + " px").join(", "), "leve");
+          const R0 = raiz.getBoundingClientRect(), fuera = [...raiz.querySelectorAll("*")].filter(el=>{ const r = el.getBoundingClientRect(); return r.width > 0 && r.right > R0.right + 2 && visible(el) && !el.closest(".est-twrap"); });
+          chk(!fuera.length && document.documentElement.scrollWidth <= innerWidth + 1, "En Estación › " + s + " (" + nom + ") algo se sale por el costado" + (fuera.length ? ": «" + (String(fuera[0].className && fuera[0].className.baseVal != null ? fuera[0].className.baseVal : fuera[0].className) || fuera[0].tagName) + "»" : ""));
+        }
+        estSec("ahora");
+      }
+    } finally { D.ui = JSON.parse(ui0); uiAplicar(); render(); }
+  });
+}
+AB.est = {filas:estBotFilas, puente:estBotPuente, pron:estBotPron, bot:EST_BOT};   // para revisar a mano en la consola (AgroBots.est)
+/* ===== estación: parte B ===== */
+/* Para el campo y Gráficos: cada valor se compara con la fórmula escrita aparte o con la función ET0 de la app, sobre lecturas fijas. */
+function estBotStull(T, H){ H = Math.max(5, Math.min(99, H)); return T * Math.atan(0.151977 * Math.sqrt(H + 8.313659)) + Math.atan(T + H) - Math.atan(H - 1.676331) + 0.00391838 * Math.pow(H, 1.5) * Math.atan(0.023101 * H) - 4.686035; }   // Stull (2011)
+function estBotMuestras(l){ return l.map(x=>{ const v = x[EST_I.v10] != null ? x[EST_I.v10] : x[EST_I.vu]; return [x[0], x[EST_I.t], x[EST_I.hr], v == null ? null : v / 3.6, x[EST_I.rs], x[EST_I.lld]]; }); }
+function estBotPorDia(F){ const o = {}; F.forEach(x=>{ (o[x[1]] = o[x[1]] || []).push(x); }); return o; }
+async function estBotCampo(sec){ estNav().sec = sec || "campo"; if(nav.tab !== "estacion") await irA("estacion"); await esperarQue(()=>!estDat.sinc, 20000); estPintar(); await pausa(.4); return document.getElementById("estVista"); }
+const EST_BOT_NIV = {ok:"Bien", am:"Cuidado", ro:"No", gr:"Sin datos"};
+async function estBotB(){
+  const ST = EST_BOT.st;
+  await paso("Para el campo · semáforo para aplicar: Delta T, calma, ráfaga, lluvia y calor; manda el peor (y la tarjeta muestra lo mismo)", async ()=>{
+    chk(Math.abs(estStull(20, 50) - 13.7) < 0.05 && Math.abs(estStull(24.5, 55.1) - estBotStull(24.5, 55.1)) < 1e-9, "El bulbo húmedo de la app no calza con Stull (2011): 20 °C y 50 % dan " + estF1(estStull(20, 50)) + " °C (se esperaba 13,7)");
+    const U = Object.assign({}, EST_UMB_DEF);
+    const casos = [[{t:10, hr:95, v:8, vr:12}, "dt", "am", "am", "Delta T bajo 2 → Cuidado"], [{t:36, hr:12, v:8, vr:12}, "dt", "ro", "ro", "Delta T sobre 10 → No"],
+      [{t:20, hr:50, v:2, vr:4}, "v", "ro", "ro", "calma (bajo 3 km/h) → No"], [{t:20, hr:50, v:8, vr:30}, "v", "ro", "ro", "ráfaga sobre 25 → No"],
+      [{t:20, hr:50, v:8, vr:12, llprox:1.2}, "ll", "ro", "ro", "1,2 mm en 6 h → No"], [{t:20, hr:50, v:8, vr:12, llueve:true}, "ll", "ro", "ro", "lloviendo → No"],
+      [{t:30, hr:55, v:8, vr:12}, "t", "am", "am", "30 °C → Cuidado"], [{t:20, hr:50, v:8, vr:12}, "dt", "ok", "ok", "todo bien → Bien"],
+      [{t:30, hr:55, v:2, vr:4}, "v", "ro", "ro", "calor (cuidado) y calma (no) → manda el peor"]];
+    for(const [o, k, nk, nfin, txt] of casos){
+      const s = estSemaforo(Object.assign({llueve:false, llprox:0, inv:false}, o), U), dT = o.t - estBotStull(o.t, o.hr);
+      chk(s.f[k] === nk && s.fin === nfin && Math.abs(s.dT - dT) < 1e-9, "Semáforo: " + txt + " dio " + k + " = " + s.f[k] + " y final " + s.fin + " (Delta T " + estF1(s.dT) + ")");
+    }
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); await estBotLimpio(); await estBotSinc(); await estPronCargar(true);
+    await estBotCampo();
+    const card = necesito(document.getElementById("estKAplicar"), "la tarjeta «¿Se puede aplicar ahora?»"), A = estAplicarAhora();
+    const mbs = [...card.querySelectorAll(".est-factores .est-mb")].map(txtDe), esp = ["dt", "v", "inv", "ll", "t"].map(k=>EST_BOT_NIV[A.S.f[k]]);
+    chk(mbs.length === 5 && mbs.join("|") === esp.join("|"), "Los 5 puntos de la tarjeta no calzan con el cálculo (" + mbs.join(", ") + " · se esperaba " + esp.join(", ") + ")");
+    const L = estUlt(), dT = L.t - estBotStull(L.t, L.hr);
+    chk(txtDe(card).indexOf("Delta T: " + estF1(dT) + " °C") >= 0, "La tarjeta no muestra el Delta T de la última lectura (" + estF1(dT) + " °C)");
+    chk(txtDe(card.querySelector(".est-ap-top .est-sem")) === A.titulo && /Manda el peor/.test(txtDe(card)), "El veredicto de la tarjeta no es «" + A.titulo + "»");
+    const P48 = estPron48(), vs = estVentanasAptas(P48);
+    chk(P48.length === 48 && card.querySelectorAll(".est-h48-c i.ok, .est-h48-c i.am, .est-h48-c i.ro").length === 48, "La franja de 48 horas no tiene 48 horas pintadas (" + P48.length + ")");
+    chk(vs.every(w=>w.fin - w.ini >= 2 * 3600000 && P48.filter(x=>x.ms + 3600000 > w.ini && x.ms < w.fin).every(x=>x.sem.fin === "ok")), "Una ventana apta dura menos de 2 horas o tiene horas que no son aptas");
+    chk(card.querySelectorAll(".est-ventanas .est-mb").length === Math.max(1, vs.length), "La lista de ventanas aptas no calza con la franja");
+    const viv0 = estDat.vivo;
+    try{   // puente viejo: la lectura suelta trae la lluvia de todo el día; «está lloviendo» sale de los últimos 15 min o de la intensidad
+      const f = EST_BOT.filas[EST_BOT.filas.length - 1].slice(); f[0] += 60; f[EST_I.lld] = 12.4; f[EST_I.ll15] = 0; f[EST_I.llr] = 0;
+      estDat.vivo = estDerivar([f], wlEtCfg())[0];
+      chk(estUlt() === estDat.vivo && estAplicarAhora().llueve === false, "Con la lectura suelta del puente viejo, la lluvia del día (12,4 mm) cuenta como «está lloviendo»");
+      f[EST_I.ll15] = 0.2; estDat.vivo = estDerivar([f], wlEtCfg())[0];
+      chk(estAplicarAhora().llueve === true && estAplicarAhora().S.f.ll === "ro", "Con 0,2 mm en los últimos 15 minutos no dice «está lloviendo»");
+    } finally { estDat.vivo = viv0; }
+    revisarPantalla();
+  });
+  await paso("Con la estación atrasada «Para el campo» no da veredicto («Sin datos al día: no se puede evaluar») y ningún punto dice «Bien»", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(5, Date.now() / 1000 - 90 * 60); await estBotLimpio(); await estBotSinc();
+    const v = await estBotCampo(), card = necesito(document.getElementById("estKAplicar"), "la tarjeta de aplicar");
+    chk(estEstado().n === "ro", "La estación de prueba no quedó atrasada (" + estEstado().txt + ")");
+    chk(/Sin datos al día: no se puede evaluar/.test(txtDe(card)), "Con la estación atrasada la tarjeta no dice «Sin datos al día: no se puede evaluar»");
+    chk(!card.querySelector(".est-mb.ok, .est-sem.ok") && [...card.querySelectorAll(".est-mb, .est-sem")].every(b=>txtDe(b) !== "Bien"), "Con la estación atrasada algún punto dice «Bien»", "grave");
+    chk(v.classList.contains("est-viejo"), "Con la estación atrasada las cifras de «Para el campo» no quedan en gris", "leve");
+    estSec("ahora"); await pausa(.3);
+    chk(![...document.querySelectorAll("#estVista .est-av")].some(a=>/aplicar/i.test(txtDe(a))), "Con la estación atrasada «Ahora» igual da un aviso para aplicar");
+    revisarPantalla();
+  });
+  await paso("Helada esta noche: la mínima del modelo, aviso con noche despejada, calma y seca aunque marque más de 2 °C, «sin corregir» y ajuste con 14 noches, y la última helada con su hora", async ()=>{
+    const p0 = window.estPronFetch;
+    try{
+      EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); await estBotLimpio(); await estBotSinc(); window.estPronFetch = estBotPron(); await estPronCargar(true);
+      await esperarQue(()=>!estCampoFondo._en, 5000); estDat._sesgo = null; await estSesgoHelada();
+      await estBotCampo();
+      let card = necesito(document.getElementById("estKHelada"), "la tarjeta «Helada esta noche»"), H = estHeladaNoche();
+      const minP = Math.min(...H.hs.map(x=>x.t)), nEsp = minP <= 0 ? "ro" : minP <= 2 ? "am" : null;
+      chk(Math.abs(H.tAj - minP) < 1e-9 && (nEsp == null || H.n === nEsp) && txtDe(card.querySelector(".est-grande")).indexOf(estF1(minP)) === 0, "Helada: con la mínima del modelo de " + estF1(minP) + " °C la tarjeta dice " + txtDe(card.querySelector(".est-grande")) + " y " + H.tit);
+      chk(/sin corregir/.test(txtDe(card)), "Con menos de 14 noches guardadas la helada no dice «sin corregir»");
+      const fH = estSumarDias(EST_BOT.filas[EST_BOT.filas.length - 1][1], -10), tx = txtDe(card);   // la helada falsa es 10 días antes de la última lectura
+      chk(tx.indexOf("Última helada: " + estFCorta(fH) + ", " + estF1(-1.2) + " °C a las 07:15") >= 0, "La helada de −1,2 °C del " + estFCorta(fH) + " a las 07:15 no aparece como última helada («" + (tx.match(/Última helada[^.]*/) || [""])[0] + "»)");
+      /* noche despejada, calma y seca con el modelo sobre 2 °C */
+      window.estPronFetch = async function(url){ const j = await estBotPron()(url), Hh = j.hourly;
+        Hh.time.forEach((ts, i)=>{ const h = +estHoraLocal(ts).slice(0, 2); if(h >= 17 || h <= 11){ Hh.temperature_2m[i] = 6; Hh.cloud_cover[i] = 5; Hh.wind_speed_10m[i] = 2; Hh.wind_gusts_10m[i] = 4; Hh.precipitation[i] = 0; Hh.dew_point_2m[i] = -3; } }); return j; };
+      const F = estBotFilas(40), u = F[F.length - 1]; u[EST_I.t] = 15; u[EST_I.hr] = 30; u[EST_I.pr] = Math.round(estRocio(15, 30) * 10) / 10;
+      EST_BOT.filas = F; await estBotLimpio(); await estBotSinc(); await estPronCargar(true); await esperarQue(()=>!estCampoFondo._en, 5000); estDat._sesgo = null; await estSesgoHelada();
+      H = estHeladaNoche(); await estBotCampo(); card = document.getElementById("estKHelada");
+      chk(H.tAj > 2 && H.desp && H.calm && H.seco && H.n === "am" && /noche despejada, calma y seca/.test(txtDe(card)), "Con noche despejada, calma y rocío de " + estF1(u[EST_I.pr]) + " °C (modelo " + estF1(H.tAj) + " °C) no avisa helada (" + H.n + " · " + H.tit + ")");
+      /* ajuste con 14 noches despejadas y calmas en que el pronóstico de la tarde marcó 1,5 °C más que la estación */
+      const hoyF = estHoyF(), noches = [];
+      for(let d = 2; d <= 16; d++){ const f = estSumarDias(hoyF, -d), fT = estSumarDias(f, -1);
+        const n = F.filter(x=>(x[1] === fT && x[2] >= "18:00") || (x[1] === f && x[2] <= "10:00")); if(n.length < 48) continue;
+        noches.push(f); await estMetaPut(ST + "|pronNoche|" + f, {f, tmin:Math.min(...n.map(x=>x[EST_I.t])) + 1.5, nubes:0.05, v:1.5, t:Date.now()}); }
+      estDat._sesgo = null; const S = await estSesgoHelada();
+      chk(noches.length >= 14 && S && S.n === noches.length && Math.abs(S.sesgo + 1.5) < 0.001, "El ajuste de la helada no da −1,5 °C con " + noches.length + " noches (dio " + (S && S.n) + " noches y " + (S && S.sesgo) + ")");
+      const H2 = estHeladaNoche(); await estBotCampo(); card = document.getElementById("estKHelada");
+      chk(Math.abs(H2.tAj - (Math.min(...H2.hs.map(x=>x.t)) - 1.5)) < 1e-9 && /corregida con \d+ noches/.test(txtDe(card)) && !/sin corregir/.test(txtDe(card)), "Con 14 noches la mínima no se corrige en −1,5 °C o no dice «corregida» (" + estF1(H2.tAj) + " °C)");
+      /* después de las 15:00 queda guardada la mínima pronosticada de la noche (para el ajuste) */
+      const hl = +estHoraLocal(Math.floor(Date.now() / 1000)).slice(0, 2); estDat._pronNocheK = null; await estPronNocheGuardar();
+      const g = await estMetaGet(ST + "|pronNoche|" + estSumarDias(hoyF, 1));
+      chk(hl >= 15 ? !!(g && g.tmin != null && g.nubes != null && g.v != null) : !g, hl >= 15 ? "Después de las 15:00 no quedó guardada la mínima pronosticada de esta noche" : "Antes de las 15:00 se guardó la mínima pronosticada de la noche");
+    } finally { window.estPronFetch = p0; try{ await estPronCargar(true); }catch(e){} }
+    revisarPantalla();
+  });
+  await paso("Horas de mojamiento: 24 horas y 7 días = lecturas con humedad de 90 % o más o con lluvia × 0,25 h", async ()=>{
+    const F = estBotFilas(40), L = F[F.length - 1];
+    F.forEach(x=>{ if(x[0] > L[0] - 6 * 3600 && x[0] <= L[0] - 3 * 3600){ x[EST_I.hr] = 92; x[EST_I.pr] = Math.round(estRocio(x[EST_I.t], 92) * 10) / 10; } });
+    EST_BOT.filas = F; await estBotLimpio(); await estBotSinc();
+    const moj = x=>x[EST_I.hr] >= 90 || x[EST_I.ll15] > 0, en = s=>F.filter(x=>x[0] > L[0] - s && moj(x));
+    const w24 = en(86400), h24 = w24.length * 0.25, h7 = en(7 * 86400).length * 0.25, tm = w24.reduce((a, x)=>a + x[EST_I.t], 0) / (w24.length || 1);
+    await estBotCampo(); const card = necesito(document.getElementById("estKMoja"), "la tarjeta de mojamiento"), t = txtDe(card);
+    chk(h24 === 3 && txtDe(card.querySelector(".est-grande")).replace(/\s/g, "") === estHmG(h24).replace(/<[^>]+>/g, "").replace(/\s/g, ""), "Mojamiento de 24 h: la tarjeta dice «" + txtDe(card.querySelector(".est-grande")) + "» y se esperaba " + estHm(h24));
+    chk(t.indexOf("Últimos 7 días " + estHm(h7)) >= 0, "Mojamiento de 7 días: se esperaba " + estHm(h7) + " («" + (t.match(/Últimos 7 días [^P]*/) || [""])[0] + "»)");
+    chk(t.indexOf("mientras estuvo mojado " + estF1(tm) + " °C") >= 0, "La temperatura media mientras estuvo mojado no es " + estF1(tm) + " °C");
+  });
+  await paso("Grados-día acumulados = suma de los grados-día de cada día (base 10 y 13), con «incompleto · desde dd-mm»", async ()=>{
+    const F = EST_BOT.filas, tIni = estTemporadaIni(estHoyF()), porF = estBotPorDia(F.filter(x=>x[1] >= tIni)), fs = Object.keys(porF).sort();
+    let a10 = 0, a13 = 0;
+    fs.forEach(f=>{ const ts = porF[f].map(x=>x[EST_I.t]), tm = (Math.max(...ts) + Math.min(...ts)) / 2; a10 += Math.round(Math.max(0, tm - 10) * 100) / 100; a13 += Math.round(Math.max(0, tm - 13) * 100) / 100; });
+    await estBotCampo(); const card = necesito(document.getElementById("estKGD"), "la tarjeta de grados-día"), ms = [...card.querySelectorAll(".est-medio")].map(txtDe);
+    chk(Math.abs(estSumaDias(tIni, estHoyF(), "gd10") - a10) < 1e-6 && ms[0] && ms[0].indexOf(estF0(a10)) === 0 && ms[1] && ms[1].indexOf(estF0(a13)) === 0, "Grados-día: la tarjeta dice " + ms.join(" / ") + " y la suma de cada día da " + estF0(a10) + " / " + estF0(a13));
+    chk(fs[0] > tIni && /incompleto · desde el \d\d-\d\d/.test(txtDe(card)) && txtDe(card).indexOf("desde el " + estFCorta(fs[0])) >= 0, "Grados-día con historial desde el " + estFCorta(fs[0]) + " no dice «incompleto · desde el " + estFCorta(fs[0]) + "»");
+  });
+  await paso("Frío invernal: 240 h a 6 °C = 7,82 porciones y 240 unidades Utah; 30 días entre 2 y 14 °C = 21,03 porciones, 435 Utah y 330 horas frío", async ()=>{
+    const r1 = estFrioHoras(new Array(240).fill(6));
+    chk(Math.abs(r1.pf - 7.82) < 0.005 && r1.utah === 240 && r1.hf === 240, "240 h a 6 °C dieron " + estF2(r1.pf) + " porciones, " + r1.utah + " Utah y " + r1.hf + " horas frío");
+    const seno = []; for(let d = 0; d < 30; d++) for(let h = 0; h < 24; h++) seno.push(8 + 6 * Math.sin((h - 9) / 24 * 2 * Math.PI));
+    const r2 = estFrioHoras(seno);
+    chk(Math.abs(r2.pf - 21.03) < 0.005 && r2.utah === 435 && r2.hf === 330, "30 días entre 2 y 14 °C dieron " + estF2(r2.pf) + " porciones, " + r2.utah + " Utah y " + r2.hf + " horas frío (se esperaba 21,03 / 435 / 330)");
+    await estBotCampo(); const card = necesito(document.getElementById("estKFrio"), "la tarjeta de frío invernal");
+    chk(/Fuera de temporada|En curso/.test(txtDe(card)) && /no hay historial|solo hay|Calculando|horas frío/.test(txtDe(card)) && card.querySelectorAll(".est-tb tbody tr").length === 4, "La tarjeta de frío invernal no dice la temporada o no trae la tabla de variedades");
+  });
+  await paso("Lluvia en cosecha de cerezas: sin pinta en Fenología pide anotarla; con un cerezo en BBCH 85 hace 5 días y 6 mm en 72 h → «Alerta» (también en «Ahora»)", async ()=>{
+    const fen0 = JSON.stringify(D.fenologia || []), cu0 = JSON.stringify(D.cuarteles || []);
+    try{
+      await estPronCargar(true);
+      D.fenologia = [];
+      let q = (D.cuarteles || []).find(c=>/^cerez/.test(gtNorm(c.especie || "")));
+      if(!q){ q = {id:"bot-est-cz", fundo:(fundos()[0] || "Santa Sara"), nombre:"Cerezos bot", especie:"Cerezo", variedad:"Lapins", ha:1}; D.cuarteles.push(q); }
+      await estBotCampo(); let card = necesito(document.getElementById("estKCosecha"), "la tarjeta de lluvia en cosecha");
+      chk(/anota la pinta en Fenología/i.test(txtDe(card)) && !card.querySelector(".est-sem.ro, .est-sem.am"), "Sin cerezos en Fenología la tarjeta no pide anotar la pinta (o igual da alerta)");
+      chk(card.querySelector('button[onclick="ir(\'fenologia\')"]'), "La tarjeta no ofrece ir a Fenología", "leve");
+      D.fenologia = [{id:"bot-est-fen", fecha:estSumarDias(hoy(), -5), fundo:q.fundo, cuartel:q.nombre, bbch:"85", estado:"Color avanzado", nota:"bot"}];
+      const lc = estLluviaProx(72), CZ = estCerezosVentana();
+      await estBotCampo(); card = document.getElementById("estKCosecha");
+      chk(lc && Math.abs(lc.mm - 6) < 0.01 && CZ.n === 1 && txtDe(card.querySelector(".est-sem")) === "Alerta" && /6,0\s*mm en 72 h/.test(txtDe(card)) && txtDe(card).indexOf(q.nombre) >= 0, "Con un cerezo en BBCH 85 y " + estF1(lc && lc.mm) + " mm en 72 h la tarjeta no dice «Alerta» (" + txtDe(card.querySelector(".est-sem")) + ")");
+      estSec("ahora"); await pausa(.3);
+      chk([...document.querySelectorAll("#estVista .est-av.ro")].some(a=>/Lluvia pronosticada en cosecha de cerezas: 6,0 mm/.test(txtDe(a))), "«Ahora» no avisa la lluvia en cosecha de cerezas");
+      revisarPantalla();
+    } finally { D.fenologia = JSON.parse(fen0); D.cuarteles = JSON.parse(cu0); }
+  });
+  await paso("Gráficos: los 21 (7 datos × 3 períodos) sin NaN, valor con las flechas, «Sin lluvia…», ráfaga más fuerte, cortes sin inventar y el promedio del período (ET₀ con la función ET0 de la app, sin los días incompletos) con la línea punteada a su altura", async ()=>{
+    const F0 = estBotFilas(40), hoyF = estHoyF(), fInc = estSumarDias(hoyF, -4), L0 = F0[F0.length - 1][0];
+    /* un día incompleto (hace 4 días, sin lecturas de 00:00 a 06:00), un corte de 3 horas y otro de 30 minutos en las últimas 24 h */
+    const F = F0.filter(x=>!(x[1] === fInc && x[2] < "06:00") && !(x[0] > L0 - 10 * 3600 && x[0] <= L0 - 7 * 3600) && !(x[0] > L0 - 4 * 3600 && x[0] <= L0 - 3.5 * 3600));
+    EST_BOT.modo = "v3"; EST_BOT.filas = F; await estBotLimpio(); await estBotSinc();
+    await estBotCampo("graf"); const cfg = wlEtCfg();
+    for(const [v] of EST_GVARS){
+      await tocar('#estGCtrl .est-chips[aria-label="Dato del gráfico"] .chip[data-v="' + v + '"]', "dato " + v);
+      for(const [p] of EST_GPERS){
+        await tocar('#estGCtrl .est-chips[aria-label="Período del gráfico"] .chip[data-v="' + p + '"]', "período " + p);
+        const card = document.getElementById("estKGraf"), svg = card.querySelector("#estGPrin svg"), html = card.innerHTML.replace(/aria-[a-z]+="[^"]*"/g, "");
+        chk(estNav().var === v && estNav().per === p && svg && !/NaN|undefined|Infinity/.test(html) && !/(^|[\s:(])null([\s,.)]|$)/.test(txtDe(card)), "Gráfico " + v + " · " + p + ": sin dibujo o con un valor raro");
+        chk(document.querySelector("#estGKpi .est-medio") && svg && (EST_GRAF.estGPrin.S.vacio || svg.querySelector(".est-g-prom")), "Gráfico " + v + " · " + p + ": falta el promedio del período arriba o su línea punteada");
+      }
+    }
+    revisarPantalla();
+    /* el valor con las flechas del teclado */
+    estGraf("temp", "24h"); const w = document.getElementById("estGPrin"); w.focus(); await pausa(.2);
+    w.dispatchEvent(new KeyboardEvent("keydown", {key:"End", bubbles:true})); await pausa(.2);
+    const vivo = document.getElementById("estGVivo"), v0 = txtDe(vivo);
+    w.dispatchEvent(new KeyboardEvent("keydown", {key:"ArrowLeft", bubbles:true})); await pausa(.2);
+    const v1 = txtDe(vivo), pts = EST_GRAF.estGPrin.S.pts.filter(p=>p.y != null), pen = pts[pts.length - 2];
+    chk(v0 && v1 && v1 !== v0 && v1.indexOf(estF1(pen.y) + " °C") >= 0 && v1.indexOf(pen.hl) >= 0, "Con la flecha izquierda el gráfico no dice el valor de la lectura anterior («" + v1 + "»)");
+    /* promedio de 24 h de temperatura y su línea; los cortes no se rellenan */
+    const L = F[F.length - 1][0], x0 = L - 86400, w24 = F.filter(x=>x[0] > x0 && x[0] <= L), tm = w24.reduce((a, x)=>a + x[EST_I.t], 0) / w24.length;
+    const G = EST_GRAF.estGPrin, ln = w.querySelector(".est-g-prom"), kp = txtDe(document.getElementById("estGKpi"));
+    chk(kp.indexOf(estF1(tm)) >= 0 && ln && Math.abs(+ln.getAttribute("y1") - G.Y(tm)) < 0.06, "Temperatura 24 h: promedio mostrado «" + kp + "» y se esperaba " + estF1(tm) + " °C (o la línea punteada no está a su altura)");
+    const d = (w.querySelector("path.est-k-l") || {getAttribute:()=>""}).getAttribute("d") || "", nM = (d.match(/M/g) || []).length;
+    const enCorte = G.S.pts.filter(p=>p.y != null && ((p.x > (L0 - 10 * 3600) * 1000 && p.x <= (L0 - 7 * 3600) * 1000) || (p.x > (L0 - 4 * 3600) * 1000 && p.x <= (L0 - 3.5 * 3600) * 1000))).length;
+    chk(G.S.huecos.length === 2 && nM === 3 && !enCorte && w.querySelectorAll(".est-g-hueco").length === 2 && /Sin lecturas: 2 cortes/.test(txtDe(document.getElementById("estGRes"))), "Los cortes de 3 h y 30 min no cortan la línea o no se marcan (" + G.S.huecos.length + " cortes, " + nM + " tramos, " + enCorte + " valores inventados)");
+    /* ET₀ de 24 h: total (con la función ET0 de la app, por tramos del día) y promedio por hora con datos */
+    estGraf("et", "24h");
+    const pd = estBotPorDia(F); let tot = 0;
+    Object.keys(pd).forEach(f=>{ const l = pd[f].filter(x=>x[0] <= L); if(!l.some(x=>x[0] > x0)) return;
+      const ant = l.filter(x=>x[0] <= x0), a = ET0.dia(estBotMuestras(l), cfg).et, b = ant.length ? ET0.dia(estBotMuestras(ant), cfg).et : 0; tot += a - b; });
+    const hrs = w24.reduce((a, x, i)=>a + (i ? Math.min(1, (x[0] - w24[i - 1][0]) / 3600) : 0.25), 0), G2 = EST_GRAF.estGPrin;
+    const nk = numCL(txtDe(document.querySelector("#estGKpi .est-medio"))), totApp = G2.S.st.tot, promApp = G2.S.prom;
+    chk(Math.abs(totApp - tot) <= 0.03 && Math.abs(nk - Math.round(totApp * 10) / 10) < 1e-9 && Math.abs(promApp - totApp / hrs) < 1e-9 && txtDe(document.getElementById("estGKpi")).indexOf(estF2(totApp / hrs) + " mm/h") >= 0,
+      "ET₀ 24 h: la app da " + estF2(totApp) + " mm y " + estF2(promApp) + " mm/h; con ET0.dia da " + estF2(tot) + " mm en " + estF2(hrs) + " h con datos");
+    chk(Math.abs(+G2.S.pts.reduce((a, p)=>a + p.y, 0) - totApp) < 1e-9 && Math.abs(+w.querySelector(".est-g-prom").getAttribute("y1") - G2.Y(totApp / hrs)) < 0.06, "ET₀ 24 h: las barras por hora no suman el total o la línea punteada no está en el promedio");
+    /* ET₀ de 7 y 30 días: promedio de los días completos (20 h o más), sin hoy, con ET0.dia; línea punteada rotulada */
+    for(const [p, nd] of [["7d", 7], ["30d", 30]]){
+      estGraf("et", p); const G3 = EST_GRAF.estGPrin, kp3 = txtDe(document.getElementById("estGKpi"));
+      let s = 0, nC = 0, nI = 0, tot3 = 0;
+      for(let i = nd - 1; i >= 0; i--){ const f = estSumarDias(hoyF, -i), l = pd[f]; if(!l) continue; const r = ET0.dia(estBotMuestras(l), cfg); tot3 += r.et; if(f === hoyF) continue; if(r.horas >= 20){ s += r.et; nC++; } else nI++; }
+      const prom = s / nC;
+      chk(txtDe(document.querySelector("#estGKpi .est-medio")).indexOf(estF1(prom)) === 0 && kp3.indexOf("promedio de " + nC + " días completos" + (nI ? " (" + nI + (nI === 1 ? " incompleto" : " incompletos") + ")" : "")) >= 0 && kp3.indexOf("Total: " + estF1(tot3) + " mm") >= 0,
+        "ET₀ " + p + ": se esperaba promedio " + estF1(prom) + " mm/día de " + nC + " días completos (" + nI + " incompleto) y total " + estF1(tot3) + " mm; la pantalla dice «" + kp3.slice(0, 160) + "»");
+      const ln3 = document.querySelector("#estGPrin .est-g-prom"), lt = document.querySelector("#estGPrin .est-g-promt");
+      chk(ln3 && Math.abs(+ln3.getAttribute("y1") - G3.Y(prom)) < 0.06 && lt && lt.textContent.indexOf(estF1(prom)) >= 0, "ET₀ " + p + ": la línea punteada no está a la altura del promedio o no lo rotula");
+      chk(nI >= 1 && document.querySelectorAll("#estGPrin rect.est-gb.inc").length === nI && document.querySelectorAll("#estGPrin rect.est-gb.hoy").length === (pd[hoyF] && ET0.dia(estBotMuestras(pd[hoyF]), cfg).et > 0 ? 1 : 0), "ET₀ " + p + ": los días incompletos (" + nI + ") o el de hoy no se ven distintos", "leve");   // (Parte C) pasada la medianoche la ET₀ de hoy es 0 y su barra no se dibuja
+    }
+    /* lluvia: sin lluvia en 24 h; total de 7 días = suma de cada día */
+    estGraf("lluvia", "24h");
+    chk(/Sin lluvia en las últimas 24 horas/.test((document.querySelector("#estGPrin svg") || {}).textContent || "") && !document.querySelector("#estGPrin .est-g-prom"), "Sin lluvia en 24 h el gráfico no dice «Sin lluvia en las últimas 24 horas»");
+    estGraf("lluvia", "7d"); let ll7 = 0; for(let i = 6; i >= 0; i--){ const l = pd[estSumarDias(hoyF, -i)]; if(l) ll7 += Math.max(0, ...l.map(x=>x[EST_I.lld] || 0)); }
+    chk(Math.abs(ll7 - 12.4) < 0.001 && txtDe(document.querySelector("#estGKpi .est-medio")).indexOf(estF1(ll7)) === 0, "Lluvia 7 días: se esperaba un total de " + estF1(ll7) + " mm («" + txtDe(document.getElementById("estGKpi")).slice(0, 80) + "»)");
+    /* la ráfaga más fuerte de 7 días = la de las lecturas */
+    estGraf("viento", "7d"); const L7 = estDat.lect[estDat.lect.length - 1].ms, mxv = Math.max(...F.filter(x=>x[0] * 1000 > L7 - 7 * 86400000 && x[EST_I.vr] != null).map(x=>x[EST_I.vr]));
+    chk(txtDe(document.getElementById("estGRes")).indexOf("Ráfaga más fuerte: " + estF1(mxv) + " km/h") >= 0 && txtDe(document.getElementById("estGKpi")).indexOf(estF1(mxv) + " km/h") >= 0, "Viento 7 días: la ráfaga más fuerte no es " + estF1(mxv) + " km/h");
+    revisarPantalla();
+  });
+  await paso("Gráficos a 375 px: marcas del eje legibles (sin encimarse ni salirse) en los 21 gráficos", async ()=>{
+    await estBotCampo("graf"); const w = document.getElementById("estGPrin"), malos = [];
+    try{
+      w.style.width = "321px";
+      for(const [v] of EST_GVARS) for(const [p] of EST_GPERS){
+        estGraf(v, p); const svg = w.querySelector("svg"); if(!svg){ malos.push(v + "·" + p + " sin dibujo"); continue; }
+        const r0 = svg.getBoundingClientRect(), xt = [...svg.querySelectorAll("text.est-g-xt")].map(t=>t.getBoundingClientRect()).sort((a, b)=>a.left - b.left);
+        let solap = 0; for(let i = 1; i < xt.length; i++) if(xt[i].left < xt[i - 1].right + 2) solap++;
+        const fuera = xt.filter(r=>r.left < r0.left - 1 || r.right > r0.right + 1).length;
+        if(xt.length < 2 || solap || fuera || xt.some(r=>r.height < 10)) malos.push(v + "·" + p + " (" + xt.length + " marcas, " + solap + " encimadas, " + fuera + " afuera)");
+      }
+    } finally { w.style.width = ""; estGrafPos(); }
+    chk(!malos.length, "Gráficos a 375 px con marcas del eje que no se leen: " + malos.slice(0, 5).join(", "));
+  });
+  await paso("Ajustes de los umbrales: un valor malo no se guarda (aviso junto al campo); «Viento: bien hasta» 12 cambia el veredicto y queda en D.est.umb", async ()=>{
+    const F = estBotFilas(40), u = F[F.length - 1]; u[EST_I.v10] = 13.5; u[EST_I.vu] = 14; u[EST_I.vr] = 18; u[EST_I.dv] = 225;
+    EST_BOT.modo = "v3"; EST_BOT.filas = F; await estBotLimpio(); await estBotSinc(); await estPronCargar(true);
+    const est0 = D.est ? JSON.stringify(D.est) : null;
+    try{
+      await estBotCampo();
+      chk(estAplicarAhora().S.f.v === "ok", "Con 13,5 km/h y el umbral de origen (15) el viento no queda «Bien»");
+      const det = necesito(document.querySelector("#estKUmb details"), "los ajustes de los umbrales");
+      if(!det.open) await tocar("#estKUmb summary", "Ver y cambiar los umbrales");
+      await escribir("estU_vMax", "abc", "Viento: bien hasta"); await tocar({texto:/Guardar umbrales/}, "Guardar umbrales");
+      chk(document.getElementById("estU_vMax").getAttribute("aria-invalid") === "true" && /No se guardaron/.test(txtDe(document.getElementById("estUmbMsg"))) && !(D.est && D.est.umb && "vMax" in D.est.umb), "Un umbral que no es número se guardó o no avisó junto al campo");
+      await escribir("estU_vMax", "21", "Viento: bien hasta"); await tocar({texto:/Guardar umbrales/}, "Guardar umbrales");
+      chk(/tiene que ser menor/.test(txtDe(document.getElementById("estUmbMsg"))) && !(D.est && D.est.umb && "vMax" in D.est.umb), "«Bien hasta» 21 (sobre «no aplicar sobre» 20) se guardó");
+      await escribir("estU_vMax", "12", "Viento: bien hasta"); await tocar({texto:/Guardar umbrales/}, "Guardar umbrales");
+      await esperarQue(()=>estUmb().vMax === 12 && estDat.listo && document.getElementById("estKAplicar"), 5000); await pausa(.6);
+      const A1 = estAplicarAhora(), card = document.getElementById("estKAplicar"), mb = card.querySelectorAll(".est-factores .est-mb")[1];
+      chk(D.est && D.est.umb && D.est.umb.vMax === 12 && Object.keys(D.est.umb).length === 1, "El umbral no quedó (solo él) en D.est.umb (" + JSON.stringify(D.est && D.est.umb) + ")");
+      chk(A1.S.f.v === "am" && mb && txtDe(mb) === "Cuidado" && /Bien entre 3 y 12 km\/h/.test(txtDe(card)), "Con «bien hasta 12» el viento de 13,5 km/h no pasó a «Cuidado» (" + (mb ? txtDe(mb) : "—") + ")");
+      chk(/1 ajustado/.test(txtDe(document.getElementById("estKUmb"))) && /ajustado · de origen 15/.test(txtDe(document.getElementById("estKUmb"))), "El editor no marca el umbral ajustado", "leve");
+    } finally { if(est0 == null) delete D.est; else D.est = JSON.parse(est0); estDat._sesgo = null; try{ await estCargarLocal(); }catch(e){} }
+    revisarPantalla();
+  });
+}
+/* ===== estación: parte C ===== */
+/* Historial e informes, Excel/CSV, PDF, Cómo funciona, tarjeta de Datos y huecos: cada total se cuadra contra las lecturas falsas
+   (resumen del día con estResumirDia sobre las filas crudas, horas armadas aparte), sin red y en la base agroClima_bots. */
+const EST_BOT_CSV_CAB = "Fecha;Hora;Temperatura (°C);Humedad (%);Punto de rocío (°C);Bulbo húmedo estación (°C);Índice de calor (°C);Sensación por viento (°C);THW (°C);THSW (°C);Viento último minuto (km/h);Viento medio 10 min (km/h);Ráfaga 10 min (km/h);Dirección 10 min (°);Dirección ráfaga (°);Radiación (W/m²);Índice UV;Lluvia del día (mm);Lluvia 15 min (mm);Intensidad (mm/h);Intensidad máx. 15 min (mm/h);Esta lluvia (mm);Lluvia del mes (mm);Lluvia año Davis (mm);Presión (hPa);Tendencia 3 h (hPa);T interior (°C);HR interior (%);Batería baja (1 = sí);Radio (0 = recibe)";   // el de la ruta csv del puente (§5.5)
+function estBotResDe(F, f){ const l = F.filter(x=>x[1] === f); return l.length ? estResumirDia(l, f, wlEtCfg()) : null; }
+async function estBotBom(b){ const u = new Uint8Array(await b.slice(0, 3).arrayBuffer()); return u[0] === 0xEF && u[1] === 0xBB && u[2] === 0xBF; }   // Blob.text() quita el BOM al leer: se mira en los bytes
+function estBotFilasAl(){ return estBotFilas(40, Math.floor(Date.now() / 1000 / 900) * 900); }   // la última lectura en el cuarto de hora en curso: sin hueco «en curso»
+/* abre Historial e informes en el tipo y período pedidos y espera que el informe quede armado con lo guardado */
+async function estBotInf(tipo, v, xls){
+  const N = estNav(); N.sec = "inf"; N.inf = tipo; if(v != null) N[EST_INF_K[tipo]] = v; if(xls) N.xls = xls;
+  if(nav.tab !== "estacion") await irA("estacion");
+  await esperarQue(()=>!estDat.sinc, 20000);
+  estPintar();
+  const ok = await esperarQue(()=>{
+    if(!estInfFechas()) return false;
+    const p = estPeriodo(), X = estInfDatos(p), hi = estDat.hist.desde;
+    if(hi && p.hasta < hi) return /Sin datos de la estación en este período/.test(txtDe(document.getElementById("estVista")));
+    return X && X.k === estInfClave(p) && !_estInfEn && document.getElementById("estInfKpis");
+  }, 15000);
+  if(!ok) throw new SinProbar("El informe " + tipo + " no terminó de armarse");
+  await pausa(.25);
+  return document.getElementById("estVista");
+}
+function estBotZona(el, donde){   // textos raros, tocables chicos y cosas que se salen (como el paso 9 de la Parte A)
+  if(!el) return;
+  const t = txtDe(el), m = t.match(/.{0,30}\b(undefined|NaN|null|Infinity)\b.{0,30}/);
+  chk(!m, "Texto raro en " + donde + ": «" + (m ? m[0] : "") + "»");
+  const chicos = [...el.querySelectorAll("button, .chip, summary, a.btn, select, input")].filter(visible).filter(b=>b.getBoundingClientRect().height < 44);
+  chk(!chicos.length, chicos.length + " tocable(s) de menos de 44 px en " + donde + ": " + chicos.slice(0, 3).map(b=>"«" + (txtDe(b) || b.id).slice(0, 16) + "» " + Math.round(b.getBoundingClientRect().height) + " px").join(", "), "leve");
+  const R0 = el.getBoundingClientRect(), fuera = [...el.querySelectorAll("*")].filter(z=>{ const r = z.getBoundingClientRect(); return r.width > 0 && r.right > R0.right + 2 && visible(z) && !z.closest(".est-twrap"); });
+  chk(!fuera.length && document.documentElement.scrollWidth <= innerWidth + 1, "En " + donde + " algo se sale por el costado" + (fuera.length ? ": «" + (String(fuera[0].className && fuera[0].className.baseVal != null ? fuera[0].className.baseVal : fuera[0].className) || fuera[0].tagName) + "»" : ""));
+}
+async function estBotDatos(){ nav.datosSec = "conexiones"; await irA("datos"); await esperarQue(()=>{ const c = document.getElementById("estDatosCuerpo"); return c && !/Leyendo lo guardado/.test(txtDe(c)) && !estDatosPintar._en; }, 8000); await pausa(.3); return document.getElementById("estDatosCard"); }
+async function estBotC(){
+  await paso("Historial e informes · diario: 24 filas por hora que cuadran con las lecturas, «96 de 96», y las 4 horas del hueco en una sola fila «Sin lecturas…» con «80 de 96»", async ()=>{
+    const F = estBotFilasAl(); EST_BOT.modo = "v3"; EST_BOT.filas = F; await estBotLimpio(); await estBotSinc();
+    const hoyF = estHoyF(), fC = estSumarDias(hoyF, -3), fH = estSumarDias(hoyF, -5);
+    await estBotInf("diario", fC, "vista");
+    const tb = necesito(document.getElementById("estInfTabla"), "la tabla del informe diario"), filas = [...tb.querySelectorAll("tbody tr")];
+    chk(filas.length === 24 && !tb.querySelector("tr.est-trsd"), "El informe diario de un día completo no tiene 24 filas por hora (" + filas.length + ")");
+    const kp = txtDe(document.getElementById("estInfKpis")), r = estBotResDe(F, fC);
+    chk(/Lecturas 96 de 96 completo/.test(kp), "El día completo no dice «96 de 96 · completo» (" + kp.slice(-50) + ")");
+    chk(kp.indexOf("Mínima " + estF1(r.tmin) + " °C a las " + estHoraLocal(r.htmin)) >= 0 && kp.indexOf("Ráfaga más fuerte " + estF0(r.vrmax) + " km/h") >= 0, "La mínima o la ráfaga del día no cuadran con las lecturas (" + estF1(r.tmin) + " a las " + estHoraLocal(r.htmin) + ", " + estF0(r.vrmax) + " km/h)");
+    const lim = estLimitesDia(fC), L = estDerivar(F.filter(x=>x[1] === fC), wlEtCfg()), malas = [];
+    let sll = 0, set = 0;
+    for(let i = 0; i < 24; i++){
+      const g = L.filter(x=>x.ts >= lim.a + i * 3600 && x.ts < lim.a + (i + 1) * 3600), td = filas[i] ? filas[i].children : [];
+      const t = g.reduce((s, x)=>s + x.t, 0) / g.length, vr = Math.max(...g.map(x=>x.vr)); sll += g.reduce((s, x)=>s + x.ll, 0); set += g.reduce((s, x)=>s + x.et, 0);
+      if(!td[1] || txtDe(td[1]) !== estF1(t) || txtDe(td[6]) !== estF1(vr) || txtDe(td[0]).slice(0, 5) !== estHoraLocal(lim.a + i * 3600)) malas.push(i + ": " + (td[1] ? txtDe(td[1]) : "—") + " / " + estF1(t));
+    }
+    chk(!malas.length, "Horas que no cuadran con sus 4 lecturas (T promedio o ráfaga): " + malas.slice(0, 3).join(", "));
+    chk(Math.abs(sll - (r.ll || 0)) < 0.01 && Math.abs(set - r.et0) <= 0.01, "La lluvia o la ET₀ de las horas no suman las del día (" + sll.toFixed(2) + " / " + set.toFixed(3) + " frente a " + r.ll + " / " + r.et0 + ")");
+    const pie = txtDe(tb.querySelector("tfoot"));
+    chk(pie.indexOf("prom. " + estF1(r.tmed)) >= 0 && pie.indexOf(estF1(r.et0)) >= 0, "El pie de la tabla no trae la T media o la ET₀ del día");
+    await estBotInf("diario", fH);
+    const tb2 = document.getElementById("estInfTabla"), sd = [...tb2.querySelectorAll("tr.est-trsd")];
+    chk(tb2.querySelectorAll("tbody tr").length === 21 && sd.length === 1 && /^10:00 a 13:59/.test(txtDe(sd[0])) && txtDe(sd[0]).indexOf(EST_SIN_LECT) >= 0 && /hueco de 4 h/.test(txtDe(sd[0])),
+      "Las horas del hueco no quedaron en una sola fila «10:00 a 13:59 · Sin lecturas (consola, WeatherLink o puente) · hueco de 4 h» (" + (sd[0] ? txtDe(sd[0]) : "ninguna") + ")");
+    chk(/Lecturas 80 de 96 faltan 16 · hueco de 4 h/.test(txtDe(document.getElementById("estInfKpis"))), "El día del hueco no dice «80 de 96 · faltan 16 · hueco de 4 h»");
+    revisarPantalla();
+  });
+  await paso("Semanal y mensual: los totales cuadran con los resúmenes de cada día; ◀ ▶ cambian de período y se apagan en los extremos; antes del historial «Sin datos de la estación en este período»", async ()=>{
+    const F = EST_BOT.filas, hoyF = estHoyF(), lun = estLunes(estSumarDias(hoyF, -10)), dias = [];
+    for(let i = 0; i < 7; i++) dias.push(estSumarDias(lun, i));
+    await estBotInf("semanal", lun, "vista");
+    const R = dias.map(f=>estBotResDe(F, f)).filter(Boolean), s = k=>R.reduce((a, r)=>a + (r[k] || 0), 0);
+    const pie = [...document.querySelectorAll("#estInfTabla tfoot td")].map(txtDe);
+    chk(pie[3] === estF1(s("ll")) && pie[4] === estF1(s("et0")) && pie[6] === estF1(s("hm")) && pie[9] === estF1(s("gd10")) && pie[10] === estF0(s("n")),
+      "Los totales de la semana no cuadran con los resúmenes (lluvia " + pie[3] + "/" + estF1(s("ll")) + ", ET₀ " + pie[4] + "/" + estF1(s("et0")) + ", GD " + pie[9] + "/" + estF1(s("gd10")) + ", lecturas " + pie[10] + "/" + s("n") + ")");
+    const kp = txtDe(document.getElementById("estInfKpis")), hel = R.filter(r=>r.tmin <= 0).length, mn = R.reduce((a, r)=>r.tmin < a.tmin ? r : a, R[0]);
+    chk(kp.indexOf("Heladas (0 °C o menos) " + hel) >= 0 && kp.indexOf("Mínima absoluta " + estF1(mn.tmin) + " °C " + estFCorta(mn.f)) >= 0 && kp.indexOf("Lluvia " + estF1(s("ll")) + " mm") >= 0,
+      "Las cifras de arriba de la semana no cuadran (heladas " + hel + ", mínima " + estF1(mn.tmin) + " el " + estFCorta(mn.f) + ")");
+    const filasD = [...document.querySelectorAll("#estInfTabla tbody tr")].filter(tr=>!tr.classList.contains("est-trsd"));
+    chk(filasD.length === R.length && filasD.every((tr, i)=>txtDe(tr.children[1]) === estF1(R[i].tmin) && txtDe(tr.children[3]) === estF1(R[i].ll)), "Alguna fila diaria no tiene la mínima o la lluvia de su día");
+    const o = estOpcionesConActual("semanal");
+    await estBotInf("semanal", o.ops[o.ops.length - 1]);
+    chk(document.getElementById("estPerAnt").disabled && !document.getElementById("estPerSig").disabled, "En la semana más antigua «◀» no quedó apagado (o «▶» sí)");
+    const s0 = estPeriodo().desde; await tocar("#estPerSig", "semana siguiente");
+    chk(estPeriodo().desde === estSumarDias(s0, 7) && document.getElementById("estPerSel").value === estPeriodo().v, "«▶» no pasó a la semana siguiente (" + estPeriodo().desde + ")");
+    await estBotInf("semanal", o.ops[0]);
+    chk(document.getElementById("estPerSig").disabled && !document.getElementById("estPerAnt").disabled, "En la semana más nueva «▶» no quedó apagado (o «◀» sí)");
+    await tocar("#estPerAnt", "semana anterior");
+    chk(estPeriodo().desde === estSumarDias(o.ops[0], -7), "«◀» no volvió a la semana anterior");
+    const mes = estSumarDias(hoyF, -10).slice(0, 7);
+    await estBotInf("mensual", mes);
+    const RM = [...new Set(F.map(x=>x[1]))].filter(f=>f.slice(0, 7) === mes).map(f=>estBotResDe(F, f)).filter(Boolean), pieM = [...document.querySelectorAll("#estInfTabla tfoot td")].map(txtDe);
+    chk(pieM[3] === estF1(RM.reduce((a, r)=>a + (r.ll || 0), 0)) && pieM[4] === estF1(RM.reduce((a, r)=>a + (r.et0 || 0), 0)) && pieM[10] === estF0(RM.reduce((a, r)=>a + r.n, 0)), "Los totales del mes no cuadran con los resúmenes (" + pieM.slice(3, 5).join(" / ") + ")");
+    await estBotInf("mensual", estSumarDias(estDat.hist.desde, -40).slice(0, 7));
+    chk(/Sin datos de la estación en este período/.test(txtDe(document.getElementById("estVista"))) && !document.getElementById("estInfTabla"), "Un mes antes del historial no dice «Sin datos de la estación en este período» (o muestra una tabla)");
+    chk(document.getElementById("estPerAnt").disabled, "En un mes antes del historial «◀» no quedó apagado");
+    revisarPantalla();
+  });
+  await paso("Temporada: la lluvia de septiembre anotada a mano en Datos (con coma decimal) entra al total con su marca; un valor malo no se guarda", async ()=>{
+    const est0 = D.est ? JSON.stringify(D.est) : null;
+    try{
+      const meses = estMesesManual(), m = meses[0]; if(!m) throw new SinProbar("No hay meses antes del historial en esta temporada");
+      await estBotDatos();
+      await escribir("estLl_" + m, "abc", "lluvia de " + m); await tocar({texto:/Guardar lluvia/}, "Guardar lluvia");
+      chk(document.getElementById("estLl_" + m).getAttribute("aria-invalid") === "true" && /No se guardó/.test(txtDe(document.getElementById("estLlMsg"))) && !(D.est && D.est.llManual && m in D.est.llManual), "Una lluvia que no es número se guardó o no avisó junto al campo");
+      await escribir("estLl_" + m, "18,4", "lluvia de " + m); await tocar({texto:/Guardar lluvia/}, "Guardar lluvia");
+      chk(D.est && D.est.llManual && D.est.llManual[m] === 18.4, "La lluvia anotada no quedó en D.est.llManual (" + JSON.stringify(D.est && D.est.llManual) + ")");
+      chk(document.getElementById("estLl_" + m) && document.getElementById("estLl_" + m).value === "18,4", "El campo no muestra la lluvia guardada con coma decimal");
+      await estBotInf("temporada", estTemporadaIni(estHoyF()), "vista");
+      const LT = estLluviaTemporada(), kp = txtDe(document.getElementById("estInfKpis")), mesHoy = estHoyF().slice(0, 7);
+      const otros = LT.partes.filter(z=>z.m !== m).reduce((a, z)=>a + z.v, 0);
+      chk(LT.manual && Math.abs(LT.tot - (18.4 + otros)) < 0.01 && kp.indexOf("Lluvia de la temporada " + estF1(LT.tot) + " mm con " + EST_MESES[+m.slice(5) - 1] + " anotado a mano") >= 0,
+        "La lluvia de la temporada no suma la anotada a mano o no lo dice (" + kp.slice(0, 80) + ")");
+      const fila = [...document.querySelectorAll("#estInfTabla tbody tr")].find(tr=>txtDe(tr).indexOf(estCap(EST_MESES[+m.slice(5) - 1])) === 0);
+      chk(fila && /18,4 a mano/.test(txtDe(fila)), "La fila del mes no muestra la lluvia anotada con la marca «a mano» (" + (fila ? txtDe(fila).slice(0, 60) : "sin fila") + ")");
+      chk(txtDe(document.querySelector("#estInfTabla tfoot")).indexOf(estF1(LT.tot)) >= 0 && m < mesHoy, "El total de la tabla no es el de la temporada");
+    } finally { if(est0 == null) delete D.est; else D.est = JSON.parse(est0); }
+    revisarPantalla();
+  });
+  await paso("Excel: «Lo que ves» del día → .xls con 24 filas y números como números; lecturas de 7 días → .xls; de 40 días → .csv con «;» y coma decimal; Descargar y Compartir entregan el archivo", async ()=>{
+    const F = EST_BOT.filas, hoyF = estHoyF(), fC = estSumarDias(hoyF, -3);
+    await estBotInf("diario", fC, "vista");
+    let x = await estArchivoActual(), t = await x.blob.text();
+    const cab = (t.match(/<th>[^<]*<\/th>/g) || []).slice(0, EST_XL_HORA.length).map(z=>z.replace(/<\/?th>/g, ""));
+    chk(/^Estacion_por_hora_\d{4}-\d{2}-\d{2}\.xls$/.test(x.nombre) && x.n === 24 && (t.match(/<tr class="d/g) || []).length === 24, "El Excel del día no tiene 24 filas (" + x.nombre + ", " + x.n + ")");
+    chk(cab.join("|") === EST_XL_HORA.map(c=>esc(c[0])).join("|"), "Las columnas del Excel por hora no son las esperadas (" + cab.slice(0, 4).join(", ") + "…)");
+    const lim = estLimitesDia(fC), L = estDerivar(F.filter(z=>z[1] === fC), wlEtCfg()), g = L.filter(z=>z.ts >= lim.a && z.ts < lim.a + 3600), t0 = g.reduce((a, z)=>a + z.t, 0) / g.length;
+    chk(/mso-number-format/.test(t) && t.indexOf('class="n1" x:num="' + estXnum(t0) + '">' + t0.toFixed(1).replace(".", ",") + "<") >= 0 && /class="fe" x:num="\d{5}">\d{2}-\d{2}-\d{4}</.test(t), "El Excel no lleva los números y fechas como números (x:num) o la primera hora no cuadra");
+    let s0 = R.salidas.length; await tocar("#estBtnXls", "Descargar Excel"); await esperarQue(()=>R.salidas.length > s0, 8000);
+    chk(R.salidas.slice(s0).some(z=>z.tipo === "descarga" && z.archivo === x.nombre), "«Descargar Excel» no entregó " + x.nombre);
+    const lun = estLunes(estSumarDias(hoyF, -10)), n7 = F.filter(z=>z[1] >= lun && z[1] <= estSumarDias(lun, 6)).length;
+    await estBotInf("semanal", lun, "lecturas");
+    x = await estArchivoActual(); t = await x.blob.text();
+    const cabL = (t.match(/<th>[^<]*<\/th>/g) || []).slice(0, EST_XL_LECT.length).map(z=>z.replace(/<\/?th>/g, ""));
+    chk(/\.xls$/.test(x.nombre) && x.n === n7 && (t.match(/<tr class="d/g) || []).length === n7, "El Excel de lecturas de 7 días no tiene una fila por lectura (" + x.n + " de " + n7 + ")");
+    chk(cabL.join("|") === EST_XL_LECT.map(c=>esc(c[0])).join("|") && /Huecos de datos/.test(t), "El Excel de lecturas no trae todas sus columnas o la sección «Huecos de datos»");
+    await estBotInf("temporada", estTemporadaIni(hoyF), "lecturas");
+    chk(/Descargar CSV/.test(txtDe(document.getElementById("estBtnXls"))) && /sale en CSV/.test(txtDe(document.getElementById("estKInf"))), "Con más de 31 días de lecturas el botón no dice «Descargar CSV» ni lo explica");
+    x = await estArchivoActual(); t = await x.blob.text();
+    const lin = t.replace(/^﻿/, "").split("\r\n").filter(Boolean);
+    chk(/^Estacion_lecturas_temporada_\d{4}-\d{2}\.csv$/.test(x.nombre) && (await estBotBom(x.blob)) && lin.length === F.length + 1 && lin[0].split(";").length === EST_XL_LECT.length, "El CSV de 40 días no tiene una línea por lectura más el encabezado (" + lin.length + " de " + (F.length + 1) + ")");
+    chk(/^\d{2}-\d{2}-\d{4};\d{2}:\d{2};-?\d+,\d;/.test(lin[1]) && !/\d\.\d/.test(lin[1]), "El CSV no usa «;» y coma decimal (" + lin[1].slice(0, 40) + ")");
+    s0 = R.salidas.length; await tocar("#estBtnComp", "Compartir"); await esperarQue(()=>R.salidas.length > s0, 8000);
+    chk(R.salidas.slice(s0).some(z=>z.tipo === "compartir" && z.archivo === x.nombre && z.kb > 0), "«Compartir» no mandó el archivo a la hoja de compartir");
+  });
+  await paso("Informe PDF de los 4 tipos: 1 página o más, más de 2 KB y nombre Estacion_<tipo>_<período>.pdf", async ()=>{
+    const hoyF = estHoyF();
+    for(const [t, v] of [["diario", estSumarDias(hoyF, -5)], ["semanal", estLunes(estSumarDias(hoyF, -10))], ["mensual", estSumarDias(hoyF, -10).slice(0, 7)], ["temporada", estTemporadaIni(hoyF)]]){
+      await estBotInf(t, v, "vista");
+      const p0 = R.pdfs.length; await tocar("#estBtnPdf", "Informe PDF (" + t + ")"); await esperarQue(()=>R.pdfs.length > p0, 20000);
+      const pd = R.pdfs[R.pdfs.length - 1], per = estPeriodo().per;
+      chk(R.pdfs.length > p0 && pd.archivo === "Estacion_" + t + "_" + per + ".pdf" && pd.kb > 2 && pd.pags >= 1, "El PDF " + t + " no salió bien (" + JSON.stringify(R.pdfs.length > p0 ? pd : null) + ")");
+    }
+  });
+  await paso("Cómo funciona y la tarjeta de Datos: con todo listo los 5 pasos hechos; sin la base D1 faltan los pasos 2 y 3; con la tarea vieja dicen «la tarea programada no corre»", async ()=>{
+    const f0 = window.wlFetch, est = ()=>[...document.querySelectorAll("#estVista .est-pasos li")].map(li=>li.getAttribute("data-estado")).join(",");
+    try{
+      EST_BOT.modo = "v3"; await estBotSinc(); await estEstadoPuente(true);
+      estNav().sec = "como"; await irA("estacion"); estPintar(); await pausa(.4);
+      chk(est() === "ok,ok,ok,ok,ok", "Con el puente v3, la base y la tarea cada 5 min, Cómo funciona no marca los 5 pasos hechos (" + est() + ")");
+      const vc = txtDe(document.getElementById("estVista"));
+      chk(/Qué tan en vivo es/.test(vc) && /Lo que no se puede con el plan Basic/.test(vc) && /Desde que actives la base/.test(vc) && /Más adelante, en GesAgro/.test(vc) && !/Antes del 04-12-2026/.test(vc) && /no entra al historial del panel/.test(vc), "A Cómo funciona le falta una tarjeta o un texto del modelo (o quedó el aviso del 04-12)");
+      let c = await estBotDatos(), tc = txtDe(c);
+      const faltaD = [[/Puente v3 · base D1 activa/, "«Puente v3 · base D1 activa»"], [/corrió (hace \d+ min|recién) · cada 5 min/, "la tarea cada 5 min"], [/Lecturas en la nube \d[\d.]* · desde el \d{2}-\d{2}-\d{4}/, "las lecturas en la nube"],
+        [/wifi −61 dBm · batería 4,10 V/, "la consola"], [/Pasos en Cloudflare \(una vez\) · listos/, "los pasos listos"]].filter(z=>!z[0].test(tc)).map(z=>z[1]);
+      chk(!faltaD.length, "A la tarjeta de Datos le falta: " + faltaD.join(", ") + " («" + tc.slice(0, 200) + "»)");
+      const a0 = R.salidas.length; await tocar("#estDRev", "Revisar ahora"); await esperarQue(()=>!estDat._dRev, 8000); await pausa(.3);
+      chk(/Puente revisado/.test(txtDe(document.getElementById("avisoCapa"))), "«Revisar ahora» no avisó el resultado", "leve");
+      EST_BOT.modo = "sinD1"; await estBotSinc(); await estEstadoPuente(true);
+      estNav().sec = "como"; await irA("estacion"); estPintar(); await pausa(.4);
+      const e1 = est().split(",");
+      chk(estDat.puente === "sinD1" && e1[0] === "ok" && e1[1] === "falta" && e1[2] === "falta" && e1[4] === "ok", "Sin la base D1, Cómo funciona no marca pendientes los pasos 2 y 3 (" + e1.join(",") + ")");
+      c = await estBotDatos(); tc = txtDe(c);
+      chk(/Puente v3 · falta la base D1/.test(tc) && document.querySelector('#estDatosCard details[data-k="estDPasos"]').open && document.getElementById("estDRebajar").disabled,
+        "Sin la base D1 la tarjeta de Datos no lo dice, no abre los pasos o deja activo «Bajar todo de nuevo» (se perdería lo guardado)");
+      EST_BOT.modo = "v3"; await estBotSinc();
+      window.wlFetch = async function(r, p, o){ const j = await f0(r, p, o); if(String(r) === "estado" && j && j.d1){ j.cron_t = j.ahora - 3 * 3600; j.cron_prev = j.cron_t - 300; } return j; };
+      await estEstadoPuente(true); c = await estBotDatos(); tc = txtDe(c);
+      chk(/la tarea programada no corre/.test(tc) && /La tarea programada no corre/.test(txtDe(c.querySelector(".est-pasos"))), "Con la tarea de hace 3 h la tarjeta de Datos no dice «la tarea programada no corre»");
+      estNav().sec = "como"; await irA("estacion"); estPintar(); await pausa(.4);
+      chk(est().split(",")[3] === "mal" && /La tarea programada no corre: la última vez fue hace 3 h/.test(txtDe(document.getElementById("estVista"))), "Con la tarea vieja, Cómo funciona no dice «la tarea programada no corre» en el paso 4 (" + est() + ")");
+    } finally { window.wlFetch = f0; EST_BOT.modo = "v3"; await estEstadoPuente(true); }
+    revisarPantalla();
+  });
+  await paso("«Bajar todo de nuevo» pide confirmación en la tarjeta, deja vacía la base de prueba, la vuelve a llenar y conserva el ajuste de la helada", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilasAl(); await estBotLimpio(); await estBotSinc();
+    const kPN = EST_BOT.st + "|pronNoche|" + estSumarDias(estHoyF(), -1); await estMetaPut(kPN, {f:estSumarDias(estHoyF(), -1), tmin:1.5, nubes:0.1, v:2, t:Date.now()});
+    await estBotDatos(); await esperarQue(()=>document.getElementById("estDRebajar") && !document.getElementById("estDRebajar").disabled, 6000);
+    await tocar("#estDRebajar", "Bajar todo de nuevo");
+    chk(/¿Bajar todo de nuevo\?/.test(txtDe(document.getElementById("estDatosCard"))) && (await estBotCuenta()).n === EST_BOT.filas.length, "«Bajar todo de nuevo» no pidió confirmación dentro de la tarjeta (o borró sin preguntar)");
+    const b = [...document.querySelectorAll("#estDatosCard button")].find(z=>/Sí, bajar todo de nuevo/.test(txtDe(z)));
+    chk(b && PELIGROSAS.test(b.getAttribute("onclick") || ""), "El botón que confirma no queda fuera del alcance del bot novato (PELIGROSAS)", "leve");
+    const s0 = window.estSincronizar; let vacia = null;
+    window.estSincronizar = async function(){ if(vacia == null) vacia = (await estBotCuenta()).n; return s0.apply(this, arguments); };
+    try{ await estRebajarTodoYa(); } finally { window.estSincronizar = s0; }   // el botón de confirmar es «peligroso» para el bot novato: aquí se llama directo
+    const c = await estBotCuenta();
+    chk(vacia === 0, "Antes de volver a bajar, la base de prueba no quedó vacía (" + vacia + " lecturas)");
+    chk(c.n === EST_BOT.filas.length && c.u === c.n && estDat.hist.n === c.n, "«Bajar todo de nuevo» no volvió a llenar la base (" + c.n + " de " + EST_BOT.filas.length + ")");
+    chk((await estMetaGet(kPN)) != null, "«Bajar todo de nuevo» borró el ajuste de la helada (pronNoche)");
+    chk(/se bajaron de nuevo/.test(txtDe(document.getElementById("avisoCapa"))), "«Bajar todo de nuevo» no avisó cuántas lecturas bajó", "leve");
+  });
+  await paso("«Respaldo del clima (CSV)»: una línea por lectura guardada más el encabezado del puente, con «;» y coma decimal", async ()=>{
+    await estBotDatos(); const s0 = R.salidas.length;
+    await tocar("#estDResp", "Respaldo del clima (CSV)"); await esperarQue(()=>R.salidas.length > s0, 8000);
+    const x = await estRespaldoCSV(true), t = await x.blob.text(), lin = t.replace(/^﻿/, "").split("\r\n").filter(Boolean), c = await estBotCuenta();
+    chk(R.salidas.slice(s0).some(z=>z.tipo === "descarga" && z.archivo === x.nombre) && /^Respaldo_clima_215965_\d{4}-\d{2}-\d{2}_al_\d{4}-\d{2}-\d{2}\.csv$/.test(x.nombre), "El botón no entregó el respaldo (" + x.nombre + ")");
+    chk((await estBotBom(x.blob)) && lin[0] === EST_BOT_CSV_CAB && lin.length === c.n + 1 && x.n === c.n, "El respaldo no tiene el encabezado del puente y una línea por lectura (" + (lin.length - 1) + " de " + c.n + ")");
+    const F = EST_BOT.filas, u = F[F.length - 1], ul = lin[lin.length - 1].split(";");
+    chk(ul.length === 30 && ul[0] === estFFecha(u[1]) && ul[1] === u[2] && ul[2] === u[EST_I.t].toFixed(1).replace(".", ",") && ul[24] === u[EST_I.bar].toFixed(1).replace(".", ","), "La última línea del respaldo no es la última lectura (" + lin[lin.length - 1].slice(0, 50) + ")");
+  });
+  await paso("Huecos: un corte de 3 h y otro de 40 min salen con su duración, lecturas faltantes y causa; el resumen de 30 días da el %; los informes y el Excel no inventan valores en el hueco", async ()=>{
+    const F0 = estBotFilasAl(), hoyF = estHoyF(), f8 = estSumarDias(hoyF, -8), f3 = estSumarDias(hoyF, -3), a8 = estLimitesDia(f8).a, a3 = estLimitesDia(f3).a;
+    const F = []; F0.forEach(x=>{ const ts = x[0];   // 3 h: sin las 12 lecturas de 02:00 a 04:45 del día −8 · 40 min: sin las de 16:00 a 16:30 del día −3 y la de 16:45 corrida a 16:40
+      if(ts >= a8 + 2 * 3600 && ts < a8 + 5 * 3600) return;
+      if(ts >= a3 + 16 * 3600 && ts < a3 + 16.75 * 3600) return;
+      if(ts === a3 + 16.75 * 3600){ const y = x.slice(); y[0] = ts - 300; y[2] = estHoraLocal(y[0]); F.push(y); return; }
+      F.push(x); });
+    EST_BOT.modo = "v3"; EST_BOT.filas = F; await estBotLimpio(); await estBotSinc();
+    const x3 = a8 + 1.75 * 3600, y3 = a8 + 5 * 3600, x40 = a3 + 15.75 * 3600, y40 = a3 + 16.75 * 3600 - 300, xH = estLimitesDia(estSumarDias(hoyF, -5)).a + 10 * 3600 - 900;
+    const f0 = window.wlFetch;
+    window.wlFetch = async function(r, p, o){ const j = await f0(r, p, o); if(String(r) === "estado" && j && j.d1) j.cortes = [{desde:x3, hasta:y3, faltan:12, causa:"estacion", causa_txt:"la estación no subió datos a WeatherLink", wl:"pro", nota:"hueco guardado en WeatherLink, recuperable con Pro"}]; return j; };
+    try{
+      await estEstadoPuente(true);
+      const H = estHuecos30(), l = H.lista.map(h=>[h.x, h.y, h.dur, h.faltan, h.enCurso]);
+      const esp = [[x3, y3, 3 * 3600, 12, false], [xH, xH + 4 * 3600 + 900, 4 * 3600, 16, false], [x40, y40, 2400, 3, false]];
+      chk(JSON.stringify(l) === JSON.stringify(esp), "La lista de cortes de 30 días no es la esperada (" + JSON.stringify(l) + ")");
+      const seg = 3 * 3600 + 2400 + 4 * 3600, pct = seg / (30 * 86400) * 100;
+      chk(Math.abs(H.seg - seg) < 1 && H.txt === "En los últimos 30 días hubo 3 cortes (" + estHm(seg / 3600) + " sin datos, " + estN(pct, 1) + " % del tiempo). Con WeatherLink Pro se podrían recuperar.", "El resumen de 30 días no da 3 cortes, 7 h 40 min y el % (" + H.txt + ")");
+      chk(H.lista[0].causaTxt === "la estación no subió datos a WeatherLink" && H.lista[0].pro === "si" && H.lista[2].causaTxt === "causa no registrada", "La causa probable no sale del estado del puente (o inventa una)");
+      estNav().sec = "como"; await irA("estacion"); estPintar(); await pausa(.4);
+      chk(txtDe(document.getElementById("estVista")).indexOf(H.txt) >= 0, "Cómo funciona no muestra el resumen de cortes de 30 días");
+      await estBotDatos();
+      chk(txtDe(document.getElementById("estDCortes")) === H.txt, "La tarjeta de Datos no muestra el resumen de cortes de 30 días (" + txtDe(document.getElementById("estDCortes")) + ")");
+      await estBotInf("semanal", estLunes(f8), "vista");
+      const card = necesito(document.getElementById("estKHuecos"), "la tarjeta «Huecos de datos»"), tx = txtDe(card);
+      chk(/01:45 → 05:00 3 h 12 la estación no subió datos a WeatherLink recuperable/.test(tx), "La lista del período no muestra el corte de 3 h con su causa y «recuperable» (" + tx.slice(0, 160) + ")");
+      await estBotInf("diario", f8, "vista");
+      const sd = [...document.querySelectorAll("#estInfTabla tr.est-trsd")].map(txtDe), hs = estHorasDe(f8, estInfDatos(estPeriodo()).lect);
+      chk(sd.length === 1 && /^02:00 a 04:59 Sin lecturas \(consola, WeatherLink o puente\) · hueco de 3 h · causa probable: la estación no subió datos a WeatherLink/.test(sd[0]), "Las horas del corte de 3 h no quedaron en una fila con el hueco y su causa (" + sd.join(" | ") + ")");
+      chk(hs.filter(o=>!o.n).map(o=>o.hl).join(",") === "02:00,03:00,04:00" && hs.every(o=>o.n || (o.t == null && o.ll == null && o.et == null)), "El informe diario inventa valores en las horas sin lecturas");
+      chk(/Lecturas 84 de 96 faltan 12 · hueco de 3 h/.test(txtDe(document.getElementById("estInfKpis"))), "El día del corte de 3 h no dice «84 de 96 · faltan 12 · hueco de 3 h»");
+      await estBotInf("diario", f3, "vista");
+      const f16 = [...document.querySelectorAll("#estInfTabla tbody tr")].find(tr=>/^16:00/.test(txtDe(tr))), l16 = F.find(z=>z[0] === y40);
+      chk(f16 && /^16:00 1 de 4/.test(txtDe(f16)) && txtDe(f16.children[1]) === estF1(l16[EST_I.t]) && txtDe(f16.children[2]) === estF0(l16[EST_I.hr]), "La hora del corte de 40 min no muestra solo su lectura de las 16:40 («1 de 4»)");
+      const x = await estArchivoActual(), t = await x.blob.text();
+      chk(/Huecos de datos: 1 corte, 40 min sin datos/.test(t) && /x:num="0\.666667">0,67</.test(t) && (t.match(/<tr class="d/g) || []).length === 24, "El Excel del día del corte de 40 min no trae la sección «Huecos» con el corte (o cambió las filas)");
+    } finally { window.wlFetch = f0; await estEstadoPuente(true); }
+    revisarPantalla();
+  });
+  await paso("Pantallas: Historial e informes (4 tipos), Cómo funciona y la tarjeta de Datos sin textos raros, sin salirse y con tocables de 44 px en iPad, celular y modo sol; rápido", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); await estBotLimpio(); await estBotSinc();
+    const ui0 = JSON.stringify(D.ui || {}); let lenta = 0;
+    try{
+      for(const [nom, u] of [["iPad", {movil:"no"}], ["celular", {movil:"si"}], ["sol", {movil:"no", sol:true}]]){
+        D.ui = Object.assign({}, JSON.parse(ui0), {sol:false, grande:false}, u); uiAplicar(); render(); await pausa(.8);
+        for(const [t, xl] of [["diario", "vista"], ["semanal", "lecturas"], ["mensual", "vista"], ["temporada", "vista"]]){
+          estNav()[EST_INF_K[t]] = null; await estBotInf(t, null, xl);
+          const t0 = performance.now(); vEstInformes(); lenta = Math.max(lenta, performance.now() - t0);
+          estBotZona(document.getElementById("estRaiz"), "Estación › Informes " + t + " (" + nom + ")");
+        }
+        estNav().sec = "como"; estPintar(); await pausa(.4); estBotZona(document.getElementById("estRaiz"), "Estación › Cómo funciona (" + nom + ")");
+        const c = await estBotDatos(); const det = c && c.querySelector('details[data-k="estDPasos"]'); if(det) det.open = true; await pausa(.2);
+        estBotZona(c, "Datos › Estación WeatherLink: historial y puente (" + nom + ")");
+      }
+    } finally { D.ui = JSON.parse(ui0); uiAplicar(); render(); }
+    chk(lenta < 250, "Armar «Historial e informes» tardó " + Math.round(lenta) + " ms", "leve");
+    log("Historial e informes se arma en " + Math.round(lenta) + " ms como máximo");
+  });
+}
+
+/* ===== estación: corrector (28-10-2026) ===== */
+/* Los casos donde aparecieron los hallazgos de los revisores: celular espejo, repintado con el editor abierto, texto grande,
+   calor pronosticado para hoy, cortes recuperados con Pro y varios detalles (lluvia del mes, día nuevo, Excel, lector de pantalla…). */
+async function estBotD(){
+  const ST = EST_BOT.st;
+  await paso("Celular espejo: los umbrales y la lluvia anotada a mano se ven pero no se guardan (se borrarían con la próxima bajada del iPad)", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); await estBotLimpio(); await estBotSinc();
+    const sync0 = D.sync ? JSON.stringify(D.sync) : null, est0 = JSON.stringify(D.est || null);
+    try{
+      D.sync = Object.assign({}, D.sync || {}, {rol:"receptor"}); uiAplicar();
+      const v = await estBotCampo("campo"), det = necesito(v.querySelector('details[data-k="estUmb"]'), "el editor de umbrales"); det.open = true;
+      chk(!v.querySelector('button[onclick^="estUmbGuardar("], button[onclick^="estUmbOrigen("]'), "En el celular espejo aparecen «Guardar umbrales» o «Poner los valores de origen»", "media");
+      const inp = necesito(document.getElementById("estU_vMax"), "el campo «Viento: bien hasta»");
+      chk(inp.readOnly && /se cambian en el iPad/.test(txtDe(det)), "En el celular espejo los umbrales no quedan de solo lectura con «se cambian en el iPad»");
+      inp.value = "12";
+      chk(estUmbGuardar() === false && estCfgGuardar(d=>{ d.umb = {vMax:12}; }) === false && JSON.stringify(D.est || null) === est0, "En el celular espejo se guardaron umbrales en el cuaderno", "grave");
+      await estBotDatos(); const cu = document.getElementById("estDatosCuerpo");
+      chk(cu && !cu.querySelector('button[onclick^="estLluviaManualForm("]'), "En el celular espejo aparece «Guardar lluvia»", "media");
+      const r = estLluviaManualGuardar(estTemporadaIni().slice(0, 7), "18,4");
+      chk(r && r.ok === false && estLluviaManualForm() === false && JSON.stringify(D.est || null) === est0, "En el celular espejo se guardó la lluvia anotada a mano", "grave");
+    } finally {
+      if(sync0 == null) delete D.sync; else D.sync = JSON.parse(sync0);
+      const e0 = JSON.parse(est0); if(e0 == null) delete D.est; else D.est = e0;
+      uiAplicar();
+    }
+  });
+  await paso("Llega una lectura nueva con el editor de umbrales abierto: lo escrito y el foco se conservan (la vista espera a que termines)", async ()=>{
+    const F = estBotFilasAl(); EST_BOT.modo = "v3"; EST_BOT.filas = F.slice(0, -1); await estBotLimpio(); await estBotSinc();
+    const est0 = JSON.stringify(D.est || null);
+    const v = await estBotCampo("campo"); necesito(v.querySelector('details[data-k="estUmb"]'), "el editor de umbrales").open = true;
+    let el = necesito(document.getElementById("estU_dtMin"), "el campo «Delta T: bien desde»"); el.focus(); el.value = "1,5";
+    const ts0 = estDat.ult ? estDat.ult.ts : 0; EST_BOT.filas = F; await estBotSinc(); await pausa(.3);
+    el = document.getElementById("estU_dtMin");
+    chk(estDat.ult && estDat.ult.ts > ts0, "No llegó la lectura nueva de prueba");
+    chk(el && el.value === "1,5" && document.activeElement === el, "Al llegar una lectura nueva se borró lo escrito en el editor o se perdió el foco (quedó «" + (el ? el.value : "—") + "», foco en «" + ((document.activeElement && (document.activeElement.id || document.activeElement.tagName)) || "—") + "»)", "media");
+    if(el) el.blur(); estRepintarSiCambio(); await pausa(.3);
+    el = document.getElementById("estU_dtMin");
+    chk(estDat.firma === estFirma() && el && el.value === "1,5" && JSON.stringify(D.est || null) === est0, "Al soltar el campo la vista no se puso al día o se perdió lo escrito sin guardar (quedó «" + (el ? el.value : "—") + "»)", "media");
+    if(el) el.value = el.defaultValue;
+  });
+  await paso("Texto grande: el valor al tocar el gráfico queda sobre la línea y dentro del gráfico; Ahora, Para el campo, Gráficos e Informes no se salen", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); await estBotLimpio(); await estBotSinc(); await estPronCargar(true);
+    const ui0 = JSON.stringify(D.ui || {}), malos = [];
+    try{
+      for(const grande of [false, true]){
+        D.ui = Object.assign({}, JSON.parse(ui0), {sol:false, grande:grande, movil:"no"}); uiAplicar(); render(); await pausa(.6);
+        estNav().sec = "graf"; estNav().var = "temp"; estNav().per = "24h"; await irA("estacion"); estPintar(); await pausa(.8);
+        const wrap = necesito(document.getElementById("estGPrin"), "el gráfico grande"), svg = necesito(wrap.querySelector("svg"), "el dibujo del gráfico"), tip = wrap.querySelector(".est-tip"), G = EST_GRAF.estGPrin;
+        const r = svg.getBoundingClientRect();
+        for(const fr of [0.5, 0.985]){
+          svg.dispatchEvent(new PointerEvent("pointerdown", {clientX:r.left + r.width * fr, clientY:r.top + r.height / 2, bubbles:true, pointerType:"touch"}));
+          await pausa(.1);
+          const ln = svg.querySelector(".est-g-hov line"), xL = r.left + (+ln.getAttribute("x1")) / G.W * r.width, tr = tip.getBoundingClientRect(), cx = (tr.left + tr.right) / 2;
+          if(!(tr.left >= r.left - 2 && tr.right <= r.right + 2) || (fr === 0.5 && Math.abs(cx - xL) > 3))
+            malos.push((grande ? "texto grande" : "normal") + " al " + Math.round(fr * 100) + " %: línea en " + Math.round(xL) + " px, valor de " + Math.round(tr.left) + " a " + Math.round(tr.right) + " (gráfico de " + Math.round(r.left) + " a " + Math.round(r.right) + ")");
+        }
+        if(grande) for(const sec of ["ahora", "campo", "graf", "inf"]){ estNav().sec = sec; estPintar(); await pausa(.6); estBotZona(document.getElementById("estRaiz"), "Estación › " + sec + " (texto grande)"); }
+      }
+    } finally { D.ui = JSON.parse(ui0); uiAplicar(); render(); }
+    chk(!malos.length, "El valor al tocar el gráfico no queda sobre la línea o se sale del gráfico: " + malos.join(" · "), "media");
+  });
+  await paso("Pronóstico de 36 °C para hoy: «Calor extremo» avisa con la máxima de hoy y «Pronóstico» muestra lo que queda del día", async ()=>{
+    const p0 = window.estPronFetch;
+    try{
+      window.estPronFetch = async function(url){ const j = await estBotPron()(url), Hh = j.hourly, hoyF = estHoyF(), a = Date.now() / 1000 - 3600;
+        Hh.time.forEach((ts, i)=>{ Hh.temperature_2m[i] = Math.min(Hh.temperature_2m[i], 28); if(estFechaLocal(ts) === hoyF && ts >= a) Hh.temperature_2m[i] = 36; }); return j; };
+      await estPronCargar(true);
+      await estBotCampo("campo"); const card = necesito(document.getElementById("estKCalor"), "la tarjeta «Calor extremo»"), tx = txtDe(card);
+      chk(/Alerta de calor|Racha de calor/.test(tx) && /Máxima pronosticada \(próximas 72 h\)\s*36 °C\s*hoy/.test(tx), "Con 36 °C pronosticados para hoy «Calor extremo» no avisa o no dice «36 °C hoy» (" + tx.slice(0, 170) + ")", "media");
+      const hN = +estHoraLocal(Math.floor(Date.now() / 1000)).slice(0, 2);
+      estNav().sec = "ahora"; estPintar(); await pausa(.3);
+      const pn = txtDe(document.getElementById("estKPron"));
+      chk(hN >= 18 || /Hoy · lo que queda/.test(pn), "De día el «Pronóstico» no muestra lo que queda de hoy (" + pn.slice(0, 120) + ")");
+    } finally { window.estPronFetch = p0; await estPronCargar(true); }
+  });
+  await paso("Con WeatherLink Pro: el corte que el puente recuperó (o = 2) se baja solo y una sola vez, aunque la descarga normal traiga solo lo nuevo", async ()=>{
+    const F = estBotFilasAl(), hoyF = estHoyF(), f6 = estSumarDias(hoyF, -6), a6 = estLimitesDia(f6).a, x = a6 + 9 * 3600, y = a6 + 11 * 3600;
+    EST_BOT.modo = "v3"; EST_BOT.filas = F.filter(z=>!(z[0] > x && z[0] < y)); await estBotLimpio(); await estBotSinc();
+    const n0 = (await estBotCuenta()).n;
+    EST_BOT.filas = F.map(z=>{ if(z[0] > x && z[0] < y){ const w = z.slice(); w[EST_I.o] = 2; return w; } return z; });
+    const f0 = window.wlFetch;
+    window.wlFetch = async function(r, p, o){ const j = await f0(r, p, o); if(String(r) === "estado" && j && j.d1) j.cortes = [{desde:x, hasta:y, faltan:7, causa:"estacion", causa_txt:"la estación no subió datos a WeatherLink", wl:"recuperado", nota:"recuperado con el archivo de WeatherLink", intento:x + 86400, intentos:2, recuperadas:7}]; return j; };
+    try{
+      await estEstadoPuente(true); EST_BOT.pedidos = [];
+      await estBotSinc();
+      const pr = EST_BOT.pedidos.filter(q=>q.ruta === "historial" && q.params.desde), c = await estBotCuenta(), rec = await _estGet("lect", ST + "|" + f6), o2 = rec ? rec.filas.filter(z=>z[EST_I.o] === 2).length : 0;
+      chk(pr.length === 1 && pr[0].params.desde === f6 && pr[0].params.hasta === f6 && c.n === n0 + 7 && o2 === 7, "El corte recuperado con Pro no se bajó (" + pr.length + " pedidos por fecha, " + (c.n - n0) + " lecturas nuevas, " + o2 + " con o = 2)", "media");
+      EST_BOT.pedidos = []; await estBotSinc();
+      chk(!EST_BOT.pedidos.some(q=>q.ruta === "historial" && q.params.desde), "El corte recuperado se volvió a pedir en la vuelta siguiente");
+      chk(!estHuecos30().lista.some(h=>h.x === x), "Después de bajarlo, el corte recuperado sigue apareciendo como hueco");
+    } finally { window.wlFetch = f0; await estEstadoPuente(true); }
+  });
+  await paso("Detalles: lluvia del mes, día nuevo sin lecturas, Excel con toda la precisión, lluvia por hora del intervalo, lector de pantalla, «—» sin unidad, píldora a «Ahora», sin señal, foco y «hace N min», base del equipo que se cierra, sin espacio, helada nublada y días de Riego al sincronizar", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); await estBotLimpio(); await estBotSinc(); await estPronCargar(true);
+    const hoyF = estHoyF(), mesHoy = hoyF.slice(0, 7);
+    /* lluvia de la temporada: la lectura del mes anterior (día 1 sin lecturas) no suma su total del mes */
+    const u0 = estDat.ult;
+    try{ estDat.ult = Object.assign({}, u0, {f:estSumarDias(mesHoy + "-01", -1), llm:999});
+      const pm = estLluviaTemporada().partes.find(p=>p.m === mesHoy);
+      chk(!pm || pm.v !== 999, "La lluvia de la temporada sumó el total del mes anterior como si fuera de este mes", "media");
+    } finally { estDat.ult = u0; }
+    /* pasó la medianoche sin lecturas: igual se recarga lo guardado (el día que se cerró entra a «ayer» y a las sumas) */
+    const hid0 = Object.getOwnPropertyDescriptor(document, "hidden");
+    try{ Object.defineProperty(document, "hidden", {configurable:true, get:()=>false});
+      estDat._diaCarga = "2000-01-01"; estTic(); await esperarQue(()=>estDat._diaCarga === hoyF, 8000);
+    } finally { if(hid0) Object.defineProperty(document, "hidden", hid0); else delete document.hidden; }
+    chk(estDat._diaCarga === hoyF, "Al cambiar el día sin lecturas nuevas no se recargó lo guardado");
+    /* Excel: el número se guarda con toda su precisión; lluvia del intervalo con 2 decimales y ET₀ con 3 */
+    const ce = estXlCelda(0.254 * 3, "n1"), tipo = n=>(EST_XL_LECT.find(c=>c[0] === n) || [])[2];
+    chk(/x:num="0\.762">0,8</.test(ce) && tipo("Lluvia del intervalo (mm)") === "n2" && tipo("ET₀ del intervalo (mm)") === "n3", "El Excel redondea el número guardado (" + ce + ") o la lluvia o la ET₀ del intervalo no llevan 2 y 3 decimales", "media");
+    /* informe por hora: la lluvia de cada lectura va en la hora donde termina su intervalo (como el gráfico de 24 h) */
+    const fLl = estSumarDias(hoyF, -2), lim = estLimitesDia(fLl), L = estDerivar(EST_BOT.filas.filter(z=>z[1] === fLl), wlEtCfg()), hs = estHorasDe(fLl, L), malas = [];
+    hs.forEach((o, i)=>{ const esp = L.filter(x=>Math.max(0, Math.floor((x.ts - 1 - lim.a) / 3600)) === i).reduce((s, x)=>s + x.ll, 0); if(Math.abs((o.ll || 0) - esp) > 1e-9) malas.push(o.hl + ": " + o.ll + " / " + esp); });
+    chk(!malas.length && Math.abs(hs.reduce((s, o)=>s + (o.ll || 0), 0) - L.reduce((s, x)=>s + x.ll, 0)) < 1e-9, "La lluvia por hora del informe no sigue la regla del gráfico de 24 h (" + malas.slice(0, 3).join(", ") + ")");
+    /* lector de pantalla: las partes separadas */
+    const lt = estLeer("<b>mié 28-10 01:30</b><br>Temperatura: <b>24,5 °C</b>");
+    chk(lt === "mié 28-10 01:30 · Temperatura: 24,5 °C", "El texto para el lector de pantalla sale pegado («" + lt + "»)", "leve");
+    estNav().sec = "graf"; estNav().var = "temp"; estNav().per = "24h"; await irA("estacion"); estPintar(); await pausa(.6);
+    const sv = document.querySelector("#estGPrin svg"), al = sv ? sv.getAttribute("aria-label") || "" : "";
+    chk(al && !/[a-zñáéíóú]\d|°C[a-zñáéíóú]/.test(al), "La descripción del gráfico para el lector sale con palabras pegadas («" + al.slice(0, 120) + "»)", "leve");
+    /* «—» sin la unidad pegada */
+    chk(estTile("estKET", "drop", "ET₀ hoy", "—", "mm", "").indexOf("—<span>") < 0, "La cifra sin dato sale con la unidad pegada («—mm»)", "leve");
+    /* la píldora de Hoy abre «Ahora» aunque la última sección haya sido otra */
+    estNav().sec = "inf"; await irA("panel");
+    const pl = necesito(buscar("#app .hoy-est"), "la píldora de la estación en Hoy"); await tocar(pl, "píldora de la estación (Hoy)");
+    chk(nav.tab === "estacion" && estNav().sec === "ahora", "La píldora de Hoy no abrió «Ahora» (abrió «" + estNav().sec + "»)", "leve");
+    /* foco tras «Actualizar» y «hace N min» que avanza con la cabecera */
+    estPintar(); await pausa(.3);
+    necesito(document.getElementById("estBtnAct"), "el botón Actualizar").focus(); await estActualizar(true); await pausa(.3);
+    chk(document.activeElement && document.activeElement.id === "estBtnAct", "Después de tocar «Actualizar» se pierde el foco (queda en «" + ((document.activeElement && (document.activeElement.id || document.activeElement.tagName)) || "—") + "»)", "leve");
+    const hz = document.querySelector("#estVista [data-est-hace]");
+    if(hz){ hz.setAttribute("data-est-hace", String(Date.now() - 7 * 60000)); estPintarCab(); chk(txtDe(hz) === "hace 7 min", "Los «hace N min» de las tarjetas no avanzan con la cabecera (" + txtDe(hz) + ")", "leve"); }
+    else chk(false, "Las tarjetas de «Ahora» no marcan el «hace N min» para ponerlo al día cada minuto", "leve");
+    /* «Bajar todo de nuevo»: el foco va al botón que confirma y, al cancelar, vuelve */
+    await estBotDatos(); const bj = document.getElementById("estDRebajar");
+    if(bj && !bj.disabled){ bj.focus(); estRebajarPedir(); chk(document.activeElement && document.activeElement.id === "estDRebajarSi", "Al pedir «Bajar todo de nuevo» el foco no queda en «Sí, bajar todo de nuevo»", "leve");
+      estRebajarCancelar(); chk(document.activeElement && document.activeElement.id === "estDRebajar", "Al cancelar, el foco no vuelve a «Bajar todo de nuevo»", "leve"); }
+    /* sin señal en este equipo: el atraso no culpa a la consola */
+    EST_BOT.filas = estBotFilas(3, Date.now() / 1000 - 90 * 60); await estBotLimpio(); await estBotSinc();
+    try{ Object.defineProperty(navigator, "onLine", {configurable:true, get:()=>false});
+      const t = txtDe(Object.assign(document.createElement("div"), {innerHTML:estEstadoAvisoHTML()}));
+      chk(/Este equipo está sin señal/.test(t) && !/consola/.test(t), "Sin señal en el equipo, el aviso de atraso culpa a la consola (" + t.slice(0, 120) + ")", "leve");
+    } finally { try{ delete navigator.onLine; }catch(e){} }
+    /* base del equipo: si Safari cierra la conexión se vuelve a abrir sola; sin espacio, aviso propio (no culpa al puente) */
+    EST_BOT.filas = estBotFilas(40); await estBotLimpio(); await estBotSinc();
+    const db = await estIDB(); if(db) db.close();
+    let okIdb = false; try{ okIdb = (await estMetaGet(ST + "|ult")) === EST_BOT.filas[EST_BOT.filas.length - 1][0]; }catch(e){ okIdb = false; }
+    chk(!db || okIdb, "Con la conexión a la base del equipo cerrada, la consulta siguiente falló en vez de reabrirla", "media");
+    const eq = _estIdbErr(Object.assign(new Error("x"), {name:"QuotaExceededError"})), err0 = estDat.err;
+    estDat.err = {t:Date.now(), msg:eq.message, codigo:eq.codigo};
+    const av = txtDe(Object.assign(document.createElement("div"), {innerHTML:estPuenteAvisoHTML()})); estDat.err = err0;
+    chk(eq.codigo === "cuota" && /No queda espacio en este equipo/.test(av) && !/No se pudo consultar el puente/.test(av), "Sin espacio en el equipo el aviso culpa al puente (" + av.slice(0, 120) + ")", "media");
+    /* helada: en una noche nublada no se resta el ajuste de las noches despejadas y calmas */
+    const p0 = window.estPronFetch, s0 = estDat._sesgo;
+    try{ window.estPronFetch = async function(url){ const j = await estBotPron()(url); j.hourly.cloud_cover = j.hourly.cloud_cover.map(()=>90); return j; };
+      await estPronCargar(true); estDat._sesgo = {st:estSt(), n:15, sesgo:-1.5};
+      const H = estHeladaNoche();
+      chk(H.hs && H.sesgoUsa === false && Math.abs(H.tAj - H.tmin + (estUmb().helAj || 0)) < 1e-9, "En una noche nublada la helada igual resta el ajuste de las noches despejadas (" + (H.tAj != null ? estF1(H.tAj) : "—") + " °C, modelo " + (H.tmin != null ? estF1(H.tmin) : "—") + ")", "media");
+    } finally { window.estPronFetch = p0; estDat._sesgo = s0; await estPronCargar(true); }
+    /* sincronización: los días de Riego de los dos equipos se juntan y lo que el celular no tiene queda el del iPad */
+    const aplicar = AB._orig && AB._orig.syncAplicar; if(typeof aplicar !== "function") throw new SinProbar("No quedó la syncAplicar original");
+    const wl0 = JSON.stringify(D.wl);
+    try{
+      D.wl = Object.assign({}, D.wl, {ult:new Date().toISOString(), hoy:{ts:Math.round(Date.now() / 1000), temp:24.5}, dias:{"2026-01-02":{et:3, src:"wl", parcial:false}, "2026-01-03":{et:1, src:"om", parcial:false}}}); delete D.wl.etHoy;
+      const datos = JSON.parse(JSON.stringify(syncPayload()));
+      datos.wl = Object.assign({}, datos.wl, {ult:new Date(Date.now() - 3600000).toISOString(), etHoy:{et:2.2}, dias:{"2026-01-01":{et:4, src:"wl", parcial:false}, "2026-01-03":{et:1.5, src:"wl", parcial:false}}});
+      aplicar(datos, Date.now()); await pausa(.4);
+      const d = (D.wl && D.wl.dias) || {};
+      chk(d["2026-01-01"] && d["2026-01-02"] && d["2026-01-03"] && d["2026-01-03"].src === "wl" && D.wl.etHoy && D.wl.etHoy.et === 2.2 && D.wl.hoy && D.wl.hoy.temp === 24.5,
+        "Al recibir el cuaderno, el celular perdió días de Riego o datos que solo tenía el iPad (días " + Object.keys(d).join(", ") + ")", "media");
+    } finally { D.wl = JSON.parse(wl0); }
+  });
+}
+
+/* 🌡️ ESTACIÓN ---------------------------------------------------------------------------- */
+BOTS.push({id:"estacion", modulo:"Estación", nombre:"Valentina, encargada de la estación", ico:"🌡️", que:"Panel de la estación: descarga del historial, Ahora, Para el campo, gráficos, informes, Excel, PDF y avisos del puente", correr: async ()=>{
+  if(typeof estSincronizar !== "function" || typeof EST_COLS === "undefined"){ await paso("Panel de la estación", async ()=>{ throw new SinProbar("La app no tiene el panel de la estación"); }); return; }
+  const wl0 = D.wl ? JSON.stringify(D.wl) : null, est0 = D.est ? JSON.stringify(D.est) : null, nav0 = nav.est ? JSON.stringify(nav.est) : null;
+  const f0 = window.wlFetch, p0 = window.estPronFetch, pag0 = EST_PAG; EST_BOT.est0 = est0;
+  D.wl = Object.assign({}, D.wl || {}, {url:"https://bots.invalid", clave:"bots", st:215965, stNombre:"FUNDO STA SARA (bot)", lat:-33.448, lng:-71.028, ult:new Date().toISOString(), errAct:null});
+  window.wlFetch = estBotPuente(); window.estPronFetch = estBotPron();
+  EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); EST_BOT.pedidos = [];
+  try{
+    await estBotLimpio();
+    await estBotA(); await estBotB(); await estBotC(); await estBotD();
+  } finally {
+    try{ delete navigator.onLine; }catch(e){}
+    try{ await estBotLimpio(); }catch(e){}
+    window.wlFetch = f0; window.estPronFetch = p0; EST_PAG = pag0;
+    if(wl0 == null) delete D.wl; else D.wl = JSON.parse(wl0);
+    if(est0 == null) delete D.est; else D.est = JSON.parse(est0);
+    if(nav0 == null) delete nav.est; else nav.est = JSON.parse(nav0);
+    guardar(); try{ render(); }catch(e){}
+  }
+}});
+
 /* 🌸 FENOLOGÍA --------------------------------------------------------------------------- */
 BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"🌸", que:"Fenología: validaciones (fecha, cuartel, estado), registro completo, cambio a cuartel de otra especie, vistas y filtros, editar, borrar y deshacer, y su efecto en el Kc del riego", correr: async ()=>{
   const fu = fundosConCuarteles()[0];
@@ -1353,14 +2742,15 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
       const ops = [...document.querySelectorAll("#capaModal .lc-op")].filter(visible);
       chk(ops.length===6, "La hoja «+ Anotar» no tiene los 6 botones (tiene "+ops.length+")");
       chk(!buscar("#capaModal .mf .btn"), "La hoja «+ Anotar» muestra Guardar/Cancelar (ahí no hay nada que guardar)", "leve");
-      await tocar(`#capaModal [onclick="bitNueva('${H}')"]`, "Labor del día");
+      await tocar('#capaModal .lc-op[data-op="lab"]', "Labor del día");
       chk(modalAbierto() && v("bit_fecha")===H, "«Labor del día» no abrió el formulario del día con la fecha de hoy");
       const a0 = R.alerts.length; await guardarModal_();
-      chk(modalAbierto() && huboMsg(a0,/al menos una labor/i), "Un día sin labores se guardó o no avisó");
+      chk(modalAbierto() && (huboMsg(a0,/al menos una labor/i) || /al menos una labor/i.test(txtDe(document.getElementById("bitAviso")))), "Un día sin labores se guardó o no avisó");
+      chk(R.alerts.length===a0, "El aviso de un día sin labores salió con alert() y no dentro del formulario", "leve");
     });
     await paso("Día con labor, cuartel, cantidad y personas (rendimiento e integración con la Gantt)", async ()=>{
       const n0 = (D.bitacora||[]).length, l0 = D.labores.length;
-      if(!modalAbierto()){ await irA("bitacora"); await tocar('#lcVista [data-acc="anotar"]', "+ Anotar"); await tocar(`#capaModal [onclick="bitNueva('${H}')"]`, "Labor del día"); }
+      if(!modalAbierto()){ await irA("bitacora"); await tocar('#lcVista [data-acc="anotar"]', "+ Anotar"); await tocar('#capaModal .lc-op[data-op="lab"]', "Labor del día"); }
       await elegir("bit_fundo", fu); await pausa();
       const chip = necesito(buscar("#capaModal .bitchip"), "una labor para marcar"); await tocar(chip, "labor "+txtDe(chip));
       const lin = necesito(buscar("#capaModal .bitlin"), "la línea de la labor");
@@ -1615,7 +3005,7 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
       if(lab){ const l = D.labores.find(x=>x.id===lab); bug("Al borrar el día queda una labor «en curso» creada por la integración, sin avances", l && l.estado==="encurso" && !(l.avances||[]).length, "", "leve"); }
       if(await undoVisible()){ await deshacer(); chk(D.bitacora.length===n0 && !!filaBit(), "Deshacer no recuperó el día (o no volvió a Día a día)"); } else falla("Sin Deshacer", "Al borrar un día de bitácora no apareció Deshacer");
     });
-    await paso("Celular espejo: sin botones que escriben y la hoja «+ Anotar» manda a dictar", async ()=>{
+    await paso("Celular espejo: sin botones que escriben y «+ Anotar» abre el formulario corto que se envía al iPad", async ()=>{
       const s0 = JSON.stringify(D.sync||{});
       try{
         D.sync = Object.assign({}, D.sync||{}, {rol:"receptor"}); uiAplicar();
@@ -1625,7 +3015,8 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
         const f = fila(/^Bot Esterón dictado$/) || filas(/./)[0];
         if(f){ const el = await abrir(f, "una fila (espejo)"); chk(![...el.querySelectorAll(esc_.replace(/#lcVista /g,""))].length && /solo se consulta/i.test(txtDe(el.querySelector(".lc-det"))), "El detalle en el espejo no es de solo lectura"); }
         await tocar('#lcVista [data-acc="anotar"]', "+ Anotar (espejo)");
-        chk(modalAbierto() && !document.querySelector('#capaModal [onclick^="bitNueva"], #capaModal [onclick^="formReg"], #capaModal .lc-op') && /dict/i.test(txtDe(modalAbierto())), "En el espejo la hoja «+ Anotar» ofrece los formularios (debía decir que se dicte)");
+        chk(modalAbierto() && !document.querySelector('#capaModal [onclick^="bitNueva"], #capaModal [onclick^="formReg"], #capaModal .lc-op') && document.querySelector("#capaModal #lcCe") && /se envía al iPad/i.test(txtDe(modalAbierto())), "En el espejo «+ Anotar» ofrece los formularios del iPad (debía abrir el formulario corto que se envía al iPad)");
+        chk(/lo que dictes o anotes se envía al iPad/i.test(txtDe(document.querySelector("#lcVista .lc-esp"))), "En el espejo falta el aviso fijo «Solo lectura: lo que dictes o anotes se envía al iPad»", "leve");
         await cancelarModal();
       } finally { D.sync = JSON.parse(s0); uiAplicar(); render(); }
     });
@@ -1657,16 +3048,96 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
       } finally { D.ui = JSON.parse(u0); uiAplicar(); render(); }
       await irA("bitacora"); await limpiarFiltros();
     });
-    await paso("Otro registro (riego) desde «+ Anotar» y su fila en Día a día", async ()=>{
-      await irA("bitacora"); await tocar('#lcVista [data-acc="anotar"]', "+ Anotar");
-      await tocar('#capaModal .lc-op[onclick="formReg()"]', "Riego, fertilización, lluvia u otro");
+    await paso("Otro registro (riego) desde «+ Anotar» y su fila en Día a día (se quedan el fundo y el período elegidos)", async ()=>{
+      await irA("bitacora"); Object.assign(lcNav(), {v:"dia", fundo:fu, cu:"", per:"30", cat:"", dest:false, q:""}); lcPintar(); await pausa();
+      await tocar('#lcVista [data-acc="anotar"]', "+ Anotar");
+      await tocar('#capaModal .lc-op[data-op="reg"]', "Riego, fertilización, lluvia u otro");
       await elegir("m_tipo", "Riego"); await pausa();
       await elegir("m_fundo", fu); const n0 = D.registros.length, a0 = R.alerts.length; await guardarModal_();
       if(modalAbierto() && await completarFaltantes(a0)) await guardarModal_();
       chk(D.registros.length===n0+1, "No se guardó el registro de riego (mensajes: "+msgsDesde(a0).join(" / ").slice(0,120)+")");
       const r = D.registros[D.registros.length-1]; if(D.registros.length===n0+1 && r) T.regs.push(r.id);
+      chk(nav.tab==="bitacora" && nav.lc.v==="dia" && document.querySelector("#lcVista .lc-it.nueva"), "Después de guardar desde la hoja no se vuelve a Día a día con la fila nueva resaltada", "leve");
+      chk(nav.lc.fundo===fu && nav.lc.per==="30", "Al volver a Día a día se perdieron el fundo o el período elegidos (fundo «"+nav.lc.fundo+"», período «"+nav.lc.per+"»)", "leve");
       await irA("bitacora");
       chk(r && filas(/^Riego/).some(el=>el.closest(".lc-dia") && el.closest(".lc-dia").getAttribute("data-dia")===r.fecha && el.classList.contains("c-riego")), "El riego no aparece en Día a día bajo su día", "media");
+      await limpiarFiltros();
+    });
+    /* Etapa 3: la hoja con el lugar y la fecha, cada formulario precargado; bitNueva con y sin parámetros, el fundo recordado, «Más labores…», ★ por línea */
+    await paso("Hoja «+ Anotar» con el lugar: cada formulario abre con fecha, fundo y cuartel; bitNueva() sin nada; fundo recordado; «Más labores…»; ★ por línea", async ()=>{
+      if(typeof lcAnOp!=="function" || typeof fAviso!=="function") throw new SinProbar("La app no tiene la hoja «+ Anotar» con el lugar (Etapa 3)");
+      const ay = masDias(H,-1), fu2 = fundosConCuarteles().find(f=>f!==fu) || fu, c = bitCfg(), u0 = c.ultFundo;
+      const hoja = async ()=>{ await cerrarTodo(); lcAnotar({fundo:fu, cuarteles:[q1.nombre], de:"dia"}); await pausa(); necesito(modalAbierto(), "la hoja «+ Anotar»"); };
+      T.bits = T.bits || [];
+      try{
+        await irA("bitacora"); await hoja();
+        const ops = [...document.querySelectorAll("#capaModal .lc-op")].filter(visible);
+        chk(/Anotar en/.test(txtDe(document.querySelector("#capaModal .mh h3"))) && v("m_fundo")===fu && cuartsTmp.join()===q1.nombre, "La hoja no trae puestos el fundo y el cuartel");
+        chk(ops.length===6 && ops.every(o=>o.getBoundingClientRect().height>=63.5), "La hoja no tiene 6 botones de 64 px");
+        chk(/Dictar a Claude/.test(txtDe(modalAbierto())) && txtDe(document.getElementById("lcAnLug")).indexOf(q1.nombre)>=0, "Abajo falta «Dictar a Claude» con el lugar");
+        await tocar(`#capaModal [onclick="lcAnFecha('ayer')"]`, "Ayer"); await tocar('#capaModal .lc-op[data-op="apl"]', "Aplicación ya hecha");
+        const ya = document.getElementById("m_aplicado");
+        chk(modalAbierto() && v("m_tipo")==="Aplicación" && v("m_fecha")===ay && v("m_fundo")===fu && cuartsTmp.join()===q1.nombre && ya && ya.checked && !nav.regPre, "«Aplicación ya hecha» no abrió formReg con ayer, el fundo, el cuartel y «Ya se aplicó» (o la precarga nav.regPre no se borró)");
+        await cancelarModal();
+        await hoja(); await tocar(`#capaModal [onclick="lcAnFecha('ayer')"]`, "Ayer"); await tocar('#capaModal .lc-op[data-op="lab"]', "Labor del día");
+        chk(modalAbierto() && v("bit_fecha")===ay && v("bit_fundo")===fu, "«Labor del día» no abrió con la fecha y el fundo de la hoja");
+        await tocar(necesito(buscar("#capaModal .bitchip"), "una labor"), "una labor");
+        const sl = document.querySelector("#capaModal .bitlin select");
+        chk(sl && sl.value===q1.nombre, "La primera línea no parte en el cuartel de la hoja ("+(sl && sl.value)+")");
+        await cancelarModal();
+        await hoja(); await tocar('#capaModal .lc-op[data-op="fen"]', "Estado fenológico");
+        chk(modalAbierto() && v("fen_fecha")===H && v("fen_fundo")===fu && v("fen_cuartel")===q1.nombre, "«Estado fenológico» no abrió con la fecha, el fundo y el cuartel de la hoja");
+        await cancelarModal();
+        const q2 = cuartelesDe(fu).find(q=>q.nombre!==q1.nombre);
+        if(q2){ await hoja(); cuartsTmp.push(q2.nombre); pintarCuartsTmp(); await tocar('#capaModal .lc-op[data-op="fen"]', "Estado fenológico (2 cuarteles)");
+          chk(modalAbierto() && !document.getElementById("fen_fecha") && /de a un cuartel/.test(txtDe(document.getElementById("lcAnAv"))), "Con 2 cuarteles «Estado fenológico» abrió con uno solo sin avisar dentro de la hoja", "leve");
+          await cancelarModal(); }
+        await hoja(); await tocar('#capaModal .lc-op[data-op="nota"]', "Nota");
+        chk(modalAbierto() && v("m_fundo")===fu && cuartsTmp.join()===q1.nombre && !window._notaPre, "«Nota» no abrió con el fundo y el cuartel de la hoja (o window._notaPre no se borró)");
+        chk(!document.querySelector("#capaModal .f-fecha-pre"), "La nota de hoy dice una fecha elegida en + Anotar", "leve");
+        await cancelarModal();
+        await hoja(); await tocar(`#capaModal [onclick="lcAnFecha('ayer')"]`, "Ayer"); await tocar('#capaModal .lc-op[data-op="nota"]', "Nota (ayer)");
+        chk(modalAbierto() && /Fecha: ayer/.test(txtDe(document.querySelector("#capaModal .f-fecha-pre"))), "La nota de ayer (elegida en + Anotar) no dice qué día va a quedar", "leve");
+        await cancelarModal();
+        await hoja(); await tocar('#capaModal .lc-op[data-op="reg"]', "Riego, fertilización, lluvia u otro");
+        chk(modalAbierto() && v("m_fecha")===H && v("m_fundo")===fu && cuartsTmp.join()===q1.nombre && !document.getElementById("m_aplicado"), "«Riego, fertilización…» no abrió formReg con la fecha, el fundo y el cuartel");
+        await cancelarModal();
+        await hoja(); await tocar(`#capaModal [onclick="lcAnFecha('otro')"]`, "Otro día…"); await tocar('#capaModal .lc-op[data-op="lab"]', "Labor del día (sin fecha)");
+        chk(modalAbierto() && !document.getElementById("bit_fecha") && /Elige el día/.test(txtDe(document.getElementById("lcAnAv"))), "«Otro día…» sin fecha abrió el formulario o no avisó dentro de la hoja");
+        await cancelarModal();
+        /* bitNueva sin parámetros (la Gantt y la vista vieja lo usan), con fecha, y con fundo y cuartel; el fundo recordado */
+        c.ultFundo = fu2; bitNueva(); await pausa();
+        chk(modalAbierto() && v("bit_fecha")==="" && v("bit_fundo")===fu2, "bitNueva() no abre sin fecha y con el último fundo usado ("+v("bit_fundo")+")");
+        await cancelarModal();
+        bitNueva(H); await pausa(); chk(modalAbierto() && v("bit_fecha")===H, "bitNueva('<hoy>') no abre con la fecha de hoy"); await cancelarModal();
+        bitNueva(H, fu, q1.nombre); await pausa();
+        chk(modalAbierto() && v("bit_fundo")===fu && BIT && (BIT.cuPre||[]).join()===q1.nombre, "bitNueva(fecha, fundo, cuartel) no precarga el fundo y el cuartel");
+        if(tiposLabor().length>8){
+          const mas = buscar("#capaModal .bitchip-mas");
+          chk(document.querySelectorAll("#capaModal .bitchip").length===8 && mas && /Más labores/.test(txtDe(mas)), "No se ven las 8 labores más usadas con «Más labores…»");
+          if(mas){ await tocar(mas, "Más labores…"); chk(document.querySelectorAll("#capaModal .bitchip").length===tiposLabor().length && buscar("#capaModal .bitchip-mas").getAttribute("aria-expanded")==="true", "«Más labores…» no despliega el resto de las labores"); }
+        }
+        await tocar(necesito(buscar("#capaModal .bitchip"), "una labor"), "una labor");
+        await tocar(necesito(buscar("#capaModal .bitlin .bitest"), "la ★ de la línea"), "★ de la línea");
+        await escribir([...document.querySelectorAll("#capaModal .bitlin input")][0], "12", "cantidad");
+        const n0 = (D.bitacora||[]).length; chk(await guardarModal_(), "No se guardó el día con la ★");
+        const b = D.bitacora[D.bitacora.length-1];
+        if(D.bitacora.length===n0+1){ T.bits.push(b.id);
+          chk(b.lineas[0].dest===true && !!b.lineas[0].uid && b.lineas[0].cuartel===q1.nombre && bitCfg().ultFundo===fu, "La línea no guardó la ★ (dest) con su uid y su cuartel, o no se recordó el fundo");
+          const uid = b.lineas[0].uid; bitEditar(b.id); await pausa(); chk(await guardarModal_(), "No se guardó la edición del día");
+          const b2 = D.bitacora.find(x=>x.id===b.id); chk(b2 && b2.lineas[0].uid===uid && b2.lineas[0].dest===true, "Al editar el día se perdió la ★ o el uid de la línea");
+        }
+        /* cambiar de fundo: el aviso va dentro del formulario y antes de borrar */
+        if(fu2!==fu){
+          bitNueva(H, fu, q1.nombre); await pausa(); await tocar(necesito(buscar("#capaModal .bitchip"), "una labor"), "una labor");
+          const a0 = R.alerts.length, otro = cuartelesDe(fu2).some(q=>q.nombre===q1.nombre);
+          await elegir("bit_fundo", fu2);
+          if(!otro){ chk(v("bit_fundo")===fu && /Todo el fundo/.test(txtDe(document.getElementById("bitAviso"))) && R.alerts.length===a0, "Cambiar de fundo borró el cuartel sin avisar dentro del formulario");
+            await tocar(necesito(buscar("#bitAviso .btn"), "«Cambiar a …»"), "Cambiar de fundo"); chk(v("bit_fundo")===fu2 && BIT.lineas[0].cuartel==="", "«Cambiar a …» no cambió el fundo dejando la línea en todo el fundo"); }
+          else chk(BIT.lineas[0].cuartel===q1.nombre, "Cambiar de fundo no conservó el cuartel que se llama igual");
+          await cancelarModal();
+        }
+      } finally { c.ultFundo = u0; if(c.ultFundo===undefined) delete c.ultFundo; }
     });
     await paso("Decimales: «2.5» personas", async ()=>{
       if(typeof bitNum!=="function") throw new SinProbar("No existe el lector de números de la bitácora");
@@ -1680,9 +3151,9 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
       await limpiarFiltros();
     });
   } finally {
-    try{ if(T.bit && typeof bitQuitaAvances==="function"){ bitQuitaAvances(T.bit); bitLimpiarAuto(); } }catch(e){}
+    try{ if(typeof bitQuitaAvances==="function"){ [T.bit].concat(T.bits||[]).filter(Boolean).forEach(id=>bitQuitaAvances(id)); bitLimpiarAuto(); } }catch(e){}
     D.registros = D.registros.filter(r=>T.regs.indexOf(r.id)<0);
-    D.bitacora = (D.bitacora||[]).filter(b=>b.id!==T.bit);
+    D.bitacora = (D.bitacora||[]).filter(b=>b.id!==T.bit && (T.bits||[]).indexOf(b.id)<0);
     D.notas = D.notas.filter(n=>T.notas.indexOf(n.id)<0);
     D.fenologia = (D.fenologia||[]).filter(f=>T.fens.indexOf(f.id)<0);
     guardar();
@@ -2527,6 +3998,58 @@ BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta 
         chk(gem.length===1 && llamadas===1 && /audio\/webm/.test(gem[0].b), "Un audio con clave de Gemini no fue a Gemini");
       } finally { window.fetch = f0; s2.url = u0; s2.clave = c0; D.ia = ia0; respEsp = null; guardar(); }
     });
+    /* Etapa 3: el caso Esteron dictado desde la ficha (lugar como contexto), la revisión con «Quedará en…», la caja del catálogo y «usar», el producto ambiguo y out.refs */
+    await paso("Dictar con lugar: el pedido lleva el lugar, «Quedará en: Bitácora › fundo › cuartel · Aplicación», la caja del catálogo, «usar», el producto ambiguo pregunta y out.refs", async ()=>{
+      if(typeof asisDictar!=="function" || typeof asisQuedaHTML!=="function") throw new SinProbar("La app no tiene Dictar con lugar ni «Quedará en…» (Etapa 3)");
+      if(!qU || !pSD) throw new SinProbar("Hace falta un cuartel de nombre único y un producto del catálogo sin carencia para su especie");
+      const s3 = syncCfg(); s3.url = "https://bots.invalid"; s3.clave = "bots"; s3.rol = "off";
+      const A = asisCfg();   // el de ahora: un Deshacer de los pasos anteriores recarga D (el A del comienzo quedó viejo)
+      const amb = cfCatProd().map(x=>String(x.n||"").split(/\s+/)[0]).find(w=>w.length>=4 && cfProdCandidatos(w).length>1) || "";
+      A.items = null; A.borrador = ""; guardar();
+      await irA("bitacora"); asisDictar({fundo:qU.fundo, cuarteles:[qU.nombre]}); await pausa();
+      chk(nav.tab==="asist" && A.ctx && A.ctx.fundo===qU.fundo, "asisDictar no abrió el Asistente con el lugar");
+      respEsp = ()=>({ok:true, modelo:"claude-opus-5-5", usage:{input_tokens:900, output_tokens:200}, datos:{resumen:"Bot: aplicación con lugar", preguntas:[], items:[
+        {...base, tipo:"aplicacion", fecha:HOY(), fundo:"", cuarteles:[], producto:pSD.n, aplicado:true, mezcla:[{producto:pSD.n, dosis:""}], adjuntos:[]}]
+        .concat(amb? [{...base, tipo:"aplicacion", fecha:HOY(), fundo:qU.fundo, cuarteles:[qU.nombre], producto:amb, aplicado:false, mezcla:[], adjuntos:[]}] : [])}});
+      try{
+        await escribir("asis_txt", "se aplicó "+pSD.n, "dictado"); accion("Ordenar con Claude (simulado)"); await asisOrdenar(); await pausa();
+      } finally { respEsp = null; }
+      chk(pedido && pedido.system.indexOf("Lugar que el usuario está mirando: "+qU.fundo+" › "+qU.nombre)>=0, "Lo que se le pide a Claude no lleva el lugar que se está mirando");
+      const it = A.items && A.items[0], e1 = document.querySelectorAll(".asis-it")[0], t1 = txtDe(e1);
+      chk(it && it.fundo===qU.fundo && (it.cuarteles||[]).join()===qU.nombre && it.prodId===pSD.id, "Lo que Claude dejó sin lugar no quedó en el lugar del dictado, o el producto no se reconoció en el catálogo");
+      chk(t1.indexOf("Quedará en: Bitácora › "+qU.fundo+" › "+qU.nombre+" · Aplicación")>=0, "La revisión no dice «Quedará en: Bitácora › "+qU.fundo+" › "+qU.nombre+" · Aplicación»: «"+t1.slice(0,240)+"»");
+      chk(e1 && e1.querySelector(".cf-fp") && (!pSD.t || t1.indexOf(pSD.t)>=0) && /sin dato/i.test(txtDe(e1.querySelector(".cf-fp"))), "La revisión no muestra la caja del catálogo con la carencia por especie");
+      if(pSD.maxApl) chk(t1.indexOf("Catálogo: «"+pSD.maxApl+"»")>=0 && t1.indexOf("esta temporada en "+qU.nombre)>=0, "La revisión no trae el texto de maxApl con la cuenta de la temporada en "+qU.nombre);
+      const us = e1 && e1.querySelector(".cf-usar");
+      const focoEn = i=>{ const a = document.activeElement; return !!(a && a.closest && a.closest(".asis-it")===document.querySelectorAll("#asisVista .asis-it")[i]); };
+      if(us){ await tocar(us, "usar"); chk(!!A.items[0].dosis && !modalAbierto(), "«usar» no copió la dosis al ítem, o abrió la ventana del ítem");
+        chk(focoEn(0), "Después de «usar» el foco se perdió (no quedó en el ítem)", "leve"); }
+      if(amb){
+        const e2 = document.querySelectorAll(".asis-it")[1], bs = e2? [...e2.querySelectorAll(".asis-cual .cf-usar")] : [];
+        chk(A.items[1] && A.items[1].prodId==null && bs.length>1 && /se parece a varios/.test(txtDe(e2)), "«"+amb+"» calza con varios productos y la revisión no pregunta «¿X o Y?» (o lo asignó sola)");
+        if(bs[0]){ const nom = txtDe(bs[0]); await tocar(bs[0], nom); chk(A.items[1].producto===nom && A.items[1].prodId!=null && !modalAbierto(), "Elegir uno de los parecidos no lo dejó con su nombre y su prodId");
+          chk(focoEn(1), "Después de elegir el producto parecido el foco se perdió (no quedó en el ítem)", "leve"); }
+      }
+      /* celular: la caja del catálogo y «Quedará en…» a todo el ancho del ítem (no en una columna entre la casilla y ★ ✕) */
+      const u0 = JSON.stringify(D.ui||{});
+      try{ D.ui = Object.assign({}, D.ui, {movil:"si"}); uiAplicar(); asisPintar(); await pausa();
+        const i1 = document.querySelector("#asisVista .asis-it"), fp = i1 && i1.querySelector(".cf-fp"), qd = i1 && i1.querySelector(".asis-queda");
+        const w = el=>el? Math.round(el.getBoundingClientRect().width) : 0;
+        chk(fp && qd && w(i1)-w(fp)<60 && w(i1)-w(qd)<60, "En el celular la caja del catálogo o «Quedará en…» de la revisión no usan el ancho del ítem (ítem "+w(i1)+" px, caja "+w(fp)+" px, «Quedará en» "+w(qd)+" px)", "media");
+        const est = i1 && i1.querySelector(".asis-est"), tp = i1 && i1.querySelector(".asis-tipo");
+        chk(est && tp && Math.abs(est.getBoundingClientRect().top-tp.getBoundingClientRect().top)<24, "En el celular la ★ no queda en la fila del tipo del ítem", "leve");
+      } finally { D.ui = JSON.parse(u0); uiAplicar(); asisPintar(); }
+      /* asisAplicarTodos(lista, equipo, out): out.refs con las claves de lo creado (sin out sigue igual) */
+      const out = {}, n0 = D.registros.length, it0 = Object.assign({}, A.items[0], {asisLote:"alBotRefs"}); lotesAdj.push("alBotRefs");
+      asisAplicarTodos([it0], "ipad", out);
+      const nr = D.registros.slice(n0);
+      chk(Array.isArray(out.refs) && out.refs.length===nr.length && nr.length>0 && nr.every(r=>out.refs.indexOf("r:"+r.id)>=0), "asisAplicarTodos no devolvió en out.refs las claves de lo creado: "+JSON.stringify(out.refs));
+      /* guardar: el lugar vence */
+      const lote = A.lote; if(lote) lotesAdj.push(lote);
+      await tocar(necesito(buscar({texto:/^Guardar \d+ en AgroNotas/, sel:".asis-rev .btn"}), "Guardar en AgroNotas"), "Guardar");
+      _undoSnap = null;
+      chk(!A.ctx && !A.items, "Después de guardar el lugar del dictado no venció o la revisión no se vació");
+    });
     await paso("Dictar sin soporte de voz avisa cómo hacerlo", async ()=>{
       syncCfg().rol="off"; guardar(); await irA("asist");
       const sr = window.webkitSpeechRecognition, sr2 = window.SpeechRecognition; const a0 = R.alerts.length;
@@ -2763,6 +4286,786 @@ BOTS.push({id:"indice", modulo:"Bitácora: índice", nombre:"Inés, auditora del
   }
 }});
 
+/* 🗂️ CUARTELES (portada de la Bitácora, Etapa 2) ------------------------------------------ */
+BOTS.push({id:"cuarteles", modulo:"Bitácora", nombre:"Inés, revisa los cuarteles", ico:"🗂️", que:"Portada Cuarteles de la Bitácora: abre en Cuarteles, una fila por cuartel plantado en cada fundo, estado de carencia en texto (en carencia, por confirmar, sin dato, libre), letras y número de la semana, ★, 12 meses, los 4 órdenes, ★ Destacados, búsqueda, «Todo el fundo», por plantar, cuarteles que ya no existen, fila y celda abren la ficha y se vuelve al mismo punto, medidas a 920, 1.052 y 700 px y el celular en dos líneas", correr: async ()=>{
+  const H = HOY(), lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null, p0 = localStorage.getItem("agronotasBitacora"), ui0 = JSON.stringify(D.ui||{});
+  const porPlantar = q=>/por plantar/i.test(q.especie||""), dm = iso=>String(iso).slice(8,10)+"-"+String(iso).slice(5,7);
+  const libres = f=>plantados(f).filter(q=>typeof carenciaDe==="function" && !carenciaDe(q));
+  const fu = fundosConCuarteles().find(f=>libres(f).length>=4), qs = fu? libres(fu) : [], [q1, q2, q3, q4] = qs;
+  const nuevos = [], meter = (col, o)=>{ D[col] = D[col]||[]; D[col].push(o); nuevos.push([col, o]); return o; };
+  const vac = ()=>({fotos:[], docs:[], audios:[], pin:"baja", gps:null, obs:""});
+  const T = {fApl:masDias(H,-2), fin:masDias(masDias(H,-2),10), fPen:masDias(H,3), fant:"Cuartel Bot Fantasma Cu", pp:"Bot Cu Por Plantar"};
+  const ver = ()=>document.getElementById("lcVista");
+  const bloque = f=>[...document.querySelectorAll("#lcVista .lc-cf")].find(s=>txtDe(s.querySelector(".lc-cf-b b"))===f) || null;
+  const filas = f=>{ const b = bloque(f); return b? [...b.querySelectorAll(".lc-cr:not(.lc-cr-h), .lc-crm")] : []; };
+  const nomDe = el=>txtDe(el.querySelector(".lc-cr-nm b, .lc-crm-1 b"));
+  const fila = (f, nom)=>filas(f).find(el=>nomDe(el)===nom) || null;
+  const abrirTodos = ()=>{ const L = lcNav(); L.fuAb = {}; fundos().forEach(f=>{ L.fuAb[f] = true; }); lcGuardarPrefs(L); lcPintar(); };
+  const efF = e=>(e.dias && e.fin)? (e.fin<H? e.fin : H) : e.fecha;   // los días marcados en la Gantt (un evento por labor y mes) cuentan hasta su último día
+  const ultDe = (f, cu)=>{ let m = ""; (lcIdx().porCu.get(f+"|"+cu)||[]).forEach(x=>{ if(x.fecha && x.fecha<=H && efF(x)>m) m = efF(x); }); return m; };
+  const celda = (el, k)=>{ const i = (typeof _lcCuW!=="undefined"? _lcCuW : []).findIndex(w=>w.k===k); return i<0? null : el.querySelectorAll(".lc-tira .lc-c")[i] || null; };
+  const enSemana = (f, cu, k, mes)=>(lcIdx().porCu.get(f+"|"+cu)||[]).filter(e=>e.fecha && (mes? e.fecha.slice(0,7)===k : lcSem(e.fecha)===k)).length;
+  try{
+    await paso("La portada de la Bitácora abre en «Cuarteles»", async ()=>{
+      if(typeof lcCuHTML!=="function") throw new SinProbar("La app no tiene la portada Cuarteles");
+      if(!q4) throw new SinProbar("Hace falta un fundo con 4 cuarteles plantados sin carencia");
+      /* datos de prueba propios: carencia (q1, ★), por confirmar (q2), sin dato (q3), libre con fenología (q4), todo el fundo, un huérfano y un por plantar */
+      T.apl = meter("registros", Object.assign(vac(), {id:nid(), tipo:"Aplicación", estado:"aplicado", fecha:T.fApl, fechaReal:T.fApl, fechaPlan:T.fApl, fundo:fu, cuartel:q1.nombre, producto:"Bot Cu Karate", dosis:"", objetivo:"", carencia:"10", dest:true}));
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Riego", fecha:T.fApl, fundo:fu, cuartel:q1.nombre, horas:"3", sector:""}));
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Aplicación", estado:"pendiente", fecha:T.fPen, fechaPlan:T.fPen, fundo:fu, cuartel:q2.nombre, producto:"Bot Cu Aceite", dosis:"", objetivo:"", carencia:"1"}));
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Aplicación", estado:"aplicado", fecha:masDias(H,-1), fechaReal:masDias(H,-1), fechaPlan:masDias(H,-1), fundo:fu, cuartel:q3.nombre, producto:"Bot Cu Sin Dato Xyz", dosis:"", objetivo:"", carencia:""}));
+      meter("fenologia", {id:nid(), fecha:masDias(H,-9), fundo:fu, cuartel:q4.nombre, especie:q4.especie, bbch:"71", estado:"Cuaja", fotos:[], nota:""});
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Riego", fecha:H, fundo:fu, cuartel:"", horas:"6", sector:""}));
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Riego", fecha:masDias(H,-5), fundo:fu, cuartel:T.fant, horas:"2", sector:""}));
+      meter("bitacora", {id:nid(), fecha:masDias(H,-5), fundo:fu, nota:"", lineas:[1,2,3].map(i=>({tipo:"Bot Cu Poda", cuartel:T.fant, cantidad:5, unidad:"plantas", personas:1, laborId:null, uid:"bBotCuF"+i}))});
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Fertilización", fecha:H, fundo:fu, cuartel:q1.nombre+", "+q2.nombre, producto:"Bot Cu Urea", dosis:"", via:""}));   // un registro en 2 cuarteles = 1 registro de la semana
+      const dG = []; for(let i=20; i>=1; i--) dG.push(masDias(H,-i));   // días marcados en la grilla de la Gantt hasta ayer, sin bitácora
+      meter("labores", {id:nid(), gid:"", estado:"encurso", avances:[], meta:0, av:"", fecha:dG[0], fecha2:masDias(H,10), tipo:"Bot Cu Desbrote", fundo:fu, cuartel:q4.nombre, desc:"", resp:"", nota:"", unidad:"", real:{dias:dG}});
+      meter("cuarteles", {fundo:fu, nombre:T.pp, especie:"Por plantar", variedad:"", ha:0});
+      guardar();
+      const p = lcPrefs(); delete p.v; delete p.fuAb; p.aviso1 = true; lcPrefsGuardar(p); delete nav.lc;
+      await irA("bitacora");
+      chk(nav.lc && nav.lc.v==="cu" && document.querySelector("#lcVista .lc-cf"), "La Bitácora no abre en la portada Cuarteles", "grave");
+      const seg = buscar('#lcVista [data-acc="vista"][data-v="cu"]');
+      chk(seg && seg.getAttribute("aria-pressed")==="true" && buscar('#lcVista [data-acc="vista"][data-v="dia"]').getAttribute("aria-pressed")==="false", "El segmento [Cuarteles | Día a día] no marca Cuarteles con aria-pressed", "leve");
+      await tocar('#lcVista [data-acc="vista"][data-v="dia"]', "Día a día");
+      chk(nav.lc.v==="dia" && !document.querySelector("#lcVista .lc-cf") && /"v":"dia"/.test(localStorage.getItem("agronotasBitacora")||""), "El segmento no cambia a Día a día (o no se recuerda en el equipo)");
+      await tocar('#lcVista [data-acc="vista"][data-v="cu"]', "Cuarteles");
+      chk(nav.lc.v==="cu" && document.querySelector("#lcVista .lc-cf"), "El segmento no vuelve a Cuarteles");
+    });
+    await paso("Un equipo que usó la Etapa 1 (preferencia {v:'dia'}) también abre en Cuarteles, una sola vez", async ()=>{
+      if(!q4) throw new SinProbar("Hace falta un fundo con 4 cuarteles plantados sin carencia");
+      lcPrefsGuardar({v:"dia", per:"30", aviso1:true}); delete nav.lc;   // así quedaba el equipo: la Etapa 1 guardaba siempre v:"dia"
+      await irA("bitacora");
+      chk(nav.lc.v==="cu" && document.querySelector("#lcVista .lc-cf") && lcPrefs().e2, "Con la preferencia guardada por la Etapa 1 la Bitácora sigue abriendo en Día a día (la portada queda escondida)", "grave");
+      await tocar('#lcVista [data-acc="vista"][data-v="dia"]', "Día a día"); delete nav.lc; await irA("bitacora");
+      chk(nav.lc.v==="dia", "Después de la migración, la vista elegida (Día a día) ya no se respeta", "leve");
+      await tocar('#lcVista [data-acc="vista"][data-v="cu"]', "Cuarteles");
+    });
+    await paso("Una fila por cuartel plantado en cada fundo, con «Todo el fundo» al final", async ()=>{
+      abrirTodos(); await pausa();
+      const ix = lcIdx(), malos = [];
+      fundos().filter(f=>f!==GENERAL).forEach(f=>{
+        const esp = cuartelesDe(f).filter(q=>!porPlantar(q) || (ix.porCu.get(f+"|"+q.nombre)||[]).length).map(q=>q.nombre);
+        const hay = filas(f).filter(el=>!el.classList.contains("fu")).map(nomDe);
+        if(hay.length!==esp.length || esp.some(n=>hay.indexOf(n)<0)) malos.push(f+" ("+hay.length+" de "+esp.length+")");
+        const ult = filas(f).pop(); if(!ult || !ult.classList.contains("fu") || !/Todo el fundo/.test(txtDe(ult))) malos.push(f+": falta «Todo el fundo» al final");
+      });
+      chk(!malos.length, "Las filas no calzan con los cuarteles plantados: "+malos.join(" · "));
+      const cab = txtDe(bloque(fu).querySelector(".lc-cf-b"));
+      chk(new RegExp(plantados(fu).length+" plantados").test(cab) && /registros? esta semana/.test(cab) && /1 en carencia/.test(cab) && /1 por confirmar/.test(cab) && /1 sin dato/.test(cab), "La cabecera del fundo no resume plantados · registros esta semana · en carencia · por confirmar · sin dato: «"+cab.slice(0,140)+"»", "leve");
+      const lun = lcSem(H), filasSem = new Set(); for(let d=0; d<7; d++) (ix.porDia.get(masDias(lun,d))||[]).forEach(i=>{ const e = ix.ev[i]; if(e.fundo===fu) filasSem.add(lcGrupoK(e)); });
+      const mS = /(\d+) registros? esta semana/.exec(cab);
+      chk(mS && +mS[1]===filasSem.size, "«registros esta semana» no cuenta las filas de Día a día (un registro «C1, C2» o un lote es 1): dice "+(mS? mS[1] : "?")+", son "+filasSem.size);
+    });
+    await paso("Estado en texto: en carencia, por confirmar, sin dato y libre (con su franja)", async ()=>{
+      const e1 = q=>{ const el = fila(fu, q.nombre); return el? txtDe(el.querySelector(".lc-cr-e1")) : ""; }, e2 = q=>{ const el = fila(fu, q.nombre); return el? txtDe(el.querySelector(".lc-cr-e2")) : ""; };
+      const cl = q=>{ const el = fila(fu, q.nombre); return el? ["car","pen","sd"].filter(c=>el.classList.contains(c)).join("") : "?"; };
+      chk(e1(q1)==="En carencia hasta "+dm(T.fin) && cl(q1)==="car" && /Bot Cu Karate/.test(e2(q1)), "El cuartel en carencia no dice «En carencia hasta "+dm(T.fin)+"» con el producto y franja roja: «"+e1(q1)+" / "+e2(q1)+"»");
+      chk(e1(q2)==="Por confirmar "+dm(T.fPen) && cl(q2)==="pen", "El cuartel con una aplicación pendiente no dice «Por confirmar "+dm(T.fPen)+"» (franja ámbar): «"+e1(q2)+"»");
+      chk(e1(q3)==="Sin dato de carencia" && cl(q3)==="sd" && /Bot Cu Sin Dato/.test(e2(q3)), "La aplicación sin carencia conocida no dice «Sin dato de carencia» en gris: «"+e1(q3)+"»");
+      chk(e1(q4)==="Libre para cosechar" && cl(q4)==="" && /BBCH 71/.test(e2(q4)) && /hace 9 d/.test(e2(q4)), "El cuartel libre no dice «Libre para cosechar» con «BBCH 71 … hace 9 d»: «"+e1(q4)+" / "+e2(q4)+"»");
+      const u = fila(fu, q3.nombre), u1 = u && u.querySelector(".lc-cr-u1");
+      chk(!u1 || getComputedStyle(u1).display==="none" || /ayer/.test(txtDe(u1)), "«Último» del cuartel aplicado ayer no dice «ayer»: «"+txtDe(u1)+"»", "leve");
+      const g = fila(fu, q4.nombre), g1 = g && g.querySelector(".lc-cr-u1");
+      chk(g && !g.classList.contains("dim") && (!g1 || getComputedStyle(g1).display==="none" || /ayer/.test(txtDe(g1))), "Los días marcados en la Gantt hasta ayer no cuentan como «Último» (el evento va fechado en su primer día): «"+txtDe(g1)+"»"+(g && g.classList.contains("dim")? " y la fila sale atenuada" : ""));
+    });
+    await paso("La semana de la aplicación: «A», «R», ★ y el número calza con los registros", async ()=>{
+      const el = necesito(fila(fu, q1.nombre), "la fila del cuartel en carencia"), k = lcSem(T.fApl), c = necesito(celda(el, k), "la celda de la semana "+k);
+      const letras = txtDe(c.querySelector(".lc-c-l")), n = enSemana(fu, q1.nombre, k), cc = lcIdx().porSem.get(fu+"|"+q1.nombre+"|"+k) || {};
+      const esp = LC_LETRAS.filter(l=>cc[l[0]]>0).slice(0,3).map(l=>l[1]).join("");   // máx. 3 letras en orden A F L N R (con datos de otros bots en esa semana, la R puede quedar fuera)
+      chk(/^A/.test(letras) && letras.replace(/[^A-Z]/g,"")===esp && (esp.length===3 || /R/.test(letras)), "La celda de la semana de la aplicación no muestra «A» (primero) y «R» (o las 3 primeras en orden A F L N R: «"+esp+"»): «"+letras+"»");
+      chk(!!c.querySelector(".lc-c-l .lc-c-s"), "La celda de la aplicación destacada no lleva ★ junto a las letras (AR★)");
+      chk(txtDe(c.querySelector(".lc-c-n"))===String(n), "El número de la celda («"+txtDe(c.querySelector(".lc-c-n"))+"») no es solo el de los "+n+" registros de esa semana (la ★ va con las letras: «★2» se leía como 2 destacados)");
+      chk(/aplicaci/.test(c.getAttribute("aria-label")||"") && /destacad/.test(c.getAttribute("aria-label")||""), "La celda no lee lo que hay (aria-label): «"+(c.getAttribute("aria-label")||"")+"»", "leve");
+      chk(!!el.querySelector(".lc-tira .lc-c.hoy:last-child"), "La semana actual no va en el borde derecho con su fondo", "leve");
+    });
+    await paso("12 meses cambia la tira (y se recuerda)", async ()=>{
+      await tocar({texto:/^12 meses$/, sel:'#lcVista [data-acc="ven"]'}, "12 meses");
+      const el = necesito(fila(fu, q1.nombre), "la fila en 12 meses"), k = T.fApl.slice(0,7), c = celda(el, k), n = enSemana(fu, q1.nombre, k, true);
+      chk(nav.lc.ven==="mes" && c && tieneNum(txtDe(c.querySelector(".lc-c-n")), n, 0) && /mes/.test(txtDe(document.querySelector("#lcVista .lc-ley"))||"mes"), "Con «12 meses» la celda del mes no cuenta los "+n+" registros del mes");
+      chk(/"ven":"mes"/.test(localStorage.getItem("agronotasBitacora")||""), "La ventana elegida no se recuerda en el equipo", "leve");
+      await tocar({texto:/^12 semanas$/, sel:'#lcVista [data-acc="ven"]'}, "12 semanas");
+      chk(nav.lc.ven==="sem", "No se volvió a 12 semanas");
+    });
+    await paso("Los 4 órdenes: catálogo, última actividad, sin movimiento y carencia primero", async ()=>{
+      const pos = n=>cuartelesDe(fu).findIndex(q=>q.nombre===n), nombres = ()=>filas(fu).filter(el=>!el.classList.contains("fu")).map(nomDe);
+      const elegir_ = async (v, t)=>{ await tocar('#lcVista [data-acc="orden"]', "Orden ▾"); await tocar(`#lcVista [data-acc="ord"][data-v="${v}"]`, "Orden: "+t); return nombres(); };
+      let ns = await elegir_("mov", "sin movimiento"), ds = ns.map(n=>ultDe(fu, n));
+      chk(ds.every((d,i)=>!i || ds[i-1]<=d) && nav.lc.ord==="mov", "«Sin movimiento» no deja arriba al más descuidado: "+ns.slice(0,4).map((n,i)=>n+" ("+(ds[i]||"nunca")+")").join(", "));
+      ns = await elegir_("ult", "última actividad"); ds = ns.map(n=>ultDe(fu, n));
+      chk(ds.every((d,i)=>!i || ds[i-1]>=d), "«Última actividad» no deja arriba lo más reciente: "+ns.slice(0,4).join(", "));
+      ns = await elegir_("car", "carencia primero"); const pr = ns.map(n=>{ const el = fila(fu, n); return el.classList.contains("car")? 0 : el.classList.contains("pen")? 1 : el.classList.contains("sd")? 2 : 3; });
+      chk(pr.every((p,i)=>!i || pr[i-1]<=p) && pr[0]===0, "«Carencia primero» no ordena en carencia → por confirmar → sin dato → libre");
+      ns = await elegir_("cat", "catálogo");
+      chk(ns.every((n,i)=>!i || pos(ns[i-1])<pos(n)), "«Catálogo» no sigue el orden de Datos");
+    });
+    await paso("★ Destacados atenúa las filas sin estrella y deja solo las celdas con ★", async ()=>{
+      await tocar('#lcVista [data-acc="solodest"]', "★ Destacados");
+      const a = fila(fu, q1.nombre), b = fila(fu, q4.nombre), vis = filas(fu).flatMap(el=>[...el.querySelectorAll(".lc-c:not(.lc-c0)")]);
+      chk(nav.lc.dest && a && !a.classList.contains("nd") && b && b.classList.contains("nd"), "Con «★ Destacados» no se atenúan las filas sin destacados (o se atenúa la que tiene)");
+      chk(vis.length>0 && vis.every(c=>c.querySelector(".lc-c-s")), "Con «★ Destacados» quedan celdas sin ★");
+      if(lcTemp(T.fApl)===lcTemp(H)) chk(/★\s*1/.test(txtDe(a.querySelector(".lc-cr-st"))), "El cuartel no muestra la estrella con el número de destacados de la temporada", "leve");
+      await tocar('#lcVista [data-acc="solodest"]', "★ Destacados (quitar)");
+    });
+    await paso("Buscar ilumina el cuartel con coincidencias (×N) y atenúa el resto", async ()=>{
+      await escribir("lcQ", "bot cu karate", "Buscar"); await esperar(400);
+      const a = fila(fu, q1.nombre), b = fila(fu, q4.nombre);
+      chk(a && !a.classList.contains("no") && /×1/.test(txtDe(a)) && b && b.classList.contains("no"), "La búsqueda no ilumina el cuartel con la coincidencia (×1) ni atenúa los demás");
+      chk(/1 registro en 1 cuartel/.test(txtDe(document.querySelector("#lcVista .lc-bus"))), "La búsqueda no resume «1 registro en 1 cuartel»", "leve");
+      await tocar('#lcVista [data-acc="qx"]', "Borrar la búsqueda");
+      chk(!nav.lc.q && !document.querySelector("#lcVista .lc-cr.no"), "Al borrar la búsqueda siguen filas atenuadas");
+    });
+    await paso("Al pie del fundo: «Todo el fundo», por plantar y cuarteles que ya no existen", async ()=>{
+      const b = necesito(bloque(fu), "el bloque del fundo"), fr = filas(fu).pop(), hoyC = fr && fr.querySelector(".lc-tira .lc-c.hoy");
+      chk(fr && fr.classList.contains("fu") && hoyC && /R/.test(txtDe(hoyC.querySelector(".lc-c-l"))), "La fila «Todo el fundo» no muestra el riego general de esta semana");
+      const ix = lcIdx(), np = cuartelesDe(fu).filter(q=>porPlantar(q) && !(ix.porCu.get(fu+"|"+q.nombre)||[]).length).length;
+      const pp = b.querySelector('[data-acc="cupp"]');
+      chk(pp && new RegExp("\\+ "+np+" por plantar sin registros").test(txtDe(pp)) && pp.getAttribute("aria-expanded")==="false", "No aparece la línea plegada «+ "+np+" por plantar sin registros»");
+      if(pp){ await tocar(pp, "+ por plantar"); chk(new RegExp(T.pp).test(txtDe(bloque(fu).querySelector(".lc-cf-ppl"))), "Al desplegar «por plantar» no aparece el cuartel por plantar", "leve"); }
+      chk(new RegExp(T.fant+" \\(2 registros\\)").test(txtDe(bloque(fu).querySelector(".lc-cf-hu"))), "No aparece «Cuarteles que ya no existen: "+T.fant+" (2 registros)» (un riego y un día de bitácora con 3 líneas de la misma labor = 2 filas)");
+      await tocar(bloque(fu).querySelector(".lc-cf-b"), "plegar el fundo");
+      chk(nav.lc.fuAb[fu]===false && bloque(fu).querySelector(".lc-cf-b").getAttribute("aria-expanded")==="false" && !filas(fu).length, "El fundo no se pliega con su cabecera (aria-expanded)");
+      await tocar(bloque(fu).querySelector(".lc-cf-b"), "desplegar el fundo");
+      chk(/"fuAb":\{[^}]*true/.test(localStorage.getItem("agronotasBitacora")||""), "Los fundos abiertos no se recuerdan en el equipo", "leve");
+    });
+    await paso("Tocar la fila o una celda abre la ficha; al volver queda en el mismo punto", async ()=>{
+      await tocar(fila(fu, q1.nombre).querySelector(".lc-cr-a"), "la fila de "+q1.nombre);
+      chk(nav.lc.v==="ficha" && nav.lc.ficha && nav.lc.ficha.fundo===fu && nav.lc.ficha.cu===q1.nombre, "Tocar la fila no abre la ficha del cuartel (lcAbrirCu)");
+      await tocar('#lcVista [data-acc="volver"]', "‹ Cuarteles");   // la ficha trae su propia cabecera (sin el segmento)
+      const el = necesito(fila(fu, q4.nombre), "la fila del cuartel libre");
+      el.scrollIntoView({block:"center"}); await esperar(150);
+      const top0 = el.getBoundingClientRect().top, k = (typeof _lcCuW!=="undefined" && _lcCuW[5])? _lcCuW[5].k : "";
+      await tocar(necesito(el.querySelectorAll(".lc-tira .lc-c")[5], "una celda de la tira"), "una celda de la tira");
+      chk(nav.lc.v==="ficha" && nav.lc.ficha.cu===q4.nombre && nav.lc.ficha.w===k, "Tocar una celda no abre la ficha con esa semana a la vista (w="+(nav.lc.ficha && nav.lc.ficha.w)+", se esperaba "+k+")");
+      chk(document.activeElement && document.activeElement.classList.contains("lc-fi-t"), "Al abrir la ficha el foco no va al nombre del cuartel (queda en «"+((document.activeElement||{}).tagName||"")+"»)", "leve");
+      await tocar('#lcVista [data-acc="volver"]', "‹ Cuarteles");
+      const el2 = fila(fu, q4.nombre), top1 = el2? el2.getBoundingClientRect().top : -999;
+      chk(Math.abs(top1-top0)<=6, "Al volver de la ficha la tabla no queda en el mismo punto ("+Math.round(top0)+" → "+Math.round(top1)+" px)", "leve");
+      chk(el2 && el2.contains(document.activeElement), "Al volver de la ficha el foco no vuelve a la fila del cuartel (queda en «"+txtDe(document.activeElement).slice(0,20)+"»)", "leve");
+    });
+    await paso("Medidas: nada se sale a 920 (menú completo), 1.052 (menú mini), 800 (texto grande) y 700 px (iPad vertical)", async ()=>{
+      const v = ver(), malos = [];
+      try{
+        for(const w of [920, 1052, 800, 700]){
+          v.style.width = w+"px"; await esperar(200);
+          const b = bloque(fu), rs = filas(fu), vr = v.getBoundingClientRect();
+          const fuera = [...v.querySelectorAll("*")].filter(e=>{ const r = e.getBoundingClientRect(); return r.width>0 && r.right>vr.right+1 && !e.closest(".lc-chips, .lc-menu"); });
+          const ancho = Math.min(...rs.flatMap(r=>[...r.querySelectorAll(".lc-tira .lc-c")]).map(c=>c.getBoundingClientRect().width));
+          const cortado = rs.map(r=>r.querySelector(".lc-cr-nm b")).filter(n=>n && n.scrollWidth>n.clientWidth+1);
+          const u = rs[0] && rs[0].querySelector(".lc-cr-u"), uVis = !!u && getComputedStyle(u).display!=="none", ap = rs[0] && /"e t"/.test(getComputedStyle(rs[0]).gridTemplateAreas);
+          if(fuera.length) malos.push(w+" px: se sale «"+(fuera[0].className||fuera[0].tagName)+"»");
+          if(b.scrollWidth>b.clientWidth+1) malos.push(w+" px: el bloque necesita desplazamiento lateral");
+          if(ancho<27.5) malos.push(w+" px: celdas de "+Math.round(ancho)+" px");
+          if(cortado.length) malos.push(w+" px: nombre cortado «"+txtDe(cortado[0])+"»");
+          if(w>=920 && !uVis) malos.push(w+" px: no se ve «Último»");
+          if(w<780 && (uVis || !ap)) malos.push(w+" px: no se apilan nombre y estado (o sigue «Último»)");
+          if(w>=780 && w<900 && (uVis || ap)) malos.push(w+" px: con 3 columnas caben celdas de 28 px, pero "+(ap? "se apilan nombre y estado (filas del doble)" : "sigue «Último»"));
+        }
+      } finally { v.style.width = ""; }
+      chk(!malos.length, "Medidas de la tabla: "+malos.join(" · "));
+    });
+    await paso("Celular: filas de dos líneas sin tira, lo urgente en texto y Orden en un chip-menú", async ()=>{
+      try{
+        D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si"}); uiAplicar(); await irA("bitacora");
+        const rs = filas(fu), a = fila(fu, q1.nombre), d = fila(fu, q4.nombre);
+        chk(rs.length && !document.querySelector("#lcVista .lc-tira") && rs.every(el=>el.getBoundingClientRect().height>=60 && el.querySelector(".lc-crm-1") && el.querySelector(".lc-crm-2")), "En el celular las filas no son de dos líneas (64 px) o sigue la tira de semanas");
+        chk(a && /^En carencia hasta/.test(txtDe(a.querySelector(".lc-crm-2"))) && d && /^Libre · BBCH 71 · 9 d/.test(txtDe(d.querySelector(".lc-crm-2"))), "En el celular la segunda línea no dice lo más urgente («En carencia hasta…», «Libre · BBCH 71 · 9 d»)");
+        const cabM = txtDe(bloque(fu) && bloque(fu).querySelector(".lc-cf-b"));
+        chk(/1 en carencia/.test(cabM) && !/plantados|esta semana/.test(cabM), "En el celular la cabecera del fundo no deja solo lo urgente: «"+cabM.slice(0,120)+"»", "leve");
+        const fbs = [...document.querySelectorAll("#lcVista .lc-fbs button")].filter(visible);
+        chk(fbs.length===2 && fbs.every(b=>{ const r = b.getBoundingClientRect(); return r.left>=0 && r.right<=innerWidth+1; }), "En el celular no están [Orden ▾] y [★] completos en la pantalla", "leve");
+        await tocar('#lcVista [data-acc="hord"]', "Orden ▾ (celular)");
+        chk(modalAbierto() && document.querySelectorAll("#capaModal .lc-chip").length===LC_ORDS.length+LC_VENS.length, "El chip-menú del celular no abre la hoja con el orden y la ventana", "leve");
+        if(modalAbierto()) await cancelarModal();
+        await tocar(a, "la fila (celular)");
+        chk(nav.lc.v==="ficha" && nav.lc.ficha.cu===q1.nombre, "En el celular tocar la fila no abre la ficha");
+      } finally { D.ui = JSON.parse(ui0); uiAplicar(); render(); }
+    });
+  } finally {
+    nuevos.forEach(([col, o])=>{ D[col] = (D[col]||[]).filter(x=>x!==o); }); if(nuevos.length) guardar();
+    if(lc0) nav.lc = JSON.parse(lc0); else delete nav.lc;
+    if(p0==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", p0);
+    render();
+  }
+}});
+
+/* 📗 FICHA DEL CUARTEL (Bitácora, Etapa 2) ---------------------------------------------- */
+BOTS.push({id:"ficha", modulo:"Bitácora", nombre:"Tomás, mira un cuartel", ico:"📗", que:"Ficha del cuartel: se abre desde la portada con su nombre y las 4 casillas (carencia, BBCH, última aplicación con n.ª, última labor), ‹ › y los chips cambian de cuartel, una casilla filtra el libro, meses que se pliegan y se arman al abrir con su resumen, la minimatriz cuadra con los registros, los destacados llevan a su fila, «Incluir lo de todo el fundo», la temporada anterior (sep-ago), el resumen por unidad, los chips y enlaces de Día a día, el mapa, Hoy y Fenología abren la ficha, cuartel que ya no existe y «Todo el fundo», y el celular en una columna y en el espejo sin botones que escriben", correr: async ()=>{
+  const H = HOY(), lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null, p0 = localStorage.getItem("agronotasBitacora"), ui0 = JSON.stringify(D.ui||{}), rol0 = D.sync? D.sync.rol : undefined;
+  const fn = typeof fenNav==="function"? fenNav() : null, fn0 = fn? JSON.stringify(fn) : null;
+  const dm = iso=>String(iso).slice(8,10)+"-"+String(iso).slice(5,7), porPlantar = q=>/por plantar/i.test(q.especie||"");
+  const libres = f=>plantados(f).filter(q=>q.id!=null && typeof carenciaDe==="function" && !carenciaDe(q));
+  const fu = fundosConCuarteles().find(f=>libres(f).length>=3);
+  const q1 = fu? libres(fu)[0] : null;
+  const navL = fu? cuartelesDe(fu).filter(q=>!porPlantar(q) || ((typeof lcIdx==="function" && lcIdx().porCu.get(fu+"|"+q.nombre))||[]).length) : [];
+  const q2 = q1? navL[(navL.indexOf(q1)+1)%navL.length] : null, q3 = q1? navL.find(q=>q!==q1 && q!==q2) : null;
+  const nuevos = [], meter = (col, o)=>{ D[col] = D[col]||[]; D[col].push(o); nuevos.push([col, o]); return o; };
+  const vac = ()=>({fotos:[], docs:[], audios:[], pin:"baja", gps:null, obs:""});
+  const q = s=>document.querySelector("#lcVista "+s), qa = s=>[...document.querySelectorAll("#lcVista "+s)];
+  const cas = i=>txtDe(qa(".lc-fi-acs > .lc-fi-ac")[i]);   // 0 carencia · 1 fenología · 2 última aplicación · 3 última labor
+  const filasLibro = ()=>qa(".lc-fm-c .lc-it");
+  const filaDe = re=>filasLibro().find(el=>re.test(txtDe(el.querySelector(".lc-it-t b")))) || null;
+  const enPantalla = el=>{ if(!el) return false; const r = el.getBoundingClientRect(); return r.bottom>0 && r.top<innerHeight; };
+  const T = {t0:null, d5:masDias(H,-5), d12:masDias(H,-12), lote:"apBotFi"+Date.now(), dict:"alBotFi"+Date.now(), fant:"Cuartel Bot Fi Fantasma"};
+  const abrirFicha = async (cu, desc)=>{ if(!T.t0) throw new SinProbar("No se pudieron preparar los datos de prueba de la ficha"); lcAbrirCu(fu, cu); await pausa(); await esperar(150); necesito(q(".lc-fi"), "la ficha de "+desc); };
+  const horasDe = e=>{ if(e.st==="registros"){ const x = numES((lcFuente(e)||{}).horas); return x>0? x : 0; } return (e.cant>0 && /^(h|hrs?|horas?)\.?$/i.test(String(e.uni||"").trim()))? e.cant : 0; };
+  try{
+    await paso("Tocar un cuartel en la portada abre su ficha con su nombre y sus 4 casillas", async ()=>{
+      if(typeof lcFichaHTML!=="function" || typeof lcFiAcsHTML!=="function") throw new SinProbar("La app no tiene la ficha del cuartel");
+      if(!q1 || !q2 || !q3) throw new SinProbar("Hace falta un fundo con 3 cuarteles plantados sin carencia");
+      T.t0 = lcTempRango(lcTemp(H)).desde;
+      /* datos de prueba propios (los de hoy van con el id más alto: son lo último del cuartel aunque haya datos reales) */
+      T.apl = meter("registros", Object.assign(vac(), {id:nid(), tipo:"Aplicación", estado:"aplicado", fecha:H, fechaReal:H, fechaPlan:H, fundo:fu, cuartel:q1.nombre, producto:"Bot Fi Karate", dosis:"", objetivo:"", carencia:"5", dest:true, origen:"asis", asisLote:T.dict, dictado:"se aplicó karate y hay arañita en el otro cuartel", dictadoFh:new Date().toISOString(), equipo:"ipad"}));
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Aplicación", estado:"aplicado", fecha:T.d12, fechaReal:T.d12, fechaPlan:T.d12, fundo:fu, cuartel:q1.nombre, producto:"Bot Fi Karate", dosis:"", objetivo:"", carencia:"5"}));
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Aplicación", estado:"pendiente", fecha:masDias(H,3), fechaPlan:masDias(H,3), fundo:fu, cuartel:q1.nombre, producto:"Bot Fi Aceite", dosis:"", objetivo:"", carencia:"1"}));
+      [q1, q2].forEach(x=>meter("registros", Object.assign(vac(), {id:nid(), tipo:"Aplicación", estado:"aplicado", aplId:T.lote, fecha:masDias(H,-8), fechaReal:masDias(H,-8), fechaPlan:masDias(H,-8), fundo:fu, cuartel:x.nombre, producto:"Bot Fi Movento", dosis:"", objetivo:"", carencia:"7"})));
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Riego", fecha:masDias(H,-3), fundo:fu, cuartel:q1.nombre, horas:"4", sector:""}));
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Riego", fecha:H, fundo:fu, cuartel:"", horas:"6", sector:"", dest:true}));   // destacado del fundo: va en los chips, no en el ★ de la cabecera
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Riego", fecha:H, fundo:fu, cuartel:"", horas:"3", sector:""}));
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Aplicación", estado:"aplicado", fecha:masDias(T.t0,-10), fechaReal:masDias(T.t0,-10), fechaPlan:masDias(T.t0,-10), fundo:fu, cuartel:q1.nombre, producto:"Bot Fi Cobre", dosis:"", objetivo:"", carencia:"0"}));
+      meter("registros", Object.assign(vac(), {id:nid(), tipo:"Riego", fecha:T.d5, fundo:fu, cuartel:T.fant, horas:"2", sector:""}));
+      meter("fenologia", {id:nid(), fecha:H, fundo:fu, cuartel:q1.nombre, especie:q1.especie, bbch:"71", estado:"Cuaja", fotos:[], nota:""});
+      meter("fenologia", {id:nid(), fecha:masDias(T.t0,-40), fundo:fu, cuartel:q1.nombre, especie:q1.especie, bbch:"55", estado:"", fotos:[], nota:""});
+      meter("bitacora", {id:nid(), fecha:H, fundo:fu, nota:"", lineas:[{tipo:"Bot Fi Amarre", cuartel:q1.nombre, cantidad:300, unidad:"plantas", personas:5, laborId:null, uid:"bBotFi1"}]});
+      meter("bitacora", {id:nid(), fecha:T.d5, fundo:fu, nota:"", lineas:[{tipo:"Bot Fi Amarre", cuartel:q1.nombre, cantidad:150, unidad:"planta", personas:2, laborId:null, uid:"bBotFi2"},{tipo:"Bot Fi Amarre", cuartel:q1.nombre, cantidad:2, unidad:"hileras", personas:1, laborId:null, uid:"bBotFi3"}]});
+      meter("bitacora", {id:nid(), fecha:H, fundo:fu, nota:"", lineas:[{tipo:"Bot Fi Raleo", cuartel:q2.nombre, cantidad:80, unidad:"plantas", personas:3, laborId:null, uid:"bBotFi4"}]});
+      meter("notas", {id:nid(), fh:new Date().toISOString(), titulo:"Bot Fi Arañita roja", texto:"hileras 12 a 14", fundo:fu, cuartel:q3.nombre, cat:"Urgente", fotos:[], docs:[], audios:[], check:[], pins:[], gps:null, pin:"baja", resuelta:false, origen:"asis", asisLote:T.dict});
+      meter("notas", {id:nid(), fh:new Date(Date.now()-3600e3).toISOString(), titulo:"Bot Fi Gotero roto", texto:"hilera 8", fundo:fu, cuartel:q1.nombre, cat:"Urgente", fotos:[], docs:[], audios:[], check:[], pins:[], gps:null, pin:"baja", resuelta:false});
+      guardar();
+      const p = lcPrefs(); p.aviso1 = true; lcPrefsGuardar(p);
+      nav.lc = {v:"cu", fuAb:{[fu]:true}};
+      await irA("bitacora");
+      const row = [...document.querySelectorAll("#lcVista .lc-cr:not(.lc-cr-h), #lcVista .lc-crm")].find(el=>txtDe(el.querySelector(".lc-cr-nm b, .lc-crm-1 b"))===q1.nombre);
+      await tocar(necesito(row && (row.querySelector(".lc-cr-a") || row), "la fila de "+q1.nombre+" en la portada"), "la fila de "+q1.nombre);
+      chk(nav.lc.v==="ficha" && nav.lc.ficha.fundo===fu && nav.lc.ficha.cu===q1.nombre && txtDe(q(".lc-fi-nom"))===q1.nombre, "Tocar el cuartel no abre su ficha con su nombre", "grave");
+      chk(!document.getElementById("lcQ") && q('[data-acc="volver"]'), "La ficha no trae su propia cabecera (‹ Cuarteles) o sigue el buscador de la portada", "leve");
+      const tr = lcTempRango(lcTemp(H)), nd = (lcIdx().porCu.get(fu+"|"+q1.nombre)||[]).filter(e=>e.dest && e.fecha>=tr.desde && e.fecha<=tr.hasta).length, st = txtDe(q(".lc-fi-t .lc-cr-st [aria-hidden]"));
+      chk(st==="★"+nd, "El ★ de la cabecera no cuenta solo los destacados propios de la temporada ("+nd+", como la portada): dice «"+st+"»", "leve");
+      const nA = T.d12>=T.t0? 2 : 1;
+      chk(/En carencia/.test(cas(0)) && cas(0).indexOf("hasta "+dm(masDias(H,5)))>=0 && /Bot Fi Karate/.test(cas(0)), "La casilla Carencia no dice «En carencia · hasta "+dm(masDias(H,5))+" · Bot Fi Karate»: «"+cas(0)+"»");
+      chk(/BBCH 71/.test(cas(1)) && /Cuaja/.test(cas(1)) && /hoy/.test(cas(1)), "La casilla Fenología no dice «BBCH 71 · Cuaja · hoy»: «"+cas(1)+"»");
+      chk(/Bot Fi Karate/.test(cas(2)) && cas(2).indexOf(nA+".ª esta temporada")>=0, "La casilla Última aplicación no dice «Bot Fi Karate · "+nA+".ª esta temporada»: «"+cas(2)+"»");
+      chk(/Bot Fi Amarre/.test(cas(3)) && /300 plantas/.test(cas(3)) && /5 pers/.test(cas(3)) && /hoy/.test(cas(3)), "La casilla Última labor no dice «Bot Fi Amarre · 300 plantas · 5 pers. · hoy»: «"+cas(3)+"»");
+      const pd = q(".lc-fi-pend");
+      chk(pd && /Por confirmar \(1\)/.test(txtDe(pd)) && /Bot Fi Aceite/.test(txtDe(pd)) && pd.querySelector('[data-acc="ficonf"]'), "«Por confirmar» del cuartel no muestra la aplicación pendiente con [Confirmar]");
+      if(pd && pd.querySelector('[data-acc="ficonf"]')){ await tocar(pd.querySelector('[data-acc="ficonf"]'), "Confirmar"); chk(modalAbierto() && /Confirmar aplicación/.test(txtDe(document.querySelector("#capaModal .mh"))), "[Confirmar] no abre regConfirmar (fecha real)"); await cancelarModal(); }
+    });
+    await paso("‹ › y los chips cambian de cuartel sin volver a la tabla", async ()=>{
+      await abrirFicha(q1.nombre, q1.nombre);
+      const lst = (typeof _lcFi!=="undefined" && _lcFi.cus)||[], i = lst.findIndex(x=>x.cu===q1.nombre), sig = lst[(i+1)%lst.length];
+      await tocar('#lcVista [data-acc="fisig"][data-v="1"]', "Cuartel siguiente ›");
+      chk(sig && nav.lc.ficha.cu===sig.cu && txtDe(q(".lc-fi-nom"))===(sig.cu || "Todo el fundo") && txtDe(q(".lc-fi-cus .lc-chip.act")).indexOf(sig.cu || "Todo el fundo")>=0, "› no pasa al cuartel siguiente («"+(sig && sig.cu)+"»)");
+      if(sig && sig.cu===q2.nombre) chk(/Bot Fi Raleo/.test(cas(3)), "Al cambiar de cuartel la casilla Última labor no cambia («"+cas(3)+"»)");
+      await tocar('#lcVista [data-acc="fisig"][data-v="-1"]', "‹ Cuartel anterior");
+      chk(nav.lc.ficha.cu===q1.nombre, "‹ no vuelve al cuartel anterior");
+      const c2 = qa('.lc-fi-cus [data-acc="ficu"]').find(b=>txtDe(b)===q2.nombre);
+      await tocar(necesito(c2, "el chip de "+q2.nombre), "chip "+q2.nombre);
+      chk(nav.lc.ficha.cu===q2.nombre && c2 && q('.lc-fi-cus .lc-chip.act') && txtDe(q('.lc-fi-cus .lc-chip.act'))===q2.nombre, "El chip de otro cuartel no abre su ficha");
+    });
+    await paso("Tocar una casilla filtra el libro por su categoría (y otra vez lo quita)", async ()=>{
+      await abrirFicha(q1.nombre, q1.nombre);
+      const labB = ()=>qa(".lc-fi-acs > .lc-fi-ac")[3];
+      await tocar(labB(), "casilla Última labor");
+      const fs = filasLibro();
+      chk(nav.lc.fcat==="lab" && labB().getAttribute("aria-pressed")==="true" && fs.length && fs.every(el=>el.classList.contains("c-lab")), "La casilla Última labor no deja solo las labores en el libro");
+      chk(/Labores/.test(txtDe(q('[data-acc="fichip"].act'))), "El chip «Labores» no queda marcado con el filtro de la casilla", "leve");
+      await tocar(labB(), "casilla Última labor (quitar)");
+      chk(nav.lc.fcat==="" && filasLibro().some(el=>el.classList.contains("c-apl")), "Tocar otra vez la casilla no quita el filtro");
+      await tocar(qa(".lc-fi-acs > .lc-fi-ac")[1], "casilla Fenología");
+      chk(filasLibro().length && filasLibro().every(el=>el.classList.contains("c-fen")), "La casilla Fenología no filtra el libro por fenología");
+      await tocar(qa(".lc-fi-acs > .lc-fi-ac")[1], "casilla Fenología (quitar)");
+      await tocar(qa(".lc-fi-acs > .lc-fi-ac")[0], "casilla Carencia");
+      const pr = qa(".lc-fi-acs > .lc-fi-ac").map(b=>b.getAttribute("aria-pressed"));
+      chk(nav.lc.fcat==="apl" && pr[0]==="true" && pr[2]==="false", "Al tocar Carencia quedan marcadas dos casillas (Carencia y Última aplicación filtran las dos por aplicaciones): "+pr.join(", "), "leve");
+      await tocar(qa(".lc-fi-acs > .lc-fi-ac")[0], "casilla Carencia (quitar)");
+      chk(nav.lc.fcat==="", "Tocar otra vez Carencia no quita el filtro");
+    });
+    await paso("El mes actual y el anterior vienen abiertos; un mes se pliega, se arma al abrir y su resumen cuenta bien", async ()=>{
+      await abrirFicha(q1.nombre, q1.nombre);
+      const m = H.slice(0,7), b = ()=>q(`[data-acc="fimes"][data-b="${m}"]`);
+      const nO = new Set((lcIdx().porCu.get(fu+"|"+q1.nombre)||[]).filter(e=>e.fecha && e.fecha.slice(0,7)===m && e.fecha>=T.t0).map(e=>lcGrupoK(e))).size;
+      const tit = MESES_L[+m.slice(5,7)-1]+" "+m.slice(0,4);
+      chk(b() && b().getAttribute("aria-expanded")==="true" && document.getElementById("lcFm"+m) && filaDe(/^Bot Fi Karate$/), "El mes actual no viene abierto con sus filas");
+      chk(new RegExp("^"+tit+" · "+nO+" registros?").test(txtDe(b())) && /\+ \d+ del fundo/.test(txtDe(b())), "El resumen del mes no cuenta los "+nO+" registros propios + los del fundo: «"+txtDe(b())+"»");
+      await tocar(b(), "plegar "+tit);
+      chk(b().getAttribute("aria-expanded")==="false" && !document.getElementById("lcFm"+m) && nav.lc.abiertos["fm:"+m]===false, "El mes no se pliega (o deja su contenido armado)");
+      await tocar(b(), "abrir "+tit);
+      chk(b().getAttribute("aria-expanded")==="true" && document.getElementById("lcFm"+m) && filaDe(/^Bot Fi Amarre$/), "Al abrir el mes no se arman sus filas");
+      const f1 = q(".lc-fm-c .lc-fi-dia"), ds = qa(`#lcFm${m} .lc-fi-dia`).map(d=>d.getAttribute("data-dia"));
+      chk(f1 && /\d/.test(txtDe(f1.querySelector(".lc-fi-f"))) && ds.length===new Set(ds).size, "La fecha no va una sola vez por día a la izquierda de sus filas", "leve");
+    });
+    await paso("La minimatriz cuadra con los registros de cada semana", async ()=>{
+      await abrirFicha(q1.nombre, q1.nombre);
+      const W = (typeof _lcFi!=="undefined" && _lcFi.W)||[], cols = qa(".lc-mx .lc-mx-c"), malos = [], evs = lcIdx().porCu.get(fu+"|"+q1.nombre)||[], mes = nav.lc.ven==="mes";
+      const kDe = f=>mes? f.slice(0,7) : lcSem(f);   // la ventana de la portada: 12 semanas (lunes) o 12 meses
+      chk(cols.length===12 && W.length===12, "La minimatriz no tiene 12 columnas");
+      const cats = ["apl","lab","fen","nota","riego"];
+      W.forEach((w,i)=>{
+        const c = {apl:0, lab:0, fen:0, nota:0, riego:0}; evs.forEach(e=>{ if(e.fecha && kDe(e.fecha)===w.k){ const g = e.cat==="fert"? "riego" : e.cat; if(g in c) c[g]++; } });
+        const ns = cols[i]? [...cols[i].querySelectorAll(".lc-mx-n")].map(n=>txtDe(n)==="·"? 0 : +txtDe(n)) : [];
+        cats.forEach((k,j)=>{ if(ns[j]!==c[k]) malos.push(w.k+" "+k+": "+ns[j]+" en vez de "+c[k]); });
+      });
+      chk(!malos.length, "La minimatriz no cuadra con los registros: "+malos.slice(0,4).join(" · "));
+      const k = kDe(T.d12), a = mes? k+"-01" : k, b = mes? lcMesFin(a) : masDias(k,6), wi = W.findIndex(w=>w.k===k), col = cols[wi];
+      if(col && col.tagName==="BUTTON"){
+        await tocar(col, "la columna de "+(mes? "ese mes" : "la semana del "+dm(k))); await esperar(300);
+        const d = qa(".lc-fi-dia").find(x=>{ const f = x.getAttribute("data-dia"); return f>=a && f<=b; });
+        chk(d && enPantalla(d), "Tocar una columna no baja el libro a "+(mes? "ese mes" : "esa semana"));
+      }
+    });
+    await paso("Un destacado lleva a su fila (abre su mes) y la resalta", async ()=>{
+      await abrirFicha(q1.nombre, q1.nombre);
+      const m = H.slice(0,7), b = q(`[data-acc="fimes"][data-b="${m}"]`); if(b && b.getAttribute("aria-expanded")==="true") await tocar(b, "plegar el mes actual");
+      const dc = qa('[data-acc="fidest"]').find(x=>/Bot Fi Karate/.test(txtDe(x)));
+      await tocar(necesito(dc, "el destacado «Bot Fi Karate»"), "★ Bot Fi Karate"); await esperar(250);
+      const f = filaDe(/^Bot Fi Karate$/);
+      chk(q(`[data-acc="fimes"][data-b="${m}"]`).getAttribute("aria-expanded")==="true" && f && f.classList.contains("lc-flash") && enPantalla(f), "El destacado no abre su mes ni baja a su fila resaltada");
+    });
+    await paso("«Incluir lo de todo el fundo» agrega y quita lo del fundo (riegos generales juntos por semana)", async ()=>{
+      await abrirFicha(q1.nombre, q1.nombre);
+      const rg = ()=>filasLibro().find(el=>/Riego general del fundo/.test(txtDe(el)));
+      const r = rg();
+      chk(nav.lc.fFu && r && r.classList.contains("lc-fi-fu") && /\d+ riegos/.test(txtDe(r)) && /todo el fundo/.test(txtDe(r.querySelector(".lc-cu.fu"))), "Lo del fundo no aparece atenuado, con su rótulo y los riegos generales de la semana en una fila");
+      await tocar('#lcVista [data-acc="fifu"]', "Incluir lo de todo el fundo (quitar)");
+      chk(nav.lc.fFu===false && !qa(".lc-it.lc-fi-fu").length && !/del fundo/.test(txtDe(q(`[data-acc="fimes"][data-b="${H.slice(0,7)}"]`))), "Al quitar «Incluir lo de todo el fundo» siguen las filas del fundo");
+      chk(/"fFu":false/.test(localStorage.getItem("agronotasBitacora")||""), "«Incluir lo de todo el fundo» no se recuerda en el equipo", "leve");
+      await tocar('#lcVista [data-acc="fifu"]', "Incluir lo de todo el fundo");
+      chk(nav.lc.fFu===true && rg(), "Al volver a marcar la casilla no vuelve lo del fundo");
+    });
+    await paso("La temporada anterior (septiembre a agosto) y un mes plegado que se arma al abrirlo", async ()=>{
+      await abrirFicha(q1.nombre, q1.nombre);
+      const ant = lcTemp(masDias(T.t0,-1)), ra = lcTempRango(ant);
+      await tocar('#lcVista [data-acc="fitemp"][data-v="-1"]', "Temporada ‹");
+      const rgTxt = txtDe(q(".lc-fi-rg"));
+      chk(nav.lc.fTemp===ant && txtDe(q(".lc-fi-temp b"))===ant && rgTxt===MESES[+ra.desde.slice(5,7)-1]+" "+ra.desde.slice(0,4)+" – "+MESES[+ra.hasta.slice(5,7)-1]+" "+ra.hasta.slice(0,4), "‹ no cambia a la temporada "+ant+" («"+rgTxt+"»)");
+      chk(filaDe(/^Bot Fi Cobre$/), "En la temporada anterior no aparece su último mes abierto con lo anotado");
+      const mF = masDias(T.t0,-40).slice(0,7), b = q(`[data-acc="fimes"][data-b="${mF}"]`);
+      chk(b && b.getAttribute("aria-expanded")==="false" && !document.getElementById("lcFm"+mF) && /BBCH 55/.test(txtDe(b)), "Un mes viejo no viene plegado con su resumen («… · BBCH 55»)");
+      if(b){ await tocar(b, "abrir "+txtDe(b).slice(0,20)); chk(document.getElementById("lcFm"+mF) && filaDe(/^BBCH 55/), "El mes plegado no se arma al abrirlo"); }
+      await tocar('#lcVista [data-acc="fitemp"][data-v="1"]', "Temporada ›");
+      chk(nav.lc.fTemp==="" && q('[data-acc="fitemp"][data-v="1"]').disabled, "› no vuelve a la temporada actual (o deja pasar al futuro)");
+    });
+    await paso("El resumen de la temporada separa unidades, cuenta por producto y suma las horas de riego", async ()=>{
+      await abrirFicha(q1.nombre, q1.nombre);
+      await tocar('#lcVista [data-acc="fires"]', "Resumen de la temporada");
+      const r = txtDe(q("#lcFiRes")), en = d=>d>=T.t0, pl = 300+(en(T.d5)? 150 : 0);
+      chk(new RegExp("Bot Fi Karate · "+(en(T.d12)? "2 veces" : "1 vez")).test(r), "El resumen no cuenta las veces de «Bot Fi Karate»: «"+r.slice(0,160)+"»");
+      chk(new RegExp("Bot Fi Amarre .*"+lcNum(pl)+" plantas").test(r) && (!en(T.d5) || /2 hileras/.test(r)) && !new RegExp(lcNum(pl+2)).test(r), "El resumen mezcla unidades o no suma por unidad («"+lcNum(pl)+" plantas · 2 hileras»)");
+      const hs = (lcIdx().porCu.get(fu+"|"+q1.nombre)||[]).filter(e=>e.cat==="riego" && e.fecha>=T.t0 && e.fecha<=lcTempRango(lcTemp(H)).hasta).reduce((s,e)=>s+horasDe(e), 0);
+      chk(tieneNum(r.slice(r.indexOf("Riego")), hs) && /Riegos generales del fundo/.test(r), "El resumen no suma las "+hs+" h de riego del cuartel (o mezcla los riegos generales)");
+      chk(/BBCH 71/.test(r) && /Bot Fi Gotero roto/.test(r), "El resumen no trae la secuencia de BBCH o las notas sin resolver", "leve");
+      chk(!/rendimiento|\/pers/i.test(r.replace(/sin rendimientos/i,"")), "El resumen muestra rendimientos promedio", "leve");
+    });
+    await paso("Desde Día a día el cuartel del detalle abre la ficha y «‹ Día a día» vuelve al mismo punto (los chips de la fila son solo texto)", async ()=>{
+      await abrirFicha(q1.nombre, q1.nombre);
+      await tocar('#lcVista [data-acc="volver"]', "‹ Cuarteles"); await tocar('#lcVista [data-acc="vista"][data-v="dia"]', "Día a día");
+      const raleo = ()=>[...document.querySelectorAll("#lcVista .lc-it")].find(el=>/^Bot Fi Raleo$/.test(txtDe(el.querySelector(".lc-it-t b")))) || null;
+      const fRal = necesito(raleo(), "la fila Bot Fi Raleo en Día a día");
+      chk(![...document.querySelectorAll("#lcVista .lc-it-b [data-acc]")].length, "Dentro del botón de una fila hay otro blanco de toque (chip de cuartel de 20 px)", "leve");
+      fRal.scrollIntoView({block:"center"}); await esperar(100);
+      await tocar(fRal.querySelector(".lc-it-b"), "abrir Bot Fi Raleo");
+      const top0 = raleo().getBoundingClientRect().top, lk0 = [...document.querySelectorAll(`#${raleo().id}d [data-acc="acu"]`)].find(b=>txtDe(b)===q2.nombre);
+      chk(!lk0 || lk0.getBoundingClientRect().height>=33, "El enlace del cuartel en el detalle mide menos de 34 px", "leve");
+      await tocar(necesito(lk0, "el enlace de "+q2.nombre+" en el detalle"), q2.nombre+" (detalle de Día a día)");
+      chk(nav.lc.v==="ficha" && nav.lc.ficha.cu===q2.nombre, "El cuartel del detalle de Día a día no abre su ficha", "grave");
+      const vb = q('[data-acc="volver"]');
+      chk(vb && txtDe(vb)==="Día a día" && /Volver a Día a día/.test(vb.getAttribute("aria-label")||""), "La ficha abierta desde Día a día no ofrece «‹ Día a día»: «"+txtDe(vb)+"»");
+      await tocar(vb, "‹ Día a día");
+      const r3 = raleo();
+      chk(nav.lc.v==="dia" && r3 && Math.abs(r3.getBoundingClientRect().top-top0)<=6, "«‹ Día a día» no vuelve al mismo punto de la lista ("+Math.round(top0)+" → "+(r3? Math.round(r3.getBoundingClientRect().top) : "?")+" px)");
+      chk(r3 && r3.contains(document.activeElement), "Al volver a Día a día el foco no queda en la fila abierta", "leve");
+      const fK = [...document.querySelectorAll("#lcVista .lc-it")].find(el=>/^Bot Fi Karate$/.test(txtDe(el.querySelector(".lc-it-t b"))) && el.closest(".lc-dia") && el.closest(".lc-dia").getAttribute("data-dia")===H);
+      await tocar(necesito(fK, "la fila de Bot Fi Karate").querySelector(".lc-it-b"), "abrir Bot Fi Karate");
+      const lk = [...document.querySelectorAll(`#${fK.id}d [data-acc="acu"]`)].find(b=>txtDe(b)===q1.nombre);
+      await tocar(necesito(lk, "el enlace del cuartel en el detalle"), q1.nombre+" (detalle)");
+      chk(nav.lc.v==="ficha" && nav.lc.ficha.cu===q1.nombre, "El cuartel del detalle no abre su ficha");
+      const fK2 = necesito(filaDe(/^Bot Fi Karate$/), "Bot Fi Karate en la ficha");
+      if(fK2.querySelector(".lc-it-b").getAttribute("aria-expanded")!=="true") await tocar(fK2.querySelector(".lc-it-b"), "abrir Bot Fi Karate (ficha)");   // la fila abierta en Día a día sigue abierta en la ficha
+      const dc = document.querySelector(`#${fK2.id}d [data-acc="dict"]`);
+      chk(dc && txtDe(dc)===q3.nombre, "El detalle no enlaza «del mismo dictado» con "+q3.nombre);
+      if(dc){ await tocar(dc, "mismo dictado › "+q3.nombre); chk(nav.lc.ficha.cu===q3.nombre, "El enlace «mismo dictado» no abre la ficha del otro cuartel"); }
+      await abrirFicha(q1.nombre, q1.nombre);
+      const fM = necesito(filaDe(/^Bot Fi Movento$/), "el lote Bot Fi Movento");
+      chk(/lote de 2 cuarteles/.test(txtDe(fM)) && [...fM.querySelectorAll(".lc-it-t .lc-cu")].map(txtDe).join("|")===q2.nombre, "La fila del lote no dice «lote de 2 cuarteles» con solo el otro cuartel en chip", "leve");
+      await tocar(fM.querySelector(".lc-it-b"), "abrir el lote");
+      const lq2 = [...document.querySelectorAll(`#${fM.id}d [data-acc="acu"]`)].find(b=>txtDe(b)===q2.nombre);
+      chk(lq2 && ![...document.querySelectorAll(`#${fM.id}d [data-acc="acu"]`)].some(b=>txtDe(b)===q1.nombre), "En el lote, el otro cuartel no es enlace (o el cuartel abierto se enlaza a sí mismo)");
+      if(lq2){ await tocar(lq2, "lote › "+q2.nombre); chk(nav.lc.ficha.cu===q2.nombre, "El enlace del lote no abre la ficha del otro cuartel"); }
+    });
+    await paso("El mapa (popup y ficha de información), «Termina carencia» de Hoy y Fenología abren la ficha", async ()=>{
+      if(!T.t0) throw new SinProbar("No se pudieron preparar los datos de prueba de la ficha");
+      let p = (D.mapoly||[]).find(x=>x.tipo==="Cuartel" && cuartelDe(x)===q1);
+      if(!p) p = meter("mapoly", {id:nid(), tipo:"Cuartel", forma:"area", nombre:q1.nombre, fundoRef:fu, cuartelRef:q1.nombre, pts:[[-33.405,-71.136],[-33.405,-71.134],[-33.403,-71.134],[-33.403,-71.136]], estilo:{}});
+      await irA("panel"); lcAbrirCuMapa(p.id); await pausa();
+      chk(nav.tab==="bitacora" && nav.lc.v==="ficha" && nav.lc.ficha.cu===q1.nombre && q(".lc-fi"), "«Bitácora del cuartel» del popup del mapa no abre la ficha", "grave");
+      await irA("panel"); mapolyInfo(p.id); await pausa();
+      const mb = buscar("#capaModal .lc-pop-b");
+      await tocar(necesito(mb, "«Bitácora del cuartel» en la información del área"), "Bitácora del cuartel (información)");
+      chk(nav.tab==="bitacora" && nav.lc.ficha.cu===q1.nombre && !modalAbierto(), "El botón de la información del área no abre la ficha (o deja la ventana abierta)");
+      await irA("panel");
+      const it = [...document.querySelectorAll("#app .hoy-it")].find(e=>txtDe(e).indexOf("Termina carencia · "+q1.nombre)>=0);
+      if(it) await tocar(it.querySelector(".hoy-it-tx"), "Termina carencia · "+q1.nombre);
+      else{ const x = hoyProximas(hoyFundo(), null, plantados().map(z=>({q:z, c:carenciaDe(z)})).filter(z=>z.c && z.c.tipo==="carencia")).find(z=>z.t==="Termina carencia · "+q1.nombre); chk(x && /^lcAbrirCuQ\(/.test(x.on), "«Termina carencia · "+q1.nombre+"» no abre la ficha"); if(x) lcAbrirCuQ(q1.id); await pausa(); }
+      chk(nav.tab==="bitacora" && nav.lc.ficha.cu===q1.nombre, "«Termina carencia» de Hoy no abre la ficha del cuartel");
+      if(fn){ fn.vista = "actual"; fn.fundo = fu; fn.cuartel = ""; }
+      await irA("fenologia");
+      const fb = [...document.querySelectorAll("#app .fencard")].filter(c=>txtDe(c.querySelector(".fencn"))===q1.nombre).map(c=>c.querySelector(".lc-fenb"))[0];
+      await tocar(necesito(fb, "el botón «Bitácora» de la tarjeta de "+q1.nombre+" en Fenología"), "Bitácora (Fenología)");
+      chk(nav.tab==="bitacora" && nav.lc.ficha.cu===q1.nombre, "La tarjeta de Fenología no abre la ficha del cuartel");
+    });
+    await paso("El aviso del asistente después de guardar trae «Ver en …», que abre la ficha con lo guardado resaltado", async ()=>{
+      if(typeof asisVerLugar!=="function") throw new SinProbar("La app no tiene la entrada desde el aviso del asistente");
+      if(!T.t0) throw new SinProbar("No se pudieron preparar los datos de prueba de la ficha");
+      const v1 = asisVerLugar([{tipo:"aplicacion", fundo:fu, cuarteles:[q1.nombre], fecha:H, asisLote:T.dict}]);
+      const v2 = asisVerLugar([{tipo:"aplicacion", fundo:fu, cuarteles:[q1.nombre], fecha:H, asisLote:T.dict}, {tipo:"nota", fundo:fu, cuarteles:[q3.nombre], fecha:H, asisLote:T.dict}]);
+      const v3 = asisVerLugar([{tipo:"recordatorio", fundo:fu, cuarteles:[], fecha:H}]);
+      chk(v1 && v1.txt==="Ver en "+q1.nombre && v2 && v2.txt==="Ver en la Bitácora" && !v3, "El aviso no ofrece «Ver en "+q1.nombre+"» (un lugar), «Ver en la Bitácora» (varios) o lo ofrece para un recordatorio");
+      await irA("asist");
+      undoIni("✅ Guardado: prueba del bot", null, v1); await esperar(150);
+      const bs = [...document.querySelectorAll("#avisoCapa .aviso-acc")];
+      _undoSnap = null;   // es una prueba: el Deshacer no debe quedar armado
+      chk(bs.length===2 && txtDe(bs[0])==="Deshacer" && v1 && txtDe(bs[1])===v1.txt, "El aviso de guardado no trae [Deshacer] y [Ver en …]: "+bs.map(txtDe).join(" · "));
+      if(bs[1]){ await tocar(bs[1], txtDe(bs[1])); await esperar(300); }
+      const f = filaDe(/^Bot Fi Karate$/);
+      chk(nav.tab==="bitacora" && nav.lc.v==="ficha" && nav.lc.ficha.cu===q1.nombre && f && f.classList.contains("lc-flash"), "«Ver en "+q1.nombre+"» no abre su ficha con lo guardado resaltado");
+    });
+    await paso("Un cuartel que ya no existe y «Todo el fundo» tienen su ficha", async ()=>{
+      nav.lc.fuAb = Object.assign({}, nav.lc.fuAb, {[fu]:true});
+      await abrirFicha(q1.nombre, q1.nombre); await tocar('#lcVista [data-acc="volver"]', "‹ Cuarteles");
+      const hb = [...document.querySelectorAll("#lcVista .lc-cf-hb")].find(b=>txtDe(b).indexOf(T.fant)===0);
+      await tocar(necesito(hb, "«"+T.fant+"» en Cuarteles que ya no existen"), T.fant);
+      chk(nav.lc.ficha.cu===T.fant && q(".lc-fi.huer") && /Ya no está/.test(txtDe(q(".lc-fi-sub"))) && filaDe(/^Riego · 2 h$/) && q(".lc-fi-cus .lc-chip.act.lc-fi-hu"), "El cuartel que ya no existe no tiene su ficha con su historia");
+      const c0 = qa(".lc-fi-acs > .lc-fi-ac")[0];
+      chk(c0 && c0.tagName!=="BUTTON" && /—/.test(txtDe(c0)) && !/Libre/.test(txtDe(c0)), "La ficha de un cuartel que ya no existe afirma algo de cosecha en Carencia: «"+txtDe(c0)+"»", "leve");
+      const tf = qa('.lc-fi-cus [data-acc="ficu"]').find(b=>txtDe(b)==="Todo el fundo");
+      await tocar(necesito(tf, "el chip «Todo el fundo»"), "Todo el fundo");
+      chk(nav.lc.ficha.cu==="" && /Carencias/.test(txtDe(q(".lc-fi-acs"))) && !q('[data-acc="ficat"]') && filasLibro().some(el=>/Riego/.test(txtDe(el))), "«Todo el fundo» no muestra el resumen del fundo en vez de las casillas, con lo anotado sin cuartel");
+    });
+    /* Etapa 3: los botones de la ficha llevan el lugar */
+    await paso("«+ Anotar aquí» trae el cuartel y lo guardado vuelve a la ficha resaltado; «Dictar aquí» fija el lugar del dictado (30 min, chip y [quitar ×])", async ()=>{
+      if(typeof asisDictar!=="function" || typeof lcAnOp!=="function") throw new SinProbar("La app no tiene Dictar y Anotar con el lugar (Etapa 3)");
+      const A = asisCfg(), ctx0 = A.ctx? JSON.stringify(A.ctx) : null, m0 = AB.micN||0;
+      try{
+        await irA("bitacora"); await abrirFicha(q1.nombre, q1.nombre);
+        const bd = q('[data-acc="fidictar"]'), ba = q('[data-acc="fianotar"]');
+        chk(bd && /Dictar aquí/.test(txtDe(bd)) && ba && /Anotar aquí/.test(txtDe(ba)), "Los botones de la ficha no dicen «Dictar aquí» y «Anotar aquí»");
+        await tocar(ba, "+ Anotar aquí");
+        chk(modalAbierto() && v("m_fundo")===fu && cuartsTmp.join()===q1.nombre && txtDe(document.getElementById("lcAnLug")).indexOf(q1.nombre)>=0, "«+ Anotar aquí» no trae el cuartel de la ficha");
+        await tocar('#capaModal .lc-op[data-op="nota"]', "Nota");
+        await escribir("m_texto", "Bot Fi nota desde la hoja", "texto de la nota");
+        const n0 = D.notas.length; chk(await guardarModal_(), "No se guardó la nota de la hoja");
+        if(D.notas.length>n0) nuevos.push(["notas", D.notas[D.notas.length-1]]);
+        const f = filaDe(/^Bot Fi nota desde la hoja/);
+        chk(nav.tab==="bitacora" && nav.lc.v==="ficha" && nav.lc.ficha.cu===q1.nombre && f && (f.classList.contains("lc-flash") || enPantalla(f)), "Después de guardar desde la hoja no se vuelve a la ficha con la fila nueva a la vista y resaltada");
+        await abrirFicha(q1.nombre, q1.nombre); await tocar('#lcVista [data-acc="fidictar"]', "Dictar aquí");
+        chk(nav.tab==="asist" && A.ctx && A.ctx.fundo===fu && (A.ctx.cuarteles||[]).join()===q1.nombre && A.ctx.vence>Date.now()+29*60000, "«Dictar aquí» no fija el lugar (D.asist.ctx) por 30 minutos");
+        chk((AB.micN||0)>m0 || !(window.SpeechRecognition||window.webkitSpeechRecognition), "«Dictar aquí» no encendió el micrófono");
+        const ch = document.querySelector(".asis-lug");
+        chk(ch && txtDe(ch).indexOf("Lugar: "+fu+" › "+q1.nombre)>=0 && /si no nombras otro, queda aquí/.test(txtDe(ch)), "La pestaña Asistente no muestra «Lugar: "+fu+" › "+q1.nombre+" (si no nombras otro, queda aquí)»");
+        chk(asisSystem().indexOf("Lugar que el usuario está mirando: "+fu+" › "+q1.nombre)>=0, "Lo que se le pide a Claude no lleva el lugar que se está mirando");
+        chk(SYNC_LOCAL.indexOf("asist")>=0, "D.asist (con el lugar) viaja con la sincronización", "media");
+        await tocar(".asis-lug-x", "quitar ×");
+        chk(!A.ctx && !document.querySelector(".asis-lug") && asisSystem().indexOf("Lugar que el usuario está mirando")<0, "[quitar ×] no borró el lugar del dictado");
+        A.ctx = {fundo:fu, cuarteles:[q1.nombre], vence:Date.now()-1000};
+        chk(!asisCtx() && !A.ctx, "El lugar del dictado no vence a los 30 minutos");
+      } finally { if(ctx0) A.ctx = JSON.parse(ctx0); else delete A.ctx; guardar(); }
+    });
+    await paso("Celular: la ficha en una columna; en el espejo, sin Confirmar ni ★ (Anotar abre el formulario corto)", async ()=>{
+      try{
+        D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si"}); uiAplicar(); await irA("bitacora"); await abrirFicha(q1.nombre, q1.nombre);
+        const acs = q(".lc-fi-acs"), mx = qa(".lc-mx-c"), v = document.getElementById("lcVista");
+        chk(acs && getComputedStyle(acs).gridTemplateColumns.split(" ").length===2, "En el celular las casillas no van en 2×2");
+        chk(mx.length===12 && mx.every(c=>c.tagName!=="BUTTON" && Math.abs(c.getBoundingClientRect().width-22)<1.5), "En el celular la minimatriz no es de 12 columnas de 22 px sin botones");
+        const vr = v.getBoundingClientRect(), fuera = [...v.querySelectorAll("*")].filter(e=>{ const r = e.getBoundingClientRect(); return r.width>0 && r.right>vr.right+1 && !e.closest(".lc-chips, .lc-fi-dsl, .lc-menu"); });   // los chips deslizables llegan al borde a propósito (margen -12 px)
+        chk(document.documentElement.scrollWidth<=innerWidth+1 && !fuera.length && txtDe(q('[data-acc="volver"]'))===fu, "En el celular la ficha se sale por el costado"+(fuera.length? " («"+(fuera[0].className||fuera[0].tagName)+"»)" : "")+" o no vuelve con «‹ "+fu+"»");
+        D.sync = Object.assign({}, D.sync||{}, {rol:"receptor"}); uiAplicar(); render(); await pausa();
+        chk(!q('[data-acc="ficonf"]') && !document.querySelector('#lcFiMas [data-acc="fieditar"]') && q('[data-acc="fidictar"]') && q('[data-acc="fianotar"]'), "En el espejo la ficha muestra Confirmar o Editar cuartel, o le falta Dictar aquí / Anotar aquí");
+        const fK = filaDe(/^Bot Fi Karate$/); await tocar(necesito(fK, "Bot Fi Karate en el espejo").querySelector(".lc-it-b"), "abrir Bot Fi Karate (espejo)");
+        const h = document.querySelector("#capaModal .lc-hdet");
+        chk(h && !h.querySelector('[data-acc="estrella"]') && !h.querySelector('[data-acc="editar"]') && h.querySelector(".lc-star-ro"), "En el espejo el detalle deja tocar la ★ o Editar");
+        if(modalAbierto()) await cancelarModal();
+      } finally { if(D.sync) D.sync.rol = rol0; D.ui = JSON.parse(ui0); uiAplicar(); render(); }
+    });
+  } finally {
+    nuevos.forEach(([col, o])=>{ D[col] = (D[col]||[]).filter(x=>x!==o); }); if(nuevos.length) guardar();
+    if(fn && fn0) Object.assign(fn, JSON.parse(fn0));
+    if(lc0) nav.lc = JSON.parse(lc0); else delete nav.lc;
+    if(p0==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", p0);
+    render();
+  }
+}});
+
+/* 📲 CELULAR ESPEJO → iPAD (Bitácora · Etapa 3) ------------------------------------------ */
+BOTS.push({id:"celular", modulo:"Bitácora: celular", nombre:"Pía, anota desde el celular", ico:"📲", que:"El celular espejo de punta a punta con el caso Esteron: aviso fijo, «+ Anotar» abre el formulario corto (no los del iPad) con avisos dentro de la ventana; la aplicación hecha con la caja del catálogo arma un ítem del asistente correcto (origen, asisId, equipo, resumen como texto dictado) sin tocar la revisión pendiente ni escribir en el cuaderno; sin señal queda en la cola y sale solo al volver; fila gris «En camino al iPad» (en cola / enviado) en Día a día y en la ficha que se va recién cuando el registro llega sincronizado; el iPad lo importa con su asisId y el catálogo; labor hecha; «Pedir al iPad» ★ Destacar y Corregir… desde la hoja de detalle (★ en la línea, nota «Por corregir» enlazada con su chip, «Ya se corrigió», referencia borrada) y nada de base64 ni datos de pantalla en el cuaderno. El puente se simula", correr: async ()=>{
+  const nomK = s=>gtNorm(s||"").replace(/\s+/g," ").trim();
+  const qU = plantados().find(q=>fundos().indexOf(q.fundo)>=0 && D.cuarteles.filter(x=>nomK(x.nombre)===nomK(q.nombre)).length===1 && !carenciaDe(q)) || null;
+  const pSD = qU? (cfCatProd().find(p=>/esteron/i.test(p.n||"") && cfCarEsp(p, cfEspKey(qU.especie))==null) || cfCatProd().find(p=>p.n && cfCarEsp(p, cfEspKey(qU.especie))==null)) : null;
+  if(typeof lcCel!=="function" || typeof asisPedidos!=="function") throw new SinProbar("La app no tiene el formulario corto del celular ni los pedidos al iPad (Etapa 3)");
+  if(!qU || !pSD) throw new SinProbar("Hace falta un cuartel plantado de nombre único y sin carencias, y un producto del catálogo sin carencia para su especie (Esteron en cítricos)");
+  const H = HOY(), s = syncCfg(), s0 = {url:s.url, clave:s.clave, rol:s.rol}, sf0 = window.syncFetch, on0 = Object.getOwnPropertyDescriptor(navigator, "onLine");
+  const ui0 = JSON.stringify(D.ui||{}), lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null, p0 = localStorage.getItem("agronotasBitacora");
+  const asis0 = JSON.stringify(D.asist||{}), lab0 = JSON.stringify(D.labores||[]), bc0 = JSON.stringify(D.bitCfg||null), keys0 = Object.keys(D), ids = [];
+  let bandeja = [], borrados = [];
+  const sinSenal = off=>{ if(off) Object.defineProperty(navigator, "onLine", {configurable:true, get:()=>false}); else { if(on0) Object.defineProperty(navigator, "onLine", on0); else delete navigator.onLine; } };
+  window.syncFetch = async function(ruta, opt){
+    if(!navigator.onLine) throw new Error("Failed to fetch");
+    if(ruta==="bandeja" && opt && opt.method==="POST"){ bandeja = bandeja.concat(JSON.parse(opt.body).items); return {ok:true}; }
+    if(ruta==="bandeja") return {items:bandeja.map(x=>({id:x.id, ts:Date.now(), origen:"bot", item:x.item}))};
+    if(ruta==="bandeja/borrar"){ const xs = JSON.parse(opt.body).ids; borrados = borrados.concat(xs); bandeja = bandeja.filter(x=>xs.indexOf(x.id)<0); return {ok:true}; }
+    throw new Error("bots: ruta "+ruta+" no simulada");
+  };
+  s.url = "https://bots.invalid"; s.clave = "bots";
+  const celular = ()=>{ s.rol = "receptor"; D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar(); guardar(); };
+  const ipad = ()=>{ s.rol = "emisor"; D.ui = Object.assign({}, JSON.parse(ui0), {movil:"no", sol:false, grande:false}); uiAplicar(); guardar(); };
+  const dia = async ()=>{ nav.lc = {v:"dia", per:"7"}; await irA("bitacora"); };
+  const cuenta = ()=>({n:D.notas.length, r:D.registros.length, b:(D.bitacora||[]).length, f:fenAll().length});
+  const camino = re=>[...document.querySelectorAll("#lcVista .lc-cam-it")].filter(visible).filter(el=>!re || re.test(txtDe(el)));
+  const filaDe = tit=>[...document.querySelectorAll("#lcVista .lc-it")].find(el=>txtDe(el.querySelector(".lc-it-t b"))===tit && el.closest(".lc-dia") && el.closest(".lc-dia").getAttribute("data-dia")===H && txtDe(el).indexOf(qU.nombre)>=0) || null;
+  const chipCe = async (acc, val, desc)=>{ const b = necesito(document.querySelector(`#capaModal [data-ce="${acc}"][data-v="${String(val).replace(/["\\]/g,"\\$&")}"]`), desc||val); if(b.getAttribute("aria-pressed")!=="true") await tocar(b, desc||val); return b; };
+  const avisoCe = ()=>{ const a = document.getElementById("lcCeAv"); return a && !a.hidden? txtDe(a) : ""; };
+  const enviarCe = async ()=>{ const b = necesito([...document.querySelectorAll("#capaModal .mf .btn")].filter(visible).pop(), "«Enviar al iPad»"); await tocar(b, "Enviar al iPad"); await pausa(); };
+  const PEND = {tipo:"nota", fecha:H, fundo:qU.fundo, cuarteles:[], titulo:"Bot revisión pendiente del celular", texto:"Bot", categoria:"", urgente:false, importante:false};
+  let itA = null, itL = null, rA = null, bL = null, pedD = null, pedC = null, pendJ = "";
+  try{
+    await paso("El celular espejo: aviso fijo y «+ Anotar» abre el formulario corto (no los formularios del iPad)", async ()=>{
+      const A = asisCfg(); A.items = [asisNorm(PEND)]; A.lote = "alBotPend"; A.texto = "Bot dictado pendiente"; A.resumen = "Bot pendiente"; A.cola = []; pendJ = JSON.stringify(A.items);   // una revisión del asistente a medio camino
+      celular(); await dia();
+      chk(/Solo lectura: lo que dictes o anotes se envía al iPad/.test(txtDe(document.querySelector("#lcVista .lc-esp"))), "Falta el aviso fijo «Solo lectura: lo que dictes o anotes se envía al iPad»", "media");
+      await tocar('#lcVista [data-acc="anotar"]', "+ Anotar (celular)");
+      const m = necesito(modalAbierto(), "el formulario corto");
+      chk(document.querySelector("#capaModal #lcCe") && /se envía al iPad/.test(txtDe(document.querySelector("#capaModal .mh h3"))) && !document.querySelector("#capaModal .lc-op, #capaModal #bit_fecha, #capaModal #m_tipo, #capaModal #m_titulo"), "En el espejo «+ Anotar» no abrió el formulario corto «Anotar · se envía al iPad» (o abrió uno del iPad)", "grave");
+      const qs = [...m.querySelectorAll('[data-ce="que"]')].map(txtDe);
+      chk(qs.length===4 && /Aplicación hecha/.test(qs[0]) && /Labor hecha/.test(qs[1]) && /Riego/.test(qs[2]) && /Nota/.test(qs[3]), "«Qué» no ofrece Aplicación hecha · Labor hecha · Riego · Nota: "+qs.join(" | "));
+      chk([...m.querySelectorAll('[data-ce="dia"]')].map(txtDe).join("|").indexOf("Hoy "+lcDM(H))===0 && m.querySelectorAll('[data-ce="fu"]').length>=1, "Faltan los chips de fecha (Hoy, Ayer, Otro día…) o de fundo");
+      const chicos = [...m.querySelectorAll(".mb button, .mb input:not([type=checkbox]):not(.fdmy-nat), .mb select, .mf .btn")].filter(visible).filter(b=>b.offsetHeight<34);   // offsetHeight: la ventana entra con una animación de escala
+      chk(!chicos.length && [...m.querySelectorAll('[data-ce="que"]')].every(b=>b.offsetHeight>=44), "En el formulario corto hay "+chicos.length+" tocables de menos de 34 px (o «Qué» bajo 44 px): "+chicos.slice(0,3).map(b=>"«"+txtDe(b).slice(0,14)+"»").join(", "), "leve");
+    });
+    await paso("Avisos dentro de la ventana: fecha futura y sin producto (nada de alert ni nada enviado)", async ()=>{
+      if(!document.getElementById("lcCe")){ await dia(); await tocar('#lcVista [data-acc="anotar"]', "+ Anotar (celular)"); }
+      const a0 = R.alerts.length, c0 = asisCfg().cola.length;
+      await chipCe("fu", qU.fundo, "fundo "+qU.fundo); await chipCe("cu", qU.nombre, "cuartel "+qU.nombre);
+      await chipCe("dia", "otro", "Otro día…"); await fecha("lcCeF", masDias(H,1), "¿Qué día?");
+      await enviarCe();
+      chk(modalAbierto() && /todavía no llega/i.test(avisoCe()), "Con una fecha futura no avisó dentro de la ventana: «"+avisoCe()+"»");
+      await chipCe("dia", "hoy", "Hoy"); await enviarCe();
+      chk(modalAbierto() && /Falta el producto/i.test(avisoCe()), "Sin producto no avisó dentro de la ventana: «"+avisoCe()+"»");
+      const amb = cfCatProd().map(x=>String(x.n||"").split(/\s+/)[0]).find(w=>w.length>=4 && !cfProdPorNombre(w) && cfProdCandidatos(w).length>1);   // «Movento»: se parece a varios
+      if(amb){ await escribir("lcCeProd", amb, "producto parecido a varios"); await pausa(); await enviarCe();
+        chk(modalAbierto() && /¿Cuál/.test(avisoCe()) && !bandeja.length && asisCfg().cola.length===c0, "Un nombre parecido a varios («"+amb+"») se envió sin preguntar cuál: «"+avisoCe()+"»", "leve");
+        await escribir("lcCeProd", "", "producto (vacío)"); }
+      chk(R.alerts.length===a0 && asisCfg().cola.length===c0 && !bandeja.length, "Los avisos del formulario corto salieron con alert() o igual se envió algo", "media");
+    });
+    await paso("Sin señal: la aplicación hecha (caso Esteron) arma un ítem del asistente correcto y queda en la cola, sin escribir en el cuaderno", async ()=>{
+      if(!document.getElementById("lcCe")){ await dia(); await tocar('#lcVista [data-acc="anotar"]', "+ Anotar (celular)"); await chipCe("fu", qU.fundo); await chipCe("cu", qU.nombre); }
+      await escribir("lcCeProd", pSD.n.toLowerCase(), "producto"); await pausa();
+      const fp = document.querySelector("#lcCeFp .cf-fp");
+      chk(fp && /sin dato|sin carencia oficial|no trae carencia/i.test(txtDe(fp)), "Al escribir el producto del catálogo no aparece su caja con la carencia «sin dato» para "+qU.especie+": «"+txtDe(document.getElementById("lcCeFp")).slice(0,160)+"»");
+      const us = document.querySelector("#lcCeFp .cf-usar");
+      if(us){ await tocar(us, "usar (dosis de la etiqueta)"); chk(!!v("lcCeDosis"), "«usar» no copió la dosis"); } else await escribir("lcCeDosis", "2 L/ha", "dosis");
+      await escribir("lcCeTx", "Bot: aplicado con la bomba nueva", "nota");
+      await marcar(document.getElementById("lcCeDest"), true, "★ Destacar");
+      const c0 = cuenta(), a0 = asisCfg().cola.length;
+      sinSenal(true);
+      await enviarCe();
+      const A = asisCfg();
+      chk(!modalAbierto() && A.cola.length===a0+1 && !bandeja.length, "Sin señal no quedó en la cola (o se envió igual, o la ventana no se cerró)", "grave");
+      itA = (A.cola[A.cola.length-1]||{}).item || null; if(itA) ids.push(itA.id);
+      chk(JSON.stringify(cuenta())===JSON.stringify(c0), "El formulario corto escribió en el cuaderno del celular (se perdería al sincronizar)", "grave");
+      chk(JSON.stringify(A.items)===pendJ && A.lote==="alBotPend" && A.texto==="Bot dictado pendiente", "Enviar el formulario corto tocó la revisión pendiente del asistente", "grave");
+      necesito(itA, "el ítem en la cola");
+      const props = Object.keys(asisSchema().properties.items.items.properties).filter(k=>k!=="adjuntos");
+      chk(props.every(k=>k in itA), "El ítem no tiene la forma de los que ordena Claude; le falta: "+props.filter(k=>!(k in itA)).join(", "), "media");
+      chk(itA.tipo==="aplicacion" && itA.aplicado===true && itA.fundo===qU.fundo && itA.cuarteles.join()===qU.nombre && itA.producto===pSD.n && !!itA.dosis && itA.importante===true && itA.fecha===H,
+        "El ítem de la aplicación no quedó bien: "+JSON.stringify(itA).slice(0,260), "grave");
+      chk(/^as/.test(itA.id) && itA.asisId===itA.id && itA.origen==="asis" && itA.equipo==="celular" && itA.mano===true && /^al/.test(itA.asisLote||"") && itA.dictadoFh && /^Anotado a mano en el celular: /.test(itA.dictado||"") && itA.dictado.indexOf(pSD.n)>=0 && itA.dictado.indexOf(qU.nombre)>=0,
+        "El ítem no lleva origen «asis», su asisId, equipo «celular» y el resumen de lo anotado como texto dictado: "+JSON.stringify({id:itA.id, asisId:itA.asisId, origen:itA.origen, equipo:itA.equipo, dictado:itA.dictado}), "media");
+      chk(!asisFaltan(asisNorm(itA)).length, "Al iPad llegaría como nota «(revisar)»: "+asisFaltan(asisNorm(itA)).join("; "), "grave");
+      chk(/cola/i.test(txtDe(document.getElementById("avisoCapa"))), "No avisó que quedó en la cola por falta de señal", "leve");
+      const fc = camino(new RegExp(pSD.n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
+      chk(fc.length===1 && /en cola \(sin señal\)/.test(txtDe(fc[0])) && txtDe(fc[0]).indexOf(qU.nombre)>=0 && !fc[0].querySelector("[data-acc]") && /En camino al iPad/.test(txtDe(fc[0].closest(".lc-cam"))),
+        "En Día a día no aparece la fila gris «En camino al iPad · "+pSD.n+" · "+qU.nombre+" · en cola (sin señal)»", "media");
+      lcAbrirCu(qU.fundo, qU.nombre); await pausa();
+      chk(camino(new RegExp(pSD.n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"))).length===1, "En la ficha de "+qU.nombre+" no aparece la fila «En camino al iPad»", "media");
+      nav.lc = {v:"cu"}; await irA("bitacora");
+      chk(camino(new RegExp(pSD.n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"))).length===1, "En la portada Cuarteles del celular no aparece la fila «En camino al iPad»", "leve");
+      lcAbrirCu(qU.fundo, qU.nombre); await pausa();
+      chk(document.documentElement.scrollWidth<=innerWidth+1, "La ficha del celular con «En camino al iPad» se sale por el costado", "leve");
+    });
+    await paso("Vuelve la señal: sale solo y la fila sigue, ahora «enviado HH:MM» (dura hasta que llega sincronizado)", async ()=>{
+      sinSenal(false); accion("vuelve la señal"); window.dispatchEvent(new Event("online"));
+      const solo = await esperarQue(()=>bandeja.length===1, 2500);
+      if(!solo){ avisar("Cola", "Al volver la señal la cola no salió sola (evento online): se envía a mano", "leve"); await asisColaEnviar(); }
+      const A = asisCfg();
+      chk(bandeja.length===1 && bandeja[0].id===itA.id && A.cola.length===0 && A.hist[0] && A.hist[0].enviado && A.hist[0].fhEnv, "Al volver la señal lo de la cola no llegó a la bandeja (o no quedó como enviado)", "grave");
+      chk(!/base64/.test(JSON.stringify(bandeja)) && !("incl" in bandeja[0].item), "Por la bandeja viajó base64 o datos de pantalla", "media");
+      await dia();
+      const fc = camino(new RegExp(pSD.n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
+      chk(fc.length===1 && /enviado \d{2}:\d{2}/.test(txtDe(fc[0])), "Después de salir de la cola la fila no dice «enviado HH:MM» (o desapareció antes de que llegue sincronizado)", "media");
+    });
+    await paso("El iPad importa la bandeja: el registro queda con su asisId, el catálogo, «sin dato» y la ★", async ()=>{
+      ipad(); const c0 = cuenta();
+      accion("el iPad revisa la bandeja"); await asisBandejaMirar(true); await pausa();
+      rA = D.registros.find(x=>x.asisId===itA.id) || null;
+      chk(rA && rA.tipo==="Aplicación" && rA.estado==="aplicado" && rA.fechaReal===H && rA.fundo===qU.fundo && rA.cuartel===qU.nombre && rA.prodId===pSD.id && rA.producto===pSD.n && rA.carencia==="" && rA.carOrigen==="sindato" && rA.dest===true,
+        "La aplicación anotada en el celular no quedó en el iPad como aplicada, con prodId, carencia «sin dato» y ★: "+JSON.stringify(rA||{}).slice(0,240), "grave");
+      chk(rA && rA.origen==="asis" && rA.equipo==="celular" && rA.mano===true && /Anotado a mano/.test(rA.dictado||"") && rA.asisLote===itA.asisLote, "La aplicación no lleva origen «asis», equipo «celular», «a mano» y el resumen como texto dictado", "media");
+      chk(cuenta().r===c0.r+1 && cuenta().n===c0.n && !bandeja.length, "El iPad no importó exactamente 1 registro (o dejó una nota «(revisar)», o no vació la bandeja)", "media");
+      const c = carenciaDe(qU); chk(c && c.tipo==="sindato", "Con la aplicación sin carencia el cuartel quedó «"+(c? c.tipo : "libre")+"» y no «sin dato de carencia»", "media");
+      /* «Completar dosis y objetivo» en el iPad: formReg conserva «a mano» y los sellos (la fila sigue diciendo «celular») */
+      if(rA){ formReg(rA.id); await pausa(); await escribir("m_objetivo", "Bot malezas de hoja ancha", "objetivo"); chk(await guardarModal_(), "No se guardó la edición del registro llegado del celular");
+        chk(rA.mano===true && rA.equipo==="celular" && rA.asisId===itA.id && rA.objetivo==="Bot malezas de hoja ancha" && rA.estado==="aplicado", "Al editar en el iPad lo anotado a mano en el celular perdió «a mano» o sus sellos: "+JSON.stringify({mano:rA.mano, equipo:rA.equipo, asisId:rA.asisId, estado:rA.estado}), "media"); }
+    });
+    await paso("El iPad ya lo tomó de la bandeja: «recibido en el iPad»; si allá se deshace, la fila gris dura 2 días y no 30", async ()=>{
+      celular(); const A = asisCfg();
+      accion("el celular revisa la bandeja"); await asisCaminoRevisar();
+      const x = (A.hist.find(h=>(h.its||[]).some(y=>y.id===itA.id))||{its:[]}).its.find(y=>y.id===itA.id);
+      chk(x && x.rec, "El celular no anotó que el iPad ya tomó lo enviado de la bandeja", "leve");
+      const i = D.registros.indexOf(rA); if(i>=0) D.registros.splice(i,1); guardar();   // como si el iPad hubiera hecho Deshacer
+      await dia();
+      const re = new RegExp(pSD.n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")), f1 = camino(re);
+      chk(f1.length===1 && /recibido en el iPad \d{2}:\d{2}/.test(txtDe(f1[0])), "Sin el registro (Deshacer en el iPad) la fila no dice «recibido en el iPad HH:MM»: «"+txtDe(f1[0]||null)+"»", "leve");
+      if(x) x.rec = new Date(Date.now()-3*864e5).toISOString(); guardar(); await dia();
+      chk(!camino(re).length, "Lo que el iPad tomó hace 3 días y no volvió sigue como «En camino al iPad»", "leve");
+      if(x) x.rec = new Date().toISOString();
+      if(i>=0) D.registros.splice(i, 0, rA); guardar();
+    });
+    await paso("De vuelta en el celular (sincronizado): la fila gris se va y queda la del registro, anotado a mano en el celular", async ()=>{
+      celular(); await dia();
+      chk(!camino(new RegExp(pSD.n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"))).length, "Después de sincronizar sigue la fila «En camino al iPad» del registro que ya llegó", "media");
+      const f = filaDe(pSD.n); chk(!!f && /^celular/.test(txtDe(f.querySelector(".lc-b.or"))), "En Día a día del celular no aparece la fila de "+pSD.n+" en "+qU.nombre+" con su origen «celular»");
+      if(f){ await tocar(f.querySelector(".lc-it-b"), "abrir "+pSD.n+" (celular)"); const h = document.querySelector("#capaModal .lc-hdet");
+        chk(h && /anotado a mano en el celular/i.test(txtDe(h)) && !h.querySelector('[data-acc="pdest"]') && h.querySelector('[data-acc="pcorr"]'), "El detalle no dice «anotado a mano en el celular», o ofrece ★ Destacar en algo ya destacado, o falta «Corregir…»", "leve");
+        if(modalAbierto()) await cancelarModal(); }
+    });
+    await paso("Labor hecha con señal: las 8 labores más usadas, cantidad y personas; llega al iPad como línea de la bitácora", async ()=>{
+      await tocar('#lcVista [data-acc="anotar"]', "+ Anotar (celular)");
+      await chipCe("que", "lab", "Labor hecha");
+      const ls = [...document.querySelectorAll('#capaModal [data-ce="lab"]')].filter(visible), tl = txtDe(ls[0]||null);
+      chk(ls.length===Math.min(8, tiposLabor().length) && ls.map(txtDe).join("|")===bitTiposOrden().slice(0,8).join("|"), "Los chips de labor no son las 8 más usadas: "+ls.map(txtDe).join(", "), "leve");
+      await chipCe("fu", qU.fundo); await chipCe("cu", qU.nombre);
+      await enviarCe(); chk(modalAbierto() && /Elige la labor/i.test(avisoCe()), "Sin labor no avisó dentro de la ventana", "leve");
+      await chipCe("lab", tl, "labor "+tl);
+      await escribir("lcCeCant", "1.250", "cantidad"); await escribir("lcCeUni", "plantas", "unidad"); await escribir("lcCePers", "3", "personas");
+      const b0 = bandeja.length; await enviarCe();
+      chk(!modalAbierto() && await esperarQue(()=>bandeja.length===b0+1, 2500), "Con señal la labor no llegó a la bandeja", "grave");
+      itL = (bandeja[bandeja.length-1]||{}).item || null; if(itL) ids.push(itL.id);
+      chk(itL && itL.tipo==="avance" && itL.labor_tipo===tl && itL.cantidad===1250 && itL.unidad==="plantas" && itL.personas===3 && itL.cuarteles.join()===qU.nombre && itL.importante===false, "El ítem de la labor no quedó bien: "+JSON.stringify(itL||{}).slice(0,220), "media");
+      ipad(); await asisBandejaMirar(true); await pausa();
+      bL = (D.bitacora||[]).find(e=>(e.lineas||[]).some(l=>l.asisId===itL.id)) || null;
+      const ln = bL && bL.lineas.find(l=>l.asisId===itL.id);
+      chk(bL && ln && bL.fundo===qU.fundo && bL.fecha===H && ln.cuartel===qU.nombre && ln.cantidad===1250 && ln.personas===3 && !ln.dest && bL.equipo==="celular" && bL.mano===true, "La labor no quedó en la bitácora del iPad como línea de "+qU.nombre+" con 1.250 plantas y 3 personas", "media");
+    });
+    await paso("«Pedir al iPad» desde la hoja de detalle del celular: ★ Destacar (labor) y Corregir… (Esteron)", async ()=>{
+      celular(); await dia();
+      const fL = necesito(filaDe(itL.labor_tipo), "la fila de la labor en el celular");
+      await tocar(fL.querySelector(".lc-it-b"), "abrir la labor (celular)");
+      let h = necesito(document.querySelector("#capaModal .lc-hdet"), "la hoja del detalle");
+      const bD = h.querySelector('[data-acc="pdest"]'), bC = h.querySelector('[data-acc="pcorr"]');
+      chk(bD && bC && [bD, bC].every(x=>x.offsetHeight>=44) && /Pedir al iPad/.test(txtDe(h.querySelector(".lc-ped"))) && !h.querySelector('[data-acc="estrella"], [data-acc="editar"]'), "La hoja del celular no trae «Pedir al iPad: ★ Destacar / Corregir…» de 44 px (o deja editar)", "media");
+      const b0 = bandeja.length;
+      await tocar(necesito(bD, "★ Destacar"), "★ Destacar (pedir al iPad)");
+      chk(!modalAbierto() && await esperarQue(()=>bandeja.length===b0+1, 2500), "El pedido ★ no llegó a la bandeja (o la hoja quedó abierta)", "grave");
+      pedD = (bandeja[bandeja.length-1]||{}).item || null; if(pedD) ids.push(pedD.id);
+      chk(pedD && pedD.tipo==="pedido" && pedD.accion==="destacar" && pedD.ref && pedD.ref.st==="bitacora" && pedD.ref.id===bL.id && /^b:\d+:/.test(pedD.ref.k||"") && pedD.asisId===pedD.id, "El pedido ★ no lleva {tipo:'pedido', ref:{st, id, k}, accion:'destacar', asisId}: "+JSON.stringify(pedD||{}).slice(0,220), "media");
+      chk(camino(/Pedido al iPad: ★ Destacar/).length===1, "El pedido ★ no aparece como fila «En camino al iPad»", "leve");
+      const fA = necesito(filaDe(pSD.n), "la fila de "+pSD.n+" en el celular");
+      await tocar(fA.querySelector(".lc-it-b"), "abrir "+pSD.n+" (celular)");
+      h = necesito(document.querySelector("#capaModal .lc-hdet"), "la hoja del detalle");
+      await tocar(necesito(h.querySelector('[data-acc="pcorr"]'), "Corregir…"), "Corregir…");
+      const ta = necesito(h.querySelector(".lc-pc:not([hidden]) textarea"), "el texto de «Corregir…»");
+      const a0 = R.alerts.length;
+      await tocar(h.querySelector('[data-acc="pcenv"]'), "Enviar (vacío)");
+      const av = h.querySelector(".lc-pc .f-aviso");
+      chk(modalAbierto() && av && !av.hidden && /corregir/i.test(txtDe(av)) && R.alerts.length===a0 && bandeja.length===b0+1, "«Corregir…» vacío no avisó dentro de la hoja (o se envió, o salió un alert)", "media");
+      await escribir(ta, "Bot: la dosis fue 2,5 L/ha", "qué corregir");
+      const pos = lcScrollGuardar(); render(); lcScrollReponer(pos); await pausa();   // llega una sincronización a medio escribir (syncAplicar repinta todo)
+      const h2 = document.querySelector("#capaModal .lc-hdet"), ta2 = h2 && h2.querySelector(".lc-pc:not([hidden]) textarea");
+      chk(ta2 && ta2.value==="Bot: la dosis fue 2,5 L/ha", "Una sincronización a medio escribir «Corregir…» cerró la hoja o borró el texto", "leve");
+      if(h2) h = h2;
+      await tocar(h.querySelector('[data-acc="pcenv"]'), "Enviar al iPad (corregir)");
+      chk(!modalAbierto() && await esperarQue(()=>bandeja.length===b0+2, 2500), "El pedido «Corregir…» no llegó a la bandeja", "grave");
+      const fo = document.activeElement; chk(fo && fo.closest && fo.closest(".lc-it")===filaDe(pSD.n), "Después de enviar «Corregir…» el foco se perdió (no volvió a la fila)", "leve");
+      pedC = (bandeja[bandeja.length-1]||{}).item || null; if(pedC) ids.push(pedC.id);
+      chk(pedC && pedC.tipo==="pedido" && pedC.accion==="corregir" && pedC.texto==="Bot: la dosis fue 2,5 L/ha" && pedC.ref && pedC.ref.st==="registros" && pedC.ref.id===rA.id, "El pedido «Corregir…» no referencia el registro o no lleva el texto: "+JSON.stringify(pedC||{}).slice(0,220), "media");
+    });
+    await paso("El iPad atiende los pedidos: ★ en la línea y nota «Por corregir» enlazada, con su chip en la fila (no pasan por asisAplicarTodos)", async ()=>{
+      ipad(); const c0 = cuenta();
+      await asisBandejaMirar(true); await pausa();
+      const ln = bL.lineas.find(l=>l.asisId===itL.id);
+      chk(ln && ln.dest===true, "El pedido ★ no destacó la línea de la bitácora en el iPad", "grave");
+      const nc = D.notas.find(n=>n.asisId===pedC.id);
+      chk(nc && /^Por corregir: Bot: la dosis fue 2,5 L\/ha/.test(nc.titulo) && nc.cat==="Observación" && nc.fundo===qU.fundo && nc.cuartel===qU.nombre && nc.ref && nc.ref.st==="registros" && nc.ref.id===rA.id && nc.equipo==="celular" && nc.origen==="asis" && /2,5 L\/ha/.test(nc.texto),
+        "La nota «Por corregir» no quedó (Observación, fundo y cuartel del registro, ref, texto): "+JSON.stringify(nc||{}).slice(0,240), "grave");
+      chk(cuenta().n===c0.n+1 && cuenta().r===c0.r && cuenta().b===c0.b && cuenta().f===c0.f && !bandeja.length, "Los pedidos crearon algo más que la nota «Por corregir» (pasaron por asisAplicarTodos) o no se vació la bandeja", "media");
+      await dia();
+      const fA = necesito(filaDe(pSD.n), "la fila de "+pSD.n+" en el iPad");
+      chk(/por corregir/.test(txtDe(fA.querySelector(".lc-b.corr"))), "La fila de "+pSD.n+" no muestra el chip «por corregir»", "media");
+      await tocar(fA.querySelector(".lc-it-b"), "abrir "+pSD.n+" (iPad)");
+      const d = necesito(document.querySelector("#lcVista .lc-it.abierta .lc-det"), "el detalle en el iPad");
+      chk(/Por corregir/.test(txtDe(d)) && /2,5 L\/ha/.test(txtDe(d)) && d.querySelector('[data-acc="pclisto"]') && !d.querySelector('[data-acc="pdest"], [data-acc="pcorr"]'), "El detalle en el iPad no muestra la nota «Por corregir» con [Ya se corrigió] (o muestra «Pedir al iPad»)", "media");
+    });
+    await paso("De vuelta en el celular: los pedidos ya no están «en camino» y el chip «por corregir» también se ve; en el iPad, «Ya se corrigió» lo quita", async ()=>{
+      celular(); await dia();
+      chk(!camino(/Pedido al iPad/).length, "Después de sincronizar siguen las filas «En camino al iPad» de los pedidos ya atendidos", "media");
+      const fA = filaDe(pSD.n); chk(fA && fA.querySelector(".lc-b.corr"), "En el celular la fila de "+pSD.n+" no muestra «por corregir»", "leve");
+      ipad(); await dia();
+      const f2 = necesito(filaDe(pSD.n), "la fila de "+pSD.n);
+      if(f2.querySelector(".lc-it-b").getAttribute("aria-expanded")!=="true") await tocar(f2.querySelector(".lc-it-b"), "abrir "+pSD.n);
+      await tocar(necesito(document.querySelector('#lcVista [data-acc="pclisto"]'), "«Ya se corrigió»"), "Ya se corrigió");
+      const nc = D.notas.find(n=>n.asisId===pedC.id);
+      chk(nc && nc.resuelta===true && !(filaDe(pSD.n)||document).querySelector(".lc-b.corr"), "«Ya se corrigió» no quitó el chip «por corregir»", "leve");
+      const fo = document.activeElement; chk(fo && fo.closest && fo.closest(".lc-it")===filaDe(pSD.n), "Después de «Ya se corrigió» el foco se perdió (no volvió a la fila)", "leve");
+      _undoSnap = null;
+    });
+    await paso("Corregir… sobre un registro que ya no existe: la nota igual se crea con el texto", async ()=>{
+      const id = "asBotPedNo"+Date.now().toString(36); ids.push(id);
+      bandeja = [{id, item:{id, tipo:"pedido", accion:"corregir", texto:"Bot: revisar el cuartel", ref:{st:"registros", id:-987, k:"r:-987"}, refs:[], fundo:qU.fundo, cuarteles:[qU.nombre], tit:"Bot registro borrado", cat:"apl", fecha:H, asisId:id, origen:"asis", equipo:"celular", dictado:"Bot pedido", dictadoFh:new Date().toISOString()}}];
+      ipad(); await asisBandejaMirar(true); await pausa();
+      const nn = D.notas.find(n=>n.asisId===id);
+      chk(nn && !nn.ref && /Bot: revisar el cuartel/.test(nn.texto) && /ya no está/.test(nn.texto) && nn.fundo===qU.fundo && nn.cuartel===qU.nombre, "Con la referencia borrada no se creó la nota «Por corregir» con el texto: "+JSON.stringify(nn||{}).slice(0,200), "media");
+      _undoSnap = null;
+    });
+    await paso("Sin señal, el asistente del celular deja el dictado como borrador y ofrece «Anotar a mano» (el formulario corto, que sí espera en la cola)", async ()=>{
+      celular(); await irA("asist");
+      const A = asisCfg(), b0 = A.borrador, a0 = R.alerts.length;
+      await escribir("asis_txt", "Bot: se aplicó "+pSD.n+" en "+qU.nombre, "dictado");
+      sinSenal(true);
+      try{ accion("Ordenar con Claude sin señal"); await asisOrdenar(); await pausa(); } finally { sinSenal(false); }
+      let bt = document.getElementById("asisAMano"), av = document.querySelector("#asisVista .asis-sin");
+      chk(av && /Sin señal/.test(txtDe(av)) && /cola/.test(txtDe(av)) && bt && R.alerts.length===a0 && String(A.borrador||"").indexOf("Bot: se aplicó")===0, "Sin señal el asistente no dejó el borrador con el aviso en español y «Anotar a mano» (o salió un alert)", "media");
+      chk(JSON.stringify(A.items)===pendJ, "Ordenar sin señal tocó la revisión pendiente", "media");
+      if(bt){ await tocar(bt, "Anotar a mano"); chk(modalAbierto() && document.querySelector("#capaModal #lcCe"), "«Anotar a mano» no abrió el formulario corto del celular", "media"); if(modalAbierto()) await cancelarModal(); }
+      const sf = window.syncFetch; window.syncFetch = async (ruta, o)=>{ if(ruta==="asistente") throw new TypeError("Failed to fetch"); return sf(ruta, o); };   // la señal se corta a medio pedido
+      try{ A.error = ""; asisPintar(); accion("Ordenar con Claude (se corta la señal)"); await asisOrdenar(); await pausa(); } finally { window.syncFetch = sf; }
+      av = document.querySelector("#asisVista .asis-sin");
+      chk(av && !/Failed to fetch/i.test(txtDe(document.getElementById("asisVista"))) && document.getElementById("asisAMano") && JSON.stringify(A.items)===pendJ, "Si la señal se corta a medio pedido sale el error del navegador («Failed to fetch») en vez del aviso con «Anotar a mano»", "media");
+      A.error = ""; A.borrador = b0; guardar();
+    });
+    await paso("Nada de base64 ni datos de pantalla en el cuaderno; la revisión pendiente del asistente sigue intacta", async ()=>{
+      const A = asisCfg(), j = JSON.stringify({cola:A.cola, hist:A.hist});
+      chk(!/base64|data:[a-z]+\//.test(j), "La cola o el historial del celular guardan base64", "grave");
+      chk(JSON.stringify(A.items)===pendJ && A.lote==="alBotPend", "La revisión pendiente del asistente cambió", "media");
+      const nuevas = Object.keys(D).filter(k=>keys0.indexOf(k)<0 && /^_|lcce|camino|pedid|anotar/i.test(k));   // lo del formulario corto, «En camino» o los pedidos (las colecciones que la app crea al usarse no cuentan)
+      chk(!nuevas.length && !Object.keys(A).some(k=>/^_|lcCe/.test(k)), "Quedaron datos de pantalla en el cuaderno: "+nuevas.concat(Object.keys(A).filter(k=>/^_|lcCe/.test(k))).join(", "), "media");
+      const malos = ["incl","_fundoNo","_cuNo","adjK","val","que","dia","cus"], hechos = [rA, bL, D.notas.find(n=>pedC && n.asisId===pedC.id)].filter(Boolean);
+      chk(hechos.length===3 && hechos.every(o=>!malos.some(k=>k in o)), "Lo guardado en el iPad lleva datos de pantalla: "+hechos.map(o=>malos.filter(k=>k in o).join(",")).filter(Boolean).join(" · "), "media");
+      chk((A.hist||[]).every(h=>(h.its||[]).every(x=>Object.keys(x).every(k=>["id","t","tit","fu","cus","f","c","d","acc","ref","refs","rec"].indexOf(k)>=0))), "Las filas «En camino al iPad» guardan más de lo necesario en el historial", "leve");
+    });
+  } finally {
+    sinSenal(false);
+    window.syncFetch = sf0; s.url = s0.url; s.clave = s0.clave; s.rol = s0.rol;
+    const mio = x=>!!x && ids.indexOf(String(x.asisId||""))>=0;
+    ["notas","registros","fenologia","recordatorios"].forEach(k=>{ if(Array.isArray(D[k])) D[k] = D[k].filter(x=>!mio(x)); });
+    D.bitacora = (D.bitacora||[]).filter(e=>!mio(e) && !(e.lineas||[]).some(mio));
+    D.labores = JSON.parse(lab0); if(bc0==="null") delete D.bitCfg; else D.bitCfg = JSON.parse(bc0);
+    D.asist = JSON.parse(asis0); D.ui = JSON.parse(ui0); uiAplicar();
+    if(lc0) nav.lc = JSON.parse(lc0); else delete nav.lc;
+    if(p0==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", p0);
+    _undoSnap = null; guardar(); render();
+  }
+}});
+
 /* 📱 PANTALLAS --------------------------------------------------------------------------- */
 BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ico:"📱", que:"Todas las pestañas en iPad, celular, sol y texto grande: cosas que se salen, textos raros, botones muy chicos para el dedo, botones sin nombre e imágenes rotas", correr: async ()=>{
   const ui0 = JSON.stringify(D.ui||{});
@@ -2781,13 +5084,30 @@ BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ic
   }
   try{
     try{ const p = JSON.parse(pB0||"{}"); p.aviso1 = true; localStorage.setItem("agronotasBitacora", JSON.stringify(p)); }catch(e){}   // lo que se ve después de la primera vez
+    nav.lc = {v:"cu", fuAb:fuP? {[fuP]:true} : undefined};   // la Bitácora parte en la portada Cuarteles con el fundo de prueba abierto (al final se repone nav.lc)
     for(const [nom, u] of modos){
       await paso("Todas las pestañas en modo "+nom, async ()=>{
         D.ui = Object.assign({}, JSON.parse(ui0), {sol:false, grande:false}, u); uiAplicar(); render(); await pausa(1.2);
         for(const t of TABS.map(x=>x.id)){
           await irA(t); await pausa(1);
           if(t==="bitacora" && document.getElementById("lcVista")){
+            /* portada Cuarteles (Etapa 2): bloques por fundo y, en el celular, [Orden ▾] [★]; después Día a día como antes y de vuelta a Cuarteles
+               (los botones chicos se revisan en la portada) */
+            const enCu = nav.lc && nav.lc.v==="cu";
+            if(enCu){
+              if(!document.querySelector("#lcVista .lc-cf .lc-cr:not(.lc-cr-h), #lcVista .lc-cf .lc-crm")) avisar("Portada sin filas", "Bitácora ("+nom+"): la portada Cuarteles no muestra filas de cuarteles", "media");
+              if(nom==="celular"){
+                const fc = [...document.querySelectorAll("#lcVista .lc-fbs button")].filter(visible);
+                if(fc.length!==2 || fc.some(b=>{ const r = b.getBoundingClientRect(); return r.left<0 || r.right>innerWidth+1; })) avisar("Filtros fuera de la pantalla", "Bitácora › Cuarteles (celular): [Orden ▾] [★] no se ven completos", "media");
+                if(document.querySelector("#lcVista .lc-tira")) avisar("Tira en el celular", "Bitácora › Cuarteles (celular): sigue la tira de semanas (va solo en la ficha)", "leve");
+              }
+              await tocar('#lcVista [data-acc="vista"][data-v="dia"]', "Día a día ("+nom+")");
+            }
             const det = buscar("#lcVista .lc-it-b"); if(det) await tocar(det, "abrir una fila de la Bitácora ("+nom+")");   // el detalle (en el celular, la hoja) también se revisa
+            if(nom==="iPad" || nom==="celular"){   // Día a día: nada tocable que no sea botón (p. ej. un chip de cuartel dentro del botón de la fila)
+              const nb = [...document.querySelectorAll("#lcVista [data-acc], #capaModal .lc-hdet [data-acc]")].filter(visible).filter(e=>!/^(BUTTON|INPUT)$/.test(e.tagName) && !e.classList.contains("lc-hdet"));
+              if(nb.length) avisar("Tocables que no son botones", nb.length+" en Día a día ("+nom+"): "+nb.slice(0,4).map(e=>"«"+(e.getAttribute("data-acc")+" "+txtDe(e)).slice(0,20)+"»").join(", "), "leve");
+            }
             if(nom==="celular"){
               const fbs = [...document.querySelectorAll("#lcVista .lc-fbs button")].filter(visible);
               if(fbs.length!==3 || fbs.some(b=>{ const r = b.getBoundingClientRect(); return r.left<0 || r.right>innerWidth+1; })) avisar("Filtros fuera de la pantalla", "Bitácora (celular): [Período ▾] [Qué ▾] [★] no se ven completos", "media");
@@ -2796,6 +5116,27 @@ BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ic
               if(d1){ window.scrollTo(0,0); await pausa(.3); const top = Math.round(d1.getBoundingClientRect().top); if(top>380) avisar("Primer día muy abajo", "Bitácora (celular): el primer día queda a "+top+" px del borde (el plan pide unos 260)", "leve"); }
             }
             if(modalAbierto()) await cancelarModal();
+            if(enCu) await tocar('#lcVista [data-acc="vista"][data-v="cu"]', "Cuarteles ("+nom+")");
+            /* la ficha de un cuartel (Etapa 2): casillas, minimatriz y libro, con una fila abierta; botones chicos y casillas 2×2 en el celular */
+            const fc = enCu? buscar("#lcVista .lc-cf .lc-cr-a, #lcVista .lc-cf .lc-crm") : null;
+            if(fc){
+              await tocar(fc, "ficha de un cuartel ("+nom+")");
+              if(nav.lc.v==="ficha" && document.querySelector("#lcVista .lc-fi")){
+                const fdet = buscar("#lcVista .lc-fm-c .lc-it-b"); if(fdet) await tocar(fdet, "abrir una fila de la ficha ("+nom+")");
+                if(modalAbierto()) await cancelarModal();
+                if(nom==="iPad" || nom==="celular"){
+                  const ch = [...document.querySelectorAll("#lcVista button, #lcVista .chip")].filter(visible).filter(b=>{ const r = b.getBoundingClientRect(); return r.height<30 || r.width<30; });
+                  if(ch.length) avisar("Botones chicos para el dedo", ch.length+" en la ficha del cuartel ("+nom+"): "+ch.slice(0,4).map(b=>"«"+txtDe(b).slice(0,14)+"»").join(", "), "leve");
+                  /* todo lo que el onclick delegado atiende (data-acc) debe ser un botón: un span tocable no recibe el foco ni el lector lo anuncia (las filas y celdas de la portada sí son delegadas a propósito) */
+                  const nb = [...document.querySelectorAll("#lcVista [data-acc]")].filter(visible).filter(e=>!/^(BUTTON|INPUT)$/.test(e.tagName) && !e.closest(".lc-cf"));
+                  if(nb.length) avisar("Tocables que no son botones", nb.length+" en la ficha del cuartel ("+nom+"): "+nb.slice(0,4).map(e=>"«"+(e.getAttribute("data-acc")+" "+txtDe(e)).slice(0,20)+"»").join(", "), "leve");
+                }
+                const acs = document.querySelector("#lcVista .lc-fi-acs"), nc = acs? getComputedStyle(acs).gridTemplateColumns.split(" ").length : 0;
+                if(nom==="celular" && nc!==2) avisar("Casillas de la ficha", "Bitácora › ficha (celular): las casillas no van en 2×2 ("+nc+" columnas)", "leve");
+                if(nom==="iPad" && document.getElementById("lcVista").getBoundingClientRect().width>=720 && nc!==4) avisar("Casillas de la ficha", "Bitácora › ficha (iPad): las 4 casillas no van en una fila ("+nc+" columnas)", "leve");
+                await tocar('#lcVista [data-acc="volver"]', "‹ Cuarteles ("+nom+")");
+              } else avisar("Ficha del cuartel", "Bitácora ("+nom+"): tocar un cuartel no abrió su ficha", "media");
+            }
           }
           if(nom==="iPad" || nom==="celular"){
             const bs = [...document.querySelectorAll("#app button, #app .chip, #app .btn, #tabbar button, #topbar .btn")].filter(visible);
@@ -3085,7 +5426,7 @@ AB.descargarInforme = async function(){
   if(esIOS && ORIG.share){ try{ await ORIG.share.call(navigator, {files:[new File([blob], nom, {type:"text/plain"})], title:nom}); return; }catch(e){ if(e && e.name==="AbortError") return; } }
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom; (ORIG.aClick||HTMLAnchorElement.prototype.click).call(a);
 };
-AB.volver = function(){ try{ indexedDB.deleteDatabase("tfFotosDB_bots"); }catch(e){} setTimeout(()=>location.reload(), 150); };
+AB.volver = function(){ try{ indexedDB.deleteDatabase("tfFotosDB_bots"); }catch(e){} try{ if(typeof estCerrarIDB==="function") estCerrarIDB(); indexedDB.deleteDatabase("agroClima_bots"); }catch(e){} setTimeout(()=>location.reload(), 150); };
 AB.informe = ()=>R;
 AB.texto = ()=>informeTexto();
 
