@@ -1,16 +1,16 @@
 /* Service worker — AgroNotas (Total Fruit Curacaví)
    Permite usar la app sin señal: guarda una copia en el iPad y,
    cuando hay internet, busca la versión más nueva en segundo plano. */
-const CACHE = "agronotas-v158";
+const CACHE = "agronotas-v160";
 const ORTOS = "agronotas-ortos"; // ortofotos del dron: caché aparte, no se borra al actualizar la app
 const ARCHIVOS = ["./", "./index.html", "./AgroNotas%20v3.html", "./apple-touch-icon.png"];
 /* bots y demostración (se cargan a pedido): el ?v= debe ser igual a AGRO_JS_V de la app; van aparte de
    ARCHIVOS porque addAll es todo o nada (si uno falta, no se guardaría ni la app) */
-const JS_PROPIOS = ["./bots.js?v=158", "./demo.js?v=158"];
+const JS_PROPIOS = ["./bots.js?v=160", "./demo.js?v=160"];
 const ORTOFOTOS = ["./santa_sara_orto.webp", "./cuesta_vieja_orto.webp"];
 const esOrto = url => /\.webp(\?.*)?$/i.test(url);
 /* Solo se guardan archivos fijos: la app, librerías y fotos del mapa. Todo lo demás
-   (estación WeatherLink, Open-Meteo, sincronización, noticias, dólar/UF…) son datos en vivo:
+   (estación WeatherLink, Open-Meteo, sincronización…) son datos en vivo:
    van directo a internet, sin copia guardada, para que nunca se muestre una lectura vieja. */
 const HOSTS_FIJOS = /(^|\.)(unpkg\.com|cdnjs\.cloudflare\.com|jsdelivr\.net|arcgisonline\.com|google\.com|gstatic\.com|opentopomap\.org|openstreetmap\.org)$/i;
 const esFijo = url => { try{ const u = new URL(url); return u.origin === self.location.origin || HOSTS_FIJOS.test(u.hostname); }catch(e){ return false; } };

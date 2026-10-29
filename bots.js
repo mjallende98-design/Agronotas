@@ -141,6 +141,9 @@ async function entrarCaja(){
     const url = String((u && u.url) || u), m = String((o && o.method) || (u && u.method) || "GET").toUpperCase();
     if(m!=="GET" && m!=="HEAD") return Promise.reject(new Error("bots: envío bloqueado ("+m+")"));
     if(syncUrl && url.indexOf(syncUrl)===0) return Promise.reject(new Error("bots: sincronización bloqueada"));
+    /* Noticias se quitó el 28-10-2026: nada debería pedir indicadores ni pasar por los proxies de RSS (lo revisa el bot «pantallas») */
+    if(/mindicador\.cl|rss2json|allorigins|corsproxy/i.test(url)){ AB.pedNoti = (AB.pedNoti||0) + 1; AB.pedNotiU = AB.pedNotiU || url.slice(0, 90);
+      return Promise.reject(new Error("bots: pedido a una fuente de Noticias (quitada)")); }
     return ORIG.fetch.apply(this, arguments);
   };
 
@@ -795,7 +798,7 @@ BOTS.push({id:"jefa", modulo:"Carta Gantt y labores", nombre:"Marta, jefa de cam
 }});
 
 /* 🔔 HOY, RECORDATORIOS Y WIDGETS --------------------------------------------------------- */
-BOTS.push({id:"hoy", modulo:"Hoy y widgets", nombre:"Carla, administradora de turno", ico:"🔔", que:"Panel Hoy: recordatorios (validación, fundo, hora, hecho, borrar), tarjetas de acción y sus números contra la Gantt, Próximas acciones solo con la Carta Gantt y los recordatorios (sin riego ni carencias), notas recientes de las últimas 2 semanas, KPIs, fundos, todos los tipos de widget, mover y quitar", correr: async ()=>{
+BOTS.push({id:"hoy", modulo:"Hoy y widgets", nombre:"Carla, administradora de turno", ico:"🔔", que:"Panel Hoy: recordatorios (validación, fundo, hora, hecho, borrar), tarjetas de acción y sus números contra la Gantt, Próximas acciones solo con la Carta Gantt y los recordatorios (sin riego ni carencias), notas recientes de las últimas 2 semanas, KPIs, fundos, todos los tipos de widget, mover y quitar; una pestaña que ya no existe (Noticias) cae en Hoy", correr: async ()=>{
   const fu = fundosConCuarteles()[0];
   await paso("Recordatorio: validación y creación con fundo y hora", async ()=>{
     await irA("panel");
@@ -992,26 +995,19 @@ BOTS.push({id:"hoy", modulo:"Hoy y widgets", nombre:"Carla, administradora de tu
       chk(n("helada")===h0+2, "Pasados 10 min del error la helada no se volvió a pedir", "leve");
     } finally { window.fetch = f0; Date.now = dn; HEL_RT = null; HEL_ERR = 0; LL_RT = {}; }
   });
-  /* los «429» de la consola eran de corsproxy.io: con todas las fuentes caídas, cada vuelta a Noticias lanzaba ~44 pedidos (588 por proxy en una corrida).
-     Ahora: una actualización a la vez y, sola, no antes de 30 min desde el último intento (el botón «Actualizar» sí). Las fuentes se simulan caídas */
-  await paso("Noticias: con las fuentes caídas no se reintenta en cada vuelta ni en paralelo", async ()=>{
-    const f0 = window.fetch, dn = Date.now, n0 = D.noticias, u0 = NOTI_ULT; let n = 0;
-    window.fetch = function(u){ const url = String((u && u.url) || u);
-      if(/rss2json|allorigins|corsproxy|mindicador/.test(url)){ n++; return Promise.reject(new TypeError("Failed to fetch")); }
-      return f0.apply(this, arguments); };
-    try{
-      D.noticias = null; NOTI_ULT = 0;
-      const ronda = 2 + 3 * NOTI_FUENTES.length;   // indicadores (2) + cada fuente por sus 3 caminos
-      await Promise.all([actualizarNoticias(true), actualizarNoticias(true)]);
-      chk(n === ronda, "Dos actualizaciones de Noticias al mismo tiempo pidieron " + n + " veces (una ronda son " + ronda + ")", "media");
-      n = 0; posNoticias(); posNoticias(); await esperar(150);
-      chk(n === 0 && !actualizarNoticias._en, "Al volver a Noticias recién después de un intento fallido se volvió a pedir todo (" + n + " pedidos)", "media");
-      const t0 = dn(); Date.now = ()=>t0 + 31 * 60000;
-      posNoticias(); await esperar(50); Date.now = dn;
-      await esperarQue(()=>!actualizarNoticias._en, 15000);
-      chk(n === ronda, "A los 31 min Noticias no se volvió a actualizar sola (" + n + " pedidos)", "leve");
-      chk(D.noticias == null, "Sin ninguna fuente, Noticias guardó algo en el cuaderno", "leve");
-    } finally { window.fetch = f0; Date.now = dn; D.noticias = n0; NOTI_ULT = u0; }
+  /* 28-10-2026: Noticias se quitó (sus tres fuentes de RSS estaban caídas). Una pestaña que ya no existe (p. ej. «noti» de una versión anterior,
+     o la que deje abierta una sesión vieja) cae en Hoy, sin pantalla de rescate y con Hoy marcado en el menú */
+  await paso("Una pestaña que ya no existe (Noticias) cae en Hoy sin error", async ()=>{
+    for(const t of ["noti", "pestanaQueNoExiste"]){
+      await cerrarTodo(); nav.tab = t; render(); await pausa(.6);
+      chk(nav.tab === "panel", "Con la pestaña «" + t + "» la app quedó en «" + nav.tab + "» (debía caer en Hoy)", "media");
+      chk(!!document.querySelector("#app .hoy-cab") && !/No se pudo mostrar esta vista/.test(txtDe(document.getElementById("app"))), "Con la pestaña «" + t + "» no se mostró Hoy (o salió la pantalla de rescate)", "grave");
+      const act = document.querySelector("#tabbar button.act");
+      chk(!!act && /ir\('panel'\)/.test(act.getAttribute("onclick") || ""), "Con la pestaña «" + t + "» el menú no marca Hoy", "leve");
+    }
+    await cerrarTodo(); ir("noti"); await pausa(.6);
+    chk(nav.tab === "panel" && !!document.querySelector("#app .hoy-cab"), "ir('noti') no cayó en Hoy (quedó en «" + nav.tab + "»)", "media");
+    revisarPantalla();
   });
   await paso("Mover y quitar widgets (con Deshacer)", async ()=>{
     await irA("panel");
@@ -1305,27 +1301,44 @@ BOTS.push({id:"aplicador", modulo:"Calc Fito y Aplicaciones", nombre:"Pedro, apl
 }});
 
 /* 💧 RIEGO ------------------------------------------------------------------------------- */
-BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que:"Riego: horas recalculadas con la fórmula, los 6 casos del pedido de Manuel (Pp por línea de riego, cobertura de copa, m³ y goteros/pl), prioridad de la Pp, semilla del plano, cadena del Kc, alertas de huerto joven, de 8 h y de 24 h (con qué hacer, botón a la ficha y días de riego sugeridos), «horas por confirmar» en los PDF, días (y que no salten), mínimo un día, bases y vistas, ficha (Kc %, sectores, validaciones, cancelar), Kc manual, bomba y turnos, descuento por lluvia, PDF con sus validaciones", correr: async ()=>{
+BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que:"Riego: horas recalculadas con la fórmula, Pp por líneas de riego y marco (tabla de los 32 cuarteles y casos del pedido del 28-10), valores iniciales, Línea 2 oculta y conservada, «Aplicar a todos los cuarteles del fundo» con Deshacer, m³ iguales, cobertura de copa, prioridad de la Pp, semilla del plano, datos guardados antes, cadena del Kc, alertas de huerto joven, de 8 h y de 24 h (con qué hacer, botón a la ficha y días de riego sugeridos), notas del PDF Pro, días (y que no salten), mínimo un día, bases y vistas, ficha (Kc %, sectores, validaciones, cancelar), Kc manual, bomba y turnos, descuento por lluvia, PDF con sus validaciones", correr: async ()=>{
   let serie = null;
-  /* ---- Pedido de Manuel (27-10-2026): Pp por línea de riego, factor de cobertura y alertas de consistencia.
+  /* ---- Pedido de Manuel (28-10-2026, hecho el 29-10): Pp por líneas de riego y marco. Reemplaza los casos del 27-10.
      Casos de prueba EXACTOS con cuarteles de prueba en la caja de arena y una serie fija: ET₀ 3,586 mm/día los 7 días,
      reposición 100 %, eficiencia 90 %, riega L-Mi-V, Kc de la tabla 0,70 (la tabla de cítricos se deja en 0,70 los 12 meses
-     solo durante el paso) y los generales que dan las horas «de hoy» (6 goteros/pl × 2 L/h). Todo vuelve a como estaba. */
+     solo durante el paso) → 6,5 mm por riego (6,508), lámina bruta 19,524. Las horas «de antes» salen de la fórmula antigua
+     (6 goteros/pl × 2 L/h ÷ m² por planta, ppViejo). Todo vuelve a como estaba. */
   const SERIE_BOT = [5,6,7,8,9,10,11].map(d=>({k:"2026-10-"+String(d).padStart(2,"0"), et:3.586, ll:0, src:"wl"}));
   const FU_BOT = "Bot Riego", FU24 = "Bot Riego 24";
   const norm = s=>String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").trim();
   const txtHTML = h=>{ const d = document.createElement("div"); d.innerHTML = h; return (d.textContent||"").replace(/\s+/g," ").trim(); };
-  const SEM_BOT = {"san joaquin|cuesta vieja":{ent:5, lin:2, dg:0.5, caudal:2}, "santa rita|cerezos 2023":{ent:4, lin:2, dg:0.5, caudal:2}, "santa rita|cerezos 2024":{ent:4, lin:2, dg:0.5, caudal:2}};
-  /* la Pp escrita aparte de la app, tal como la pidió Manuel: medida > diseño (del cuartel, si no la semilla; entrehilera vacía = marco) > fórmula antigua */
+  const SEM_BOT = {"san joaquin|cuesta vieja":{lin:2, dg:0.5, caudal:2}, "santa rita|cerezos 2023":{lin:2, dg:0.5, caudal:2}, "santa rita|cerezos 2024":{lin:2, dg:0.5, caudal:2}};
+  /* la Pp escrita aparte de la app, tal como la pidió Manuel (pedido 28-10): medida > líneas (lo anotado, si no la semilla, si no 2 L/h c/0,5 m;
+     líneas: lo anotado, si no la semilla, si no por el año: 2025 o después 1, si no 2; la Línea 2 sin dato = la Línea 1) ÷ primer número del marco */
   const ppBot = q=>{
-    const r = riegoCfg(), o = r.cu[q.id]||{}, sd = SEM_BOT[norm(q.fundo)+"|"+norm(q.nombre)]||{}, pos = x=>(+x>0 && isFinite(+x))? +x : null;
-    const m = String(q.marco||"").toLowerCase().replace(/,/g,".").split(/[x×*]/).map(parseFloat);
-    if(pos(o.ppMed)) return {pp:+o.ppMed, src:"med"};
-    const ent = pos(o.ent)||pos(sd.ent)||(m.length===2 && m[0]>0? m[0] : null), lin = pos(o.lin)||pos(sd.lin), dg = pos(o.dg)||pos(sd.dg), cau = pos(o.caudal)||pos(sd.caudal);
-    if(ent && lin && dg && cau) return {pp:cau/((ent/lin)*dg), src:"dis", gpl:(m.length===2 && m[1]>0)? m[1]/dg*lin : null};
-    const dens = marcoDens(q.marco), gpp = +(o.gpp||r.def.gpp||0), c = +(o.caudal||r.def.caudal||0);
-    return {pp:(dens && gpp && c)? gpp*c/(10000/dens) : null, src:"sv"};
+    const r = riegoCfg(), o = r.cu[q.id]||{}, sd = SEM_BOT[norm(q.fundo)+"|"+norm(q.nombre)]||{};
+    const enR = (x, a, b)=>{ x = +x; return (x>0 && isFinite(x) && x>=a && x<=b)? x : null; };
+    const p = String(q.marco||"").toLowerCase().replace(/,/g,".").split(/[x×*]/).map(s=>parseFloat(s));
+    const ent = (p.length===2 && p[0]>=1 && p[0]<=12 && p[1]>0)? p[0] : null, ep = ent? p[1] : null;
+    const am = String(q.anio||"").match(/(\d{4})/), anio = am? +am[1] : null, linO = (+o.lin===1 || +o.lin===2)? +o.lin : null;
+    const lin = linO || sd.lin || (anio==null? 2 : anio>=2025? 1 : 2);
+    const c1o = enR(o.caudal,0.5,8), d1o = enR(o.dg,0.1,2);
+    const c1 = c1o ?? sd.caudal ?? 2, d1 = d1o ?? sd.dg ?? 0.5, c2 = enR(o.caudal2,0.5,8) ?? c1, d2 = enR(o.dg2,0.1,2) ?? d1;
+    const ini = (!linO && !sd.lin && anio==null) || (c1o==null && sd.caudal==null) || (d1o==null && sd.dg==null);
+    const out = {lin, gpl: ep? ep/d1 + (lin===2? ep/d2 : 0) : null, lpl: ep? c1/d1*ep + (lin===2? c2/d2*ep : 0) : null};
+    if(+o.ppMed>0 && isFinite(+o.ppMed)) return Object.assign(out, {pp:+o.ppMed, src:"med"});
+    if(!ent) return Object.assign(out, {pp:null, src:""});
+    return Object.assign(out, {pp:(c1/d1 + (lin===2? c2/d2 : 0))/ent, src:ini? "ini" : "dis"});
   };
+  const ppViejo = q=>6*2*marcoDens(q.marco)/10000;   // la fórmula de antes (6 goteros/pl × 2 L/h ÷ m² por planta), para los números «de hoy»
+  /* la tabla de verificación del pedido (28-10), con los nombres de la app: líneas · Pp · fuente · got./pl · L/h por planta */
+  const TABLA_PED = {"San Joaquín":{"Corte 1":[2,"1,60","ini",8,16],"Corte 3":[2,"1,60","ini",8,16],"Corte 8":[2,"1,60","ini",8,16],"Corte 17":[2,"1,60","ini",8,16],"Corte A":[2,"1,60","ini",8,16],"Corte B":[2,"1,60","ini",8,16],"Corte C":[2,"1,60","ini",8,16],
+      "Corte 6":[2,"1,60","ini",6,12],"Corte 4":[2,"1,60","ini",12,24],"Corte 13":[2,"2,00","ini",8,16],"Corte 5":[2,"2,00","ini",8,16],"Cuesta Vieja":[2,"1,60","dis",8,16]},
+    "Santa Rita":{"Limón Poniente":[2,"1,33","ini",12,24],"Fukumoto Cerro Bajas":[2,"2,67","ini",6,12],"Cerezos 2023":[2,"2,00","dis",8,16],"Cerezos 2024":[2,"2,00","dis",8,16],"Corte 5":[1,"1,00","ini",4,8],"Estuche":[1,"1,00","ini",4,8],"Etapa 1 Cerro (ex limones)":[1,"1,00","ini",6,12]},
+    "El Pellisco":{"El Pellisco 1":[2,"1,60","ini",8,16],"El Pellisco 2":[2,"1,60","ini",8,16]},
+    "Santa Sara":{"Limones 2000":[2,"1,33","ini",12,24],"Limones 2018":[2,"1,33","ini",12,24],"Limones 2020":[2,"1,33","ini",12,24],"Limones Benjamín":[2,"1,33","ini",12,24],"Limón Fino":[2,"1,33","ini",12,24],
+      "Cerezos 2020":[2,"1,78","ini",9,18],"Cara Cara":[2,"1,60","ini",8,16],"Corte 1 Nuevo":[1,"0,80","ini",6,12],"Corte 2 Nuevo":[1,"0,80","ini",6,12],"Corte 3 Nuevo":[1,"0,67","ini",6,12],"Corte 4 Nuevo":[1,"0,67","ini",9,18]}};
+  const r3 = x=>x==null? null : Math.round(x*1000)/1000;
   async function enCaja(fn){   // respalda D.riego, los cuarteles y la fenología; al final todo vuelve a como estaba (también si el paso falla)
     const r0 = JSON.stringify(riegoCfg()), c0 = D.cuarteles.slice(), fe0 = Array.isArray(D.fenologia)? D.fenologia.slice() : null, f0 = nav.riegoFundo, v0 = nav.riegoVista;
     try{ return await fn(); }
@@ -1361,7 +1374,8 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     if(!serie) throw new SinProbar("Sin datos de clima");
     let n=0; const malos=[];
     for(const q of plantados().slice(0,40)){
-      const c = riegoCalcCuartel(q, serie), pb = ppBot(q);   // Pp: medida > diseño > fórmula antigua (27-10-2026)
+      const c = riegoCalcCuartel(q, serie), pb = ppBot(q);   // Pp: medida > líneas (anotadas, semilla o valores iniciales) ÷ primer número del marco (29-10-2026)
+      if((c.ppInfo||{}).lin!==pb.lin) malos.push(q.fundo+" · "+q.nombre+": "+(c.ppInfo||{}).lin+" línea(s) en la app y "+pb.lin+" según la regla");
       if(c.hRiego==null || !pb.pp) continue;
       if((c.ppInfo||{}).src!==pb.src) malos.push(q.fundo+" · "+q.nombre+": la Pp sale de «"+(c.ppInfo||{}).src+"» y debía salir de «"+pb.src+"»");
       const p = riegoParam(q), pp = pb.pp; let etc=0;
@@ -1369,54 +1383,194 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
       const etcDia = etc/(serie.length||7), lam = etcDia*7*riegoRep(q)/100, bruta = lam/(p.ef/100), nD = (riegoDias(q).length||1), h = bruta/nD/pp;
       n++; if(Math.abs(h-c.hRiego) > Math.max(0.02, h*0.01)) malos.push(q.fundo+" · "+q.nombre+": app "+c.hRiego.toFixed(2)+" h, fórmula "+h.toFixed(2)+" h");
     }
-    if(!n) throw new SinProbar("Ningún cuartel tiene Pp (marco y goteros, línea de riego o Pp medida) para calcular");
+    if(!n) throw new SinProbar("Ningún cuartel tiene Pp (marco o Pp medida) para calcular");
     chk(!malos.length, "Horas de riego distintas a la fórmula en "+malos.length+" de "+n+" cuarteles: "+malos.slice(0,4).join(" · "), "grave");
   });
-  await paso("Casos del pedido de Manuel: Pp por línea de riego, mm, horas, m³ y goteros/pl (ET₀ 3,586 · 100 % · 90 % · L-Mi-V)", ()=>enCaja(async ()=>{
-    await irA("riego");
-    /* Corte 4 Nuevo (Santa Sara): marco 6 × 4,5 = 27 m²/pl, 4,05 ha */
-    const q = cuBot(); prepBot(q);
-    const c0 = calcBot(q);
-    chk(c0.ppInfo && c0.ppInfo.src==="sv", "Sin línea de riego el cuartel no quedó «sin verificar» (quedó «"+(c0.ppInfo&&c0.ppInfo.src)+"»)", "grave");
-    esperado("Corte 4 Nuevo hoy (6 goteros/pl × 2 L/h ÷ 27 m², sin verificar)", c0, {pp:"0,44", mm:"6,5", h:"14,6"});
-    /* 1 línea; la entrehilera queda vacía = 6 m del marco */
-    riegoFicha(q.id); await pausa(); necesito(modalAbierto(), "la ficha de riego");
-    await elegir("rf_lin", "1", "líneas por hilera"); await escribir("rf_dg", "0,5", "distancia entre goteros"); await escribir("rf_caudal", "2", "caudal del gotero");
-    const viv = txtDe(document.getElementById("rfPpDis"));
-    chk(/= 0,67 mm\/h/.test(viv) && /6 m del marco/.test(viv), "Mientras se escribe, la ficha no mostró «… 6 m del marco … = 0,67 mm/h»: «"+viv+"»", "media");
-    chk(await guardarModal_(), "La ficha no se cerró al guardar la línea de riego", "grave");
-    const o = riegoCfg().cu[q.id]||{};
-    chk(o.lin===1 && o.dg===0.5 && o.caudal===2 && o.ent==null, "La ficha no guardó la línea de riego tal como se escribió: "+JSON.stringify({ent:o.ent, lin:o.lin, dg:o.dg, caudal:o.caudal}), "grave");
-    const c1 = calcBot(q);
-    chk(c1.ppInfo.src==="dis", "Con los 4 datos de la línea la Pp no quedó «diseño» (quedó «"+c1.ppInfo.src+"»)", "grave");
-    esperado("Corte 4 Nuevo, 1 línea (6 m, 0,5 m, 2 L/h; Kc 0,70)", c1, {pp:"0,67", mm:"6,5", h:"9,8"});
-    /* 2 líneas */
-    chk(await fichaBot(q, [["rf_lin","2"]]), "La ficha no se cerró al pasar a 2 líneas", "grave");
-    const c2 = calcBot(q);
-    esperado("Corte 4 Nuevo, 2 líneas (6 m, 0,5 m, 2 L/h; Kc 0,70)", c2, {pp:"1,33", mm:"6,5", h:"4,9"});
-    chk(c2.ppInfo.gpl===18 && ppBot(q).gpl===18, "Goteros por planta informativos (4,5 m ÷ 0,5 m × 2 líneas): "+c2.ppInfo.gpl+" (esperado 18)", "grave");
-    const tc = txtHTML(riegoCardHTML(q, c2, fmtCL));
-    chk(/18 got\.\/pl/.test(tc) && /Pp de diseño/.test(tc), "La tarjeta no muestra «18 got./pl» ni «Pp de diseño»: «"+tc.slice(0,220)+"»", "media");
-    /* Cuesta Vieja: 5 m, 2 líneas, 0,5 m, 2 L/h (cuartel de prueba con marco 5 × 2; la semilla real se prueba en el paso siguiente) */
-    const cv = cuBot({nombre:"Cuesta Vieja bot", especie:"Naranjo", variedad:"Cara Cara", ha:21.8, marco:"5x2", anio:"2023"}); prepBot(cv);
-    esperado("Cuesta Vieja hoy (6 × 2 L/h ÷ 10 m², sin verificar)", calcBot(cv), {pp:"1,20", h:"5,4"});
-    chk(await fichaBot(cv, [["rf_lin","2"],["rf_dg","0,5"],["rf_caudal","2"]]), "La ficha de Cuesta Vieja no se cerró", "grave");
-    esperado("Cuesta Vieja (5 m, 2 líneas, 0,5 m, 2 L/h; Kc 0,70)", calcBot(cv), {pp:"1,60", mm:"6,5", h:"4,1"});
-    /* huerto joven: factor de cobertura 0,357 → Kc efectivo 0,25 */
-    chk(await fichaBot(q, [["rf_cob","0,357"]]), "La ficha no se cerró al poner el factor de cobertura", "grave");
-    const c3 = calcBot(q), k3 = riegoKcInfo(q, 9);
-    chk(fmtCL(k3.kc,2)==="0,25" && Math.abs(k3.kc-0.7*0.357)<1e-4, "Kc efectivo con factor 0,357: "+fmtCL(k3.kc,3)+" (esperado 0,70 × 0,357 = 0,25)", "grave");
-    esperado("Corte 4 Nuevo joven (2 líneas, factor 0,357)", c3, {pp:"1,33", mm:"2,3", h:"1,7"});
-    /* el volumen no depende de la Pp */
-    const vol = [c0, c1, c2].map(x=>x.m3Sem);
-    chk(Math.abs(vol[0]-vol[1])<1e-9 && Math.abs(vol[1]-vol[2])<1e-9, "El volumen de la semana cambió con la Pp: "+vol.map(x=>fmtCL(x,1)).join(" / ")+" m³", "grave");
-    chk(Math.abs(vol[0]-c0.lamBruta*10*4.05)<1e-9 && Math.abs(vol[0]-790)<1, "m³/semana de Corte 4 Nuevo (4,05 ha, Kc 0,70): "+fmtCL(vol[0],1)+" (esperado ≈ 790: 19,52 mm brutos × 10 × 4,05 = 790,7)", "grave");
+  /* la serie del bot y los generales de los casos (Kc 0,70, 100 %, 90 %, L-Mi-V, Kc según el mes) para cuarteles falsos sin datos propios */
+  const baseBot = ()=>{ const r = riegoCfg(); r.kc.citricos = Array(12).fill(0.7); r.def = Object.assign({}, r.def, {gpp:6, caudal:2, ef:90}); r.rep = 100; r.dias = [1,3,5]; r.modoKc = "mes"; r.descLluvia = false; delete r.umbralH; };
+  await paso("Marco y año: distancia entre hileras = primer número del marco; líneas iniciales según el año de plantación", async ()=>{
+    const M = [["5X2",5,2,"5×2"],["6 X 4,5",6,4.5,"6×4,5"],["4,5 X 2,25",4.5,2.25,"4,5×2,25"],["5 x 2 m",5,2,"5×2"],["5×1,5",5,1.5,"5×1,5"],["6*3",6,3,"6×3"],
+      ["","falta"],["5","no se entiende"],["x2","no se entiende"],["cinco por dos","no se entiende"],["0x2","no se entiende"],["50x2","fuera"],["0,5x2","fuera"]];
+    const mal = [];
+    for(const [m, a, b, t] of M){
+      const r = riegoMarco({marco:m}), ok = typeof a==="number";
+      if(ok? !(r.ok && r.ent===a && r.ep===b && r.txt===t) : !(!r.ok && r.motivo===a)) mal.push("«"+m+"» → "+JSON.stringify({ok:r.ok, ent:r.ent, ep:r.ep, txt:r.txt, motivo:r.motivo}));
+      if((ctMarco({marco:m})>0)!==(r.ok || r.motivo==="fuera")) mal.push("«"+m+"»: ctMarco y riegoMarco no leen igual el marco");
+    }
+    chk(!mal.length, "riegoMarco no lee el marco como pide Manuel: "+mal.slice(0,4).join(" · "), "grave");
+    const A = [["2025",1,"anio"],["2024",2,"anio"],["2006-2007",2,"anio",2006],["2026",1,"anio"],["2025-2026",1,"anio"],["plantado 2019",2,"anio"],["",2,"sinAnio"]], malA = [];
+    for(const [a, l, de, an] of A){ const r = riegoLinIni({anio:a}); if(r.lin!==l || r.de!==de || (an && r.anio!==an)) malA.push("«"+a+"» → "+JSON.stringify(r)); }
+    chk(!malA.length, "Las líneas iniciales según el año no son las del pedido (2025 o después → 1; 2024 o antes → 2; sin año → 2): "+malA.join(" · "), "grave");
+    /* sin año de plantación: 2 líneas y «valores iniciales» aunque tenga el caudal y la distancia anotados */
+    const pi = riegoLineas({id:-1, fundo:FU_BOT, nombre:"Sin año bot", marco:"5x2", anio:""}, {caudal:2, dg:0.5});
+    chk(pi.lin===2 && pi.linDe==="sinAnio" && pi.esIni && fmtCL(pi.ppDis,2)==="1,60", "Sin año de plantación el cuartel no queda con 2 líneas y «valores iniciales» (lin "+pi.lin+", "+pi.linDe+", Pp "+fmtCL(pi.ppDis,2)+")", "media");
+  });
+  await paso("Tabla de verificación del pedido: los 32 cuarteles plantados (líneas, Pp, fuente, goteros y L/h por planta, horas con 6,5 mm)", ()=>enCaja(async ()=>{
+    baseBot();
+    const SC = (typeof SEED_CUARTELES!=="undefined"? SEED_CUARTELES : []).filter(z=>norm(z.e)!=="por plantar");
+    if(SC.length<30) throw new SinProbar("No encontré la lista de cuarteles de origen (SEED_CUARTELES)");
+    /* (a) la tabla de Manuel: cada cuartel de origen como un cuartel falso con un id que no está en la ficha */
+    const mal = []; let n = 0, nIni = 0, nDis = 0;
+    SC.forEach((z, i)=>{
+      const q = {id:-1000-i, fundo:z.f, nombre:z.c, especie:z.e, variedad:z.v, ha:z.ha, marco:z.d, anio:z.a}, esp = (TABLA_PED[z.f]||{})[z.c];
+      if(!esp){ mal.push(z.f+" · "+z.c+": no está en la tabla del pedido"); return; }
+      const pi = riegoPp(q), got = [pi.lin, fmtCL(pi.pp,2), pi.src, r3(pi.gpl), r3(pi.lpl)]; n++;
+      if(JSON.stringify(got)!==JSON.stringify(esp)) mal.push(z.c+" ("+z.f+"): "+JSON.stringify(got)+" (esperado "+JSON.stringify(esp)+")");
+      const labEsp = esp[2]==="ini"? "valores iniciales" : /cuesta vieja/i.test(z.c)? "diseño · plano de riego 2021" : "diseño";
+      if(pi.lab!==labEsp) mal.push(z.c+": fuente «"+pi.lab+"» (esperado «"+labEsp+"»)");
+      if(pi.src==="ini") nIni++; if(pi.src==="dis") nDis++;
+      if(riegoGrupo(q)==="citricos"){ const c = riegoCalcCuartel(q, SERIE_BOT);
+        if(fmtCL(c.lamRiego,1)!=="6,5" || Math.abs(c.hRiego - c.lamRiego/pi.pp)>1e-9) mal.push(z.c+": "+fmtCL(c.lamRiego,1)+" mm, "+fmtCL(c.hRiego,1)+" h"); }
+    });
+    chk(n===32 && !mal.length && nIni===29 && nDis===3, "La tabla de verificación del pedido no calza ("+n+" cuarteles, "+nIni+" con valores iniciales y "+nDis+" de diseño; esperado 32, 29 y 3): "+mal.slice(0,4).join(" · "), "grave");
+    /* (b) los cuarteles reales de la copia, sin nada anotado en la línea: la app calcula con el marco y el año DE LOS DATOS, igual que ppBot */
+    const r = riegoCfg(), malR = [], notas = []; let nR = 0;
+    for(const z of SC){
+      const q = (D.cuarteles||[]).find(x=>norm(x.fundo)===norm(z.f) && norm(x.nombre)===norm(z.c));
+      if(!q){ notas.push(z.c+" ("+z.f+") no está en tus datos"); continue; }
+      const o = r.cu[q.id]; if(o) ["lin","caudal","dg","caudal2","dg2","ppMed","ppFecha"].forEach(k=>delete o[k]);
+      const pi = riegoPp(q), pb = ppBot(q); nR++;
+      if(pi.src!==pb.src || !((pi.pp==null && pb.pp==null) || Math.abs(pi.pp-pb.pp)<1e-9) || pi.lin!==pb.lin) malR.push(q.nombre+": app "+fmtCL(pi.pp,2)+" «"+pi.src+"» "+pi.lin+" lín. · fórmula "+fmtCL(pb.pp,2)+" «"+pb.src+"» "+pb.lin+" lín.");
+      if(norm(q.marco).replace(/\s/g,"")!==norm(z.d).replace(/\s/g,"") || String(q.anio||"")!==String(z.a||"")) notas.push(q.nombre+": marco/año en tus datos «"+q.marco+"» / «"+(q.anio||"")+"» (en la tabla «"+z.d+"» / «"+z.a+"»); la app usa los tuyos ("+fmtCL(pi.pp,2)+" mm/h)");
+    }
+    if(nR) chk(!malR.length, "Con tus cuarteles (sin línea anotada) la Pp de la app no es la de la fórmula: "+malR.slice(0,4).join(" · "), "grave");
+    notas.forEach(t=>log("○ "+t));
+    /* (c) el texto de la tarjeta, exacto */
+    const casos = [[{nombre:"Cuesta Vieja bot", especie:"Naranjo", marco:"5x2", anio:"2023", ha:21.8}, "Marco 5×2 · 2 líneas (2 L/h c/0,5 m · 2 L/h c/0,5 m) → Pp 1,60"],
+      [{}, "Marco 6×4,5 · 1 línea (2 L/h c/0,5 m) → Pp 0,67"], [{nombre:"Cerezos 2020 bot", especie:"Cerezo", marco:"4,5x2,25", anio:"2020"}, "Marco 4,5×2,25 · 2 líneas (2 L/h c/0,5 m · 2 L/h c/0,5 m) → Pp 1,78"]];
+    for(const [o, t] of casos){ const q = cuBot(o); prepBot(q); const d = document.createElement("div"); d.innerHTML = riegoCardHTML(q, calcBot(q), fmtCL);
+      const g = txtDe(d.querySelector(".rgc-lin[data-rg-lin]")); chk(g===t, q.nombre+": la tarjeta dice «"+g+"» (esperado «"+t+"»)", "media"); }
   }));
-  await paso("Prioridad de la Pp: medida > diseño > sin verificar (caudalímetro, insignias, tabla y resumen del fundo)", ()=>enCaja(async ()=>{
+  await paso("Casos del pedido (28-10): Pp por líneas, horas antes y ahora, líneas distintas, goteros y L/h por planta, m³ iguales", ()=>enCaja(async ()=>{
+    await irA("riego");
+    const caso = (o, extra, esp, antes)=>{ const q = cuBot(o); prepBot(q, extra); const c = calcBot(q);
+      esperado(q.nombre, c, esp); chk(fmtCL(c.lamRiego/ppViejo(q),1)===antes, q.nombre+": con la fórmula antigua (6 × 2 L/h) daba "+fmtCL(c.lamRiego/ppViejo(q),1)+" h (esperado "+antes+")", "media"); return [q, c]; };
+    const [cv, ccv] = caso({nombre:"Cuesta Vieja bot", especie:"Naranjo", variedad:"Cara Cara", ha:21.8, marco:"5x2", anio:"2023"}, null, {pp:"1,60", mm:"6,5", h:"4,1"}, "5,4");
+    caso({nombre:"Corte 13 bot", especie:"Naranjo", marco:"4x2", anio:"2016"}, null, {pp:"2,00", mm:"6,5", h:"3,3"}, "4,3");
+    caso({nombre:"Cerezos 2020 bot", especie:"Cerezo", variedad:"Lapins", marco:"4,5x2,25", anio:"2020"}, {modo:"manual", kc:0.6776}, {pp:"1,78", mm:"6,3", h:"3,5"}, "5,3");
+    const [c4, cc4] = caso({}, null, {pp:"0,67", mm:"6,5", h:"9,8"}, "14,6");
+    /* goteros y L/h por planta (informativos) */
+    const p1 = ccv.ppInfo, p4 = cc4.ppInfo, t1 = txtHTML(riegoCardHTML(cv, ccv, fmtCL)), t4 = txtHTML(riegoCardHTML(c4, cc4, fmtCL));
+    chk(r3(p1.gpl)===8 && r3(p1.lpl)===16 && /8 got\.\/pl/.test(t1) && /16 L\/h por planta/.test(t1), "Cuesta Vieja bot (2 líneas c/0,5 m, plantas a 2 m): "+r3(p1.gpl)+" got./pl y "+r3(p1.lpl)+" L/h por planta (esperado 8 y 16, también en la tarjeta)", "media");
+    chk(r3(p4.gpl)===9 && r3(p4.lpl)===18 && /9 got\.\/pl/.test(t4), "Corte 4 Nuevo bot (1 línea c/0,5 m, plantas a 4,5 m): "+r3(p4.gpl)+" got./pl (esperado 9, también en la tarjeta)", "media");
+    /* m³/semana = lámina bruta × 10 × ha, igual que antes */
+    chk(fmtCL(cc4.m3Sem,1)==="790,7" && Math.abs(cc4.m3Sem-cc4.lamBruta*10*4.05)<1e-9, "m³/semana de Corte 4 Nuevo bot: "+fmtCL(cc4.m3Sem,1)+" (esperado 790,7 = 19,524 × 10 × 4,05)", "grave");
+    chk(fmtCL(ccv.m3Sem,1)==="4.256,2", "m³/semana de Cuesta Vieja bot: "+fmtCL(ccv.m3Sem,1)+" (esperado 4.256,2)", "grave");
+    /* líneas distintas, escritas en la ficha como una persona */
+    const qd = cuBot({nombre:"Líneas distintas bot", especie:"Naranjo", marco:"5x2", anio:"2016", ha:3}); prepBot(qd);
+    const m0 = calcBot(qd).m3Sem;
+    riegoFicha(qd.id); await pausa(); necesito(modalAbierto(), "la ficha de riego");
+    await elegir("rf_lin", "2", "líneas por hilera"); await escribir("rf_caudal", "2", "caudal Línea 1"); await escribir("rf_dg", "0,5", "distancia Línea 1");
+    await escribir("rf_caudal2", "1", "caudal Línea 2"); await escribir("rf_dg2", "0,5", "distancia Línea 2");
+    const l1 = txtDe(document.getElementById("rfLhm1")), l2 = txtDe(document.getElementById("rfLhm2")), viv = txtDe(document.getElementById("rfPpDis"));
+    chk(/= 4 L\/h por metro/.test(l1) && /= 2 L\/h por metro/.test(l2), "La ficha no muestra los L/h por metro de cada línea (= 4 y = 2): «"+l1+"» / «"+l2+"»", "media");
+    chk(viv.indexOf("(4 + 2) L/h por metro ÷ 5 m entre hileras = 1,20 mm/h")>=0, "Mientras se escribe, la ficha no mostró «(4 + 2) L/h por metro ÷ 5 m entre hileras = 1,20 mm/h»: «"+viv+"»", "media");
+    chk(await guardarModal_(), "La ficha no se cerró al guardar las dos líneas", "grave");
+    const od = riegoCfg().cu[qd.id]||{}, cd = calcBot(qd);
+    chk(od.lin===2 && od.caudal===2 && od.dg===0.5 && od.caudal2===1 && od.dg2===0.5, "La ficha no guardó las dos líneas tal como se escribieron: "+JSON.stringify({lin:od.lin, caudal:od.caudal, dg:od.dg, caudal2:od.caudal2, dg2:od.dg2}), "grave");
+    chk(cd.ppInfo.src==="dis" && ppBot(qd).src==="dis", "Con las dos líneas anotadas la Pp no quedó «diseño» (quedó «"+cd.ppInfo.src+"»)", "grave");
+    esperado("Líneas distintas (4 + 2 L/h por metro ÷ 5 m)", cd, {pp:"1,20", h:"5,4"});
+    chk(Math.abs(cd.m3Sem-m0)<1e-9, "El m³/semana cambió al cambiar las líneas ("+fmtCL(m0,1)+" → "+fmtCL(cd.m3Sem,1)+")", "grave");
+  }));
+  await paso("Línea 2 oculta y conservada: de 2 a 1 línea y de vuelta (Cuesta Vieja: 1,60 → 0,80 → 1,60)", ()=>enCaja(async ()=>{
+    await irA("riego");
+    const cv = cuBot({nombre:"Cuesta Vieja bot", especie:"Naranjo", ha:21.8, marco:"5x2", anio:"2023"}); prepBot(cv);
+    const m0 = calcBot(cv).m3Sem;
+    chk(await fichaBot(cv, [["rf_lin","2"],["rf_caudal2","2"],["rf_dg2","0,5"]]), "La ficha no se cerró al anotar la Línea 2", "grave");
+    riegoFicha(cv.id); await pausa(); necesito(modalAbierto(), "la ficha de Cuesta Vieja bot");
+    await elegir("rf_lin", "1", "1 línea");
+    const L2 = document.getElementById("rfL2");
+    chk(L2 && L2.hidden && v("rf_caudal2")==="2" && v("rf_dg2")==="0,5", "Con 1 línea la Línea 2 no quedó oculta con sus valores («"+v("rf_caudal2")+"» / «"+v("rf_dg2")+"»)", "grave");
+    chk(await guardarModal_(), "La ficha no se cerró al pasar a 1 línea", "grave");
+    let o = riegoCfg().cu[cv.id]||{}, c = calcBot(cv);
+    chk(o.lin===1 && o.caudal2===2 && o.dg2===0.5, "Al guardar con 1 línea la Línea 2 no quedó intacta: "+JSON.stringify({lin:o.lin, caudal2:o.caudal2, dg2:o.dg2}), "grave");
+    esperado("Cuesta Vieja bot con 1 línea", c, {pp:"0,80", h:"8,1"});
+    riegoFicha(cv.id); await pausa();
+    chk(document.getElementById("rfL2").hidden && v("rf_lin")==="1" && v("rf_caudal2")==="2" && v("rf_dg2")==="0,5", "Al volver a abrir la ficha (1 línea) la Línea 2 no está oculta con «2» y «0,5»", "media");
+    await elegir("rf_lin", "2", "2 líneas");
+    chk(!document.getElementById("rfL2").hidden && v("rf_caudal2")==="2" && v("rf_dg2")==="0,5", "Al elegir 2 líneas la Línea 2 no se volvió a ver con «2» y «0,5»", "grave");
+    chk(await guardarModal_(), "La ficha no se cerró al volver a 2 líneas", "grave");
+    esperado("Cuesta Vieja bot de vuelta a 2 líneas", calcBot(cv), {pp:"1,60", h:"4,1"});
+    /* variante: Línea 2 de 1 L/h */
+    chk(await fichaBot(cv, [["rf_caudal2","1"]]), "La ficha no se cerró con la Línea 2 de 1 L/h", "grave");
+    esperado("Cuesta Vieja bot, Línea 2 de 1 L/h", calcBot(cv), {pp:"1,20"});
+    chk(await fichaBot(cv, [["rf_lin","1"]]), "La ficha no se cerró (1 línea)", "grave"); esperado("Cuesta Vieja bot, 1 línea", calcBot(cv), {pp:"0,80"});
+    chk(await fichaBot(cv, [["rf_lin","2"]]), "La ficha no se cerró (2 líneas)", "grave"); esperado("Cuesta Vieja bot, de vuelta a 2 líneas (Línea 2 de 1 L/h)", calcBot(cv), {pp:"1,20"});
+    chk(Math.abs(calcBot(cv).m3Sem-m0)<1e-9, "El m³/semana cambió al cambiar las líneas", "grave");
+    /* la Cuesta Vieja de la semilla en 1 línea: la ficha avisa que contradice el plano */
+    let real = (D.cuarteles||[]).find(z=>norm(z.fundo)==="san joaquin" && norm(z.nombre)==="cuesta vieja");
+    if(!real){ real = cuBot({fundo:"San Joaquín", nombre:"Cuesta Vieja", especie:"Naranjo", ha:21.8, marco:"5x2", anio:"2023"}); log("○ Cuesta Vieja no está en tus datos: se creó en la copia de prueba"); }
+    const ro = riegoCfg().cu[real.id] = riegoCfg().cu[real.id]||{}; ["lin","caudal","dg","caudal2","dg2","ppMed","ppFecha"].forEach(k=>delete ro[k]);
+    chk(await fichaBot(real, [["rf_lin","1"]]), "La ficha de Cuesta Vieja no se cerró (1 línea)", "grave");
+    riegoFicha(real.id); await pausa();
+    const dif = txtDe(document.querySelector('#capaModal [data-fal="dif"]'));
+    chk(/líneas por hilera 1 en la ficha y 2 en el plano/.test(dif), "Cuesta Vieja con 1 línea en la ficha no avisa que el plano dice 2: «"+dif+"»", "media");
+    await cancelarModal();
+  }));
+  await paso("Aplicar a todos los cuarteles del fundo: confirmación dentro de la ficha, sin tocar las líneas ni la Pp medida, con Deshacer y sin escribir en el espejo", ()=>enCaja(async ()=>{
+    await irA("riego");
+    const A = cuBot({nombre:"A bot", marco:"5x2", anio:"2016", especie:"Naranjo"}); prepBot(A);
+    const B = cuBot({nombre:"B bot"}); prepBot(B, {caudal2:1.5, dg2:0.4});
+    const C = cuBot({nombre:"C bot", marco:"4x2", anio:"2016", especie:"Naranjo"}); prepBot(C, {caudal:4, dg:0.5});
+    const Dd = cuBot({nombre:"D bot", marco:"5x2", anio:"2016", especie:"Naranjo"}); prepBot(Dd, {ppMed:1.1});
+    const P = cuBot({nombre:"P bot", especie:"Por plantar", marco:"", anio:""});
+    const E = cuBot({fundo:FU24, nombre:"E bot"}); prepBot(E);
+    const cuJ = ()=>JSON.stringify(riegoCfg().cu), de = q=>JSON.stringify(riegoCfg().cu[q.id]||null);
+    const m3 = [A,B,C,Dd].map(q=>calcBot(q).m3Sem), p0 = de(P), e0 = de(E);
+    riegoFicha(A.id); await pausa(); necesito(modalAbierto(), "la ficha de A bot");
+    await escribir("rf_caudal", "1,6", "caudal Línea 1"); await escribir("rf_dg", "0,4", "distancia Línea 1");
+    let d0 = JSON.stringify(riegoCfg()), a0 = R.alerts.length;
+    await tocar("#rfAplBtn", "Aplicar a todos los cuarteles del fundo");
+    const cf = document.getElementById("rfAplConf"), tc = txtDe(cf);
+    chk(cf && !cf.hidden && /¿Cargar 1,6 L\/h cada 0,4 m en las dos líneas de los 4 cuarteles de Bot Riego\?/.test(tc), "«Aplicar» no pidió confirmación dentro de la ficha con «¿Cargar 1,6 L/h cada 0,4 m en las dos líneas de los 4 cuarteles de Bot Riego?»: «"+tc.slice(0,200)+"»", "grave");
+    chk(/C bot \(4 L\/h c\/0,5 m\)/.test(tc) && /B bot \(Línea 2 guardada: 1,5 L\/h c\/0,4 m\)/.test(tc) && /D bot tiene Pp medida/.test(tc) && /No cambia el número de líneas/.test(tc), "La confirmación no nombra a los que tienen otros datos (C 4 L/h c/0,5 m; B Línea 2 guardada) o a D con Pp medida: «"+tc+"»", "media");
+    chk(R.alerts.length===a0 && JSON.stringify(riegoCfg())===d0, "Antes de confirmar, «Aplicar» escribió algo o usó confirm()", "grave");
+    const bS = cf.querySelector('[data-apl="si"]'), bN = cf.querySelector('[data-apl="no"]');
+    /* la ficha entra con una animación de escala (0,985): se mide el alto real del botón, sin la transformación */
+    chk(bS && bN && bS.offsetHeight>=44 && bN.offsetHeight>=44 && /Sí, aplicar a los 4/.test(txtDe(bS)), "Los botones «Sí, aplicar a los 4» / «No» faltan o miden menos de 44 px", "leve");
+    await tocar('#rfAplConf [data-apl="no"]', "No");
+    chk(document.getElementById("rfAplConf").hidden && JSON.stringify(riegoCfg())===d0, "«No» no escondió la caja o escribió algo", "media");
+    await tocar("#rfAplBtn", "Aplicar a todos (otra vez)");
+    await tocar('#rfAplConf [data-apl="si"]', "Sí, aplicar a los 4");
+    chk(await undoVisible(), "Después de aplicar no apareció «Deshacer»", "media");
+    const cu = riegoCfg().cu, bien = q=>{ const o = cu[q.id]||{}; return o.caudal===1.6 && o.dg===0.4 && o.caudal2===1.6 && o.dg2===0.4; };
+    chk([A,B,C,Dd].every(bien), "«Aplicar» no dejó 1,6 L/h c/0,4 m en las dos líneas de A, B, C y D: "+[A,B,C,Dd].map(q=>q.nombre+" "+JSON.stringify({c:(cu[q.id]||{}).caudal, d:(cu[q.id]||{}).dg, c2:(cu[q.id]||{}).caudal2, d2:(cu[q.id]||{}).dg2})).join(" · "), "grave");
+    chk([A,B,C].every(q=>!("lin" in (cu[q.id]||{}))) && cu[Dd.id].ppMed===1.1 && de(P)===p0 && de(E)===e0, "«Aplicar» tocó las líneas, la Pp medida de D, el cuartel por plantar o un cuartel de otro fundo", "grave");
+    chk(/Listo: 1,6 L\/h cada 0,4 m quedó anotado en las líneas de los 4 cuarteles de Bot Riego/.test(txtDe(document.getElementById("rfAplRes"))) && document.getElementById("rfAplConf").hidden, "Después de aplicar no dice «Listo: 1,6 L/h cada 0,4 m quedó anotado…»: «"+txtDe(document.getElementById("rfAplRes"))+"»", "media");
+    chk([v("rf_caudal"), v("rf_dg"), v("rf_caudal2"), v("rf_dg2")].join("|")==="1,6|0,4|1,6|0,4", "Los campos de la ficha no quedaron con lo aplicado: "+[v("rf_caudal"), v("rf_dg"), v("rf_caudal2"), v("rf_dg2")].join(" · "), "media");
+    const pps = ()=>[A,B,C,Dd].map(q=>{ const c = calcBot(q); return fmtCL(c.pp,2)+" "+c.ppInfo.src; }).join(" · ");
+    chk(pps()==="1,60 dis · 0,67 dis · 2,00 dis · 1,10 med", "Pp después de aplicar: "+pps()+" (esperado A 1,60 dis · B 0,67 dis · C 2,00 dis · D 1,10 med)", "grave");
+    chk([A,B,C,Dd].every((q,i)=>Math.abs(calcBot(q).m3Sem-m3[i])<1e-9), "El m³/semana cambió al aplicar el gotero", "grave");
+    chk(await guardarModal_(), "La ficha no se cerró al guardar después de aplicar", "grave");
+    chk(pps()==="1,60 dis · 0,67 dis · 2,00 dis · 1,10 med", "Guardar después de aplicar cambió la Pp: "+pps(), "media");
+    /* dos líneas distintas desde la ficha de C, y Deshacer */
+    riegoFicha(C.id); await pausa();
+    await elegir("rf_lin", "2", "2 líneas"); await escribir("rf_caudal", "2", "caudal Línea 1"); await escribir("rf_dg", "0,5", "distancia Línea 1"); await escribir("rf_caudal2", "1", "caudal Línea 2"); await escribir("rf_dg2", "0,5", "distancia Línea 2");
+    await tocar("#rfAplBtn", "Aplicar a todos (dos líneas)");
+    chk(/2 L\/h cada 0,5 m en la Línea 1 y 1 L\/h cada 0,5 m en la Línea 2 de los 4 cuarteles de Bot Riego/.test(txtDe(document.getElementById("rfAplConf"))), "Con dos líneas distintas la confirmación no dice «2 L/h cada 0,5 m en la Línea 1 y 1 L/h cada 0,5 m en la Línea 2 de los 4 cuarteles…»: «"+txtDe(document.getElementById("rfAplConf")).slice(0,200)+"»", "media");
+    const antes = cuJ();
+    await tocar('#rfAplConf [data-apl="si"]', "Sí, aplicar (dos líneas)");
+    chk(pps().split(" · ").slice(0,3).join(" · ")==="1,20 dis · 0,67 dis · 1,50 dis" && riegoCfg().cu[B.id].caudal2===1, "Con dos líneas distintas: "+pps()+" (esperado A 1,20 · B 0,67 con la Línea 2 de 1 L/h guardada · C 1,50)", "grave");
+    chk(await undoVisible(), "No apareció «Deshacer» después de aplicar las dos líneas", "media");
+    await deshacer();
+    chk(cuJ()===antes && !modalAbierto(), "«Deshacer» no dejó la ficha de los cuarteles como estaba, o la ficha siguió abierta", "grave");
+    /* inválido y espejo: no escriben nada */
+    riegoFicha(A.id); await pausa(); await escribir("rf_caudal", "9", "caudal 9 L/h"); d0 = JSON.stringify(riegoCfg());
+    await tocar("#rfAplBtn", "Aplicar con 9 L/h");
+    chk(/El caudal del gotero de la Línea 1 va de 0,5 a 8 L\/h\./.test(txtDe(document.getElementById("rfAviso"))) && document.getElementById("rfAplConf").hidden && JSON.stringify(riegoCfg())===d0, "Con 9 L/h, «Aplicar» no avisó dentro de la ficha o mostró la caja", "media");
+    await cancelarModal();
+    D.sync = D.sync||{}; const tenia = ("rol" in D.sync), rol0 = D.sync.rol;
+    try{
+      D.sync.rol = "receptor"; riegoFicha(A.id); await pausa(); await escribir("rf_caudal", "3", "caudal 3 L/h"); d0 = JSON.stringify(riegoCfg());
+      await tocar("#rfAplBtn", "Aplicar en el celular espejo");
+      chk(JSON.stringify(riegoCfg())===d0 && document.getElementById("rfAplConf").hidden && /solo se consulta/i.test(txtDe(document.getElementById("avisoCapa"))), "En el celular espejo «Aplicar» escribió algo o no avisó que solo se consulta", "media");
+    } finally { if(tenia) D.sync.rol = rol0; else delete D.sync.rol; if(modalAbierto()) await cancelarModal(); }
+  }));
+  await paso("Prioridad de la Pp: medida > líneas > valores iniciales (caudalímetro, insignias, tabla y resumen del fundo)", ()=>enCaja(async ()=>{
     await irA("riego");
     const q = cuBot(); prepBot(q, {lin:2, dg:0.5, caudal:2});
     let c = calcBot(q);
-    chk(c.ppInfo.src==="dis" && fmtCL(c.pp,2)==="1,33", "Con la línea de riego completa la Pp no es la de diseño 1,33 (es "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»)", "grave");
+    chk(c.ppInfo.src==="dis" && fmtCL(c.pp,2)==="1,33", "Con la línea de riego anotada la Pp no es la de diseño 1,33 (es "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»)", "grave");
     riegoFicha(q.id); await pausa(); necesito(modalAbierto(), "la ficha");
     await abrirCm();
     await escribir("rf_cmq", "5,4", "caudal del caudalímetro"); await escribir("rf_cmha", "4,05", "ha del sector");
@@ -1427,22 +1581,23 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     await escribir("rf_ppmed", "1,1", "Pp medida"); await fecha("rf_ppf", masDias(HOY(),-3), "fecha del aforo");
     chk(await guardarModal_(), "La ficha no se cerró con la Pp medida", "grave");
     c = calcBot(q);
-    chk(c.ppInfo.src==="med" && Math.abs(c.pp-1.1)<1e-9 && ppBot(q).src==="med", "Con Pp medida 1,1 y línea de diseño la app usó "+fmtCL(c.pp,2)+" («"+c.ppInfo.src+"»): manda la medida", "grave");
+    chk(c.ppInfo.src==="med" && Math.abs(c.pp-1.1)<1e-9 && ppBot(q).src==="med", "Con Pp medida 1,1 y la línea anotada la app usó "+fmtCL(c.pp,2)+" («"+c.ppInfo.src+"»): manda la medida", "grave");
     chk(riegoCfg().cu[q.id].ppFecha===masDias(HOY(),-3) && /^medida · /.test(c.ppInfo.lab), "La fecha del aforo no quedó guardada o no se ve con la fuente: «"+c.ppInfo.lab+"»", "leve");
     let t = tarjetaBot(q);
-    chk(/Pp medida/.test(t) && /\(medida · /.test(t), "La tarjeta no dice de dónde sale la Pp («Pp medida»): «"+t.slice(0,200)+"»", "media");
+    chk(/Pp medida/.test(t) && /Pp medida 1,10 \(\d\d-\d\d-\d{4}\) · por la línea: Marco 6×4,5 · 2 líneas/.test(t), "La tarjeta no dice de dónde sale la Pp («Pp medida 1,10 (fecha) · por la línea: …»): «"+t.slice(0,240)+"»", "media");
     chk(await fichaBot(q, [["rf_ppmed",""]]), "La ficha no se cerró al borrar la Pp medida", "grave");
     c = calcBot(q); chk(c.ppInfo.src==="dis" && fmtCL(c.pp,2)==="1,33" && !riegoCfg().cu[q.id].ppFecha, "Sin Pp medida no volvió a la de diseño 1,33 (quedó "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»)", "grave");
     chk(/Pp de diseño/.test(tarjetaBot(q)), "La tarjeta no dice «Pp de diseño»", "media");
-    chk(await fichaBot(q, [["rf_lin",""]]), "La ficha no se cerró al borrar las líneas por hilera", "grave");
-    c = calcBot(q); chk(c.ppInfo.src==="sv" && fmtCL(c.pp,2)==="0,44" && ppBot(q).src==="sv", "Sin líneas por hilera no quedó «sin verificar» con la fórmula antigua 0,44 (quedó "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»)", "grave");
-    t = tarjetaBot(q); const card = document.querySelector(`#riegoScroll .rgcard[data-rgcu="${q.id}"]`);
-    chk(card && /Pp sin verificar/.test(t) && card.querySelector('.badge.b-ambar[data-pp="sv"]'), "La tarjeta no muestra la insignia ámbar «Pp sin verificar»", "media");
-    const res = document.querySelector('#riegoScroll [data-res="sv"]');
-    chk(res && /1 de 1 cuartel/.test(txtDe(res)), "El resumen del fundo no cuenta los cuarteles sin verificar: «"+txtDe(res)+"»", "media");
+    chk(await fichaBot(q, [["rf_caudal",""],["rf_dg",""]]), "La ficha no se cerró al borrar el caudal y la distancia entre goteros", "grave");
+    c = calcBot(q); chk(c.ppInfo.src==="ini" && fmtCL(c.pp,2)==="1,33" && ppBot(q).src==="ini", "Sin caudal ni distancia anotados no quedó con los valores iniciales 1,33 (quedó "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»)", "grave");
+    t = tarjetaBot(q); const card = document.querySelector(`#riegoScroll .rgcard[data-rgcu="${q.id}"]`), bdg = card && card.querySelector('.rg-ppb[data-pp="ini"]');
+    chk(card && bdg && txtDe(bdg)==="Valores iniciales" && !bdg.querySelector(".i, svg") && !card.classList.contains("sinv"), "La tarjeta no muestra la insignia «Valores iniciales» (sin ícono de alerta ni borde)", "media");
+    const res = document.querySelector('#riegoScroll [data-res="ini"]');
+    chk(res && /Valores iniciales en 1 de 1 cuartel/.test(txtDe(res)), "El resumen del fundo no cuenta los cuarteles con valores iniciales: «"+txtDe(res)+"»", "media");
     await tocar(`[onclick="riegoVistaSet('tabla')"]`, "vista tabla");
     const fila = document.querySelector(`#riegoScroll tr[data-rgcu="${q.id}"]`);
-    chk(fila && /Pp sin verificar/.test(txtDe(fila)) && /6 got\.\/pl general/.test(txtDe(fila)) && !document.querySelector(`#riegoScroll table [onchange*="'gpp'"]`), "La tabla no muestra la fuente de la Pp (o sigue la casilla got./pl editable): «"+txtDe(fila).slice(0,160)+"»", "media");
+    chk(fila && /valores iniciales · 18 got\.\/pl · 36 L\/h\/pl/.test(txtDe(fila)) && /2 líneas: 2 L\/h c\/0,5 m · 2 L\/h c\/0,5 m/.test(txtDe(fila)), "La tabla no muestra la fuente, los goteros y L/h por planta y la línea de riego: «"+txtDe(fila).slice(0,200)+"»", "media");
+    chk(!document.querySelector(`#riegoScroll input[onchange^="riegoSet(${q.id},'caudal'"]`) && !document.querySelector(`#riegoScroll table [onchange*="'gpp'"]`), "La tabla sigue con la casilla L/h (o got./pl) editable", "media");
     await tocar(`[onclick="riegoVistaSet('cu')"]`, "vista cuarteles");
   }));
   await paso("Semilla de la línea de riego: Cuesta Vieja 1,60 (plano 2021) y Cerezos 2023/2024 2,00; lo de la ficha manda", ()=>enCaja(async ()=>{
@@ -1451,30 +1606,72 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     for(const [fu, nom, pp, re, marco, esp] of casos){
       let q = (D.cuarteles||[]).find(z=>norm(z.fundo)===norm(fu) && norm(z.nombre)===norm(nom));
       if(!q){ q = cuBot({fundo:fu, nombre:nom, marco, especie:esp, ha:5, anio:"2023"}); creados++; }
-      const r = riegoCfg(), o = r.cu[q.id] = r.cu[q.id]||{}; ["ent","lin","dg","caudal","ppMed","ppFecha"].forEach(k=>delete o[k]);   // solo la semilla (en la copia)
+      const r = riegoCfg(), o = r.cu[q.id] = r.cu[q.id]||{}; ["ent","lin","dg","caudal","caudal2","dg2","ppMed","ppFecha"].forEach(k=>delete o[k]);   // solo la semilla (en la copia)
       const pi = riegoCalcCuartel(q, SERIE_BOT).ppInfo, pb = ppBot(q);
       chk(pi.src==="dis" && fmtCL(pi.pp,2)===pp && Math.abs(pb.pp-pi.pp)<1e-9 && re.test(pi.lab), nom+": Pp "+fmtCL(pi.pp,2)+" «"+pi.lab+"» (esperado "+pp+" de diseño)", "grave");
-      chk(!["ent","lin","dg","caudal"].some(k=>k in (riegoCfg().cu[q.id]||{})), nom+": la semilla se escribió en los datos del cuaderno (debe vivir solo en el código)", "media");
+      chk(!["lin","dg","caudal","caudal2","dg2"].some(k=>k in (riegoCfg().cu[q.id]||{})), nom+": la semilla se escribió en los datos del cuaderno (debe vivir solo en el código)", "media");
     }
     if(creados) log("○ "+creados+" cuartel(es) de la semilla no estaban en los datos: se crearon en la copia de prueba");
     const cv = (D.cuarteles||[]).find(z=>norm(z.fundo)==="san joaquin" && norm(z.nombre)==="cuesta vieja");
     chk(await fichaBot(cv, [["rf_caudal","4"]]), "La ficha de Cuesta Vieja no se cerró", "grave");
     const pi = riegoPp(cv);
     chk(fmtCL(pi.pp,2)==="3,20" && Math.abs(ppBot(cv).pp-3.2)<1e-9, "Con caudal 4 L/h escrito en la ficha, la Pp de Cuesta Vieja debía ser 3,20 (quedó "+fmtCL(pi.pp,2)+" «"+pi.lab+"»): lo de la ficha manda sobre la semilla", "media");
-    /* corrector 27-10: con un dato de la ficha distinto del plano, la fuente ya no dice solo «plano de riego 2021» y la ficha y la tarjeta avisan */
     chk(pi.lab==="diseño · ficha + plano de riego 2021", "Con el caudal de la ficha (4) distinto del plano (2), la fuente debía decir «diseño · ficha + plano de riego 2021» y dice «"+pi.lab+"»", "media");
     riegoFicha(cv.id); await pausa(); necesito(modalAbierto(), "la ficha de Cuesta Vieja");
     const dif = txtDe(document.querySelector('#capaModal [data-fal="dif"]'));
-    chk(/no coincide con el plano de riego 2021/.test(dif) && /caudal del gotero 4 L\/h en la ficha y 2 L\/h en el plano/.test(dif), "La ficha no avisa que el caudal (4) no coincide con el plano (2): «"+dif+"»", "media");
+    chk(/no coincide con el plano de riego 2021/.test(dif) && /caudal del gotero \(Línea 1\) 4 L\/h en la ficha y 2 L\/h en el plano/.test(dif), "La ficha no avisa que el caudal (4) no coincide con el plano (2): «"+dif+"»", "media");
     await cancelarModal();
     chk(/difiere del plano de riego 2021/.test(txtHTML(riegoCardHTML(cv, riegoCalcCuartel(cv, SERIE_BOT), fmtCL))), "La tarjeta de Cuesta Vieja no dice que la Pp difiere del plano", "leve");
-    /* un caudal heredado de antes (la columna L/h o la ficha antigua lo guardaban en el mismo campo) */
+    /* un caudal heredado de antes (la casilla L/h de la tabla lo guardaba en el mismo campo): vale para las dos líneas */
     const r2 = riegoCfg(); r2.cu[cv.id] = Object.assign(r2.cu[cv.id]||{}, {caudal:3.5}); guardar();
     const ph = riegoPp(cv);
     chk(Math.abs(ph.pp-2.8)<1e-9 && /^diseño · ficha \+ plano de riego 2021$/.test(ph.lab) && ph.dif.length===1, "Con un caudal heredado de 3,5 L/h, Cuesta Vieja debía dar Pp 2,80 «diseño · ficha + plano de riego 2021» y dio "+fmtCL(ph.pp,2)+" «"+ph.lab+"»", "media");
     r2.cu[cv.id].caudal = 2; guardar();   // igual al plano: no lo contradice
     const pg = riegoPp(cv);
     chk(pg.lab==="diseño · plano de riego 2021" && !pg.dif.length, "Con el caudal de la ficha igual al del plano (2 L/h) la fuente debía seguir «diseño · plano de riego 2021» y dice «"+pg.lab+"»", "leve");
+  }));
+  await paso("Datos guardados antes (sin migración que escriba): línea del 27-10, caudal antiguo, goteros/pl, entrehilera y datos fuera de rango", ()=>enCaja(async ()=>{
+    await irA("riego");
+    const pp = (o, extra)=>{ const q = cuBot(o); prepBot(q, extra); return [q, calcBot(q)]; };
+    let [q, c] = pp({}, {lin:2, dg:0.5, caudal:2});
+    chk(fmtCL(c.pp,2)==="1,33" && c.ppInfo.src==="dis", "Con la línea del 27-10 completa (2 líneas, 0,5 m, 2 L/h) en 6x4,5 la Pp no es la misma de antes, 1,33 de diseño ("+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»)", "grave");
+    [q, c] = pp({}, {lin:1, dg:0.5, caudal:2}); chk(fmtCL(c.pp,2)==="0,67", "Con 1 línea del 27-10 en 6x4,5 la Pp no es 0,67 ("+fmtCL(c.pp,2)+")", "grave");
+    [q, c] = pp({nombre:"Caudal antiguo bot", marco:"5x2", anio:"2016"}, {caudal:4});
+    chk(fmtCL(c.pp,2)==="3,20" && c.ppInfo.src==="ini" && riegoLineaTxt(c.ppInfo)==="Marco 5×2 · 2 líneas (4 L/h c/0,5 m · 4 L/h c/0,5 m) → Pp 3,20", "Solo con el caudal antiguo de 4 L/h (5x2, 2016) debía dar 3,20 con valores iniciales y la tarjeta «Marco 5×2 · 2 líneas (4 L/h c/0,5 m · 4 L/h c/0,5 m) → Pp 3,20»: "+fmtCL(c.pp,2)+" «"+riegoLineaTxt(c.ppInfo)+"»", "media");
+    /* goteros/pl antiguos: ya no se usan, la ficha lo dice y Guardar no los borra */
+    [q, c] = pp({nombre:"Goteros antiguos bot"}, {gpp:8});
+    chk(fmtCL(c.pp,2)==="0,67" && c.ppInfo.src==="ini", "Con 8 goteros/pl antiguos la Pp no sale de la línea (0,67 con valores iniciales): "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»", "grave");
+    riegoFicha(q.id); await pausa(); necesito(modalAbierto(), "la ficha");
+    chk(/8 goteros por planta/.test(txtDe(document.querySelector('#capaModal [data-fal="gpp"]'))) && !document.getElementById("rf_gpp"), "La ficha no avisa (gris) que los 8 goteros por planta antiguos ya no se usan, o sigue la casilla", "leve");
+    chk(await guardarModal_() && riegoCfg().cu[q.id].gpp===8, "Al guardar la ficha se borraron los goteros/pl antiguos (debían quedar guardados)", "media");
+    /* entrehilera del 27-10: manda el marco */
+    [q, c] = pp({nombre:"Entrehilera antigua bot", marco:"5x2", anio:"2016"}, {ent:5.5});
+    chk(fmtCL(c.pp,2)==="1,60" && c.ppInfo.src==="ini", "Con una entrehilera antigua de 5,5 m la Pp no sale del marco (1,60): "+fmtCL(c.pp,2), "grave");
+    riegoFicha(q.id); await pausa();
+    const fe = txtDe(document.querySelector('#capaModal [data-fal="ent"]'));
+    chk(/5,5 m/.test(fe) && /no se usa/.test(fe) && !document.getElementById("rf_ent"), "La ficha no avisa que la entrehilera antigua (5,5 m) no se usa, o sigue el campo: «"+fe+"»", "leve");
+    chk(await guardarModal_() && riegoCfg().cu[q.id].ent===5.5, "Al guardar la ficha se borró la entrehilera antigua (debía quedar guardada)", "media");
+    /* un caudal guardado fuera de 0,5–8 L/h: no se usa, la ficha lo avisa y no deja guardar hasta borrarlo */
+    [q, c] = pp({nombre:"Caudal malo bot", marco:"5x2", anio:"2016"}, {caudal:12});
+    chk(fmtCL(c.pp,2)==="1,60" && c.ppInfo.src==="ini" && c.ppInfo.malos.length===1, "Con un caudal guardado de 12 L/h la Pp debía seguir con el valor inicial (1,60): "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»", "grave");
+    riegoFicha(q.id); await pausa();
+    const fc = txtDe(document.querySelector('#capaModal [data-fal="caudal"]'));
+    chk(/fuera de 0,5 a 8 L\/h/.test(fc) && /no se usa/.test(fc), "La ficha no avisa que el caudal guardado de 12 L/h está fuera de rango y no se usa: «"+fc+"»", "media");
+    chk(!(await guardarModal_()) && /caudal del gotero de la Línea 1 va de 0,5 a 8 L\/h/.test(txtDe(document.getElementById("rfAviso"))), "Con el caudal guardado de 12 L/h la ficha se guardó sin avisar", "media");
+    await tocar({texto:/borrar el caudal guardado/i}, "Borrar el caudal guardado", "#capaModal");
+    chk(v("rf_caudal")==="" && await guardarModal_() && !("caudal" in riegoCfg().cu[q.id]), "«Borrar el caudal guardado» no dejó guardar la ficha sin el caudal", "media");
+    [q, c] = pp({nombre:"Caudal 10 bot", marco:"5x2", anio:"2016"}, {caudal:10, lin:2, dg:0.5});
+    chk(fmtCL(c.pp,2)==="1,60" && c.ppInfo.src==="ini", "Con 10 L/h guardados (fuera de rango) debía dar 1,60 con valores iniciales: "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»", "media");
+    [q, c] = pp({nombre:"Medida 27-10 bot", marco:"5x2", anio:"2016"}, {ppMed:1.1, lin:2, dg:0.5, caudal:2});
+    chk(c.ppInfo.src==="med" && /^Pp medida 1,10/.test(riegoLineaTxt(c.ppInfo)), "Con Pp medida y la línea del 27-10 no manda la medida en la tarjeta: «"+riegoLineaTxt(c.ppInfo)+"»", "media");
+    /* cargar no escribe: calcular, pintar y abrir y cancelar una ficha deja D.riego igual */
+    const d0 = JSON.stringify(D.riego);
+    riegoCfg(); nav.riegoFundo = FU_BOT; riegoPintar(); riegoFicha(q.id); await pausa(); await cancelarModal(); riegoPintar();
+    chk(JSON.stringify(D.riego)===d0, "Calcular, pintar la vista o abrir y cancelar una ficha escribió algo en los datos de riego", "grave");
+    /* lo que tienen guardado los cuarteles reales de la copia (solo se informa) */
+    const r = riegoCfg(), reales = plantados().filter(z=>z.fundo!==FU_BOT && z.fundo!==FU24 && ["gpp","caudal","ent","lin","dg"].some(k=>(r.cu[z.id]||{})[k]!=null));
+    reales.slice(0,12).forEach(z=>{ const o = r.cu[z.id], p = riegoPp(z); log("○ "+z.fundo+" · "+z.nombre+": guardado "+JSON.stringify(["gpp","caudal","ent","lin","dg"].reduce((a,k)=>{ if(o[k]!=null) a[k]=o[k]; return a; },{}))+" → Pp "+fmtCL(p.pp,2)+" ("+p.lab+")"); });
+    if(!reales.length) log("○ Ningún cuartel de tus datos tiene goteros/pl, caudal, entrehilera, líneas o distancia guardados");
   }));
   await paso("Factor de cobertura: cadena del Kc en la tarjeta, ayuda del diámetro y alerta «Kc de adulto en huerto joven»", ()=>enCaja(async ()=>{
     await irA("riego");
@@ -1570,33 +1767,37 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     const sb0 = window.riegoSerieBase; window.riegoSerieBase = ()=>SERIE_BOT.map(d=>Object.assign({}, d));   // la pantalla calcula con la misma serie fija que calcBot
     try{
     await irA("riego");
-    const q = cuBot({nombre:"Sv joven bot"}); prepBot(q);                                           // sin línea → sin verificar (0,44 → 14,6 h); 2026 y factor 1 → joven
+    const q = cuBot({nombre:"Inicial joven bot"}); prepBot(q);                                      // sin línea anotada → valores iniciales (1 línea, 0,67 → 9,8 h); 2026 y factor 1 → joven
     const q2 = cuBot({nombre:"Diseño bot", anio:"2015"}); prepBot(q2, {lin:2, dg:0.5, caudal:2});      // Pp de diseño 1,33
-    const qM = cuBot({nombre:"Sin marco bot", marco:"", anio:"2015"}); prepBot(qM);                   // sin marco ni línea: no se calcula
+    const qM = cuBot({nombre:"Sin marco bot", marco:"", anio:"2015"}); prepBot(qM);                   // sin marco: no se calcula
     nav.riegoFundo = FU_BOT; nav.riegoVista = "cu"; riegoPintar(); await pausa();
-    const sv = necesito(document.querySelector('#riegoScroll [data-res="sv"]'), "el aviso «Pp sin verificar»"), tsv = txtDe(sv);
-    chk(/Pp sin verificar en 1 de 3 cuarteles/.test(tsv) && /milímetros por hora/.test(tsv) && /Por qué importa/.test(tsv) && /Qué hacer/.test(tsv) && /entrehilera/.test(tsv), "El aviso «Pp sin verificar» no explica qué es, por qué importa y qué hacer, o no cuenta «1 de 3» (el cuartel sin marco no va como sin verificar): «"+tsv.slice(0,220)+"»", "media");
-    chk(!/Sin marco bot/.test(tsv) && /Sin marco bot/.test(txtDe(document.querySelector('#riegoScroll [data-res="sinm"]'))), "El cuartel sin marco se cuenta como «Pp sin verificar» o no sale aparte como «sin calcular»", "media");
+    const ci = calcBot(q);
+    chk(ci.ppInfo.src==="ini" && fmtCL(ci.pp,2)==="0,67" && fmtCL(ci.hRiego,1)==="9,8", "«Inicial joven bot» (6x4,5, 2026, sin datos) debía quedar con valores iniciales 0,67 y 9,8 h: "+fmtCL(ci.pp,2)+" «"+ci.ppInfo.src+"» "+fmtCL(ci.hRiego,1)+" h", "grave");
+    const sv = necesito(document.querySelector('#riegoScroll [data-res="ini"]'), "el aviso «Valores iniciales»"), tsv = txtDe(sv);
+    chk(sv.classList.contains("info") && !sv.classList.contains("amb") && /Valores iniciales en 1 de 3 cuarteles/.test(tsv) && /Qué hacer/.test(tsv) && /Aplicar a todos los cuarteles del fundo/.test(tsv) && !/Por qué importa/.test(tsv), "El aviso «Valores iniciales» no es informativo (gris-azul, sin «Por qué importa»), no dice qué hacer o no cuenta «1 de 3» (el cuartel sin marco no va como valores iniciales): «"+tsv.slice(0,240)+"»", "media");
+    chk(!/Sin marco bot/.test(tsv) && /Sin marco bot/.test(txtDe(document.querySelector('#riegoScroll [data-res="sinm"]'))) && /sin marco de plantación/.test(txtDe(document.querySelector('#riegoScroll [data-res="sinm"]'))), "El cuartel sin marco se cuenta como «valores iniciales» o no sale aparte como «sin marco de plantación»", "media");
     const b1 = sv.querySelector(`button[onclick="riegoFicha(${q.id},'linea')"]`);
-    chk(b1 && b1.getAttribute("aria-label")==="Abrir la ficha de riego de "+q.nombre && b1.getBoundingClientRect().height>=44 && !sv.querySelector(`button[onclick^="riegoFicha(${q2.id}"]`), "El aviso «Pp sin verificar» no trae el botón «⚙ "+q.nombre+"» (≥ 44 px, con nombre para el lector) o trae uno de un cuartel verificado", "media");
+    chk(b1 && b1.getAttribute("aria-label")==="Abrir la ficha de riego de "+q.nombre && b1.getBoundingClientRect().height>=44 && !sv.querySelector(`button[onclick^="riegoFicha(${q2.id}"]`), "El aviso «Valores iniciales» no trae el botón «⚙ "+q.nombre+"» (≥ 44 px, con nombre para el lector) o trae uno de un cuartel con la línea anotada", "media");
+    chk(!/Pp sin verificar/.test(txtDe(document.getElementById("riegoScroll"))), "La vista de Riego todavía dice «Pp sin verificar»", "media");
     if(b1){
       await tocar(b1, "⚙ "+q.nombre);
       chk(modalAbierto() && txtDe(document.querySelector("#capaModal .mh h3")).indexOf(q.nombre)>=0, "El botón del aviso no abrió la ficha de "+q.nombre, "grave");
-      chk(document.activeElement && document.activeElement.id==="rf_ent", "La ficha no quedó con el cursor en la entrehilera («Línea de riego»)", "leve");
+      chk(document.activeElement && document.activeElement.id==="rf_lin", "La ficha no quedó con el cursor en las líneas por hilera («Línea de riego»)", "leve");
       const sec = document.querySelector('#capaModal .rf-sec[data-rf="linea"]'), mb = document.querySelector("#capaModal .modal");
-      const st = sec? sec.getBoundingClientRect().top : -1e9, mt = mb? mb.getBoundingClientRect().top : 0;
+      const st = sec? sec.getBoundingClientRect().top : -1e9;
       chk(sec && mb && st>=-2 && st<innerHeight*0.6, "La ficha no se abrió en «Línea de riego» (la sección quedó a "+Math.round(st)+" px del borde de arriba de la pantalla)", "leve");
-      chk(/Qué hacer/.test(txtDe(document.querySelector('#capaModal [data-fal="sv"]'))) && /Pp baja \(sin verificar\)/.test(txtDe(document.querySelector('#capaModal [data-fal="largo"]'))), "Los avisos de la ficha no dicen qué hacer («Pp sin verificar» y «Más de 8 h por riego»)", "leve");
-      /* revisión final 28-10: el riego largo de la ficha es ámbar «Riegos muy largos» con su «Por qué importa», como en el resumen */
+      chk(document.querySelector('#capaModal [data-fal="ini"]') && /Pp baja \(valores iniciales\)/.test(txtDe(document.querySelector('#capaModal [data-fal="largo"]'))), "La ficha no trae el aviso «Valores iniciales» o el de riegos largos no dice «Pp baja (valores iniciales)»", "leve");
+      chk(!/Pp sin verificar/.test(txtDe(document.getElementById("capaModal"))), "La ficha todavía dice «Pp sin verificar»", "media");
       const fl = document.querySelector('#capaModal [data-fal="largo"]');
       chk(fl && fl.classList.contains("amb") && !fl.classList.contains("roj") && /^Riegos muy largos: más de [\d,]+ h por riego/.test(txtDe(fl)) && /Por qué importa/.test(txtDe(fl)) && /Qué hacer/.test(txtDe(fl)), "El aviso de riego largo de la ficha no es ámbar «Riegos muy largos» con «Por qué importa» (el resumen sí): «" + txtDe(fl).slice(0, 160) + "»", "leve");
       await cancelarModal();
     }
-    /* corrector 28-10: la tarjeta y la ficha del cuartel sin marco dicen lo mismo que el resumen («Sin calcular», no «Pp sin verificar») */
+    /* la tarjeta y la ficha del cuartel sin marco dicen «Sin calcular» */
     const cM = document.querySelector(`.rgcard[data-rgcu="${qM.id}"]`), alM = riegoAlertasCu(qM, calcBot(qM));
-    chk(cM && !cM.classList.contains("sinv") && cM.querySelector('.rg-ppb[data-pp="sinm"]') && !/Pp sin verificar/.test(txtDe(cM)) && !alM.sv && alM.sinM, "La tarjeta del cuartel sin marco sigue diciendo «Pp sin verificar» (el resumen dice «Sin calcular»)", "media");
+    chk(cM && !cM.classList.contains("sinv") && cM.querySelector('.rg-ppb[data-pp="sinm"]') && !/valores iniciales/i.test(txtDe(cM.querySelector(".rg-bdg"))) && !("sv" in alM) && !alM.ini && alM.sinM, "La tarjeta del cuartel sin marco no dice «Sin calcular» (o riegoAlertasCu sigue con la clave antigua «sv»)", "media");
+    chk(/Sin marco de plantación: falta la distancia entre hileras/.test(txtDe(cM && cM.querySelector(".rgc-lin"))), "La tarjeta del cuartel sin marco no dice «Sin marco de plantación: falta la distancia entre hileras»", "leve");
     if(cM){ await tocar(necesito(cM.querySelector('button[onclick^="riegoFicha"]'), "el ⚙ del cuartel sin marco"), "⚙ Sin marco bot");
-      chk(modalAbierto() && /Sin calcular: falta el marco/.test(txtDe(document.querySelector('#capaModal [data-fal="sinm"]'))) && !document.querySelector('#capaModal [data-fal="sv"]'), "La ficha del cuartel sin marco no dice «Sin calcular» (o dice «Pp sin verificar»)", "media");
+      chk(modalAbierto() && /Sin calcular: falta el marco de plantación/.test(txtDe(document.querySelector('#capaModal [data-fal="sinm"]'))) && !document.querySelector('#capaModal [data-fal="ini"]'), "La ficha del cuartel sin marco no dice «Sin calcular: falta el marco de plantación» (o dice «Valores iniciales»)", "media");
       await cancelarModal(); }
     const jv = necesito(document.querySelector('#riegoScroll [data-res="joven"]'), "el aviso «Kc de adulto en huerto joven»"), tjv = txtDe(jv);
     chk(tjv.indexOf(q.nombre+" (plantado en 2026) usa el Kc de un huerto adulto")>=0 && /regando de más/.test(tjv) && /Usar el % calculado como factor/.test(tjv), "El aviso de huerto joven no dice «"+q.nombre+" (plantado en 2026) usa el Kc de un huerto adulto…» con qué hacer: «"+tjv.slice(0,200)+"»", "media");
@@ -1605,7 +1806,7 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     else chk(false, "El aviso de huerto joven no trae el botón a la ficha", "media");
     const tl = txtDe(document.querySelector('#riegoScroll [data-res="largo"]')), elL = document.querySelector('#riegoScroll [data-res="largo"]');
     chk(elL && elL.classList.contains("amb") && /^Riegos muy largos/.test(txtDe(elL.querySelector(".badge"))) && /Por qué importa: un riego tan largo moja bajo las raíces/.test(tl), "El aviso de riegos largos no es ámbar con su título y su «Por qué importa» como los demás avisos: «"+tl.slice(0,200)+"»", "leve");
-    chk(tl.indexOf(q.nombre+" "+fmtCL(calcBot(q).hRiego,1)+" h")>=0 && /Pp baja \(sin verificar\)/.test(tl) && document.querySelector(`#riegoScroll [data-res="largo"] button[onclick="riegoFicha(${q.id},'linea')"]`), "El aviso de riegos largos no nombra «"+q.nombre+" "+fmtCL(calcBot(q).hRiego,1)+" h», no explica la causa o no trae el botón: «"+tl.slice(0,160)+"»", "leve");
+    chk(tl.indexOf(q.nombre+" "+fmtCL(calcBot(q).hRiego,1)+" h")>=0 && /Pp baja \(valores iniciales\)/.test(tl) && document.querySelector(`#riegoScroll [data-res="largo"] button[onclick="riegoFicha(${q.id},'linea')"]`), "El aviso de riegos largos no nombra «"+q.nombre+" "+fmtCL(calcBot(q).hRiego,1)+" h», no explica la causa o no trae el botón: «"+tl.slice(0,160)+"»", "leve");
     /* más de 24 h: A (BOT-1 + BOT-C compartida) 10 h, B (BOT-C) 10 h, C (BOT-3) 5 h, lunes, miércoles y viernes.
        Escrito aparte: de a uno son 10 + 10 + 5 = 25 h por día → 75 h a la semana → al menos ⌈75 ÷ 24⌉ = 4 días de riego */
     const L = calcBot(q2).lamRiego, filas = qs=>qs.map(z=>({q:z, c:calcBot(z)}));
@@ -1615,14 +1816,14 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     const C = mk("C bot", [{cod:"BOT-3", nom:"Sector 1", ha:1}], 5);
     const semEsp = (10+10+5)*3, minEsp = Math.ceil(semEsp/24);
     let x = riegoCarga24(filas([A,B,C])).find(z=>z.i===1);
-    chk(x && Math.abs(x.semH-semEsp)<1e-6 && x.diasMin===minEsp && x.diasMar.join()==="1,3,5" && x.diasLib.join()==="2,4,6,0" && x.sinN===true && x.svN===0 && x.cuN===3,
-      "La semana del equipo no cuadra: esperado "+semEsp+" h, "+minEsp+" días, marcados lu mi vi, libres ma ju sá do, sin dato de sectores a la vez y 0 de 3 sin verificar; dio "+(x? fmtCL(x.semH,1)+" h, "+x.diasMin+" días, ["+x.diasMar+"], ["+x.diasLib+"], sinN "+x.sinN+", "+x.svN+"/"+x.cuN : "nada"), "grave");
+    chk(x && Math.abs(x.semH-semEsp)<1e-6 && x.diasMin===minEsp && x.diasMar.join()==="1,3,5" && x.diasLib.join()==="2,4,6,0" && x.sinN===true && x.iniN===0 && x.cuN===3,
+      "La semana del equipo no cuadra: esperado "+semEsp+" h, "+minEsp+" días, marcados lu mi vi, libres ma ju sá do, sin dato de sectores a la vez y 0 de 3 con valores iniciales; dio "+(x? fmtCL(x.semH,1)+" h, "+x.diasMin+" días, ["+x.diasMar+"], ["+x.diasLib+"], sinN "+x.sinN+", "+x.iniN+"/"+x.cuN : "nada"), "grave");
     nav.riegoFundo = FU24; nav.riegoVista = "cu"; riegoPintar(); await pausa();
     let a24 = document.querySelector('#riegoScroll [data-res="24h"]'), t24 = txtDe(a24);
     chk(a24 && a24.dataset.sinn==="1" && a24.classList.contains("amb") && /Puede que no quepa en el día/.test(t24) && /Se calculó de a un sector porque no está anotado cuántos sectores riegan a la vez/.test(t24), "Sin dato de sectores a la vez, el aviso de 24 h debía ser ámbar «Puede que no quepa en el día» y decir que se calculó de a un sector: «"+t24.slice(0,200)+"»", "media");
     chk(t24.indexOf("necesita "+fmtCL(semEsp,0)+" h de riego a la semana")>=0 && t24.indexOf("al menos "+minEsp+" días de riego")>=0 && /hoy son 3: lunes, miércoles y viernes; libres: martes, jueves, sábado y domingo/.test(t24),
       "Los días sugeridos no cuadran con la cuenta aparte ("+semEsp+" h → al menos "+minEsp+" días; hoy lunes, miércoles y viernes): «"+t24.slice(0,340)+"»", "media");
-    chk(/anota en Turnos cuántos sectores riegan a la vez/.test(t24) && !/Pp sin verificar/.test(t24), "El aviso de 24 h no pide anotar los sectores a la vez, o menciona la Pp sin verificar sin que el equipo tenga ninguna", "leve");
+    chk(/anota en Turnos cuántos sectores riegan a la vez/.test(t24) && !/valores iniciales|sin verificar/.test(t24), "El aviso de 24 h no pide anotar los sectores a la vez, o menciona los valores iniciales sin que el equipo tenga ninguno", "leve");
     const ht = txtHTML(riegoTurnosHTML(filas([A,B,C]), fmtCL, FU24)), hd = txtHTML(riegoPorDiaHTML(filas([A,B,C]), fmtCL));
     chk(/25,0 h \(suma de las horas de 3 sectores/.test(ht) && ht.indexOf("al menos "+minEsp+" días de riego")>=0 && /Se calculó de a un sector porque no está anotado/.test(ht), "El aviso de 24 h de Turnos no trae los días mínimos o el dato que falta: «"+(ht.match(/Más de 24 h en un día[^⚠]*/)||[""])[0].slice(0,300)+"»", "media");
     chk(hd.indexOf("al menos "+minEsp+" días de riego")>=0, "El aviso de 24 h de Por día no trae los días mínimos", "leve");
@@ -1645,12 +1846,12 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     rc.bombas[FU24] = {n:1}; guardar(); nav.riegoVista = "cu"; riegoPintar(); await pausa();
     x = riegoCarga24(filas([A,B,C])).find(z=>z.i===1); a24 = document.querySelector('#riegoScroll [data-res="24h"]'); t24 = txtDe(a24);
     chk(x && !x.sinN && a24 && a24.dataset.sinn==="0" && a24.classList.contains("roj") && /Más de 24 h en un día/.test(t24) && /Esta bomba riega de a un sector \(dato anotado\)/.test(t24) && !/Se calculó de a un sector/.test(t24), "Con la bomba de a 1 sector anotada, el aviso de 24 h debía ser rojo «Más de 24 h en un día» sin decir que falta el dato: «"+t24.slice(0,200)+"»", "media");
-    /* un cuartel del equipo con la Pp sin verificar: el aviso lo menciona */
+    /* un cuartel del equipo con los valores iniciales de la línea de riego: el aviso lo menciona */
     const Dq = cuBot({fundo:FU24, nombre:"D bot", anio:"2015"}); prepBot(Dq, {sectores:[{cod:"BOT-4", nom:"Sector 1", ha:1}]});
     x = riegoCarga24(filas([A,B,C,Dq])).find(z=>z.i===1);
     const sem2 = (25+calcBot(Dq).hRiego)*3;
     t24 = txtHTML(riegoResumenHTML(FU24, filas([A,B,C,Dq]), fmtCL));
-    chk(x && x.svN===1 && x.cuN===4 && Math.abs(x.semH-sem2)<1e-6 && x.diasMin===Math.ceil(sem2/24) && /1 de sus 4 cuarteles tiene la Pp sin verificar: si la Pp real es mayor, las horas bajan/.test(t24), "Con 1 de 4 cuarteles sin verificar, el aviso de 24 h no lo menciona o la semana no cuadra ("+fmtCL(sem2,1)+" h → "+Math.ceil(sem2/24)+" días): «"+(t24.match(/Equipo de Bot Riego 24[^]*/)||[""])[0].slice(0,300)+"»", "media");
+    chk(x && x.iniN===1 && x.cuN===4 && Math.abs(x.semH-sem2)<1e-6 && x.diasMin===Math.ceil(sem2/24) && /1 de sus 4 cuarteles usa los valores iniciales de la línea de riego: si el gotero real entrega más, las horas bajan/.test(t24), "Con 1 de 4 cuarteles con valores iniciales, el aviso de 24 h no lo menciona o la semana no cuadra ("+fmtCL(sem2,1)+" h → "+Math.ceil(sem2/24)+" días): «"+(t24.match(/Equipo de Bot Riego 24[^]*/)||[""])[0].slice(0,300)+"»", "media");
     /* ni regando los 7 días: 20 + 20 + 20 h más D, de a uno */
     [[A,20],[B,20],[C,20]].forEach(([z,h])=>{ rc.cu[z.id].ppMed = L/h; });
     x = riegoCarga24(filas([A,B,C,Dq])).find(z=>z.i===1); t24 = txtHTML(riegoResumenHTML(FU24, filas([A,B,C,Dq]), fmtCL));
@@ -1667,28 +1868,33 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     try{ await fn(); } finally { window.jspdf.jsPDF = J0; }
     return txt.join(" ").replace(/\s+/g," ");
   }
-  await paso("PDF: «horas por confirmar» en la hoja del regador y nota de 24 h del PDF Pro con los mismos turnos de la hoja", ()=>enCaja(async ()=>{
+  await paso("PDF: la hoja del regador sin marcas, el PDF Pro con «inicial», su nota y las fórmulas nuevas, y la nota de 24 h con los mismos turnos de la hoja", ()=>enCaja(async ()=>{
     if(!serie) throw new SinProbar("Sin datos de clima");
     const sb = riegoSerieBase();
-    const q = cuBot({fundo:FU24, nombre:"Sin verificar bot"}); prepBot(q);                                  // fórmula antigua
+    const q = cuBot({fundo:FU24, nombre:"Inicial bot"}); prepBot(q);                                        // valores iniciales (1 línea, 0,67)
     const L = riegoCalcCuartel(q, sb).lamRiego; if(!(L>0)) throw new SinProbar("La serie de ET₀ no da lámina para probar el PDF");
     const q2 = cuBot({fundo:FU24, nombre:"Medida bot"}); prepBot(q2, {ppMed:L/15});                            // 15 h por riego
     const o = {lunes:riegoLunesProximo(), hora:"08:00", fundos:[FU24]};
     const tr = await textoPDF(()=>riegoPDFRegador(o));
-    chk(/Sin verificar bot\s+\(horas por confirmar\)/.test(tr) && !/Medida bot\s+\(horas por confirmar\)/.test(tr), "La hoja del regador no marca «(horas por confirmar)» solo en el cuartel con Pp sin verificar", "media");
-    chk(/Pp sin verificar en 1 de 2 cuarteles: Sin verificar bot/.test(tr) && /confirmar con el encargado/.test(tr), "La hoja del regador no trae el recuadro «Pp sin verificar en 1 de 2 cuarteles…»", "media");
+    chk(!/horas por confirmar/.test(tr) && !/Pp sin verificar/.test(tr) && /Inicial bot/.test(tr), "La hoja del regador todavía trae «horas por confirmar» o «Pp sin verificar» (o no trae el cuartel)", "media");
+    if(typeof RIEGO_REG_MARCA_INI!=="undefined" && RIEGO_REG_MARCA_INI) chk(/Inicial bot\s+\(horas con gotero supuesto\)/.test(tr) && !/Medida bot\s+\(horas con gotero supuesto\)/.test(tr), "Con la marca pedida, la hoja del regador no marca «(horas con gotero supuesto)» solo en el cuartel con valores iniciales", "media");
+    else chk(!/valores iniciales|gotero supuesto/i.test(tr), "La hoja del regador marca los valores iniciales (por defecto no se marcan: el aviso queda en la pantalla y en el PDF Pro)", "media");
+    const tp0 = await textoPDF(()=>riegoPDFPro(o));
+    chk(/Pp con valores iniciales de la linea de riego \(2 L\/h cada 0,5 m; 1 linea si se planto en 2025 o despues, 2 si antes\) en 1 de 2 cuarteles: Inicial bot/.test(tp0), "El PDF Pro no trae la nota «Pp con valores iniciales de la linea de riego (2 L/h cada 0,5 m; …) en 1 de 2 cuarteles: Inicial bot»: «"+((tp0.match(/Pp con valores[^.]*\./)||[""])[0])+"»", "media");
+    chk(/0,67 inicial/.test(tp0) && /distancia entre hileras \(primer numero del marco\)/.test(tp0) && !/sin verificar/i.test(tp0), "El PDF Pro no marca la Pp «inicial» en la tabla o no trae la fórmula nueva (distancia entre hileras = primer numero del marco)", "media");
     /* 24 h en el PDF Pro: la nota sale de los turnos de la hoja (bomba sin dato = de a uno) */
     riegoCfg().cu[q.id].ppMed = L/12; guardar();                                                               // 12 + 15 = 27 h
     const tp = await textoPDF(()=>riegoPDFPro(o));
-    chk(/hasta 27,0 h \(suma de los sectores de a uno\); necesita 81 h de riego a la semana: al menos 4 dias de riego \(hoy 3\); bomba sin dato de sectores a la vez/.test(tp) && /Kc de adulto en huerto joven: Sin verificar bot \(2026\), Medida bot \(2026\) usan el Kc de un huerto adulto/.test(tp), "Las notas del PDF Pro no traen qué hacer (24 h: 27 h × 3 días = 81 h → al menos 4 días; huerto joven con su año): «"+((tp.match(/Mas de 24 h[^]{0,260}/)||[""])[0])+"»", "leve");   // 28-10-2026 (mejoras H)
-    chk(/Mas de 24 h en un dia \(los sectores compartidos cuentan una vez\): Equipo del fundo: L Mi V · hasta 27,0 h \(suma de los sectores de a uno\)/.test(tp), "La nota de 24 h del PDF Pro no dice «Equipo del fundo: L Mi V · hasta 27,0 h (suma de los sectores de a uno)»: «"+((tp.match(/Mas de 24 h[^.]*\./)||[""])[0])+"»", "media");
+    chk(/hasta 27,0 h \(suma de los sectores de a uno\); necesita 81 h de riego a la semana: al menos 4 dias de riego \(hoy 3\); bomba sin dato de sectores a la vez/.test(tp) && /Kc de adulto en huerto joven: Inicial bot \(2026\), Medida bot \(2026\) usan el Kc de un huerto adulto/.test(tp), "Las notas del PDF Pro no traen qué hacer (24 h: 27 h × 3 días = 81 h → al menos 4 días; huerto joven con su año): «"+((tp.match(/Mas de 24 h[^]{0,260}/)||[""])[0])+"»", "leve");
+    chk(/Mas de 24 h en un dia \(los sectores compartidos cuentan una vez\): Equipo del fundo: L Mi V · hasta 27,0 h \(suma de los sectores de a uno\)/.test(tp) && /o confirmar la linea de riego\./.test(tp), "La nota de 24 h del PDF Pro no dice «Equipo del fundo: L Mi V · hasta 27,0 h (suma de los sectores de a uno)» o no termina en «o confirmar la linea de riego»: «"+((tp.match(/Mas de 24 h[^.]*\./)||[""])[0])+"»", "media");
   }));
-  await paso("Ficha: validaciones de la línea de riego, Pp medida y cobertura (avisos dentro de la ficha, sin alert y sin guardar nada)", ()=>enCaja(async ()=>{
+  await paso("Ficha: validaciones de las líneas de riego (0,5–8 L/h y 0,1–2 m), Pp medida y cobertura (avisos dentro de la ficha, sin alert y sin guardar nada)", ()=>enCaja(async ()=>{
     await irA("riego");
-    const q = cuBot(); prepBot(q, {lin:2, dg:0.5, caudal:2});
-    const malos = [["rf_ent","15",/entrehilera va de 1 a 12 m/], ["rf_ent","0,5",/entrehilera va de 1 a 12 m/], ["rf_dg","3",/distancia entre goteros va de 0,1 a 2 m/], ["rf_dg","0,05",/distancia entre goteros/],
-      ["rf_caudal","20",/caudal del gotero va de 0,5 a 16 L\/h/], ["rf_caudal","abc",/caudal del gotero/], ["rf_ppmed","25",/Pp medida va de 0,1 a 20 mm\/h/], ["rf_cob","1,5",/factor de cobertura va de 0,01 a 1/],
-      ["rf_cob","0",/factor de cobertura/], ["rf_diam","20",/diámetro de copa va de 0,1 a 15 m/], ["rf_kcaj","1000",/30 % a 200 %/]];
+    const q = cuBot({nombre:"Validaciones bot", marco:"5x2", anio:"2016"}); prepBot(q, {lin:2, dg:0.5, caudal:2});
+    const malos = [["rf_caudal","8,5",/caudal del gotero de la Línea 1 va de 0,5 a 8 L\/h/], ["rf_caudal","0,4",/caudal del gotero de la Línea 1 va de 0,5 a 8 L\/h/], ["rf_caudal","abc",/caudal del gotero de la Línea 1 va de 0,5 a 8 L\/h/],
+      ["rf_dg","2,1",/distancia entre goteros de la Línea 1 va de 0,1 a 2 m/], ["rf_dg","0,05",/distancia entre goteros de la Línea 1 va de 0,1 a 2 m/],
+      ["rf_caudal2","9",/caudal del gotero de la Línea 2 va de 0,5 a 8 L\/h/], ["rf_dg2","3",/distancia entre goteros de la Línea 2 va de 0,1 a 2 m/],
+      ["rf_ppmed","25",/Pp medida va de 0,1 a 20 mm\/h/], ["rf_cob","1,5",/factor de cobertura va de 0,01 a 1/], ["rf_cob","0",/factor de cobertura/], ["rf_diam","20",/diámetro de copa va de 0,1 a 15 m/], ["rf_kcaj","1000",/30 % a 200 %/]];
     const fallos = [];
     for(const [id, val, re] of malos){
       const d0 = JSON.stringify(riegoCfg().cu[q.id]), a0 = R.alerts.length;
@@ -1699,9 +1905,28 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
       if(modalAbierto()) await cancelarModal();
     }
     chk(!fallos.length, "Valores fuera de rango que no se rechazaron dentro de la ficha: "+fallos.join(" · "), "media");
+    /* los bordes se aceptan: 8 y 0,5 L/h; 2 y 0,1 m */
+    for(const [c, d, cx, dx] of [["8","2",8,2],["0,5","0,1",0.5,0.1]]){
+      const ok = await fichaBot(q, [["rf_caudal",c],["rf_dg",d],["rf_caudal2",c],["rf_dg2",d]]), o = riegoCfg().cu[q.id]||{};
+      chk(ok && o.caudal===cx && o.dg===dx && o.caudal2===cx && o.dg2===dx, "Los bordes "+c+" L/h y "+d+" m no se aceptaron: "+JSON.stringify({caudal:o.caudal, dg:o.dg, caudal2:o.caudal2, dg2:o.dg2}), "media");
+    }
     riegoFicha(q.id); await pausa();
     const sel = necesito(document.getElementById("rf_lin"), "las líneas por hilera"); sel.insertAdjacentHTML("beforeend", '<option value="3">3 líneas</option>'); await elegir(sel, "3", "3 líneas (forzado)");
     chk(!(await guardarModal_()) && /1 o 2/.test(txtDe(document.getElementById("rfAviso"))), "Se aceptaron 3 líneas por hilera", "media");
+    await cancelarModal();
+    /* con 1 línea, un error en la Línea 2 (oculta) no se pierde callado: la Línea 2 se muestra y el aviso queda junto al campo */
+    riegoFicha(q.id); await pausa();
+    await escribir("rf_caudal2", "9", "caudal Línea 2 fuera de rango"); await elegir("rf_lin", "1", "1 línea");
+    chk(document.getElementById("rfL2").hidden, "Con 1 línea la Línea 2 no se escondió", "media");
+    const d1 = JSON.stringify(riegoCfg().cu[q.id]);
+    chk(!(await guardarModal_()) && JSON.stringify(riegoCfg().cu[q.id])===d1, "Con 1 línea y la Línea 2 en 9 L/h la ficha se guardó", "media");
+    const errL2 = document.querySelector("#capaModal .rf-err"), c2el = document.getElementById("rf_caudal2"), mbL = document.querySelector("#capaModal .mb");
+    const enVistaL = el=>{ if(!el || !mbL) return false; const a = el.getBoundingClientRect(), b = mbL.getBoundingClientRect(); return a.height>0 && a.bottom>Math.max(b.top,0) && a.top<Math.min(b.bottom, innerHeight); };
+    chk(!document.getElementById("rfL2").hidden && /se conserva/.test(txtDe(document.getElementById("rfAviso"))) && errL2 && /Línea 2/.test(txtDe(errL2)) && document.getElementById("rfL2").contains(errL2) && enVistaL(c2el), "El error de la Línea 2 oculta no la mostró, no dice que se conserva o no quedó junto al campo y a la vista", "media");
+    await cancelarModal();
+    chk(!document.getElementById("rf_ent") && !document.getElementById("rf_gpp"), "Siguen los campos antiguos de entrehilera o goteros/pl", "leve");
+    riegoFicha(q.id); await pausa();
+    chk(!document.getElementById("rf_ent") && !document.getElementById("rf_gpp") && document.getElementById("rf_caudal2") && document.getElementById("rfAplBtn"), "La ficha sigue con la entrehilera o los goteros/pl antiguos, o le falta la Línea 2 o «Aplicar a todos»", "media");
     await cancelarModal();
     riegoFicha(q.id); await pausa();
     await escribir("rf_ppmed", "1,2", "Pp medida"); await fecha("rf_ppf", masDias(HOY(),5), "fecha del aforo futura");
@@ -1721,34 +1946,32 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     await cancelarModal();
     /* lo del caudalímetro sin pasarlo a la Pp medida, o una fecha de aforo sin Pp medida, no se pierden callados */
     riegoFicha(q.id); await pausa(); await abrirCm();
-    await escribir("rf_cmq", "5,4", "caudal del caudalímetro"); const d1 = JSON.stringify(riegoCfg().cu[q.id]);
-    chk(!(await guardarModal_()) && /no quedó como Pp medida/.test(txtDe(document.getElementById("rfAviso"))) && JSON.stringify(riegoCfg().cu[q.id])===d1, "Con el caudalímetro anotado y sin tocar «Usar como Pp medida», la ficha guardó sin avisar", "leve");
+    await escribir("rf_cmq", "5,4", "caudal del caudalímetro"); const d2 = JSON.stringify(riegoCfg().cu[q.id]);
+    chk(!(await guardarModal_()) && /no quedó como Pp medida/.test(txtDe(document.getElementById("rfAviso"))) && JSON.stringify(riegoCfg().cu[q.id])===d2, "Con el caudalímetro anotado y sin tocar «Usar como Pp medida», la ficha guardó sin avisar", "leve");
     await cancelarModal();
     riegoFicha(q.id); await pausa(); await fecha("rf_ppf", masDias(HOY(),-2), "fecha del aforo sin Pp medida");
     chk(!(await guardarModal_()) && /va con una Pp medida/.test(txtDe(document.getElementById("rfAviso"))), "Una fecha de aforo sin Pp medida se descartó sin avisar", "leve");
     await cancelarModal();
-    /* goteros/pl antiguos de un cuartel sin verificar: se ven y se pueden borrar (vacío = el general) */
-    const r = riegoCfg(); ["lin","dg","caudal"].forEach(k=>delete r.cu[q.id][k]); r.cu[q.id].gpp = 8; guardar();
-    chk(fmtCL(riegoPp(q).pp,2)==="0,59" && riegoPp(q).gppPropio, "Con 8 goteros/pl antiguos del cuartel la Pp sin verificar debía ser 0,59 (8 × 2 ÷ 27) y es "+fmtCL(riegoPp(q).pp,2), "media");
-    riegoFicha(q.id); await pausa();
-    chk(v("rf_gpp")==="8", "La ficha no muestra los goteros/pl antiguos del cuartel para corregirlos («"+v("rf_gpp")+"»)", "media");
-    await escribir("rf_gpp", "", "goteros/pl antiguos (borrar)");
-    chk(await guardarModal_(), "La ficha no se cerró al borrar los goteros/pl antiguos", "media");
-    chk(!("gpp" in (riegoCfg().cu[q.id]||{})) && fmtCL(riegoPp(q).pp,2)==="0,44" && !riegoPp(q).gppPropio, "Al borrar los goteros/pl antiguos no volvió al general (Pp "+fmtCL(riegoPp(q).pp,2)+", esperado 0,44)", "media");
-    /* la casilla L/h de la tabla valida el mismo rango que la ficha, sin alert y sin guardar */
-    r.cu[q.id].caudal = 2; guardar();
-    nav.riegoFundo = FU_BOT; nav.riegoVista = "tabla"; riegoPintar(); await pausa();
-    const cel = necesito(document.querySelector(`#riegoScroll tr[data-rgcu="${q.id}"] input[onchange^="riegoSet(${q.id},'caudal'"]`), "la casilla L/h de la tabla");
-    const a1 = R.alerts.length; await escribir(cel, "40", "caudal 40 L/h en la tabla"); await pausa();
-    chk(riegoCfg().cu[q.id].caudal===2 && R.alerts.length===a1 && cel.value==="2", "La tabla aceptó 40 L/h (o avisó con alert): caudal guardado "+riegoCfg().cu[q.id].caudal+", casilla «"+cel.value+"»", "media");
-    nav.riegoVista = "cu"; riegoPintar();
-    /* un caudal antiguo fuera de rango no deja la ficha trabada sin explicación: avisa y ofrece borrarlo */
-    r.cu[q.id].caudal = 35; guardar();
-    riegoFicha(q.id); await pausa();
-    chk(/fuera de 0,5 a 16 L\/h/.test(txtDe(document.querySelector('#capaModal [data-fal="caudal"]'))), "Con un caudal guardado de 35 L/h la ficha no avisa que está fuera de rango", "leve");
-    await tocar({texto:/borrar el caudal guardado/i}, "Borrar el caudal guardado", "#capaModal");
-    chk(v("rf_caudal")==="" && await guardarModal_() && !("caudal" in riegoCfg().cu[q.id]), "«Borrar el caudal guardado» no dejó guardar la ficha sin el caudal", "leve");
+    /* en Configuración ya no están los goteros/pl ni el L/h generales */
+    nav.riegoFundo = FU_BOT; nav.riegoVista = "cu"; riegoPintar(); await pausa();
+    const sc = document.getElementById("riegoScroll");
+    chk(sc && !sc.querySelector(`[onchange*="riegoDef('gpp'"]`) && !sc.querySelector(`[onchange*="riegoDef('caudal'"]`) && /Línea de riego inicial de cada cuartel: gotero de 2 L\/h cada 0,5 m/.test(sc.textContent.replace(/\s+/g," ")), "Configuración sigue con las casillas generales de goteros/pl o L/h, o no explica la línea de riego inicial", "leve");
+    chk(/\(L\/h por metro de la Línea 1 \+ L\/h por metro de la Línea 2\) ÷ distancia entre hileras \(el primer número del marco\)/.test(txtDe(sc)), "El pie de fórmulas de Riego no tiene la fórmula nueva de la Pp", "leve");
   }));
+  await paso("m³/semana igual que antes en todos los cuarteles: la Pp no entra en el volumen (serie del bot y serie real)", async ()=>{
+    const qs = plantados(); if(!qs.length) throw new SinProbar("No hay cuarteles plantados");
+    const mal = []; let n = 0;
+    for(const s of [SERIE_BOT].concat(serie? [serie] : [])){
+      for(const q of qs){
+        const c = riegoCalcCuartel(q, s); if(c.m3Sem==null) continue; n++; const ha = +q.ha||0;
+        if(Math.abs(c.m3Sem - c.lamBruta*10*ha)>1e-9) mal.push(q.nombre+": m³ "+c.m3Sem+" ≠ lámina × 10 × ha");
+        if(c.hRiego!=null && Math.abs(c.hRiego*c.pp*c.nD*10*ha - c.m3Sem)>1e-6) mal.push(q.nombre+": horas × Pp × días × 10 × ha ≠ m³");
+        const pv = ppViejo(q); if(pv>0){ const hv = c.lamRiego/pv; if(Math.abs(hv*pv*c.nD*10*ha - c.m3Sem)>1e-6) mal.push(q.nombre+": con la Pp de antes los m³ cambian"); }
+      }
+    }
+    if(!n) throw new SinProbar("Ningún cuartel tiene m³ calculados");
+    chk(!mal.length, "El m³/semana depende de la Pp en "+mal.length+" casos: "+mal.slice(0,4).join(" · "), "grave");
+  });
   await paso("Tocar días de riego: el botón no se mueve", async ()=>{
     await irA("riego");
     const sels = [...document.querySelectorAll("#riegoScroll .rgd")].filter(visible).slice(0,3).map(x=>x.getAttribute("data-rgd"));
@@ -5936,7 +6159,7 @@ BOTS.push({id:"celular", modulo:"Bitácora: celular", nombre:"Pía, anota desde 
 }});
 
 /* 📱 PANTALLAS --------------------------------------------------------------------------- */
-BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ico:"📱", que:"Todas las pestañas en iPad, celular, sol y texto grande: cosas que se salen, textos raros, botones muy chicos para el dedo, botones sin nombre e imágenes rotas", correr: async ()=>{
+BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ico:"📱", que:"Todas las pestañas en iPad, celular, sol y texto grande: cosas que se salen, textos raros, botones muy chicos para el dedo, botones sin nombre e imágenes rotas; la ficha de riego a 375 px con 2 líneas y «Aplicar a todos»; Noticias ya no está en el menú y nada pide indicadores ni RSS", correr: async ()=>{
   const ui0 = JSON.stringify(D.ui||{});
   const modos = [["iPad",{movil:"no"}],["celular",{movil:"si"}],["sol",{movil:"no", sol:true}],["texto grande",{movil:"no", grande:true}]];
   /* la Bitácora con algo que mostrar (el bot «bitacora» borra lo suyo al terminar): un lote, una pendiente, fenología con 2 cuarteles, una nota y un día */
@@ -6025,10 +6248,48 @@ BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ic
     if(pB0==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", pB0);
     D.ui = JSON.parse(ui0); uiAplicar(); render();
   }
+  /* 29-10-2026 (Pp por líneas de riego): la ficha ⚙ de riego a 375 px (celular) con 2 líneas y la caja de «Aplicar a todos» abierta.
+     Todo en la copia: los datos de riego vuelven a como estaban (la caja se abre, pero no se toca «Sí») */
+  await paso("Ficha de riego a 375 px con 2 líneas y «Aplicar a todos» abierto: nada se sale y la Línea 2 oculta no se puede enfocar", async ()=>{
+    const q = plantados().find(z=>riegoMarco(z).ok); if(!q) throw new SinProbar("Ningún cuartel con marco para abrir la ficha de riego");
+    const r0 = JSON.stringify(riegoCfg()), u0 = JSON.stringify(D.ui||{});
+    try{
+      D.ui = Object.assign({}, JSON.parse(u0), {movil:"si", sol:false, grande:false}); uiAplicar(); await irA("riego");
+      riegoFicha(q.id); await pausa(); const m = necesito(modalAbierto(), "la ficha de riego");
+      m.style.width = "375px"; m.style.maxWidth = "375px"; await pausa(.5);
+      await elegir("rf_lin", "2", "2 líneas"); await tocar("#rfAplBtn", "Aplicar a todos los cuarteles del fundo");
+      const cf = document.getElementById("rfAplConf");
+      chk(cf && !cf.hidden, "En el celular «Aplicar a todos» no abrió la confirmación dentro de la ficha", "media");
+      const mr = m.getBoundingClientRect(), mb = m.querySelector(".mb");
+      const fuera = [...m.querySelectorAll("*")].filter(e=>{ if(!visible(e)) return false; const r = e.getBoundingClientRect(); return r.width>0 && (r.right>mr.right+1 || r.left<mr.left-1); });
+      chk(!fuera.length && mb && mb.scrollWidth<=mb.clientWidth+1, "A 375 px la ficha de riego se sale por el costado"+(fuera.length? ": «"+(String(fuera[0].className||fuera[0].tagName)).slice(0,40)+"» "+txtDe(fuera[0]).slice(0,40) : " (desplazamiento lateral)"), "media");
+      const chicos = [...m.querySelectorAll("#rfAplBtn, #rfAplConf button, #rf_lin")].filter(visible).filter(b=>b.offsetHeight<44);   // alto real (la ficha entra con una animación de escala)
+      chk(!chicos.length, "A 375 px hay botones de la línea de riego de menos de 44 px: "+chicos.map(b=>txtDe(b).slice(0,20)).join(", "), "leve");
+      await elegir("rf_lin", "1", "1 línea");
+      const c2 = document.getElementById("rf_caudal2"); try{ c2.focus(); }catch(e){}
+      chk(document.getElementById("rfL2").hidden && document.activeElement!==c2, "Con 1 línea la Línea 2 oculta todavía se puede enfocar", "leve");
+    } finally {
+      if(modalAbierto()){ try{ cerrarModal(); }catch(e){} }
+      D.riego = JSON.parse(r0); D.ui = JSON.parse(u0); uiAplicar(); guardar(); render();
+    }
+  });
+  /* 28-10-2026: Noticias se quitó (rss2json, allorigins y corsproxy caídos). El menú no la tiene y nada pide indicadores (mindicador.cl) ni RSS:
+     AB.pedNoti cuenta en la caja de arena cada pedido a esas direcciones desde que empezó la prueba (este bot ya recorrió todas las pestañas 4 veces) */
+  await paso("Sin Noticias: el menú no la tiene y la app no pide indicadores ni RSS", async ()=>{
+    await irA("panel");
+    chk(!TABS.some(x=>x.id === "noti" || /noticia/i.test(x.lab || "")), "La lista de pestañas (TABS) todavía tiene Noticias", "media");
+    const bs = [...document.querySelectorAll("#tabbar button")];
+    chk(bs.length >= 10 && !bs.some(b=>/noticia/i.test(txtDe(b)) || /ir\('noti'\)/.test(b.getAttribute("onclick") || "")), "El menú todavía muestra «Noticias» (" + bs.length + " botones)", "media");
+    const quedan = ["vNoticias", "posNoticias", "actualizarNoticias", "rssIntentos", "fetchT", "sparkDolar", "notiClasifica"].filter(n=>typeof window[n] === "function");
+    chk(!quedan.length, "Quedaron funciones de Noticias: " + quedan.join(", "), "leve");
+    chk(typeof NOTI_FUENTES === "undefined" && typeof NOTI_TEMAS === "undefined" && typeof NOTI_CATS === "undefined" && typeof NOTI_ULT === "undefined", "Quedaron listas de Noticias (NOTI_…)", "leve");
+    const red = (performance.getEntriesByType? performance.getEntriesByType("resource") : []).map(e=>e.name).filter(u=>/mindicador\.cl|rss2json|allorigins|corsproxy/i.test(u));
+    chk(!(AB.pedNoti || 0) && !red.length, "La app pidió " + ((AB.pedNoti || 0) + red.length) + " vez/veces a indicadores o proxies de RSS (" + (AB.pedNotiU || red[0] || "") + ")", "media");
+  });
 }});
 
 /* 🔍 AUDITOR DE DATOS -------------------------------------------------------------------- */
-BOTS.push({id:"auditor", modulo:"Datos guardados", nombre:"Auditor de datos", ico:"🔍", que:"Revisa que todo lo guardado esté sano: identificadores únicos, fechas válidas, números, referencias a fundos y cuarteles, que sobreviva a cerrar y abrir la app, y que ningún texto se ejecute como código", correr: async ()=>{
+BOTS.push({id:"auditor", modulo:"Datos guardados", nombre:"Auditor de datos", ico:"🔍", que:"Revisa que todo lo guardado esté sano: identificadores únicos, fechas válidas, números, referencias a fundos y cuarteles, que sobreviva a cerrar y abrir la app, que las noticias guardadas de antes se borren al abrir y que ningún texto se ejecute como código", correr: async ()=>{
   await paso("Identificadores únicos y contador al día", async ()=>{
     const arrs = ["notas","labores","registros","bitacora","fenologia","checklists","tablero","recordatorios","widgets","cuarteles","mapoly"];
     let maxId = 0;
@@ -6069,6 +6330,25 @@ BOTS.push({id:"auditor", modulo:"Datos guardados", nombre:"Auditor de datos", ic
     chk(!dif.length, "Al volver a abrir cambió la cantidad de: "+dif.map(k=>k+" "+a[k]+"→"+b[k]).join(", "), "grave");
     chk(Math.abs(j1-j0) < Math.max(200, j0*0.02), "Al volver a abrir el cuaderno cambió de tamaño ("+j0+" → "+j1+" caracteres)", "media");
     render();
+  });
+  /* 28-10-2026: Noticias se quitó. Un cuaderno que traiga «noticias» guardadas (de antes, de un respaldo o de la sincronización) la pierde al abrir,
+     sin que cambie nada más; así se libera ese espacio en el iPad */
+  await paso("Noticias guardadas de antes: se borran al abrir la app y nada más cambia", async ()=>{
+    guardar(); const j0 = localStorage.getItem(CLAVE);
+    const viejo = JSON.parse(j0);
+    viejo.noticias = {act:"2026-10-01T08:00", ind:{dolar:950.5, uf:39123.4, euro:1030.2}, dolarSerie:[["2026-09-30", 948], ["2026-10-01", 950.5]],
+      items:[{t:"Bot: noticia guardada de antes", fu:"Bot", cat:"medios", fe:"2026-10-01", re:"Resumen", rl:"Resumen largo", u:"https://example.com/bot"}], fuOk:1, fuTot:14};
+    const jv = JSON.stringify(viejo);
+    try{
+      cargarDe(j0); const sin = JSON.stringify(D);
+      cargarDe(jv);
+      chk(!("noticias" in D), "Al abrir un cuaderno con noticias guardadas, D siguió con la clave «noticias»", "media");
+      chk(JSON.stringify(D) === sin, "Borrar «noticias» al abrir cambió otra parte del cuaderno", "grave");
+      guardar();
+      chk((localStorage.getItem(CLAVE) || "").indexOf('"noticias"') < 0, "Al guardar, el cuaderno siguió llevando «noticias»", "media");
+      localStorage.setItem(CLAVE, jv); cargar();   // el camino de restaurar un respaldo y de la sincronización: escriben el cuaderno y llaman a cargar()
+      chk(!("noticias" in D) && !_datosDanados, "Por cargar() (respaldo o sincronización) las noticias guardadas siguieron en D", "media");
+    } finally { localStorage.setItem(CLAVE, j0); cargar(); render(); }
   });
   await paso("Ningún texto escrito por el usuario se ejecuta como código (todas las pestañas)", async ()=>{
     window.__xss = 0;

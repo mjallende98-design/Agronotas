@@ -1134,7 +1134,7 @@ function cargarDe(raw){
     D.ctServ = D.ctServ || {prov:"", doc:"", iva:false, items:[]}; // resumen de servicios: varias labores en un mismo PDF (proveedor/contratista)
     if(!Array.isArray(D.ctServ.items)) D.ctServ.items = [];
     D.ultimoRespaldo = D.ultimoRespaldo || null;
-    D.noticias = D.noticias || null; // noticias e indicadores guardados para leer sin internet
+    delete D.noticias; // Noticias se quitó el 28-10-2026 (sus fuentes de RSS estaban caídas): la copia guardada se borra para liberar espacio
     D.climaCache = D.climaCache || null; // último pronóstico guardado para verlo sin señal
     D.zonas = D.zonas || []; // zonas de clima guardadas por el usuario (presets)
     D.ia = D.ia || {key:"", modelo:""}; // ajustes de IA (identificar fotos y escanear etiquetas)
@@ -1360,7 +1360,7 @@ function abrirModal(titulo, html, onGuardar, txtBtn){
 }
 function cerrarModal(){ document.getElementById("capaModal").innerHTML=""; modalGuardar=null; _lcAnV=null;   // _lcAnV: a dónde volver si se guarda lo abierto desde la hoja «+ Anotar» (al cerrar sin guardar se olvida)
   if(window._rfDias){ const x=window._rfDias; window._rfDias=null;   // ficha de riego cerrada sin guardar: los días vuelven a como estaban
-    try{ const rc=riegoCfg(); rc.cu[x.id]=rc.cu[x.id]||{}; if(x.dias0) rc.cu[x.id].dias=x.dias0; else delete rc.cu[x.id].dias; guardar(); setTimeout(()=>{ if(typeof riegoPintar==="function" && nav.tab==="riego") riegoPintar(); },0); }catch(e){} }
+    try{ const rc=riegoCfg(); if(x.dias0){ rc.cu[x.id]=rc.cu[x.id]||{}; rc.cu[x.id].dias=x.dias0; } else if(rc.cu[x.id]) delete rc.cu[x.id].dias;   /* 29-10: sin dejar un {} vacío */ guardar(); setTimeout(()=>{ if(typeof riegoPintar==="function" && nav.tab==="riego") riegoPintar(); },0); }catch(e){} }
 }
 async function guardarModal(){
   if(modalGuardar){ const ok = await modalGuardar(); if(ok===false) return; }
@@ -1391,7 +1391,6 @@ const TABS = [
   {id:"listas", ico:"✅", lab:"Listas"},
   {id:"gantt", ico:"📊", lab:"Carta Gantt"},
   {id:"tab", ico:"🗂️", lab:"Tablero"},
-  {id:"noti", ico:"📰", lab:"Noticias"},
   {id:"calcfito", ico:"🧪", lab:"Calc Fito"},
   {id:"aplic", ico:"📒", lab:"Aplic."},
   {id:"riego", ico:"💧", lab:"Riego"},
@@ -3952,7 +3951,7 @@ async function espacioPintar(){
   /* --- en este equipo --- */
   let cuad=0; try{ cuad=(localStorage.getItem(CLAVE)||"").length*2; }catch(e){}   // Safari cuenta ~2 bytes por carácter
   const pct=Math.round(cuad/ESPACIO_LS*100);
-  const NOM={notas:"Notas", registros:"Registros", labores:"Labores (Gantt)", mapoly:"Dibujos del mapa", bitacora:"Bitácora", catalogos:"Catálogos", noticias:"Noticias guardadas", climaCache:"Clima guardado", wl:"Estación", fenologia:"Fenología", cuarteles:"Cuarteles", tablero:"Tablero", checklists:"Listas", planFito:"Calc Fito"};
+  const NOM={notas:"Notas", registros:"Registros", labores:"Labores (Gantt)", mapoly:"Dibujos del mapa", bitacora:"Bitácora", catalogos:"Catálogos", climaCache:"Clima guardado", wl:"Estación", fenologia:"Fenología", cuarteles:"Cuarteles", tablero:"Tablero", checklists:"Listas", planFito:"Calc Fito"};
   const partes=Object.keys(D).map(k=>{ let n=0; try{ n=JSON.stringify(D[k]).length*2; }catch(e){} return [k,n]; }).sort((a,b)=>b[1]-a[1]).slice(0,4);
   const ca=await espacioCaches();
   let est=null; try{ if(navigator.storage && navigator.storage.estimate) est=await navigator.storage.estimate(); }catch(e){}
@@ -4789,9 +4788,6 @@ html.grande .mapa-wrap.mapa-full{zoom:1;}
 .mapa-med .mtab.act{background:var(--p); color:#fff;}
 .mapa-med select{padding:3px 6px; border:1px solid #d4d7d2; border-radius:7px; font-size:12px; background:#fff; min-height:0;}
 .mapa-med td{padding:3px 4px; white-space:nowrap;}
-.noti-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px; margin-bottom:16px;}
-.noti-card{margin-bottom:0; padding:13px 15px;}
-.noti-fu{font-size:11.5px; font-weight:800; padding:3px 10px; border-radius:20px; letter-spacing:.3px; white-space:nowrap;}
 /* iPad: elimina el retraso/tragado de toques de Safari en todos los controles */
 button, .btn, select, input, textarea, a, label, .chip, .tool, .col, .mtool, .mcol, .mtab, .mpc, .mpcf, .qx-cat, .badge, .item, .ph, .modal-fondo, .dia-h{touch-action:manipulation;}
 html{-webkit-tap-highlight-color:rgba(30,122,76,.12);}
@@ -4953,7 +4949,7 @@ html.movil .card{padding:13px 14px; border-radius:12px;}
 html.movil .btn-fab{bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 14px);}
 /* todo a una columna (minmax(0,..) deja que la columna se angoste bajo su contenido) */
 html.movil .g2p, html.movil .grid2,
-html.movil .tab-cols, html.movil .noti-grid, html.movil .fengrid{grid-template-columns:minmax(0,1fr);}
+html.movil .tab-cols, html.movil .fengrid{grid-template-columns:minmax(0,1fr);}
 html.movil .card, html.movil .g2p > *, html.movil .gmapa > *, html.movil .card > div{min-width:0;}
 html.movil .kpi3{gap:10px;}
 html.movil .kpi3 > div{min-width:0;}
@@ -5892,7 +5888,6 @@ html.sol .dsec-b.act{background:#cfe8d8;}
 .rg-bdg{display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;}
 .rg-bdg .badge, .rg-tpp .badge, .rg-res-f .badge, .rg-jov{font-size:11px; padding:2px 8px; white-space:nowrap;}
 .rg-ppb .i{width:12px; height:12px; vertical-align:-2px;}
-.rgcard.sinv{border-color:#e2c07a;}
 .rg-al{margin:2px 0 6px; padding:6px 9px; border-radius:9px; background:#fdf0ef; border:1px solid #e8b4b0; color:#7e211c; font-size:12.5px; text-align:center;}
 .rg-res{display:flex; flex-direction:column; gap:6px; margin:0 0 12px;}
 .rg-res-f{display:flex; gap:8px; align-items:flex-start; padding:8px 10px; border-radius:10px; border:1px solid var(--borde); background:#f7faf6; font-size:12.5px; line-height:1.35;}
@@ -5920,6 +5915,25 @@ html.sol .dsec-b.act{background:#cfe8d8;}
 html.movil .rf-cob{grid-template-columns:minmax(0,1fr);}
 html.movil .rg-res-f{flex-direction:column; gap:4px;}
 @media (max-width:560px){ .rf-cob{grid-template-columns:minmax(0,1fr);} .rg-res-f{flex-direction:column; gap:4px;} }
+/* ---- Riego 29-10-2026: Pp por líneas de riego y marco (ficha ⚙ «Línea de riego», «Aplicar a todos», «Valores iniciales») ---- */
+.rf-lin-cab{margin:0 0 8px;}
+.rf-lin-cab .rf-ent{font-size:12.5px; line-height:1.35; color:var(--txt); margin:0 0 6px; overflow-wrap:anywhere;}
+.rf-lin-cab label.f{margin-bottom:2px;}
+.rf-lin-ini{font-size:12px; line-height:1.3;}
+.rf-lin{border:1px solid var(--borde); border-radius:10px; padding:8px 10px; margin:0 0 8px; min-width:0;}
+.rf-lin[hidden], .rf-apl-conf[hidden]{display:none;}
+.rf-lin-t{font-size:13px; font-weight:700; color:var(--txt); margin:0 0 4px;}
+.rf-lin .grid2 label.f{margin-bottom:4px;}
+.rf-lin-lhm{color:var(--txt2); font-size:12px;}
+.rf-apl, .rf-apl-conf{background:#eef4fa; border:1px solid #c9dcec; border-radius:10px; padding:8px 10px; margin:0 0 10px; color:#1c3d5c; font-size:12.5px; line-height:1.4; overflow-wrap:anywhere;}
+.rf-apl .btn, .rf-apl-conf .btn{min-height:44px; white-space:normal; text-align:center; max-width:100%;}
+.rf-apl-conf > div + div{margin-top:5px;}
+.rf-apl-bs{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
+.rf-apl-res{margin-top:6px; font-weight:600;}
+.rf-apl-res:empty{display:none;}
+.rgc-lin{font-size:11.5px; color:var(--txt); margin-top:6px; line-height:1.35; overflow-wrap:anywhere;}
+.rg-res-f.info, .rg-fal.info{background:#eef4fa; border:1px solid #c9dcec; color:#1c3d5c;}
+.badge.b-ini{background:#eef4fa; color:#1c3d5c; border:1px dashed #9dbad3;}
 /* ---- Mejoras H (28-10-2026): avisos de Riego que explican qué hacer, con botón a la ficha; «En carencia ahora» en Aplicaciones ---- */
 .rg-res-bs{display:flex; flex-wrap:wrap; gap:6px; margin-top:7px;}
 .rg-res-bs .btn{min-height:44px; padding:6px 12px; font-size:13px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
@@ -7569,7 +7583,6 @@ html.espejo .est-umb input[readonly], html.espejo .est-ll-c input[readonly]{back
 const LOC_DEF = {lat:-33.4123, lng:-71.1385}; // Curacaví (se usa D.lluviaLoc si está configurada)
 const ICO = {
   riego:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M10 2.8c2.6 3.4 5.2 6.3 5.2 9.2a5.2 5.2 0 0 1-10.4 0c0-2.9 2.6-5.8 5.2-9.2z"></path><path d="M7.4 12.4a2.6 2.6 0 0 0 2.6 2.6"></path></svg>',
-  noti:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="14" height="13" rx="2"></rect><path d="M6.5 8h7M6.5 11h7M6.5 14h4"></path></svg>',
   calcfito:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 3h4M8.5 3v4.5L5 14.2A1.6 1.6 0 0 0 6.4 16.6h7.2A1.6 1.6 0 0 0 15 14.2L11.5 7.5V3"></path><path d="M7.2 12.6h5.6"></path></svg>',
   aplic:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4.5" y="3" width="11" height="14" rx="1.5"></rect><path d="M4.5 6.5h11M8 3v14"></path></svg>',
   marca:'<svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="#b58e2f" stroke-width="1.8"><circle cx="10" cy="11.5" r="5.5"></circle><path d="M10 6V3.5M10 3.5c1.8-1 3.5-.5 3.5-.5s-.3 1.9-2 2.5"></path></svg>',
@@ -7659,7 +7672,6 @@ const IKO={
   device:'<rect x="4" y="2.5" width="16" height="19" rx="2"/><path d="M10.5 18.5h3"/>',
   tag:'<path d="M3 11V3h8l10 10-8 8z"/><circle cx="7.5" cy="7.5" r="1.3"/>',
   link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
-  news:'<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 8.5h6M7 12h10M7 15.5h10M16.5 8.5H17"/>',
   receipt:'<path d="M6 2.5h12V21l-2-1.4-2 1.4-2-1.4L10 21l-2-1.4L6 21z"/><path d="M9.5 7.5h5M9.5 11h5M9.5 14.5h3"/>',
   pointer:'<path d="m3 11 19-9-9 19-2-8z"/>',
   eraser:'<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
@@ -7680,7 +7692,8 @@ const ic=n=>'<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+(IKO[n]||''
 
 function renderInterno(){
   if(nav.tab==="reg") nav.tab="bitacora";   // Registros se fusionó con Bitácora (29-09-2026)
-  const t = {panel:saludo(), asist:"Asistente", notas:"Notas de terreno", bitacora:"Bitácora de campo", fenologia:"Registro fenológico", listas:"Mis listas", gantt:"Carta Gantt de labores", reg:"Registros técnicos", tab:"Tablero", noti:"Noticias del agro", calcfito:"Calculadora Fito", aplic:"Aplicaciones", riego:"Programación de riego", estacion:"Estación meteorológica", datos:"Datos y ajustes"}[nav.tab];
+  if(!TABS.some(x=>x.id===nav.tab)) nav.tab="panel";   // pestaña que ya no existe (p. ej. «noti»: Noticias se quitó el 28-10-2026) → Hoy, sin pantalla de rescate
+  const t = {panel:saludo(), asist:"Asistente", notas:"Notas de terreno", bitacora:"Bitácora de campo", fenologia:"Registro fenológico", listas:"Mis listas", gantt:"Carta Gantt de labores", reg:"Registros técnicos", tab:"Tablero", calcfito:"Calculadora Fito", aplic:"Aplicaciones", riego:"Programación de riego", estacion:"Estación meteorológica", datos:"Datos y ajustes"}[nav.tab];
   document.getElementById("topbar").innerHTML =
     `<div style="flex:1;min-width:180px"><h1>${t}<span class="sub">${PROY? esc(PROY.nombre) : "AgroNotas"} · ${fmtF(hoy())}</span></h1></div>
     <div class="acciones">
@@ -7697,17 +7710,17 @@ function renderInterno(){
     const _act=document.querySelector("#tabbar button.act");
     if(_act && _act.scrollIntoView) try{ _act.scrollIntoView({block:"nearest", inline:"center"}); }catch(_){ }
   }
-  const vistas = {panel:vPanel, asist:vAsist, notas:vNotas, bitacora:vBitacora, fenologia:vFenologia, listas:vListas, gantt:vGantt, tab:vTab, noti:vNoticias, calcfito:vCalcFito, aplic:vAplic, riego:vRiego, estacion:vEstacion, datos:vDatos};
+  const vistas = {panel:vPanel, asist:vAsist, notas:vNotas, bitacora:vBitacora, fenologia:vFenologia, listas:vListas, gantt:vGantt, tab:vTab, calcfito:vCalcFito, aplic:vAplic, riego:vRiego, estacion:vEstacion, datos:vDatos};
   document.getElementById("app").innerHTML = (typeof syncBannerHTML==="function"? syncBannerHTML():"") + vistas[nav.tab]();
   if(typeof syncIniciar==="function") syncIniciar();
   if(nav.tab!=="panel" && geoWatch){ navigator.geolocation.clearWatch(geoWatch); geoWatch = null; } // ahorra batería fuera del mapa
-  const posrender = {notas:posNotas, panel:posPanel, reg:posNotas, bitacora:lcPos, noti:posNoticias, estacion:estPos, datos:espacioPintar}[nav.tab];   // Bitácora: solo las miniaturas visibles (lcPos)
+  const posrender = {notas:posNotas, panel:posPanel, reg:posNotas, bitacora:lcPos, estacion:estPos, datos:espacioPintar}[nav.tab];   // Bitácora: solo las miniaturas visibles (lcPos)
   if(posrender) posrender();
 }
 /* Bots de prueba (01-10-2026): bots.js se carga solo cuando se pide (Datos → Respaldo, o abrir la app con ?bots) */
 /* Versión de los archivos aparte (bots.js, demo.js): una URL fija por versión para que el service worker los guarde una sola vez
    y sirvan sin señal (antes ?v=<hora> dejaba una copia nueva en la caché en cada carga). En el servidor local de pruebas se piden siempre frescos. */
-const AGRO_JS_V = "158";
+const AGRO_JS_V = "160";
 function agroJsUrl(src){ return src+"?v="+(/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)? Date.now() : AGRO_JS_V); }
 function agroJsCargar(src, ok){
   const s=document.createElement("script"); s.src=agroJsUrl(src); if(ok) s.onload=ok;
@@ -11209,9 +11222,9 @@ function mapaTemaDe(q, tema){
     const hoyDia=new Date().getDay();
     if(riegoDias(q).indexOf(hoyDia)<0) return {col:"#90a4ae", ley:"Hoy no riega", det:"", orden:2};
     if(!_mapaTemaSerie){ try{ _mapaTemaSerie=riegoSerieBase(); }catch(e){ _mapaTemaSerie=[]; } }
-    let h=null, sinV=false; try{ const c=riegoCalcCuartel(q, _mapaTemaSerie); h=c.hRiego; sinV=(c.ppInfo||{}).src==="sv"; }catch(e){}
-    return h==null? {col:"#64b5f6", ley:"Riega hoy (faltan datos)", det:"falta la Pp (marco o línea de riego)", orden:1}
-                  : {col:"#1565c0", ley:"Riega hoy", det:num(Math.round(h*10)/10)+" h"+(sinV? " (Pp sin verificar)" : ""), orden:0};
+    let h=null; try{ const c=riegoCalcCuartel(q, _mapaTemaSerie); h=c.hRiego; }catch(e){}
+    return h==null? {col:"#64b5f6", ley:"Riega hoy (faltan datos)", det:"falta el marco de plantación", orden:1}
+                  : {col:"#1565c0", ley:"Riega hoy", det:num(Math.round(h*10)/10)+" h", orden:0};
   }
   return null;
 }
@@ -12006,219 +12019,6 @@ async function cargarFotosRec(){
   }catch(e){}
 }
 
-/* ---------- 📰 Dashboard de actualidad del agro (se guarda para leer sin internet) ---------- */
-const NOTI_CATS = {
-  medios: {lab:"Medios y portales de actualidad", ico:"📰", col:"#1e7a4c"},
-  id: {lab:"Investigación y academia (I+D)", ico:"🔬", col:"#1e6091"},
-  publico: {lab:"Organismos públicos y datos técnicos", ico:"🏛️", col:"#8a5a00"}
-};
-const NOTI_FUENTES = [
-  ["Portal Frutícola","medios","https://www.portalfruticola.com/feed/"],
-  ["Redagrícola","medios","https://redagricola.com/feed/"],
-  ["Portal Agro Chile","medios","https://portalagrochile.cl/feed/"],
-  ["Frutas de Chile","medios","https://frutasdechile.cl/feed/"],
-  ["Fedefruta","medios","https://fedefruta.cl/feed/"],
-  ["Prensa Agrícola","medios","https://prensaagricola.cl/feed/"],
-  ["Mundoagro","medios","https://mundoagro.cl/feed/"],
-  ["INIA","id","https://www.inia.cl/feed/"],
-  ["FIA","id","https://fia.cl/feed/"],
-  ["Agronomía U. de Chile","id","https://agronomia.uchile.cl/rss"],
-  ["Agronomía UC","id","https://agronomia.uc.cl/feed/"],
-  ["Consorcio de la Fruta","id","https://consorciodelafruta.cl/feed/"],
-  ["ODEPA","publico","https://www.odepa.gob.cl/feed/"],
-  ["CIREN","publico","https://www.ciren.cl/feed/"]
-];
-function vNoticias(){
-  const N = D.noticias;
-  let h = `<div class="card">
-    <div class="fila" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <div>
-        <h2 style="margin:0">${ic("news")} El Diario Frutícola</h2>
-        <div class="muted" id="notiEstado" style="margin-top:2px">${N?
-          `Edición del ${fmtF(N.act.slice(0,10))} · ${N.act.slice(11,16)} h · ${N.fuOk||0}/${N.fuTot||NOTI_FUENTES.length} fuentes · se lee sin internet` :
-          "Toca Actualizar (con internet) para armar tu primera edición."}</div>
-      </div>
-      <button class="btn chico" onclick="actualizarNoticias()">${ic("refresh")} Actualizar</button>
-    </div>
-  </div>`;
-  if(!N) return h;
-  const items = (N.items||[]).map(x=>Object.assign({}, x, notiClasifica(x)));
-  items.sort((a,b)=> b.pts - a.pts || (b.fe||"").localeCompare(a.fe||""));
-  /* indicadores + tendencia del dólar */
-  if(N.ind){
-    h += `<div class="card"><div class="fila" style="align-items:center;gap:16px;flex-wrap:wrap;justify-content:space-between">
-      <div style="flex:1;min-width:210px;display:flex;text-align:center;font-variant-numeric:tabular-nums">
-        ${[["Dólar",N.ind.dolar],["UF",N.ind.uf],["Euro",N.ind.euro]].map(([n,x])=> x?
-          `<div style="flex:1"><div style="font-size:21px;font-weight:700;color:var(--p,#1e7a4c)">$${num(x)}</div><div class="muted" style="font-size:11px">${n}</div></div>`:"").join("")}
-      </div>
-      <div style="flex:0 0 auto;text-align:center">${sparkDolar(N.dolarSerie)}</div>
-    </div></div>`;
-  }
-  /* filtros interactivos por tema */
-  const filtro = nav.notiFiltro||"todos";
-  h += `<div class="chips" style="margin:2px 0 10px">${
-    [["todos","Todos"]].concat(NOTI_TEMAS.map(t=>[t[0], t[1]])).concat([["general","📰 General"]])
-      .map(([id,lab])=>`<div class="chip ${filtro===id?"act":""}" onclick="nav.notiFiltro='${id}';render()">${lab}</div>`).join("")}</div>`;
-  const tarjeta = (x, grande)=>{
-    const cfg = NOTI_TEMAS.find(tt=>tt[0]===x.tema);
-    const col = cfg? cfg[2] : "#5a5d58";
-    const eti = cfg? cfg[1] : "📰 Agro general";
-    const masLargo = x.rl && x.rl.length > (x.re||"").length + 60;
-    return `<div class="card noti-card" style="border-top:3px solid ${col}">
-      <div class="fila" style="justify-content:space-between;align-items:center;gap:6px">
-        <span class="noti-fu" style="background:${col}18;color:${col}">${eti}</span>
-        <span class="muted" style="font-size:10.5px;white-space:nowrap">${esc(x.fu)}${x.fe? " · "+fmtF(x.fe):""}</span>
-      </div>
-      <div style="font-weight:800;font-size:${grande?15.5:14}px;line-height:1.3;margin:7px 0 5px">${esc(x.t)}</div>
-      ${x.re? `<div style="font-size:${grande?13:12.5}px;line-height:1.5;color:#3c403d">${esc(x.re)}</div>`:""}
-      ${masLargo? `<details style="margin-top:5px"><summary style="font-size:12px;font-weight:700;color:${col};cursor:pointer">Leer más</summary>
-        <div style="font-size:12.5px;line-height:1.55;color:#3c403d;margin-top:5px">${esc(x.rl)}…</div></details>`:""}
-      ${x.u? `<a href="${esc(x.u)}" target="_blank" class="muted" style="font-size:10px;display:inline-block;margin-top:6px">fuente original →</a>`:""}
-    </div>`;
-  };
-  if(filtro!=="todos"){ // vista filtrada por tema
-    const its = items.filter(x=>x.tema===filtro);
-    h += its.length? `<div class="noti-grid">${its.map(x=>tarjeta(x,true)).join("")}</div>` :
-      `<div class="card"><div class="muted">Sin noticias de este tema en la edición actual.</div></div>`;
-    return h;
-  }
-  const portada = items.slice(0,6);
-  const resto = items.slice(6);
-  if(portada.length){
-    h += `<div class="dia-h" style="border-left:4px solid var(--p,#1e7a4c);padding-left:10px">🗞 Portada · lo más relevante para tu fruta</div>
-      <div class="noti-grid" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr))">${portada.map(x=>tarjeta(x,true)).join("")}</div>`;
-  }
-  for(const [id, eti, col] of NOTI_TEMAS.concat([["general","📰 Otras noticias del agro","#5a5d58"]])){
-    const its = resto.filter(x=>x.tema===id);
-    if(!its.length) continue;
-    h += `<div class="dia-h" style="border-left:4px solid ${col};padding-left:10px">${eti} <span class="fecha">· ${its.length}</span></div>
-      <div class="noti-grid">${its.slice(0,8).map(x=>tarjeta(x,false)).join("")}</div>`;
-  }
-  return h;
-}
-/* 28-10-2026: al volver a Noticias no se actualiza sola antes de 30 min desde el último intento (el botón «Actualizar» sí), aunque haya fallado.
-   Antes, si ninguna fuente respondía, cada vuelta lanzaba ~44 pedidos a los proxies: en una corrida de bots fueron 588 por proxy y
-   corsproxy.io respondió 379 veces «429» (eran esos, no Open-Meteo) */
-let NOTI_ULT = 0;
-function posNoticias(){ // al entrar: refresca solo si hay internet y lo guardado tiene más de 6 horas
-  if(!navigator.onLine) return;
-  const N = D.noticias;
-  if((!N || (Date.now() - new Date(N.act).getTime()) > 6*3600*1000) && Date.now() - NOTI_ULT > 30*60000) actualizarNoticias(true);
-}
-function fetchT(url, ms){ // fetch con tiempo máximo de espera
-  const c = new AbortController();
-  const t = setTimeout(()=>c.abort(), ms||9000);
-  return fetch(url, {signal:c.signal}).finally(()=>clearTimeout(t));
-}
-function limpiaTxt(s){ return (s||"").replace(/<[^>]*>/g," ").replace(/&[a-z#0-9]+;/gi," ").replace(/\s+/g," ").trim(); }
-function resumen3(s){ // resumen legible: hasta ~3 frases completas
-  s = limpiaTxt(s);
-  const frases = s.match(/[^.!?]+[.!?]+/g) || [s];
-  let out = "";
-  for(const f of frases){
-    if((out+f).length > 430) break;
-    out += f;
-    if(out.length > 250) break;
-  }
-  return (out.trim() || s.slice(0,300)).trim();
-}
-/* temas de "mi periódico": prioridad frutícola de Manuel */
-const NOTI_TEMAS = [
-  ["citricos","🍊 Cítricos","#e97409",["cítric","citric","limón","limon","limones","naranja","mandarina","clementina","pomelo"]],
-  ["paltos","🥑 Paltos","#2e7d32",["palta","palto","aguacate","hass"]],
-  ["cerezos","🍒 Cerezos","#b3263d",["cereza","cerezo"]],
-  ["frutales","🍇 Otros frutales","#6a4fb3",["uva","ciruel","nectarin","durazno","manzana","kiwi","arándano","arandano","frambuesa","nogal","nuez","almendr","granado","carozo","frutal","frutícola","fruticola"]],
-  ["mercado","📈 Mercado y exportación","#1e6091",["export","mercado","precio","arancel","embarque","temporada","china","envío","envio","fob","demanda","importa"]],
-  ["tecnica","🔬 Investigación y técnica","#00796b",["riego","fertiliz","plaga","helada","poda","varied","genét","genet","tecnolog","investig","sustentab","suelo","agua","injerto","portainjerto"]]
-];
-function notiClasifica(x){ // asigna tema y puntaje de relevancia
-  const txt = ((x.t||"")+" "+(x.re||"")).toLowerCase();
-  const tit = (x.t||"").toLowerCase();
-  let tema = "general", pts = 0;
-  for(const [id,,,kws] of NOTI_TEMAS){
-    const peso = (id==="citricos"||id==="paltos"||id==="cerezos")? 6 : id==="frutales"? 3 : 2;
-    let hay = false;
-    for(const k of kws){
-      if(tit.includes(k)){ pts += peso*2; hay = true; }
-      else if(txt.includes(k)){ pts += peso; hay = true; }
-    }
-    if(hay && tema==="general") tema = id;
-  }
-  if(x.fe){ const dias = (Date.now()-new Date(x.fe+"T12:00:00"))/86400000; pts += Math.max(0, 6-dias); }
-  return {tema, pts};
-}
-function sparkDolar(serie){ // mini gráfico de tendencia del dólar (30 días)
-  if(!serie || serie.length<2) return "";
-  const vs = serie.map(p=>p[1]);
-  const min = Math.min(...vs), max = Math.max(...vs), rango = (max-min)||1;
-  const W = 220, H = 46;
-  const pts = vs.map((v,i)=>`${(i/(vs.length-1)*W).toFixed(1)},${(H-5-(v-min)/rango*(H-10)).toFixed(1)}`).join(" ");
-  const varp = (vs[vs.length-1]-vs[0])/vs[0]*100;
-  const col = varp>=0? "#2e7d32" : "#c62828";
-  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round"/></svg>
-    <div style="font-size:11px;color:${col};font-weight:700">Dólar: ${varp>=0?"▲":"▼"} ${Math.abs(varp).toFixed(1)}% en 30 días</div>`;
-}
-async function rssIntentos(url){ // intenta 3 caminos distintos para leer cada fuente
-  try{ // 1) rss2json (entrega JSON directo)
-    const r = await fetchT("https://api.rss2json.com/v1/api.json?rss_url="+encodeURIComponent(url));
-    const j = await r.json();
-    if(j.status==="ok" && j.items && j.items.length)
-      return j.items.map(i=>({t:limpiaTxt(i.title), u:i.link||"", fe:(i.pubDate||"").slice(0,10), re:resumen3(i.content || i.description), rl:limpiaTxt(i.content || i.description).slice(0,1500)}));
-  }catch(e){}
-  for(const px of ["https://api.allorigins.win/raw?url=", "https://corsproxy.io/?url="]){
-    try{ // 2 y 3) proxies + lectura del XML
-      const r = await fetchT(px+encodeURIComponent(url));
-      const xml = new DOMParser().parseFromString(await r.text(), "text/xml");
-      const its = [...xml.querySelectorAll("item")];
-      if(its.length) return its.map(it=>{
-        const g = s=>{ const e = it.querySelector(s); return e? e.textContent.trim() : ""; };
-        const fe = new Date(g("pubDate"));
-        return {t:limpiaTxt(g("title")), u:g("link"), fe:isNaN(fe)? "" : fe.toISOString().slice(0,10), re:resumen3(g("description")), rl:limpiaTxt(g("description")).slice(0,1500)};
-      });
-    }catch(e){}
-  }
-  return null;
-}
-async function actualizarNoticias(silencioso){   // una sola actualización a la vez (cada repintado de Noticias la volvía a lanzar)
-  if(actualizarNoticias._en) return;
-  actualizarNoticias._en = true;
-  try{ return await _actualizarNoticias(silencioso); } finally { actualizarNoticias._en = false; }
-}
-async function _actualizarNoticias(silencioso){
-  if(!navigator.onLine){
-    if(silencioso!==true) alert("Necesitas internet para actualizar. Lo guardado sigue disponible sin señal.");
-    return;
-  }
-  NOTI_ULT = Date.now();
-  const est = document.getElementById("notiEstado");
-  if(est) est.textContent = "actualizando las " + NOTI_FUENTES.length + " fuentes… (puede tardar medio minuto)";
-  const nuevo = {act: ahora(), ind:null, items:[], fuOk:0, fuTot:NOTI_FUENTES.length};
-  try{ // indicadores oficiales de Chile
-    const r = await fetchT("https://mindicador.cl/api");
-    const j = await r.json();
-    nuevo.ind = {dolar: j.dolar && j.dolar.valor, uf: j.uf && j.uf.valor, euro: j.euro && j.euro.valor};
-  }catch(e){}
-  try{ // serie del dólar (30 días) para el gráfico de tendencia
-    const r2 = await fetchT("https://mindicador.cl/api/dolar");
-    const j2 = await r2.json();
-    const s = (j2.serie||[]).slice(0,30).map(p=>[(p.fecha||"").slice(0,10), p.valor]).reverse();
-    if(s.length>1) nuevo.dolarSerie = s;
-  }catch(e){}
-  const res = await Promise.all(NOTI_FUENTES.map(async ([nom, cat, url])=>({nom, cat, its: await rssIntentos(url)})));
-  for(const {nom, cat, its} of res){
-    if(!its || !its.length) continue;
-    nuevo.fuOk++;
-    for(const x of its.slice(0,4)) nuevo.items.push(Object.assign({}, x, {fu:nom, cat}));
-  }
-  nuevo.items.sort((a,b)=>(b.fe||"").localeCompare(a.fe||""));
-  if(!nuevo.ind && !nuevo.items.length){
-    if(est) est.textContent = "ninguna fuente respondió — revisa la señal e intenta de nuevo";
-    return;
-  }
-  D.noticias = nuevo;
-  guardar();
-  if(nav.tab==="noti") render();
-}
 
 
 /* ================== CARTA GANTT DE LABORES ==================
@@ -14703,7 +14503,7 @@ function asisVistaHTML(){
    Puente_WeatherLink_instrucciones.md) que agrega la clave/secreto y permite CORS.
    Datos por día en D.wl.dias[fecha] = {et (mm ET0), tmax, tmin, ll (mm), src:"wl"|"om", parcial}
    Riego: ETc = ET0 × Kc(especie, mes) − lluvia efectiva; L/planta = ETc × área del marco;
-   horas = mm por riego ÷ Pp (Pp medida, o caudal ÷ (entrehilera ÷ líneas × distancia entre goteros), ver riegoPp).
+   horas = mm por riego ÷ Pp (Pp medida, o la suma de los L/h por metro de cada línea de riego ÷ distancia entre hileras, ver riegoPp).
    Kc referenciales FAO-56 / INIA, editables; × factor de cobertura del cuartel. */
 const RIEGO_KC_DEF = {
   citricos: [0.72,0.72,0.70,0.68,0.65,0.62,0.62,0.65,0.68,0.70,0.72,0.72],
@@ -15171,14 +14971,18 @@ function riegoKcAj(q){ const o=(q && riegoCfg().cu[q.id])||{}; const x=+o.kcAj; 
 function riegoModoKc(m){ riegoCfg().modoKc=m; guardar(); riegoPintar(); }
 function riegoSetModo(id, m){ const r=riegoCfg(); r.cu[id]=r.cu[id]||{}; if(m==="global") delete r.cu[id].modo; else r.cu[id].modo=m; if(m!=="manual") delete r.cu[id].kc; guardar(); riegoPintar(); }
 function riegoParam(q){ const r=riegoCfg(); const o=r.cu[q.id]||{}; return {gpp:+(o.gpp||r.def.gpp||0), caudal:+(o.caudal||r.def.caudal||0), ef:+(o.ef||r.def.ef||90)}; }
-/* ---------- Pp por línea de riego (27-10-2026, pedido de Manuel) ----------
-   El lateral va a lo largo de la hilera con un gotero cada X m, sin importar dónde quedan las plantas:
-   Pp (mm/h) = caudal del gotero ÷ ((entrehilera ÷ líneas por hilera) × distancia entre goteros).
-   Prioridad: 1) Pp medida del cuartel (aforo o caudalímetro, o.ppMed) · 2) Pp de diseño con los 4 datos de la línea
-   (del cuartel; si no, de la semilla SEED_LINEA; entrehilera vacía = primer número del marco) · 3) si falta alguno,
-   la fórmula antigua (goteros/pl × caudal ÷ m² por planta, con los valores generales) marcada «sin verificar».
-   No se inventa nada: no hay líneas ni distancia entre goteros por defecto. Campos nuevos en D.riego.cu[id]:
-   ent, lin, dg (y caudal, el de siempre), ppMed, ppFecha, cob, diam. La semilla no se copia a D: lo de la ficha manda. */
+/* ---------- Pp por líneas de riego y marco (29-10-2026, pedido de Manuel del 28-10; reemplaza la fórmula del 27-10) ----------
+   El lateral gotea parejo a lo largo de la hilera: la Pp la definen la distancia entre hileras y cuánta agua entrega cada línea
+   por metro, no la distancia entre plantas.
+   Pp (mm/h) = (L/h por metro de la Línea 1 [+ L/h por metro de la Línea 2, si hay 2 líneas]) ÷ distancia entre hileras;
+   L/h por metro = caudal del gotero ÷ distancia entre goteros; distancia entre hileras = primer número del marco (riegoMarco).
+   De dónde sale: 1) la Pp medida del cuartel (o.ppMed: aforo o caudalímetro) manda siempre · 2) las líneas (riegoLineas), con lo
+   anotado en el cuartel (lin; caudal/dg = Línea 1; caudal2/dg2 = Línea 2, que sin dato propio usa la Línea 1), si no la semilla
+   SEED_LINEA, si no los valores iniciales (RIEGO_LINEA_INI; líneas según el año de plantación, riegoLinIni) → «valores iniciales».
+   La fórmula antigua (goteros por planta × caudal ÷ m² por planta) ya no existe.
+   Nada se escribe al cargar: los valores iniciales se calculan y quedan anotados solo al Guardar la ficha ⚙ o con «Aplicar a todos
+   los cuarteles del fundo». o.ent (entrehilera del 27-10) y o.gpp (goteros/pl antiguos) quedan guardados sin uso.
+   La semilla no se copia a D: lo de la ficha manda (un valor de la ficha igual al de la semilla cuenta como de la semilla). */
 const SEED_LINEA = {
   "San Joaquín": {"Cuesta Vieja": {ent:5, lin:2, dg:0.5, caudal:2, fuente:"plano de riego 2021"}},
   "Santa Rita":  {"Cerezos 2023": {ent:4, lin:2, dg:0.5, caudal:2}, "Cerezos 2024": {ent:4, lin:2, dg:0.5, caudal:2}}
@@ -15191,29 +14995,115 @@ function riegoMarcoDims(q){   // «6x4,5» → [6, 4.5] (entrehilera, distancia 
   const m=String((q&&q.marco)||"").toLowerCase().replace(/,/g,".").match(/([0-9.]+)\s*[x×*]\s*([0-9.]+)/);
   if(!m) return null; const a=parseFloat(m[1]), b=parseFloat(m[2]); return (a>0 && b>0)? [a,b] : null;
 }
-function riegoPp(q){
-  const r=riegoCfg(), o=(q && r.cu[q.id])||{}, sd=riegoSeedLinea(q)||{}, md=riegoMarcoDims(q);
+const RIEGO_LINEA_INI = {caudal:2, dg:0.5};      // valor inicial de cada línea (pedido 28-10; no medido)
+const RIEGO_UNA_LINEA_DESDE = 2025;              // plantado 2025 o después → 1 línea; 2024 o antes → 2
+const RIEGO_LIM = {caudal:[0.5,8], dg:[0.1,2], ent:[1,12]};
+/* hoja del regador (pregunta abierta a Manuel, 29-10): false = no marca nada; true = «(horas con gotero supuesto)» en los cuarteles con valores iniciales */
+const RIEGO_REG_MARCA_INI = false;
+function riegoFmtL(x){ return (x==null || x==="" || !isFinite(+x))? "—" : (+x).toLocaleString("es-CL",{maximumFractionDigits:2}); }
+function riegoFmtPp(x){ return (x==null || x==="" || !isFinite(+x))? "—" : (+x).toLocaleString("es-CL",{minimumFractionDigits:2, maximumFractionDigits:2}); }
+/* distancia entre hileras = primer número del marco (la misma expresión de ctMarco y riegoMarcoDims: X, ×, *, espacios y coma decimal) */
+function riegoMarco(q){
+  const crudo=String((q&&q.marco)||"").trim();
+  if(!crudo) return {ok:false, motivo:"falta", crudo, ent:null, ep:null, txt:""};
+  const m=crudo.toLowerCase().replace(/,/g,".").match(/([0-9.]+)\s*[x×*]\s*([0-9.]+)/);
+  const a=m? parseFloat(m[1]) : NaN, b=m? parseFloat(m[2]) : NaN;
+  if(!(a>0 && b>0 && isFinite(a) && isFinite(b))) return {ok:false, motivo:"no se entiende", crudo, ent:null, ep:null, txt:""};
+  const txt=riegoFmtL(a)+"×"+riegoFmtL(b);
+  if(a<RIEGO_LIM.ent[0] || a>RIEGO_LIM.ent[1]) return {ok:false, motivo:"fuera", crudo, ent:a, ep:b, txt};   // «50x2», «0,5x2»: no da horas absurdas
+  return {ok:true, motivo:"", crudo, ent:a, ep:b, txt};
+}
+/* líneas por hilera iniciales según el AÑO DE PLANTACIÓN (no la fecha de hoy): 2025 o después → 1; 2024 o antes → 2; sin año → 2 */
+function riegoLinIni(q){ const a=riegoAnio(q); return a==null? {lin:2, de:"sinAnio", anio:null} : {lin:a>=RIEGO_UNA_LINEA_DESDE? 1 : 2, de:"anio", anio:a}; }
+/* las líneas de riego del cuartel. o = lo guardado (por defecto riegoCfg().cu[q.id]) o lo escrito en la ficha (vista en vivo):
+   la ficha y el cálculo usan el mismo código. Un valor fuera de rango no se usa (cae al siguiente de la cadena) y queda en malos[] */
+function riegoLineas(q, o){
+  if(!o) o=(q && riegoCfg().cu[q.id])||{};
+  const sd=riegoSeedLinea(q)||{}, marco=riegoMarco(q), li=riegoLinIni(q);
   const pos=x=>{ x=+x; return (x>0 && isFinite(x))? x : null; };
-  /* de dónde sale cada dato: un valor de la ficha igual al de la semilla cuenta como de la semilla (no la contradice) */
-  const de=k=>{ const a=pos(o[k]), b=pos(sd[k]); return a? ((b && Math.abs(a-b)<1e-9)? "semilla" : "ficha") : b? "semilla" : ""; };
-  const ent=pos(o.ent)||pos(sd.ent)||(md? md[0] : null), entDe=de("ent")||(md? "marco" : "");
-  const lin=pos(o.lin)||pos(sd.lin), dg=pos(o.dg)||pos(sd.dg), caudal=pos(o.caudal)||pos(sd.caudal);
-  const orig=["ent","lin","dg","caudal"].map(de), algoSemilla=orig.indexOf("semilla")>=0, algoFicha=orig.indexOf("ficha")>=0;
-  const i={ent, entDe, lin, dg, caudal, ppMed:pos(o.ppMed), ppFecha:o.ppFecha||"", ppDis:null, fuente:"",
-    gpl:(md && lin && dg)? md[1]/dg*lin : null,                      // goteros por planta (solo informativo)
-    dif:["ent","lin","dg","caudal"].filter(k=>de(k)==="ficha" && pos(sd[k])).map(k=>({k, ficha:pos(o[k]), semilla:pos(sd[k])})),   // la ficha contradice la semilla
-    semFuente:sd.fuente||"",
-    falta:[!ent? "entrehilera" : "", !lin? "líneas por hilera" : "", !dg? "distancia entre goteros" : "", !caudal? "caudal del gotero" : ""].filter(Boolean)};
-  /* «plano de riego 2021» solo si los 4 datos vienen de la semilla (corrector 27-10): si se mezclan con la ficha, se dice */
-  if(ent && lin && dg && caudal){ i.ppDis=caudal/((ent/lin)*dg); if(algoSemilla) i.fuente = !algoFicha? (sd.fuente||"") : sd.fuente? "ficha + "+sd.fuente : "en parte de la ficha"; }
-  if(i.ppMed) return Object.assign(i, {pp:i.ppMed, src:"med", lab:"medida"+(i.ppFecha? " · "+fmtF(i.ppFecha) : "")});
-  if(i.ppDis) return Object.assign(i, {pp:i.ppDis, src:"dis", lab:"diseño"+(i.fuente? " · "+i.fuente : "")});
-  const pl=ctMarco(q), area=pl>0? 10000/pl : 0, p=riegoParam(q);   // la fórmula de antes, tal cual
-  return Object.assign(i, {pp:(area>0 && p.gpp>0 && p.caudal>0)? (p.gpp*p.caudal)/area : null, src:"sv", lab:"sin verificar", gpp:p.gpp, gppPropio:pos(o.gpp)!=null, caudalSv:p.caudal});
+  const lim=k=>RIEGO_LIM[k.replace(/2$/,"")], sem=k=>pos(sd[k.replace(/2$/,"")]);
+  const tiene=k=>o[k]!=null && o[k]!=="";
+  const vale=k=>{ const x=pos(o[k]), l=lim(k); return (x!=null && x>=l[0] && x<=l[1])? x : null; };
+  /* cada dato: lo de la ficha (si está en rango; igual a la semilla = de la semilla) → la semilla → el valor inicial */
+  const dato=k=>{ const x=vale(k), s=sem(k);
+    if(x!=null) return {x, de:(s!=null && Math.abs(x-s)<1e-9)? "semilla" : "ficha"};
+    return s!=null? {x:s, de:"semilla"} : {x:RIEGO_LINEA_INI[k], de:"ini"}; };
+  const c1=dato("caudal"), d1=dato("dg");
+  const c2=vale("caudal2")!=null? dato("caudal2") : Object.assign({her:true}, c1);   // Línea 2 sin dato propio = la Línea 1, con su origen
+  const d2=vale("dg2")!=null? dato("dg2") : Object.assign({her:true}, d1);
+  const linO=(+o.lin===1 || +o.lin===2)? +o.lin : null, linS=(+sd.lin===1 || +sd.lin===2)? +sd.lin : null;
+  const lin=linO || linS || li.lin, linDe=linO? (linO===linS? "semilla" : "ficha") : linS? "semilla" : li.de;
+  const linea=(n,c,d)=>({n, caudal:c.x, dg:d.x, lhm:c.x/d.x, caudalDe:c.de, dgDe:d.de, caudalHer:!!c.her, dgHer:!!d.her, igualL1:!!(c.her && d.her)});
+  const L=[linea(1,c1,d1), linea(2,c2,d2)], act=L.slice(0, lin), lhm=act.reduce((s,l)=>s+l.lhm, 0);
+  const ent=marco.ok? marco.ent : null, ep=marco.ok? marco.ep : null;
+  const esIni=linDe==="sinAnio" || act.some(l=>l.caudalDe==="ini" || l.dgDe==="ini");
+  const ini=[];
+  act.forEach(l=>{ const suf=lin===2? " (Línea "+l.n+")" : "";
+    if(l.caudalDe==="ini") ini.push("caudal del gotero"+suf); if(l.dgDe==="ini") ini.push("distancia entre goteros"+suf); });
+  if(linDe==="sinAnio") ini.push("año de plantación");
+  const dif=[];   // la ficha contradice la semilla (solo las líneas activas)
+  if(linO && linS && linO!==linS) dif.push({k:"lin", ficha:linO, semilla:linS});
+  [["caudal",L[0],"caudal"],["dg",L[0],"dg"]].concat(lin===2? [["caudal2",L[1],"caudal"],["dg2",L[1],"dg"]] : []).forEach(([k,l,b])=>{
+    if(l[b+"De"]==="ficha" && !l[b+"Her"] && sem(b)!=null) dif.push({k, ficha:l[b], semilla:sem(b)}); });
+  const malos=["caudal","dg","caudal2","dg2"].filter(k=>tiene(k) && vale(k)==null).map(k=>({k, x:o[k]}));
+  const eo=pos(o.ent), entViejo=(eo!=null && eo>=RIEGO_LIM.ent[0] && eo<=RIEGO_LIM.ent[1] && marco.ok && Math.abs(eo-marco.ent)>1e-9)? {x:eo} : null;
+  return {marco, ent, ep, lin, linDe, anio:li.anio, L, act, lhm, ppDis:marco.ok? lhm/ent : null,
+    gpl:marco.ok? act.reduce((s,l)=>s+ep/l.dg, 0) : null,          // goteros por planta (informativo)
+    lpl:marco.ok? act.reduce((s,l)=>s+l.lhm*ep, 0) : null,         // L/h por planta (informativo)
+    esIni, ini, malos, dif, semFuente:sd.fuente||"", entViejo};
+}
+function riegoPp(q){
+  const o=(q && riegoCfg().cu[q.id])||{}, i=riegoLineas(q, o);
+  const ppMed=(+o.ppMed>0 && isFinite(+o.ppMed))? +o.ppMed : null, ppFecha=o.ppFecha||"";
+  /* «plano de riego 2021» solo si todo lo de las líneas activas viene de la semilla; si se mezcla con la ficha, se dice */
+  let fuente="";
+  if(i.marco.ok && !i.esIni){
+    const orig=[].concat(...i.act.map(l=>[l.caudalDe, l.dgDe]), i.linDe==="anio"? [] : [i.linDe]);
+    if(orig.indexOf("semilla")>=0) fuente = orig.indexOf("ficha")<0? i.semFuente : i.semFuente? "ficha + "+i.semFuente : "en parte de la ficha";
+  }
+  const r=Object.assign(i, {fuente, ppMed, ppFecha, caudal:i.L[0].caudal, dg:i.L[0].dg});
+  if(ppMed) return Object.assign(r, {pp:ppMed, src:"med", lab:"medida"+(ppFecha? " · "+fmtF(ppFecha) : "")});
+  if(!i.marco.ok) return Object.assign(r, {pp:null, src:"", lab:"sin calcular"});
+  if(i.esIni) return Object.assign(r, {pp:i.ppDis, src:"ini", lab:"valores iniciales"});
+  return Object.assign(r, {pp:i.ppDis, src:"dis", lab:"diseño"+(fuente? " · "+fuente : "")});
+}
+/* texto de la línea de riego en la tarjeta (texto plano; se escapa al pintarlo) */
+function riegoLineaTxt(pi){
+  const m=pi.marco||{}, gt=l=>riegoFmtL(l.caudal)+" L/h c/"+riegoFmtL(l.dg)+" m";
+  const nucleo=()=>"Marco "+m.txt+" · "+pi.lin+" línea"+(pi.lin>1? "s" : "")+" ("+pi.act.map(gt).join(" · ")+")";
+  const sinMarco = m.motivo==="no se entiende"? "Marco «"+m.crudo+"»: no se entiende (escríbelo como 5x2)"
+    : m.motivo==="fuera"? "Marco "+m.txt+": la distancia entre hileras va de 1 a 12 m" : "Sin marco de plantación: falta la distancia entre hileras";
+  let t;
+  if(pi.src==="med") t="Pp medida "+riegoFmtPp(pi.pp)+(pi.ppFecha? " ("+fmtF(pi.ppFecha)+")" : "")+" · "+(m.ok? "por la línea: "+nucleo()+" → "+riegoFmtPp(pi.ppDis) : m.motivo==="falta"? "sin marco de plantación" : sinMarco.charAt(0).toLowerCase()+sinMarco.slice(1));
+  else if(!m.ok) t=sinMarco;
+  else t=nucleo()+" → Pp "+riegoFmtPp(pi.ppDis);
+  if(pi.dif && pi.dif.length) t+=" · difiere "+(pi.semFuente? "del "+pi.semFuente : "de los datos cargados");
+  if(pi.malos && pi.malos.length) t+=" · dato guardado fuera de rango (no se usa)";
+  return t;
+}
+/* para la tabla: «2 líneas: 2 L/h c/0,5 m · 2 L/h c/0,5 m», «1 línea: 2 L/h c/0,5 m» o «sin marco» */
+function riegoLineaCorta(pi){
+  const m=pi.marco||{}; if(!m.ok) return m.motivo==="falta"? "sin marco" : "marco no válido";
+  return pi.lin+" línea"+(pi.lin>1? "s" : "")+": "+pi.act.map(l=>riegoFmtL(l.caudal)+" L/h c/"+riegoFmtL(l.dg)+" m").join(" · ");
+}
+/* aviso «Valores iniciales» de la ficha: qué no tiene anotado el cuartel y qué gotero usa la Pp (texto plano) */
+function riegoIniTxt(pi){
+  const a=pi.act, iniC=a.filter(l=>l.caudalDe==="ini"), iniD=a.filter(l=>l.dgDe==="ini"), sinA=pi.linDe==="sinAnio", fL=riegoFmtL;
+  let que = iniC.length && iniD.length? "el caudal y la distancia entre goteros" : iniC.length? "el caudal del gotero" : iniD.length? "la distancia entre goteros" : "";
+  const ns=[...new Set(iniC.concat(iniD).map(l=>l.n))];
+  if(que && pi.lin===2 && ns.length===1) que+=" de la Línea "+ns[0];
+  const got=(pi.lin===2 && (Math.abs(a[1].caudal-a[0].caudal)>1e-9 || Math.abs(a[1].dg-a[0].dg)>1e-9))
+    ? "un gotero de "+fL(a[0].caudal)+" L/h cada "+fL(a[0].dg)+" m en la Línea 1 y de "+fL(a[1].caudal)+" L/h cada "+fL(a[1].dg)+" m en la Línea 2"
+    : "un gotero de "+fL(a[0].caudal)+" L/h cada "+fL(a[0].dg)+" m"+(pi.lin===2? " en cada línea" : "");
+  if(que) return "Este cuartel no tiene anotado "+que+(sinA? "; tampoco el año de plantación, así que se suponen 2 líneas" : "")+": la Pp usa "+got+".";
+  return "Este cuartel no tiene anotado el año de plantación, así que se suponen 2 líneas: la Pp usa "+got+".";
 }
 function riegoPpBadge(pi){
-  if(pi.pp==null) return `<span class="badge b-gris rg-ppb" data-pp="sinm" title="Sin marco de plantación ni línea de riego: no se puede calcular la Pp">Sin calcular</span>`;   // corrector 28-10: igual que el resumen («no se cuenta como sin verificar»)
-  const t = pi.src==="med"? ["b-verde","Pp medida"] : pi.src==="dis"? ["b-azul","Pp de diseño"] : ["b-ambar",ic("alert")+" Pp sin verificar"];
+  if(pi.pp==null){ const m=(pi.marco||{}).motivo, t = m==="no se entiende"? "El marco de plantación no se entiende: no se puede calcular la Pp"
+      : m==="fuera"? "La distancia entre hileras del marco está fuera de 1 a 12 m: no se puede calcular la Pp" : "Sin marco de plantación: no se puede calcular la Pp";
+    return `<span class="badge b-gris rg-ppb" data-pp="sinm" title="${esc(t)}">Sin calcular</span>`; }
+  if(pi.src==="ini") return `<span class="badge b-ini rg-ppb" data-pp="ini" title="Pp con valores iniciales de la línea de riego">Valores iniciales</span>`;   // informativo: sin ícono de alerta
+  const t = pi.src==="med"? ["b-verde","Pp medida"] : ["b-azul","Pp de diseño"];
   return `<span class="badge ${t[0]} rg-ppb" data-pp="${pi.src}" title="${esc("Pp "+pi.lab)}">${t[1]}</span>`;
 }
 function riegoFmtG(x){ return (x==null||!isFinite(x))? "—" : (+x).toLocaleString("es-CL",{maximumFractionDigits:1}); }
@@ -15227,7 +15117,7 @@ function riegoJoven(q){
   const a=riegoAnio(q); if(!a || a<RIEGO_JOVEN_DESDE || riegoCob(q)!==1 || riegoKcAj(q)<100) return false;
   return riegoKcInfoBase(q, new Date().getMonth()).src!=="manual";
 }
-function riegoAlertasCu(q, c){ const pi=(c && c.ppInfo)||riegoPp(q); return {sv:pi.src==="sv" && pi.pp!=null, sinM:pi.pp==null, joven:riegoJoven(q), largo:!!(c && c.hRiego!=null && c.hRiego>riegoUmbral()+1e-9)}; }
+function riegoAlertasCu(q, c){ const pi=(c && c.ppInfo)||riegoPp(q); return {ini:pi.src==="ini" && pi.pp!=null, sinM:pi.pp==null, joven:riegoJoven(q), largo:!!(c && c.hRiego!=null && c.hRiego>riegoUmbral()+1e-9)}; }
 /* Reposición: qué parte de la ETc se repone (100 % = toda). Del cuartel si la tiene, si no la general. */
 function riegoRep(q){ const r=riegoCfg(); const o=(q && r.cu[q.id])||{}; const x=+(o.rep!=null? o.rep : r.rep); return (x>0 && isFinite(x))? x : 100; }
 function riegoRepSet(id, val){
@@ -15275,7 +15165,7 @@ function riegoCardHTML(q, c, fmt){
   const ki=riegoKcInfo(q,new Date().getMonth()), pi=c.ppInfo||riegoPp(q), al=riegoAlertasCu(q,c);
   const falta = c.hRiego==null;
   const d=(v,l)=>`<div><div class="rgc-dv">${v}</div><div class="rgc-dl">${l}</div></div>`;
-  return `<div class="rgcard${falta?" alerta":""}${al.sv?" sinv":""}" data-rgcu="${q.id}">
+  return `<div class="rgcard${falta?" alerta":""}" data-rgcu="${q.id}">
     <div class="fila" style="justify-content:space-between;align-items:flex-start;gap:8px">
       <div style="min-width:0">
         <div style="font-weight:800;font-size:15.5px;line-height:1.2">${esc(q.nombre)}</div>
@@ -15284,11 +15174,12 @@ function riegoCardHTML(q, c, fmt){
       <button class="btn sec chico" onclick="riegoFicha(${q.id})" title="Ajustes de este cuartel" aria-label="Ajustes de riego de ${esc(q.nombre)}">${ic("gear")}</button>
     </div>
     <div class="rg-bdg">${riegoPpBadge(pi)}${al.joven? `<span class="badge b-ambar rg-jov">Kc de adulto en huerto joven</span>` : ""}</div>
-    <div class="rgc-n">${falta? "—" : fmt(c.hRiego,1)}<span>${falta? "falta la Pp (marco o línea de riego)" : "horas por riego"}</span></div>
+    <div class="rgc-n">${falta? "—" : fmt(c.hRiego,1)}<span>${falta? (pi.pp==null? "falta el marco de plantación" : "falta el clima (ET₀)") : "horas por riego"}</span></div>
     ${al.largo? `<div class="rg-al">Más de ${riegoFmtG(riegoUmbral())} h por riego: <b>revisar Pp o Kc</b></div>` : ""}
     ${riegoDiasChipsHTML(q.id,true)}
     <div class="rgc-d">${d(fmt(c.lamRiego,1),"mm por riego")}${d(fmt(c.m3haRiego,1),"m³/ha riego")}${d(fmt(c.m3Sem,0),"m³ semana")}</div>
-    <div class="muted rgc-cad" style="font-size:10.5px;margin-top:7px;line-height:1.35">ETc ${fmt(c.etcDia,2)}&nbsp;mm/día · <span class="rgc-kc">${riegoKcCadena(ki,fmt)}</span> · <span class="rgc-pp">Pp ${fmt(c.pp,2)}&nbsp;mm/h (${esc(pi.lab)})${pi.gpl? " · "+riegoFmtG(pi.gpl)+"&nbsp;got./pl" : ""}${pi.dif && pi.dif.length? ` <b style="color:#8a5a00">· difiere ${pi.semFuente? "del "+esc(pi.semFuente) : "de los datos cargados"}</b>` : ""}</span> · repone&nbsp;${fmt(c.rep,0)}&nbsp;%${riegoDiasPropios(q)? ` · <b style="color:var(--acc)">días propios</b>`:""}</div>
+    <div class="rgc-lin" data-rg-lin>${esc(riegoLineaTxt(pi))}</div>
+    <div class="muted rgc-cad" style="font-size:10.5px;margin-top:4px;line-height:1.35">ETc ${fmt(c.etcDia,2)}&nbsp;mm/día · <span class="rgc-kc">${riegoKcCadena(ki,fmt)}</span>${pi.gpl!=null? ` · <span class="rgc-pp">${riegoFmtG(pi.gpl)}&nbsp;got./pl · ${riegoFmtG(pi.lpl)}&nbsp;L/h por planta</span>` : ""} · repone&nbsp;${fmt(c.rep,0)}&nbsp;%${riegoDiasPropios(q)? ` · <b style="color:var(--acc)">días propios</b>`:""}</div>
   </div>`;
 }
 /* --- programa de la semana, día por día (lo que se le pasa al regador) --- */
@@ -15398,14 +15289,14 @@ function riegoDiaCarga(units, b){
 /* La semana de un equipo (28-10-2026; solo para explicar los avisos, no cambia ninguna fórmula): horas de bomba de todos sus días
    de riego (semH), días mínimos para que quepan en días de 24 h (con más días de riego cada riego dura menos y el total de la semana
    es el mismo, porque la lámina de la semana se reparte en los días marcados), días marcados y libres, si la bomba no tiene anotado
-   cuántos sectores riegan a la vez ni su caudal (sinN: se calcula de a un sector) y cuántos de sus cuarteles tienen la Pp sin verificar. */
+   cuántos sectores riegan a la vez ni su caudal (sinN: se calcula de a un sector) y cuántos de sus cuarteles usan los valores iniciales de la línea de riego (iniN). */
 function riegoSemanaEquipo(conDatos, b){
   const ORD=[1,2,3,4,5,6,0], n=+(b&&b.n)||0, cap=+(b&&b.q)||0;
   let semH=0; ORD.forEach(i=>{ const u=riegoUnidadesDia(conDatos, i); if(u.length) semH+=riegoDiaCarga(u, b).tot; });
   const mar=ORD.filter(i=>conDatos.some(x=>(x.c.diasSel||[]).indexOf(i)>=0));
   const hDisp=+(b&&b.h)||20;   // horas de riego disponibles por día, las mismas con que Turnos pinta cada día (20 si no se anota)
   return {semH, diasMin:Math.ceil(semH/24-1e-9), hDisp, diasMinH:Math.ceil(semH/hDisp-1e-9), diasMar:mar, diasLib:ORD.filter(i=>mar.indexOf(i)<0), sinN:!n && !cap,
-    svN:conDatos.filter(x=>(x.c.ppInfo||riegoPp(x.q)).src==="sv").length, cuN:conDatos.length};
+    iniN:conDatos.filter(x=>(x.c.ppInfo||riegoPp(x.q)).src==="ini").length, cuN:conDatos.length};
 }
 function riegoCarga24(filas){   // por equipo y por día de riego, en el fundo de esas filas (+ la semana del equipo: riegoSemanaEquipo)
   const f=(filas[0] && filas[0].q.fundo)||"";
@@ -15427,7 +15318,7 @@ function riegoDiasMinTxt(x, fmt, corto){
   const nMar=x.diasMar.length, modo=(x.sinN || x.n<=1)? "de a un sector" : "con "+x.n+" sectores a la vez";
   const hD=x.hDisp||20, mH=x.diasMinH!=null? x.diasMinH : Math.ceil(x.semH/hD-1e-9);
   const conH=(min)=> hD<24 && mH>min? ` Ojo: Turnos compara cada día con las ${fmt(hD,0)} h de riego disponibles${hD===20? " (las de origen)" : ""}; con ese tope ${mH>7? "ni los 7 días alcanzan" : "hacen falta <b>"+mH+" días</b>"}.` : "";
-  if(x.diasMin>7) return `Este equipo riega <b>${fmt(x.semH,0)} h a la semana</b>: ni regando los 7 días cabe ${modo}.${corto? "" : " Hay que regar más sectores a la vez"+(x.svN? " o verificar la Pp" : "")+"."}`;
+  if(x.diasMin>7) return `Este equipo riega <b>${fmt(x.semH,0)} h a la semana</b>: ni regando los 7 días cabe ${modo}.${corto? "" : " Hay que regar más sectores a la vez"+(x.iniN? " o confirmar la línea de riego" : "")+"."}`;
   if(x.diasMin<=nMar) return `Este equipo riega <b>${fmt(x.semH,0)} h a la semana</b> en ${nMar} día${nMar>1?"s":""} (${riegoDiasLista(x.diasMar)}): en la semana cabe, pero algunos días llevan más horas que otros. Reparte los días de riego de los cuarteles para emparejarlos.` + conH(nMar);
   return `Este equipo necesita <b>${fmt(x.semH,0)} h de riego a la semana</b>; en un día caben 24 h, así que hacen falta <b>al menos ${x.diasMin} días de riego</b> (hoy ${nMar===1? "es 1" : "son "+nMar}: ${riegoDiasLista(x.diasMar)}${x.diasLib.length? "; libres: "+riegoDiasLista(x.diasLib) : ""}).` + conH(x.diasMin);
 }
@@ -15439,27 +15330,29 @@ function riegoCarga24Txt(x, fmt){
     + (x.sinN? ` Se calculó de a un sector porque no está anotado cuántos sectores riegan a la vez con esta bomba: anótalo en «Sectores que riegan a la vez» (Turnos).` : "")
     + (x.semH!=null && x.diasMar? " "+riegoDiasMinTxt(x, fmt) : "");
 }
-/* resumen arriba del fundo: Pp sin verificar, huerto joven con Kc de adulto, riegos sobre el umbral y equipos que pasan las 24 h */
+/* resumen arriba del fundo: valores iniciales de la línea de riego (29-10-2026), huerto joven con Kc de adulto, riegos sobre el umbral y equipos que pasan las 24 h */
 /* 28-10-2026 (pedido de Manuel: «no entiendo los avisos»): cada aviso dice qué es, por qué importa y qué hacer, con un botón a la ficha ⚙
    del cuartel (riegoFicha(id, "linea"|"cob") abre la ficha en esa sección). Los números y las fórmulas no cambiaron. */
 function riegoResBtn(q, foco){ return `<button type="button" class="btn sec chico" onclick="riegoFicha(${+q.id}${foco? ",'"+foco+"'" : ""})" aria-label="Abrir la ficha de riego de ${esc(q.nombre)}" title="Abrir la ficha de riego de ${esc(q.nombre)}">${ic("gear")} ${esc(q.nombre)}</button>`; }
 function riegoResumenHTML(f, filas, fmt){
   if(!filas.length) return "";
-  const pi=x=>x.c.ppInfo||riegoPp(x.q), r=riegoCfg(), g1=x=>riegoFmtG(x);
-  const sinM=filas.filter(x=>pi(x).pp==null), sv=filas.filter(x=>pi(x).src==="sv" && pi(x).pp!=null), jov=filas.filter(x=>riegoJoven(x.q));
+  const pi=x=>x.c.ppInfo||riegoPp(x.q), g1=x=>riegoFmtG(x);
+  const sinM=filas.filter(x=>pi(x).pp==null), ini=filas.filter(x=>pi(x).src==="ini" && pi(x).pp!=null), jov=filas.filter(x=>riegoJoven(x.q));
   const uH=riegoUmbral(), lar=filas.filter(x=>x.c.hRiego!=null && x.c.hRiego>uH+1e-9), c24=riegoCarga24(filas).filter(x=>x.pasa);
   const bts=(l, foco)=>`<span class="rg-res-bs">${l.map(x=>riegoResBtn(x.q, typeof foco==="function"? foco(x) : foco)).join("")}</span>`;
   const nOk=filas.length-sinM.length;
   let h="";
-  if(sv.length){
-    const gen=sv.every(x=>!pi(x).gppPropio && Math.abs((+pi(x).caudalSv||0)-(+r.def.caudal||0))<1e-9);
-    const regla=gen? g1(r.def.gpp)+" goteros de "+g1(r.def.caudal)+" L/h por planta para todos" : "goteros por planta × caudal del gotero; el valor general es "+g1(r.def.gpp)+" goteros de "+g1(r.def.caudal)+" L/h";
-    h+=`<div class="rg-res-f amb" data-res="sv"><span class="badge b-ambar">${ic("alert")} Pp sin verificar</span><span class="rg-res-t"><b>Pp sin verificar en ${sv.length} de ${filas.length} cuartel${filas.length>1?"es":""}.</b> La Pp es cuántos milímetros por hora entrega el riego. En ${sv.length>1? "estos cuarteles" : "este cuartel"} sale de una fórmula antigua (${regla}), no de su línea de riego.
-      <span class="rg-res-p"><b>Por qué importa:</b> las horas de riego se calculan con ella; si la Pp real es mayor, las horas bajan.</span>
-      <span class="rg-res-p"><b>Qué hacer:</b> en la ficha ⚙ de cada uno anota la entrehilera, las líneas por hilera, la distancia entre goteros y el caudal del gotero (del plano de riego o midiendo en terreno), o la Pp de un aforo.</span>${bts(sv, "linea")}</span></div>`;
-  } else if(nOk>0) h+=`<div class="rg-res-f ok" data-res="sv"><span class="badge b-verde">Pp verificada</span><span>${nOk>1? "Los "+nOk+" cuarteles"+(sinM.length? " calculados" : "")+" tienen" : "El cuartel"+(sinM.length? " calculado" : "")+" tiene"} Pp medida o de diseño.</span></div>`;
-  if(sinM.length) h+=`<div class="rg-res-f gris" data-res="sinm"><span class="badge b-gris">Sin calcular</span><span class="rg-res-t"><b>${sinM.map(x=>esc(x.q.nombre)).join(", ")}: sin marco de plantación ni línea de riego.</b> Sin uno de los dos no se puede sacar la Pp, así que no se calculan sus horas (no se cuenta${sinM.length>1? "n" : ""} como «sin verificar»).
-      <span class="rg-res-p"><b>Qué hacer:</b> anota el marco en Datos (cuarteles) o la línea de riego en su ficha ⚙.</span>${bts(sinM, "linea")}</span></div>`;
+  /* 29-10-2026: «Valores iniciales» (reemplaza el aviso ámbar de la fórmula antigua): informativo, gris-azul, sin ícono de alerta ni «Por qué importa» */
+  if(ini.length){
+    const sinA=ini.some(x=>pi(x).linDe==="sinAnio"), gI=riegoFmtL(RIEGO_LINEA_INI.caudal)+" L/h cada "+riegoFmtL(RIEGO_LINEA_INI.dg)+" m";
+    h+=`<div class="rg-res-f info" data-res="ini"><span class="badge b-ini">Valores iniciales</span><span class="rg-res-t"><b>Valores iniciales en ${ini.length} de ${filas.length} cuartel${filas.length>1?"es":""}.</b> La Pp de ${ini.length>1? "estos cuarteles" : "este cuartel"} sale de su marco y de una línea de riego con valores típicos que nadie ha anotado: gotero de ${gI}${sinA? "; 2 líneas en los que no tienen año de plantación" : ""}. Sirven para programar, pero conviene confirmarlos.
+      <span class="rg-res-p"><b>Qué hacer (cuando puedas):</b> en la ficha ⚙ anota el caudal y la distancia entre goteros de cada línea (del plano de riego o mirando en terreno), o cárgalos de una vez con «Aplicar a todos los cuarteles del fundo». Una Pp medida con un aforo es aún mejor.</span>${bts(ini, "linea")}</span></div>`;
+  } else if(nOk>0) h+=`<div class="rg-res-f ok" data-res="ini"><span class="badge b-verde">Línea de riego anotada</span><span>${nOk>1? "Los "+nOk+" cuarteles"+(sinM.length? " calculados" : "")+" tienen" : "El cuartel"+(sinM.length? " calculado" : "")+" tiene"} Pp medida o su línea de riego anotada.</span></div>`;
+  if(sinM.length){
+    const mot=x=>{ const m=pi(x).marco||{}; return m.motivo==="no se entiende"? " («"+esc(m.crudo)+"» no se entiende)" : m.motivo==="fuera"? " ("+riegoFmtL(m.ent)+" m entre hileras)" : ""; };
+    h+=`<div class="rg-res-f gris" data-res="sinm"><span class="badge b-gris">Sin calcular</span><span class="rg-res-t"><b>${sinM.map(x=>esc(x.q.nombre)+mot(x)).join(", ")}: sin marco de plantación.</b> La distancia entre hileras sale del primer número del marco; sin ella no se puede sacar la Pp, así que no se calculan sus horas.
+      <span class="rg-res-p"><b>Qué hacer:</b> anota el marco en Datos → Campo (por ejemplo 5x2), o una Pp medida en su ficha ⚙.</span>${bts(sinM, "linea")}</span></div>`;
+  }
   if(jov.length){
     const quien=jov.length===1? `${esc(jov[0].q.nombre)} (plantado en ${riegoAnio(jov[0].q)}) usa` : jov.map(x=>esc(x.q.nombre)+" ("+riegoAnio(x.q)+")").join(", ").replace(/, ([^,]*)$/, " y $1")+" usan";
     h+=`<div class="rg-res-f amb" data-res="joven"><span class="badge b-ambar">Kc de adulto en huerto joven</span><span class="rg-res-t"><b>${quien} el Kc de un huerto adulto.</b> Los árboles jóvenes cubren poco suelo y usan menos agua.
@@ -15467,10 +15360,10 @@ function riegoResumenHTML(f, filas, fmt){
       <span class="rg-res-p"><b>Qué hacer:</b> en su ficha ⚙, «Cobertura de copa»: anota el diámetro de copa de unos árboles típicos y toca «Usar el % calculado como factor».</span>${bts(jov, "cob")}</span></div>`;
   }
   if(lar.length){
-    const conSv=lar.some(x=>pi(x).src==="sv");
-    h+=`<div class="rg-res-f amb" data-res="largo"><span class="badge b-ambar">Riegos muy largos</span><span class="rg-res-t"><b>Riegos de más de ${g1(uH)} h:</b> ${lar.map(x=>esc(x.q.nombre)+" "+fmt(x.c.hRiego,1)+" h").join(", ")}. Un riego tan largo suele venir de una Pp baja${conSv? " (sin verificar)" : ""} o de un Kc alto: revisar la Pp o el Kc.
+    const conIni=lar.some(x=>pi(x).src==="ini");
+    h+=`<div class="rg-res-f amb" data-res="largo"><span class="badge b-ambar">Riegos muy largos</span><span class="rg-res-t"><b>Riegos de más de ${g1(uH)} h:</b> ${lar.map(x=>esc(x.q.nombre)+" "+fmt(x.c.hRiego,1)+" h").join(", ")}. Un riego tan largo suele venir de una Pp baja${conIni? " (valores iniciales)" : ""} o de un Kc alto: revisar la Pp o el Kc.
       <span class="rg-res-p"><b>Por qué importa:</b> un riego tan largo moja bajo las raíces y gasta agua y energía; si la Pp real es mayor, las horas bajan.</span>
-      <span class="rg-res-p"><b>Qué hacer:</b> revisa su ficha ⚙ (la línea de riego y el Kc). El límite de ${g1(uH)} h se cambia en Configuración.</span>${bts(lar, x=>pi(x).src==="sv"? "linea" : "")}</span></div>`;
+      <span class="rg-res-p"><b>Qué hacer:</b> revisa su ficha ⚙ (la línea de riego y el Kc). El límite de ${g1(uH)} h se cambia en Configuración.</span>${bts(lar, x=>pi(x).src==="ini"? "linea" : "")}</span></div>`;
   }
   if(c24.length){
     const g={}, orden=[]; c24.forEach(x=>{ if(!g[x.nom]){ g[x.nom]=[]; orden.push(x.nom); } g[x.nom].push(x); });
@@ -15484,7 +15377,7 @@ function riegoResumenHTML(f, filas, fmt){
       if(amb) op.push("anota en <b>Turnos</b> cuántos sectores riegan a la vez");
       else if(!x0.n && x0.cap) op.push("revisa en <b>Turnos</b> el caudal de la bomba");
       else op.push("si la bomba da, riega más sectores a la vez (hoy "+(x0.n||1)+", en <b>Turnos</b>)");
-      op.push("revisa la Pp"+(x0.svN? ` (${x0.svN} de sus ${x0.cuN} cuarteles ${x0.svN>1? "tienen" : "tiene"} la Pp sin verificar: si la Pp real es mayor, las horas bajan)` : ""));
+      op.push("revisa la Pp"+(x0.iniN? ` (${x0.iniN} de sus ${x0.cuN} cuarteles ${x0.iniN>1? "usan" : "usa"} los valores iniciales de la línea de riego: si el gotero real entrega más, las horas bajan)` : ""));
       const ops=op.length>1? op.slice(0,-1).join(", ")+" o "+op[op.length-1] : op[0];
       h+=`<div class="rg-res-f ${amb?"amb":"roj"}" data-res="24h" data-eq="${esc(x0.e)}" data-sinn="${amb?1:0}"><span class="badge ${amb?"b-ambar":"b-rojo"}">${amb? "Puede que no quepa en el día" : "Más de 24 h en un día"}</span><span class="rg-res-t"><b>${esc(k)}: ${xs.length===7? "todos los días" : riegoDiasLista(xs.map(x=>x.i))} llega hasta ${fmt(Math.max(...xs.map(x=>x.tot)),1)} h</b> (más de 24 h en un día). ${que}
       <span class="rg-res-p"><b>Qué hacer:</b> ${riegoDiasMinTxt(x0, fmt, true)} ${ops.charAt(0).toUpperCase()+ops.slice(1)}.</span>
@@ -15580,11 +15473,10 @@ function riegoSectSeed(id){ const r=riegoCfg(); if(r.cu[id]) delete r.cu[id].sec
 function riegoFicha(id, foco){
   const q=(D.cuarteles||[]).find(x=>x.id===id); if(!q) return;
   const r=riegoCfg(), o=r.cu[id]||{}, c=riegoCalcCuartel(q, riegoSerieBase());
-  const ki=riegoKcInfo(q,new Date().getMonth()), pi=c.ppInfo||riegoPp(q), al=riegoAlertasCu(q,c), sd=riegoSeedLinea(q), md=riegoMarcoDims(q);
+  const ki=riegoKcInfo(q,new Date().getMonth()), pi=c.ppInfo||riegoPp(q), al=riegoAlertasCu(q,c), md=riegoMarcoDims(q), mc=pi.marco||riegoMarco(q);
   const modo=o.modo||((!o.modo&&o.kc>0)?"manual":"global");
   const f=(x,d)=>(x==null||isNaN(x)||!isFinite(x))?"—":(+x).toLocaleString("es-CL",{minimumFractionDigits:d,maximumFractionDigits:d});
   const sv=x=>(x==null||x==="")? "" : String(x).replace(".",",");
-  const ph=(k)=> (sd && sd[k])? sv(sd[k])+" ("+(sd.fuente||"diseño")+")" : "sin dato";
   const at=extra=>`inputmode="decimal" oninput="riegoFichaVivo(${id})" ${extra||""}`;
   const sects=riegoSectores(q);
   const _rfPrev = {id, dias0: Array.isArray(o.dias)? o.dias.slice() : null};
@@ -15598,28 +15490,17 @@ function riegoFicha(id, foco){
         <div><b>${f(c.m3haRiego,1)}</b> <span class="muted">m³/ha</span></div>
         <div><b>${f(c.pp,2)}</b> <span class="muted">mm/h del sistema</span> ${riegoPpBadge(pi)}</div>
       </div>
-      <div class="muted" style="font-size:11.5px;margin-top:6px">${pi.src==="sv"? "" : "Pp "+esc(pi.lab)+" · "}${riegoKcCadena(ki,f)}</div>
+      <div class="muted" style="font-size:11.5px;margin-top:6px">Pp ${esc(pi.lab)} · ${riegoKcCadena(ki,f)}</div>
+      <div class="muted rf-res-lin" style="font-size:11.5px;margin-top:2px;overflow-wrap:anywhere">${esc(riegoLineaTxt(pi))}</div>
     </div>
-    ${al.sv? `<div class="rg-fal amb" data-fal="sv"><b>Pp sin verificar.</b> La Pp es cuántos milímetros por hora entrega el riego. ${c.area? "Aquí sale de la fórmula antigua: "+riegoFmtG(pi.gpp)+" goteros por planta"+(pi.gppPropio? " (de este cuartel)" : " (valor general)")+" × "+riegoFmtG(pi.caudalSv)+" L/h ÷ "+f(c.area,1)+" m² por planta, no de su línea de riego. Las horas se calculan con ella: si la Pp real es mayor, las horas bajan." : "Sin marco de plantación ni línea de riego no se puede calcular: este cuartel no tiene horas."} <b>Qué hacer:</b> anota abajo, en «Línea de riego», la entrehilera, las líneas por hilera, la distancia entre goteros y el caudal del gotero (del plano de riego o midiendo en terreno), o la Pp de un aforo.
-      ${pi.gppPropio? `<div style="margin-top:8px">${campoF("rf_gpp","Goteros por planta de este cuartel (dato antiguo: solo mientras esté sin verificar)","text",sv(o.gpp),'inputmode="decimal" placeholder="vacío = el general ('+sv(r.def.gpp)+')"')}</div>` : ""}</div>` : ""}
-    ${pi.dif && pi.dif.length? `<div class="rg-fal amb" data-fal="dif"><b>La ficha no coincide con ${esc(pi.semFuente? "el "+pi.semFuente : "los datos de diseño cargados")}:</b> ${pi.dif.map(x=>({ent:"entrehilera", lin:"líneas por hilera", dg:"distancia entre goteros", caudal:"caudal del gotero"})[x.k]+" "+sv(x.ficha)+(x.k==="lin"? "" : x.k==="caudal"? " L/h" : " m")+" en la ficha y "+sv(x.semilla)+(x.k==="lin"? "" : x.k==="caudal"? " L/h" : " m")+(pi.semFuente? " en el plano" : " en lo cargado")).join(" · ")}. Manda lo de la ficha; si ${pi.semFuente? "el plano" : "lo cargado"} está bien, borra ese dato abajo y guarda.</div>` : ""}
-    ${(+o.caudal>0 && (+o.caudal<0.5 || +o.caudal>16))? `<div class="rg-fal roj" data-fal="caudal"><b>El caudal guardado de este cuartel (${sv(o.caudal)} L/h) está fuera de 0,5 a 16 L/h.</b> Corrígelo o bórralo para poder guardar la ficha. <button type="button" class="btn sec chico" style="margin-top:6px" onclick="const e=document.getElementById('rf_caudal'); if(e) e.value=''; riegoFichaVivo(${id}); this.parentNode.hidden=true">Borrar el caudal guardado</button></div>` : ""}
-    ${al.sinM? `<div class="rg-fal gris" data-fal="sinm"><b>Sin calcular: falta el marco de plantación o la línea de riego.</b> Sin uno de los dos no se puede sacar la Pp, así que este cuartel no tiene horas de riego (no se cuenta como «sin verificar»). <b>Qué hacer:</b> anota abajo, en «Línea de riego», la entrehilera, las líneas por hilera, la distancia entre goteros y el caudal del gotero, o la Pp de un aforo; o el marco en Datos (cuarteles).</div>` : ""}
+    ${al.sinM? `<div class="rg-fal gris" data-fal="sinm">${mc.motivo==="no se entiende"? `<b>Sin calcular: el marco «${esc(mc.crudo)}» no se entiende.</b> Escríbelo como 5x2 en Datos → Campo, o anota una Pp medida más abajo.` : mc.motivo==="fuera"? `<b>Sin calcular: el marco ${esc(mc.txt)} da ${riegoFmtL(mc.ent)} m entre hileras</b> (va de 1 a 12 m). Corrígelo en Datos → Campo.` : `<b>Sin calcular: falta el marco de plantación.</b> La distancia entre hileras es su primer número; sin ella no se puede sacar la Pp, así que este cuartel no tiene horas de riego. <b>Qué hacer:</b> anota el marco en Datos → Campo (por ejemplo 5x2) o una Pp medida más abajo.`}</div>` : ""}
     ${al.joven? `<div class="rg-fal amb" data-fal="joven"><b>Kc de adulto en huerto joven.</b> Plantado en ${riegoAnio(q)} y con factor de cobertura 1: usa el Kc de la tabla, que es el de un huerto adulto. Los árboles jóvenes cubren poco suelo y usan menos agua, así que puede estar regando de más. <b>Qué hacer:</b> más abajo, en «Cobertura de copa», anota el diámetro de copa de unos árboles típicos y toca «Usar el % calculado como factor».</div>` : ""}
-    ${al.largo? `<div class="rg-fal amb" data-fal="largo"><b>Riegos muy largos: más de ${riegoFmtG(riegoUmbral())} h por riego (revisar Pp o Kc).</b> Un riego tan largo suele venir de una Pp baja${al.sv? " (sin verificar)" : ""} o de un Kc alto. <b>Por qué importa:</b> moja bajo las raíces y gasta agua y energía; si la Pp real es mayor, las horas bajan. <b>Qué hacer:</b> revisa la línea de riego y el Kc más abajo.</div>` : ""}
+    ${al.largo? `<div class="rg-fal amb" data-fal="largo"><b>Riegos muy largos: más de ${riegoFmtG(riegoUmbral())} h por riego (revisar Pp o Kc).</b> Un riego tan largo suele venir de una Pp baja${al.ini? " (valores iniciales)" : ""} o de un Kc alto. <b>Por qué importa:</b> moja bajo las raíces y gasta agua y energía; si la Pp real es mayor, las horas bajan. <b>Qué hacer:</b> revisa la línea de riego y el Kc más abajo.</div>` : ""}
     <label class="f" style="margin-bottom:4px">Días de riego</label>
     <div id="rgFichaDias" style="margin-bottom:6px">${riegoDiasChipsHTML(id)}</div>
     ${riegoDiasPropios(q)? `<button class="btn sec chico" style="margin-bottom:10px" onclick="window._rfDias=null;riegoDiasReset(${id});cerrarModal();riegoFicha(${id})">Usar los días generales (${esc(riegoDiasTxt(r.dias))})</button>` : `<div class="muted" style="font-size:11.5px;margin-bottom:10px">Usa los días generales. Si los cambias acá, este cuartel queda con los suyos.</div>`}
     <div class="rf-sec" data-rf="linea">Línea de riego · de dónde sale la Pp</div>
-    <div class="grid2">
-      ${campoF("rf_ent","Entrehilera (m)","text",sv(o.ent),at(`placeholder="${(sd && sd.ent)? ph("ent") : md? "del marco: "+sv(md[0]) : "sin marco"}"`))}
-      <label class="f">Líneas por hilera<select id="rf_lin" onchange="riegoFichaVivo(${id})"><option value="">${(sd && sd.lin)? "— ("+sd.lin+(sd.lin>1?" líneas":" línea")+", "+esc(sd.fuente||"diseño")+")" : "— sin dato"}</option><option value="1"${+o.lin===1?" selected":""}>1 línea</option><option value="2"${+o.lin===2?" selected":""}>2 líneas</option></select></label>
-    </div>
-    <div class="grid2">
-      ${campoF("rf_dg","Distancia entre goteros (m)","text",sv(o.dg),at(`placeholder="${ph("dg")}"`))}
-      ${campoF("rf_caudal","Caudal del gotero (L/h)","text",sv(o.caudal),at(`placeholder="${ph("caudal")}"`))}
-    </div>
-    <div class="rf-vivo" id="rfPpDis">${riegoFichaPpTxt(Object.assign({}, pi, {md, ppMed:pi.ppMed}))}</div>
+    ${riegoFichaLineaHTML(q, o, pi)}
     <div class="grid2">
       ${campoF("rf_ppmed","Pp medida (mm/h) · opcional","text",sv(o.ppMed),at('placeholder="aforo o caudalímetro"'))}
       ${campoF("rf_ppf","Fecha del aforo (opcional)","date",o.ppFecha||"")}
@@ -15632,7 +15513,7 @@ function riegoFicha(id, foco){
       <div class="fila" style="gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between"><span class="muted" id="rfCmRes" style="font-size:12.5px">Pp = m³/h ÷ ha del sector ÷ 10</span>
         <button type="button" class="btn sec chico" onclick="riegoFichaUsarPp(${id})">Usar como Pp medida</button></div>
     </details>
-    <div class="muted" style="font-size:11.5px;margin:6px 0 12px">Pp de diseño = caudal ÷ (entrehilera ÷ líneas × distancia entre goteros). La Pp medida (aforo o caudalímetro) manda sobre la de diseño. Sin ninguna de las dos el cuartel queda «sin verificar» y calcula con los goteros por planta generales. Entrehilera vacía = el primer número del marco.</div>
+    <div class="muted" style="font-size:11.5px;margin:6px 0 12px">Pp = suma de los L/h por metro de cada línea ÷ distancia entre hileras (L/h por metro = caudal del gotero ÷ distancia entre goteros; con 1 línea entra solo la Línea 1). La distancia entre hileras es el primer número del marco. La Pp medida (aforo o caudalímetro) manda sobre la de las líneas. Lo gris es el valor inicial (gotero de 2 L/h cada 0,5 m; 1 línea si se plantó en 2025 o después, 2 si antes): escribe el dato real para dejarlo anotado. Goteros por planta y L/h por planta son solo informativos.</div>
     <div class="grid2">
       ${campoF("rf_ef","Eficiencia del riego (%)","text",o.ef||"")}
       ${campoF("rf_rep","Reposición (%)","text",o.rep||"")}
@@ -15669,36 +15550,26 @@ function riegoFicha(id, foco){
     const set=(k,el)=>{ const x=parseFloat(String(v(el)).replace(",",".")); r.cu[id]=r.cu[id]||{}; if(isNaN(x)||x<=0) delete r.cu[id][k]; else r.cu[id][k]=x; };
     /* 27-10-2026: se valida todo antes de guardar nada; los avisos van dentro de la ficha (sin alert) y la ficha queda abierta */
     /* corrector 27-10: el aviso sale arriba Y junto al campo (la ficha mide ~1.900 px), y el campo queda a la vista */
-    const mal=(t,foco)=>{ fAviso("rfAviso", ic("alert")+" <span>"+t+"</span>");
-      document.querySelectorAll("#capaModal .rf-err").forEach(x=>x.remove());
-      const e=foco && (document.getElementById(foco+"_t")||document.getElementById(foco));
-      if(e){ const det=e.closest("details"); if(det) det.open=true;
-        const lb=e.closest("label")||e; lb.insertAdjacentHTML("afterend", `<div class="rf-err">${ic("alert")} <span>${t}</span></div>`);
-        try{ lb.scrollIntoView({block:"center"}); }catch(_){ } try{ e.focus({preventScroll:true}); }catch(_){ } }
-      return false; };
+    const mal=(t,foco)=>riegoFichaMal(t,foco);
     const rango=(k,a,b)=>{ const s=v(k); if(!s) return {}; const x=numES(s); return (isNaN(x)||x<a||x>b)? {mal:true} : {x}; };
-    const ent=rango("rf_ent",1,12), lin=rango("rf_lin",1,2), dg=rango("rf_dg",0.1,2), cau=rango("rf_caudal",0.5,16), ppm=rango("rf_ppmed",0.1,20), cob=rango("rf_cob",0.01,1), dia=rango("rf_diam",0.1,15);
-    if(ent.mal) return mal("La entrehilera va de 1 a 12 m.","rf_ent");
-    if(lin.mal || (lin.x!=null && lin.x!==1 && lin.x!==2)) return mal("Las líneas por hilera son 1 o 2.","rf_lin");
-    if(dg.mal) return mal("La distancia entre goteros va de 0,1 a 2 m.","rf_dg");
-    if(cau.mal) return mal("El caudal del gotero va de 0,5 a 16 L/h.","rf_caudal");
+    /* 29-10-2026: la línea de riego (líneas por hilera y, por línea, caudal y distancia entre goteros); la Línea 2 se valida y se guarda aunque esté oculta */
+    const ln=riegoFichaLeerLinea(true);
+    if(ln.mal){ if(ln.mal.l2){ const l2=document.getElementById("rfL2"); if(l2) l2.hidden=false; } return mal(ln.mal.t, ln.mal.foco); }
+    const ppm=rango("rf_ppmed",0.1,20), cob=rango("rf_cob",0.01,1), dia=rango("rf_diam",0.1,15);
     if(ppm.mal) return mal("La Pp medida va de 0,1 a 20 mm/h.","rf_ppmed");
     const ppF=v("rf_ppf"); if(ppF && ppF>hoy()) return mal("La fecha del aforo no puede ser futura.","rf_ppf");
     /* corrector 27-10: lo del caudalímetro o una fecha sin Pp medida no se pierden callados */
     if(v("rf_cmq") && ppm.x==null) return mal("Calculaste la Pp con el caudalímetro, pero no quedó como Pp medida: toca «Usar como Pp medida» o borra el caudal que marca.","rf_cmq");
     if(ppF && ppm.x==null && ppF!==(o.ppFecha||"")) return mal("La fecha del aforo va con una Pp medida: anota la Pp medida o borra la fecha.","rf_ppf");
-    const gpp=document.getElementById("rf_gpp")? rango("rf_gpp",0.1,100) : {};
-    if(gpp.mal) return mal("Los goteros por planta van de 0,1 a 100.","rf_gpp");
     if(cob.mal) return mal("El factor de cobertura va de 0,01 a 1 (1 = huerto adulto).","rf_cob");
     if(dia.mal) return mal("El diámetro de copa va de 0,1 a 15 m.","rf_diam");
     const kajS=v("rf_kcaj"), kajX=numES(kajS);
     if(kajS && (isNaN(kajX) || kajX<30 || kajX>200)) return mal("El ajuste del Kc va de 30 % a 200 % (100 = sin ajuste). No se guardó nada.","rf_kcaj");
     r.cu[id]=r.cu[id]||{}; const cu=r.cu[id];
     const pon=(k,x)=>{ if(x!=null) cu[k]=x; else delete cu[k]; };
-    pon("ent",ent.x); pon("lin",lin.x); pon("dg",dg.x); pon("caudal",cau.x); pon("ppMed",ppm.x); pon("diam",dia.x);
+    pon("lin",ln.lin); pon("caudal",ln.caudal); pon("dg",ln.dg); pon("caudal2",ln.caudal2); pon("dg2",ln.dg2); pon("ppMed",ppm.x); pon("diam",dia.x);   // lin siempre; ya no se escriben ent ni gpp (los datos antiguos quedan como estaban)
     pon("ppFecha", (ppm.x!=null && ppF)? ppF : null);
     pon("cob", (cob.x!=null && cob.x<1)? cob.x : null);   // 1 = huerto adulto = sin factor
-    if(document.getElementById("rf_gpp")) pon("gpp", gpp.x);   // goteros/pl antiguos del cuartel: se pueden corregir o borrar (vacío = el general)
     set("ef","rf_ef"); set("rep","rf_rep");
     { // sectores: si quedaron iguales a la consolidación no se guardan (siguen a la semilla)
       const ls=riegoSectLeer(), sd=riegoSeedSect(q); r.cu[id]=r.cu[id]||{};
@@ -15716,32 +15587,211 @@ function riegoFicha(id, foco){
   window._rfDias=_rfPrev;
   riegoFichaVivo(id);
   if(foco==="linea" || foco==="cob"){
-    const sec=document.querySelector('#capaModal .rf-sec[data-rf="'+foco+'"]'), e=document.getElementById(foco==="linea"? "rf_ent" : "rf_diam");
+    const sec=document.querySelector('#capaModal .rf-sec[data-rf="'+foco+'"]'), e=document.getElementById(foco==="linea"? "rf_lin" : "rf_diam");
     try{ (sec||e).scrollIntoView({block:"start"}); }catch(_){ }
     if(e) try{ e.focus({preventScroll:true}); }catch(_){ }
   }
 }
-/* lo que se ve mientras se escribe en la ficha: Pp de diseño, caudalímetro y % de cobertura (no guarda nada) */
-function riegoFichaPpTxt(x){
-  const g=(v,d)=>(+v).toLocaleString("es-CL",{maximumFractionDigits:d==null? 2 : d, minimumFractionDigits:d==null? 0 : d});
-  if(x.ent && x.lin && x.dg && x.caudal){
-    const pp=x.caudal/((x.ent/x.lin)*x.dg), gpl=x.md? x.md[1]/x.dg*x.lin : null;
-    return `Pp de diseño = ${g(x.caudal)} L/h ÷ (${g(x.ent)} m${x.entDe==="marco"? " del marco" : ""} ÷ ${x.lin} × ${g(x.dg)} m) = <b>${g(pp,2)} mm/h</b>${gpl? ` · <b>${riegoFmtG(gpl)}</b> goteros por planta (informativo)` : ""}${x.ppMed? " · <b>manda la Pp medida</b>" : ""}`;
-  }
-  const fal=[!x.ent? "entrehilera" : "", !x.lin? "líneas por hilera" : "", !x.dg? "distancia entre goteros" : "", !x.caudal? "caudal del gotero" : ""].filter(Boolean);
-  return `Para la Pp de diseño falta: ${fal.join(", ")}.${x.ppMed? " Se usa la Pp medida." : " Mientras, el cuartel queda <b>sin verificar</b>."}`;
+/* ---- Ficha ⚙, sección «Línea de riego · de dónde sale la Pp» (29-10-2026): líneas por hilera, Línea 1 y Línea 2 (oculta con 1 línea,
+   pero conservada), L/h por metro informativo, Pp en vivo y «Aplicar a todos los cuarteles del fundo» con confirmación dentro de la ficha ---- */
+function riegoFichaLineaHTML(q, o, pi){
+  const id=+q.id, mc=pi.marco||riegoMarco(q), sd=riegoSeedLinea(q)||{}, fL=riegoFmtL;
+  const sv=x=>(x==null||x==="")? "" : String(x).replace(".",",");
+  const at=`inputmode="decimal" oninput="riegoFichaVivo(${id})"`;
+  const entTxt = mc.ok? `Distancia entre hileras: <b>${fL(mc.ent)} m</b> (primer número del marco ${esc(mc.txt)}; el marco se cambia en Datos → Campo)`
+    : mc.motivo==="no se entiende"? `El marco «${esc(mc.crudo)}» no se entiende: escríbelo como 5x2 en Datos → Campo`
+    : mc.motivo==="fuera"? `El marco ${esc(mc.txt)} da ${fL(mc.ent)} m entre hileras (va de 1 a 12 m): corrígelo en Datos → Campo`
+    : `Sin marco de plantación: anótalo en Datos → Campo (por ejemplo 5x2)`;
+  /* placeholder = lo que se usa si el campo queda vacío: la semilla o el valor inicial */
+  const ph=k=>{ const s=+sd[k]; return s>0? sv(s)+" ("+(sd.fuente||"diseño")+")" : sv(RIEGO_LINEA_INI[k])+" (inicial)"; };
+  const linea=n=>{ const s=n===2? "2" : "";
+    return `<div class="rf-lin" data-l="${n}"${n===2? ` id="rfL2"${pi.lin!==2? " hidden" : ""}` : ""}><div class="rf-lin-t">Línea ${n}</div>
+      <div class="grid2">
+        ${campoF("rf_caudal"+s,"Caudal del gotero (L/h)","text",sv(o["caudal"+s]),at+` placeholder="${n===2? sv(pi.L[0].caudal)+" (igual a la Línea 1)" : ph("caudal")}"`)}
+        ${campoF("rf_dg"+s,"Distancia entre goteros (m)","text",sv(o["dg"+s]),at+` placeholder="${n===2? sv(pi.L[0].dg)+" (igual a la Línea 1)" : ph("dg")}"`)}
+      </div>
+      <div class="rf-lin-lhm" id="rfLhm${n}"></div></div>`; };
+  /* avisos de la línea: valores iniciales, datos guardados fuera de rango, diferencias con la semilla, entrehilera y goteros/pl antiguos */
+  const NOM={caudal:["El caudal del gotero de la Línea 1","guardado","L/h","0,5 a 8 L/h","Corrígelo o bórralo","Borrar el caudal guardado"],
+    dg:["La distancia entre goteros de la Línea 1","guardada","m","0,1 a 2 m","Corrígela o bórrala","Borrar la distancia guardada"],
+    caudal2:["El caudal del gotero de la Línea 2","guardado","L/h","0,5 a 8 L/h","Corrígelo o bórralo","Borrar el caudal guardado"],
+    dg2:["La distancia entre goteros de la Línea 2","guardada","m","0,1 a 2 m","Corrígela o bórrala","Borrar la distancia guardada"]};
+  const malo=({k,x})=>{ const N=NOM[k], l2=/2$/.test(k), b=k.replace(/2$/,""), l=pi.L[l2? 1 : 0], de=l[b+"De"];
+    const usa = (l2 && pi.lin===1)? "con 1 línea, la Pp usa solo la Línea 1"
+      : "la Pp usa "+fL(l[b])+" "+N[2]+", "+(l[b+"Her"]? "el de la Línea 1" : de==="ini"? "el valor inicial" : de==="semilla"? (pi.semFuente? "del "+pi.semFuente : "de los datos de diseño") : "el de la ficha");
+    return `<div class="rg-fal roj" data-fal="${k}">${N[0]} ${N[1]} en este cuartel (${esc(sv(x))} ${N[2]}) está fuera de ${N[3]}: no se usa (${esc(usa)}). ${N[4]} para poder guardar la ficha. <button type="button" class="btn sec chico" style="margin-top:6px" onclick="riegoFichaBorrarDato(${id},'${k}',this)">${N[5]}</button></div>`; };
+  const NOMD={lin:"líneas por hilera", caudal:"caudal del gotero (Línea 1)", dg:"distancia entre goteros (Línea 1)", caudal2:"caudal del gotero (Línea 2)", dg2:"distancia entre goteros (Línea 2)"};
+  const uni=k=>k==="lin"? "" : /^caudal/.test(k)? " L/h" : " m";
+  const soloAnio = pi.src==="ini" && !pi.act.some(l=>l.caudalDe==="ini" || l.dgDe==="ini");
+  const avisos = (pi.src==="ini"? `<div class="rg-fal info" data-fal="ini"><b>Valores iniciales.</b> ${esc(riegoIniTxt(pi))} ${soloAnio? "Elige abajo cuántas líneas tiene por hilera y guarda (o anota el año de plantación en Datos → Campo)." : "Si conoces el gotero real (plano de riego o terreno), escríbelo abajo; si es ese mismo, escríbelo igual para dejarlo anotado, o usa «Aplicar a todos los cuarteles del fundo»."}</div>` : "")
+    + pi.malos.map(malo).join("")
+    + (pi.dif.length? `<div class="rg-fal amb" data-fal="dif"><b>La ficha no coincide con ${esc(pi.semFuente? "el "+pi.semFuente : "los datos de diseño cargados")}:</b> ${pi.dif.map(x=>NOMD[x.k]+" "+fL(x.ficha)+uni(x.k)+" en la ficha y "+fL(x.semilla)+uni(x.k)+(pi.semFuente? " en el plano" : " en lo cargado")).join(" · ")}. Manda lo de la ficha; si ${pi.semFuente? "el plano" : "lo cargado"} está bien, corrige ese dato abajo (un caudal o una distancia vacíos vuelven al ${pi.semFuente? "plano" : "dato cargado"}) y guarda.</div>` : "")
+    + (pi.entViejo? `<div class="rg-fal gris" data-fal="ent">Antes se anotó en esta ficha una entrehilera de ${fL(pi.entViejo.x)} m. Ahora la distancia entre hileras sale siempre del primer número del marco (${esc(mc.txt)} → ${fL(mc.ent)} m). El dato antiguo queda guardado pero no se usa; si las hileras de verdad están a ${fL(pi.entViejo.x)} m, corrige el marco en Datos → Campo.</div>` : "")
+    + ((+o.gpp>0 && isFinite(+o.gpp))? `<div class="rg-fal gris" data-fal="gpp">Antes este cuartel tenía ${fL(+o.gpp)} goteros por planta anotados. Ya no se usan: ahora salen de la línea de riego (${pi.gpl!=null? fL(pi.gpl)+" con los datos de abajo" : "sin marco no se pueden calcular"}, informativo). El dato antiguo queda guardado.</div>` : "");
+  return `<div class="rf-lin-cab" id="rfLinCab">
+      <div class="rf-ent" id="rfEnt">${entTxt}</div>
+      <label class="f">Líneas por hilera<select id="rf_lin" onchange="riegoFichaLin(${id})"><option value="1"${pi.lin===1? " selected" : ""}>1 línea</option><option value="2"${pi.lin===2? " selected" : ""}>2 líneas</option></select></label>
+      <div class="muted rf-lin-ini" id="rfLinIni"></div>
+    </div>
+    ${avisos}
+    ${linea(1)}
+    ${linea(2)}
+    <div class="rf-vivo" id="rfPpDis"></div>
+    <div class="rf-apl" data-rf-apl>
+      <button type="button" class="btn sec" id="rfAplBtn" onclick="riegoFichaAplicar(${id})">Aplicar a todos los cuarteles del fundo</button>
+      <div class="muted" style="font-size:11.5px;margin-top:4px">Carga este caudal y esta distancia entre goteros en todos los cuarteles de ${esc(q.fundo||"este fundo")}; no cambia cuántas líneas tiene cada uno.</div>
+      <div class="rf-apl-res" id="rfAplRes" role="status"></div>
+    </div>
+    <div class="rf-apl-conf" id="rfAplConf" tabindex="-1" aria-live="polite" hidden></div>`;
 }
+/* aviso de la ficha de riego: arriba (#rfAviso) y junto al campo (.rf-err), con el campo a la vista (corrector 27-10). Devuelve false */
+function riegoFichaMal(t, foco){
+  fAviso("rfAviso", ic("alert")+" <span>"+t+"</span>");
+  document.querySelectorAll("#capaModal .rf-err").forEach(x=>x.remove());
+  const e=foco && (document.getElementById(foco+"_t")||document.getElementById(foco));
+  if(e){ const det=e.closest("details"); if(det) det.open=true;
+    const lb=e.closest("label")||e; lb.insertAdjacentHTML("afterend", `<div class="rf-err">${ic("alert")} <span>${t}</span></div>`);
+    try{ lb.scrollIntoView({block:"center"}); }catch(_){ } try{ e.focus({preventScroll:true}); }catch(_){ } }
+  return false;
+}
+/* lee y valida la línea de riego de la ficha (Guardar y «Aplicar»). Vacío = null. conL2 = false: la Línea 2 ni se valida ni se usa */
+function riegoFichaLeerLinea(conL2){
+  const out={mal:null, lin:null, caudal:null, dg:null, caudal2:null, dg2:null}, L=RIEGO_LIM;
+  const linS=v("rf_lin"), linX=+linS;
+  if(linS && linX!==1 && linX!==2){ out.mal={t:"Las líneas por hilera son 1 o 2.", foco:"rf_lin", l2:false}; return out; }
+  out.lin=linS? linX : null;
+  const campos=[["caudal","rf_caudal","El caudal del gotero de la Línea 1 va de 0,5 a 8 L/h.",L.caudal,false], ["dg","rf_dg","La distancia entre goteros de la Línea 1 va de 0,1 a 2 m.",L.dg,false],
+    ["caudal2","rf_caudal2","El caudal del gotero de la Línea 2 va de 0,5 a 8 L/h.",L.caudal,true], ["dg2","rf_dg2","La distancia entre goteros de la Línea 2 va de 0,1 a 2 m.",L.dg,true]];
+  for(const [k,id,t,lim,l2] of campos){
+    if(l2 && !conL2) continue;
+    const s=v(id); if(!s) continue;
+    const x=numES(s);
+    if(isNaN(x) || x<lim[0] || x>lim[1]){ out.mal={t:t+(l2 && out.lin===1? " (La Línea 2 se conserva aunque riegues con 1 línea: corrígela o bórrala.)" : ""), foco:id, l2}; return out; }
+    out[k]=x;
+  }
+  return out;
+}
+/* selector de líneas por hilera: con 1 línea la Línea 2 se esconde, pero sus campos y valores siguen en la ficha (no se borra nada) */
+function riegoFichaLin(id){ const l2=document.getElementById("rfL2"); if(l2) l2.hidden = v("rf_lin")!=="2"; riegoFichaVivo(id); }
+/* lo que se ve mientras se escribe en la ficha: Pp de las líneas, caudalímetro y % de cobertura (no guarda nada) */
 function riegoFichaVivo(id){
   const q=(D.cuarteles||[]).find(x=>x.id===id); if(!q || !document.getElementById("rfPpDis")) return;
-  const sd=riegoSeedLinea(q)||{}, md=riegoMarcoDims(q), n=k=>{ const x=numES(v(k)); return (x>0 && isFinite(x))? x : null; };
+  const cu=riegoCfg().cu[id]||{}, md=riegoMarcoDims(q), fL=riegoFmtL;
+  const n=k=>{ const x=numES(v(k)); return (x>0 && isFinite(x))? x : null; };
   const g=(x,d)=>(+x).toLocaleString("es-CL",{maximumFractionDigits:d==null? 2 : d, minimumFractionDigits:d==null? 0 : d});
-  const ent=n("rf_ent")||sd.ent||(md? md[0] : null), entDe=n("rf_ent")? "ficha" : sd.ent? "semilla" : md? "marco" : "";
-  document.getElementById("rfPpDis").innerHTML=riegoFichaPpTxt({ent, entDe, lin:n("rf_lin")||sd.lin||null, dg:n("rf_dg")||sd.dg||null, caudal:n("rf_caudal")||sd.caudal||null, md, ppMed:n("rf_ppmed")});
+  /* línea de riego: lo escrito (un valor que no se entiende cuenta como dato fuera de rango). El selector cuenta como de la ficha
+     solo si el cuartel ya tiene las líneas anotadas o si se cambió el valor inicial */
+  const w=k=>{ const s=v(k); return s? numES(s) : null; };
+  const base=riegoLineas(q, {}), selV=+v("rf_lin")||null, linG=(+cu.lin===1 || +cu.lin===2)? +cu.lin : null;
+  const o={lin:(linG || selV!==base.lin)? selV : null, caudal:w("rf_caudal"), dg:w("rf_dg"), caudal2:w("rf_caudal2"), dg2:w("rf_dg2")};
+  const pl=riegoLineas(q, o), mc=pl.marco;
+  const lhmTxt=nn=>{ const s=nn===2? "2" : "", bad=[];
+    if(pl.malos.some(m=>m.k==="caudal"+s)) bad.push("fuera de rango (0,5 a 8 L/h)");
+    if(pl.malos.some(m=>m.k==="dg"+s)) bad.push("fuera de rango (0,1 a 2 m)");
+    return bad.length? bad.join(" · ") : "= "+fL(pl.L[nn-1].lhm)+" L/h por metro de línea"; };
+  const l1=document.getElementById("rfLhm1"), l2=document.getElementById("rfLhm2");
+  if(l1) l1.textContent=lhmTxt(1); if(l2) l2.textContent=lhmTxt(2);
+  const p2c=document.getElementById("rf_caudal2"), p2d=document.getElementById("rf_dg2");
+  if(p2c) p2c.placeholder=fL(pl.L[0].caudal)+" (igual a la Línea 1)"; if(p2d) p2d.placeholder=fL(pl.L[0].dg)+" (igual a la Línea 1)";
+  let h;
+  if(!mc.ok) h = mc.motivo==="no se entiende"? "El marco «"+esc(mc.crudo)+"» no se entiende: sin la distancia entre hileras no se puede calcular la Pp."
+    : mc.motivo==="fuera"? "El marco "+esc(mc.txt)+" da "+fL(mc.ent)+" m entre hileras (va de 1 a 12 m): no se puede calcular la Pp."
+    : "Falta el marco de plantación: sin la distancia entre hileras no se puede calcular la Pp.";
+  else h = `Pp = ${pl.lin===2? "("+fL(pl.L[0].lhm)+" + "+fL(pl.L[1].lhm)+")" : fL(pl.L[0].lhm)} L/h por metro ÷ ${fL(pl.ent)} m entre hileras = <b>${riegoFmtPp(pl.ppDis)} mm/h</b> · <b>${fL(pl.gpl)}</b> goteros por planta · <b>${fL(pl.lpl)}</b> L/h por planta (informativo)`;
+  if(n("rf_ppmed")) h+=" · <b>manda la Pp medida</b>";
+  if(mc.ok && pl.esIni) h+=" · con valores iniciales";
+  document.getElementById("rfPpDis").innerHTML=h;
+  const li=document.getElementById("rfLinIni");
+  if(li) li.textContent = (linG && selV===linG)? "Anotado en este cuartel."
+    : selV!==(linG || base.lin)? "Cambiado: queda anotado al guardar."
+    : base.linDe==="semilla"? (base.semFuente? "Del "+base.semFuente+"." : "De los datos de diseño cargados.")
+    : base.linDe==="sinAnio"? "Sin año de plantación: se suponen 2 líneas. Elige las que tiene y guarda."
+    : "Inicial según el año de plantación ("+base.anio+": "+(base.anio>=RIEGO_UNA_LINEA_DESDE? RIEGO_UNA_LINEA_DESDE+" o después → 1 línea" : (RIEGO_UNA_LINEA_DESDE-1)+" o antes → 2 líneas")+"). Queda anotado al guardar.";
+  const ac=document.getElementById("rfAplConf"); if(ac && !ac.hidden){ ac.hidden=true; ac.innerHTML=""; }
+  /* caudalímetro y cobertura, como antes */
   const cq=n("rf_cmq"), ch=n("rf_cmha"), cm=document.getElementById("rfCmRes");
   if(cm){ cm.classList.remove("rf-err-in"); cm.innerHTML=(cq && ch)? `Pp = ${g(cq)} m³/h ÷ ${g(ch)} ha ÷ 10 = <b>${g(cq/ch/10,2)} mm/h</b>` : "Pp = m³/h ÷ ha del sector ÷ 10"; }
   const dm=n("rf_diam"), cb=document.getElementById("rfCobRes"), m2=md? md[0]*md[1] : 0;
   if(cb && m2){ cb.classList.remove("rf-err-in"); } if(cb && m2) cb.innerHTML=dm? `Cobertura = ${g(dm)}² × 0,785 ÷ ${g(m2,1)} m² por planta = <b>${g(dm*dm*0.785/m2*100,1)} %</b>` : `Cobertura = diámetro² × 0,785 ÷ ${g(m2,1)} m² por planta`;
 }
+/* «Borrar el caudal guardado» / «Borrar la distancia guardada»: vacía el campo de un dato guardado fuera de rango (se borra al Guardar) */
+function riegoFichaBorrarDato(id, k, btn){
+  const e=document.getElementById({caudal:"rf_caudal", dg:"rf_dg", caudal2:"rf_caudal2", dg2:"rf_dg2"}[k]); if(e) e.value="";
+  const av=btn && btn.closest(".rg-fal"); if(av) av.hidden=true;
+  riegoFichaVivo(id);
+}
+/* lo que «Aplicar» va a escribir: con 1 línea, la Línea 1 (escrita o, si está vacía, la que se usa) va a las dos líneas de cada cuartel;
+   con 2, cada línea a la suya (la Línea 2 vacía = la Línea 1) */
+function riegoFichaAplValores(q, lin, ln){
+  const L1=riegoLineas(q, {caudal:ln.caudal, dg:ln.dg}).L[0], c1=L1.caudal, d1=L1.dg;
+  return lin===2? {caudal:c1, dg:d1, caudal2:ln.caudal2!=null? ln.caudal2 : c1, dg2:ln.dg2!=null? ln.dg2 : d1} : {caudal:c1, dg:d1, caudal2:c1, dg2:d1};
+}
+/* qué pasaría al aplicar v = {caudal, dg, caudal2, dg2} en los cuarteles plantados del fundo (la misma lista de la vista Riego):
+   distintos = los que tienen algún caudal o distancia propio (ficha o semilla, de cualquier línea) distinto, o un dato fuera de rango */
+function riegoAplicarPrevia(f, v){
+  const cus=cuartelesDe(f).filter(q=>gtNorm(q.especie||"")!=="por plantar"), distintos=[], med=[], fL=riegoFmtL, igual=(a,b)=>Math.abs(a-b)<1e-9;
+  cus.forEach(q=>{
+    const pi=riegoPp(q), L1=pi.L[0], L2=pi.L[1];
+    if(pi.src==="med") med.push(q);
+    const cambia = pi.malos.length>0 || (L1.caudalDe!=="ini" && !igual(L1.caudal, v.caudal)) || (L1.dgDe!=="ini" && !igual(L1.dg, v.dg))
+      || (L2.caudalDe!=="ini" && !igual(L2.caudal, v.caudal2)) || (L2.dgDe!=="ini" && !igual(L2.dg, v.dg2));
+    if(!cambia) return;
+    const p=[];
+    if(L1.caudalDe!=="ini" || L1.dgDe!=="ini") p.push(fL(L1.caudal)+" L/h c/"+fL(L1.dg)+" m"+((L1.caudalDe==="semilla" || L1.dgDe==="semilla")? ", "+(pi.semFuente||"datos de diseño") : ""));
+    if(!L2.caudalHer || !L2.dgHer) p.push("Línea 2"+(pi.lin===1? " guardada" : "")+": "+fL(L2.caudal)+" L/h c/"+fL(L2.dg)+" m");
+    if(pi.malos.length) p.push("dato fuera de rango");
+    distintos.push({q, txt:p.join("; ")});
+  });
+  return {cus, distintos, med};
+}
+/* escribe el gotero en las dos líneas de cada cuartel plantado del fundo. No toca lin, ent, ppMed, ppFecha ni nada más */
+function riegoAplicarFundo(f, v){
+  const r=riegoCfg(), cus=cuartelesDe(f).filter(q=>gtNorm(q.especie||"")!=="por plantar");
+  cus.forEach(q=>{ const cu=r.cu[q.id]=r.cu[q.id]||{}; cu.caudal=v.caudal; cu.dg=v.dg; cu.caudal2=v.caudal2; cu.dg2=v.dg2; });
+  guardar(); return {n:cus.length};
+}
+function riegoAplGotTxt(c, d){ return riegoFmtL(c)+" L/h cada "+riegoFmtL(d)+" m"; }
+/* «Aplicar a todos los cuarteles del fundo»: valida como Guardar y pide la confirmación dentro de la ficha (sin confirm()) */
+function riegoFichaAplicar(id){
+  if(espejoNo()) return;
+  const q=(D.cuarteles||[]).find(x=>x.id===id); if(!q) return;
+  const lin=v("rf_lin")==="1"? 1 : 2, ln=riegoFichaLeerLinea(lin===2), conf=document.getElementById("rfAplConf"), res=document.getElementById("rfAplRes");
+  if(res) res.textContent="";
+  if(ln.mal){ if(conf){ conf.hidden=true; conf.innerHTML=""; } return riegoFichaMal(ln.mal.t, ln.mal.foco); }
+  fAviso("rfAviso",""); document.querySelectorAll("#capaModal .rf-err").forEach(x=>x.remove());
+  if(!conf) return;
+  const va=riegoFichaAplValores(q, lin, ln), pr=riegoAplicarPrevia(q.fundo, va), nC=pr.cus.length;
+  const lst=a=>a.length<2? a.join("") : a.slice(0,-1).join(", ")+" y "+a[a.length-1];
+  if(!nC){ conf.innerHTML=`<div>No hay cuarteles plantados en ${esc(q.fundo||"este fundo")}.</div>`; conf.hidden=false; return; }
+  const dos=Math.abs(va.caudal2-va.caudal)>1e-9 || Math.abs(va.dg2-va.dg)>1e-9;
+  const que=dos? riegoAplGotTxt(va.caudal, va.dg)+" en la Línea 1 y "+riegoAplGotTxt(va.caudal2, va.dg2)+" en la Línea 2" : riegoAplGotTxt(va.caudal, va.dg)+" en las dos líneas";
+  const quien=nC===1? "del cuartel "+pr.cus[0].nombre : "de los "+nC+" cuarteles de "+q.fundo;
+  conf.innerHTML=`<div class="rf-apl-q"><b>¿Cargar ${esc(que)} ${esc(quien)}?</b></div>
+    <div>No cambia el número de líneas de cada cuartel (los de 1 línea guardan la Línea 2 por si después pasan a 2).</div>
+    ${pr.distintos.length? `<div>Ojo: ${lst(pr.distintos.map(x=>esc(x.q.nombre)+" ("+esc(x.txt)+")"))} ${pr.distintos.length>1? "tienen otros datos y quedarán" : "tiene otros datos y quedará"} con estos.</div>` : ""}
+    ${pr.med.length? `<div>${esc(lst(pr.med.map(x=>x.nombre)))} ${pr.med.length>1? "tienen Pp medida y la siguen" : "tiene Pp medida y la sigue"} usando.</div>` : ""}
+    <div class="rf-apl-bs"><button type="button" class="btn" data-apl="si" onclick="riegoFichaAplicarSi(${id})">Sí, aplicar${nC>1? " a los "+nC : ""}</button><button type="button" class="btn sec" data-apl="no" onclick="riegoFichaAplicarNo()">No</button></div>`;
+  conf.hidden=false;
+  try{ conf.scrollIntoView({block:"nearest"}); }catch(_){ } try{ conf.focus({preventScroll:true}); }catch(_){ }
+}
+function riegoFichaAplicarSi(id){
+  if(espejoNo()) return;
+  const q=(D.cuarteles||[]).find(x=>x.id===id); if(!q) return;
+  const lin=v("rf_lin")==="1"? 1 : 2, ln=riegoFichaLeerLinea(lin===2), conf=document.getElementById("rfAplConf"), res=document.getElementById("rfAplRes");
+  if(ln.mal){ if(conf){ conf.hidden=true; conf.innerHTML=""; } return riegoFichaMal(ln.mal.t, ln.mal.foco); }
+  const va=riegoFichaAplValores(q, lin, ln), f=q.fundo, cus=riegoAplicarPrevia(f, va).cus, nC=cus.length; if(!nC) return;
+  undoIni("Gotero cargado en "+nC+" cuartel"+(nC>1? "es" : "")+" de "+f, ()=>{ if(nav.tab==="riego") riegoPintar(); });   // Deshacer de 6,5 s (también cierra la ficha)
+  riegoAplicarFundo(f, va);
+  /* los campos quedan con lo aplicado: si no, un Guardar con los campos vacíos borraría lo recién aplicado en este cuartel */
+  [["rf_caudal",va.caudal],["rf_dg",va.dg],["rf_caudal2",va.caudal2],["rf_dg2",va.dg2]].forEach(([k,x])=>{ const e=document.getElementById(k); if(e) e.value=String(x).replace(".",","); });
+  if(conf){ conf.hidden=true; conf.innerHTML=""; }
+  const dos=Math.abs(va.caudal2-va.caudal)>1e-9 || Math.abs(va.dg2-va.dg)>1e-9;
+  if(res) res.textContent="Listo: "+(dos? riegoAplGotTxt(va.caudal, va.dg)+" en la Línea 1 y "+riegoAplGotTxt(va.caudal2, va.dg2)+" en la Línea 2 quedó anotado "+(nC===1? "en el cuartel "+cus[0].nombre : "en los "+nC+" cuarteles de "+f)
+    : riegoAplGotTxt(va.caudal, va.dg)+" quedó anotado en las líneas "+(nC===1? "del cuartel "+cus[0].nombre : "de los "+nC+" cuarteles de "+f))+". El número de líneas de cada uno no cambió.";
+  riegoFichaVivo(id);
+  if(nav.tab==="riego") setTimeout(riegoPintar,0);
+}
+function riegoFichaAplicarNo(){ const c=document.getElementById("rfAplConf"); if(c){ c.hidden=true; c.innerHTML=""; } }
 /* corrector 27-10: los avisos de los botones de ayuda salen al lado del botón (#rfCmRes, #rfCobRes), no arriba de la ficha */
 function riegoFichaJunto(elId, html){ const e=document.getElementById(elId); if(!e) return; e.innerHTML=html; e.classList.add("rf-err-in"); fAviso("rfAviso",""); }
 function riegoFichaUsarPp(id){
@@ -15797,7 +15847,7 @@ function riegoCalcCuartel(q, serie){
   const lamSem = etcDia*7*(rep/100);                  // lámina neta a reponer en la semana
   const lamBruta = lamSem/ef;                         // lo que hay que aplicar (incluye la eficiencia del riego)
   const lamRiego = lamBruta/nD;                       // mm en cada riego
-  const pp = ppInfo.pp>0? ppInfo.pp : null;          // precipitación del sistema, mm/h: medida > diseño > fórmula antigua (sin verificar)
+  const pp = ppInfo.pp>0? ppInfo.pp : null;          // precipitación del sistema, mm/h: medida > líneas de riego (anotadas, semilla o valores iniciales); sin marco, null
   const hRiego = (pp>0)? lamRiego/pp : null;
   const m3haSem = lamBruta*10, m3haRiego = lamRiego*10;   // 1 mm = 10 m³/ha
   return Object.assign(base, {etcDia, lamSem, lamBruta, lamRiego, pp, hRiego,
@@ -15809,10 +15859,10 @@ function riegoCalcCuartel(q, serie){
 }
 /* --- vista Programación de riego (visor) --- */
 function riegoSet(id,k,val,el){ const r=riegoCfg(); r.cu[id]=r.cu[id]||{}; const x=parseFloat(String(val).replace(",","."));
-  /* corrector 27-10: el caudal del gotero alimenta la Pp de diseño: mismo rango que la ficha (0,5–16 L/h); fuera de rango no se guarda */
-  if(k==="caudal" && !isNaN(x) && x>0 && (x<0.5 || x>16)){
+  /* el caudal del gotero es el de la Línea 1: mismo rango que la ficha (0,5–8 L/h desde el 29-10); fuera de rango no se guarda. Ya no hay casilla en la pantalla */
+  if(k==="caudal" && !isNaN(x) && x>0 && (x<RIEGO_LIM.caudal[0] || x>RIEGO_LIM.caudal[1])){
     if(el){ el.value = r.cu[id].caudal!=null? String(r.cu[id].caudal).replace(".",",") : ""; el.setAttribute("aria-invalid","true"); }
-    gtAviso("⚠️ El caudal del gotero va de 0,5 a 16 L/h: no se guardó "+String(val).trim()+" L/h.", 4500); return; }
+    gtAviso("⚠️ El caudal del gotero va de 0,5 a 8 L/h: no se guardó "+String(val).trim()+" L/h.", 4500); return; }
   if(isNaN(x)||x<=0) delete r.cu[id][k]; else r.cu[id][k]=x; guardar(); riegoPintar(); }
 function riegoDef(k,val){ const r=riegoCfg(); const x=parseFloat(String(val).replace(",",".")); if(!isNaN(x)&&x>0) r.def[k]=x; guardar(); riegoPintar(); }
 function riegoBase(b){ riegoCfg().base=b; guardar(); riegoPintar(); }
@@ -15879,7 +15929,7 @@ function riegoArmarHTML(){   // arma la vista completa (el área #riegoScroll es
           ${vista==="cu"? (filas.length? `<div class="rggrid">${filas.map(({q,c})=>riegoCardHTML(q,c,fmt)).join("")}</div>` : `<div class="vacio"><span class="ico">🌱</span>Este fundo no tiene cuarteles plantados.</div>`) : ""}
           ${vista==="dia"? riegoPorDiaHTML(filas,fmt) : ""}
           ${vista==="turnos"? riegoTurnosHTML(filas,fmt,f) : ""}
-          ${vista!=="tabla"? "" : `<div style="overflow-x:auto"><table class="ctt rg"><thead><tr><th>Cuartel</th><th style="text-align:right">Kc</th><th style="text-align:right">Pp mm/h<br><span style="font-weight:500">fuente · got./pl</span></th><th style="text-align:right">L/h</th><th style="text-align:right">ef %</th><th style="text-align:right">ETc<br><span style="font-weight:500">mm/día</span></th><th style="text-align:right">Repos.<br><span style="font-weight:500">%</span></th><th style="text-align:center">Días de riego</th><th style="text-align:right">mm<br><span style="font-weight:500">por riego</span></th><th style="text-align:right"><b>h por<br>riego</b></th><th style="text-align:right">m³/ha<br><span style="font-weight:500">por riego</span></th><th style="text-align:right">m³<br><span style="font-weight:500">semana</span></th></tr></thead>
+          ${vista!=="tabla"? "" : `<div style="overflow-x:auto"><table class="ctt rg"><thead><tr><th>Cuartel</th><th style="text-align:right">Kc</th><th style="text-align:right">Pp mm/h<br><span style="font-weight:500">fuente · got./pl · L/h/pl</span></th><th style="text-align:left">Línea de riego</th><th style="text-align:right">ef %</th><th style="text-align:right">ETc<br><span style="font-weight:500">mm/día</span></th><th style="text-align:right">Repos.<br><span style="font-weight:500">%</span></th><th style="text-align:center">Días de riego</th><th style="text-align:right">mm<br><span style="font-weight:500">por riego</span></th><th style="text-align:right"><b>h por<br>riego</b></th><th style="text-align:right">m³/ha<br><span style="font-weight:500">por riego</span></th><th style="text-align:right">m³<br><span style="font-weight:500">semana</span></th></tr></thead>
           <tbody>${filas.map(({q,c})=>{ const o=r.cu[q.id]||{}, pi=c.ppInfo||riegoPp(q), al=riegoAlertasCu(q,c); return `<tr data-rgcu="${q.id}"><td style="min-width:150px"><div class="fila" style="gap:6px;align-items:flex-start;flex-wrap:nowrap;margin:0"><span style="flex:1;min-width:0"><b>${esc(q.nombre)}</b><div class="muted" style="font-size:10.5px;line-height:1.3">${esc(q.especie||"")}${q.variedad?" "+esc(q.variedad):""} · ${fmt(+q.ha||0,2)} ha · ${c.area? fmt(c.area,1)+" m²/pl" : "<span style='color:var(--urg)'>sin marco</span>"}</div>${al.joven? `<span class="badge b-ambar rg-jov">Kc de adulto en huerto joven</span>` : ""}</span><button class="btn sec chico" onclick="riegoFicha(${q.id})" title="Ficha de riego: línea de riego, Pp medida, cobertura" aria-label="Ficha de riego de ${esc(q.nombre)}">${ic("gear")}</button></div></td>
             <td style="text-align:right;white-space:normal;min-width:150px">${(function(){ const ki=riegoKcInfo(q,new Date().getMonth()); const modo=o.modo||((!o.modo&&o.kc>0)?"manual":"global");
               const et = (ki.src==="fen"? `${esc(ki.lab)} · ${ki.bbch} (${fmtF(ki.fecha).slice(0,5)}${ki.dias>45?`, <span style="color:var(--urg)">hace ${ki.dias} d</span>`:""})` : ki.src==="manual"? "manual" : (ki.sinFen? `<span style="color:var(--urg)">sin registro fenológico → mes</span>` : "según mes"))
@@ -15888,8 +15938,8 @@ function riegoArmarHTML(){   // arma la vista completa (el área #riegoScroll es
                 <select class="rgsel" onchange="riegoSetModo(${q.id},this.value)" title="Cómo se elige el Kc de este cuartel"><option value="global"${modo==="global"?" selected":""}>Global</option><option value="mes"${modo==="mes"?" selected":""}>Mes</option><option value="fen"${modo==="fen"?" selected":""}>Fenología</option><option value="manual"${modo==="manual"?" selected":""}>Manual</option></select>
                 ${modo==="manual"? `<input type="text" inputmode="decimal" value="${o.kc||""}" placeholder="0,70" style="width:52px;text-align:right" onchange="riegoSet(${q.id},'kc',this.value)">`:""}</div>
                 <div class="muted" style="font-size:10.5px;text-align:right;line-height:1.2">${et}</div>`; })()}</td>
-            <td style="text-align:right;min-width:118px" class="rg-tpp"><b style="font-size:14px">${fmt(c.pp,2)}</b><div style="margin:2px 0">${riegoPpBadge(pi)}</div><div class="muted" style="font-size:10.5px;line-height:1.2">${pi.src==="sv"? riegoFmtG(pi.gpp)+" got./pl "+(pi.gppPropio? "del cuartel" : "general")+" · "+riegoFmtG(pi.caudalSv)+"&nbsp;L/h" : [esc(pi.lab.replace(/^(medida|diseño)( · )?/,"")), pi.gpl? riegoFmtG(pi.gpl)+" got./pl" : ""].filter(Boolean).join(" · ")}</div></td>
-            <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.caudal!=null? String(o.caudal).replace(".",",") : ""}" placeholder="${(riegoSeedLinea(q)||{}).caudal? String(riegoSeedLinea(q).caudal).replace(".",",") : "—"}" title="${esc("Caudal del gotero de este cuartel (0,5 a 16 L/h). Vacío: "+((riegoSeedLinea(q)||{}).caudal? "el de los datos de diseño cargados" : "sin dato para la Pp de diseño; mientras esté sin verificar usa el general ("+String(r.def.caudal).replace(".",",")+" L/h)"))}" aria-label="Caudal del gotero de ${esc(q.nombre)} (L/h)" style="width:46px;text-align:right" onchange="riegoSet(${q.id},'caudal',this.value,this)"></td>
+            <td style="text-align:right;min-width:118px" class="rg-tpp"><b style="font-size:14px">${fmt(c.pp,2)}</b><div style="margin:2px 0">${riegoPpBadge(pi)}</div><div class="muted" style="font-size:10.5px;line-height:1.2">${[pi.src==="ini"? "valores iniciales" : pi.src? esc(pi.lab.replace(/^(medida|diseño)( · )?/,"")) : "", pi.gpl!=null? riegoFmtG(pi.gpl)+" got./pl" : "", pi.lpl!=null? riegoFmtG(pi.lpl)+" L/h/pl" : ""].filter(Boolean).join(" · ")}</div></td>
+            <td style="font-size:10.5px;line-height:1.3;min-width:118px;white-space:normal" class="rg-tlin">${esc(riegoLineaCorta(pi))}</td>
             <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.ef||""}" placeholder="${r.def.ef}" style="width:46px;text-align:right" onchange="riegoSet(${q.id},'ef',this.value)"></td>
             <td style="text-align:right">${fmt(c.etcDia,2)}</td>
             <td style="text-align:right"><input type="text" inputmode="decimal" value="${o.rep||""}" placeholder="${r.rep}" style="width:46px;text-align:right" onchange="riegoRepSet(${q.id},this.value)"></td>
@@ -15898,12 +15948,12 @@ function riegoArmarHTML(){   // arma la vista completa (el área #riegoScroll es
             <td style="text-align:right;font-weight:800;color:var(--p2);font-size:15px">${fmt(c.hRiego,1)}${al.largo? `<div><span class="badge b-rojo" style="font-size:10.5px">revisar Pp o Kc</span></div>` : ""}</td>
             <td style="text-align:right">${fmt(c.m3haRiego,1)}</td><td style="text-align:right">${fmt(c.m3Sem,0)}</td></tr>`; }).join("")}
           ${filas.length? `<tr style="background:var(--pclaro);font-weight:700"><td>TOTAL ${esc(f)} · ${fmt(cus.reduce((s,q)=>s+(+q.ha||0),0),2)} ha</td><td colspan="10"></td><td style="text-align:right">${fmt(totM3,0)}</td></tr>` : `<tr><td colspan="12" class="muted">Este fundo no tiene cuarteles plantados.</td></tr>`}</tbody></table></div>
-          <div class="muted" style="font-size:11.5px;margin-top:6px">Toca las letras para cambiar los días de ese cuartel; escribe en las casillas para cambiar un valor (vacío = el general). La casilla L/h es el caudal del gotero de la línea de riego (el mismo de la ficha, de 0,5 a 16 L/h). El resto de la línea (entrehilera, líneas, distancia entre goteros), la Pp medida y la cobertura de copa se editan en la ficha ⚙ de cada cuartel.</div>`}
+          <div class="muted" style="font-size:11.5px;margin-top:6px">Toca las letras para cambiar los días de ese cuartel; escribe en las casillas para cambiar un valor (vacío = el general). La línea de riego (líneas por hilera y, por línea, caudal y distancia entre goteros), la Pp medida y la cobertura de copa se editan en la ficha ⚙ de cada cuartel.</div>`}
           <div class="fila" style="justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--borde)">
             <span class="muted">${esc(f)} · ${filas.length} cuartel${filas.length===1?"":"es"} · ${fmt(haTot,2)} ha</span>
             <span><b style="color:var(--p2);font-size:17px">${fmt(totM3,0)} m³</b> <span class="muted">de agua en la semana</span></span>
           </div>
-          <div class="muted" style="font-size:11px;margin-top:8px"><b>Pp</b> (precipitación del sistema) = caudal ÷ (entrehilera ÷ líneas × distancia entre goteros), o la Pp medida si la hay · <b>Kc efectivo</b> = Kc del mes × factor de cobertura · <b>mm por riego</b> = ETc × 7 × reposición ÷ eficiencia ÷ días de riego · <b>horas</b> = mm ÷ Pp · 1 mm = 10 m³/ha.</div>
+          <div class="muted" style="font-size:11px;margin-top:8px"><b>Pp</b> (precipitación del sistema, mm/h) = (L/h por metro de la Línea 1 + L/h por metro de la Línea 2) ÷ distancia entre hileras (el primer número del marco); L/h por metro = caudal del gotero ÷ distancia entre goteros; con 1 línea entra solo la Línea 1; si hay Pp medida (aforo), manda esa · <b>Kc efectivo</b> = Kc del mes × factor de cobertura · <b>mm por riego</b> = ETc × 7 × reposición ÷ eficiencia ÷ días de riego · <b>horas</b> = mm ÷ Pp · 1 mm = 10 m³/ha.</div>
         </div>
         <details class="card"><summary style="cursor:pointer;font-weight:700">${ic("gear")} Configuración del riego y tablas de Kc</summary>
           <div class="fila" style="gap:14px;flex-wrap:wrap;align-items:center;margin:12px 0 4px">
@@ -15911,9 +15961,7 @@ function riegoArmarHTML(){   // arma la vista completa (el área #riegoScroll es
             <label class="muted">Alerta si un riego pasa de <input type="text" inputmode="decimal" value="${String(riegoUmbral()).replace(".",",")}" style="width:56px" onchange="riegoUmbralSet(this.value)" aria-label="Horas por riego para la alerta"> h <span style="font-size:11.5px">(revisar Pp o Kc)</span></label>
             <label class="fila" style="gap:6px;align-items:center;margin:0;cursor:pointer"><input type="checkbox" ${r.descLluvia?"checked":""} style="width:auto" onchange="riegoDescLluvia(this.checked)"><span class="muted">descontar la lluvia de esa semana</span></label>
             <span style="flex-basis:100%;height:0"></span>
-            <span class="muted rg-svcfg" style="flex-basis:100%;font-size:12px">Solo para los cuarteles con <b>Pp sin verificar</b> (sin línea de riego ni Pp medida):</span>
-            <label class="muted">goteros/pl <input type="text" inputmode="decimal" value="${r.def.gpp}" style="width:56px" onchange="riegoDef('gpp',this.value)"></label>
-            <label class="muted">L/h <input type="text" inputmode="decimal" value="${r.def.caudal}" style="width:56px" onchange="riegoDef('caudal',this.value)"></label>
+            <span class="muted rg-lincfg" style="flex-basis:100%;font-size:12px">Línea de riego inicial de cada cuartel: gotero de 2 L/h cada 0,5 m; 1 línea si se plantó en 2025 o después, 2 si antes. Cada cuartel la confirma en su ficha ⚙ (o todo el fundo de una vez con «Aplicar a todos los cuarteles del fundo»).</span>
           </div>
           <div class="fila" style="gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px"><span class="gfl" style="margin:0">Kc según:</span>
             <button class="chip ${(r.modoKc||"mes")==="mes"?"on":""}" onclick="riegoModoKc('mes')">Mes</button>
@@ -15986,7 +16034,7 @@ function riegoPDFModal(tipo){
     <div class="fila" style="justify-content:space-between;align-items:center;margin:2px 0 6px"><b style="font-size:13px;color:#48525d">Fundos</b>
       <span class="fila" style="gap:6px"><button type="button" class="btn sec chico" onclick="document.querySelectorAll('.rr-f').forEach(x=>x.checked=true)">Todos</button><button type="button" class="btn sec chico" onclick="document.querySelectorAll('.rr-f').forEach(x=>x.checked=false)">Ninguno</button></span></div>
     <div class="fila" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">${fs.map(f=>`<label class="chip" style="gap:8px;cursor:pointer"><input type="checkbox" class="rr-f" value="${esc(f)}" ${f===actual?"checked":""} style="width:20px;height:20px;accent-color:var(--p)"> ${esc(f)}</label>`).join("")}</div>
-    <div class="muted" style="font-size:12.5px">Sale una hoja por fundo. Usa la programación de ahora (ET₀ ${esc(riegoBaseLab(r.base||"ant"))}, días de riego, Pp y reposición de cada cuartel) y los turnos de cada equipo. Los cuarteles con Pp sin verificar salen marcados «horas por confirmar». Revísala antes de entregar.</div>`,
+    <div class="muted" style="font-size:12.5px">Sale una hoja por fundo. Usa la programación de ahora (ET₀ ${esc(riegoBaseLab(r.base||"ant"))}, días de riego, Pp y reposición de cada cuartel) y los turnos de cada equipo. Revísala antes de entregar.</div>`,
     async ()=>{
       const lunes=v("rr_lunes"), hora=v("rr_hora")||"08:00";
       const sel=[...document.querySelectorAll(".rr-f:checked")].map(x=>x.value);
@@ -16029,9 +16077,9 @@ async function riegoPDFRegador(o){
       const P=riegoPlanFundo(f, serie); if(!P.filas.length) continue;
       if(!primera) d.addPage(); primera=false;
       cab(f); let y=A.top+4;
-      /* corrector 27-10: los cuarteles con Pp sin verificar salen marcados en la hoja del regador (sus horas pueden venir infladas) */
-      const svIds=new Set(P.filas.filter(({c})=>(c.ppInfo||{}).src==="sv").map(({q})=>q.id));
-      const uSv=u=>u.partes.some(p=>svIds.has(p.q.id));
+      /* 29-10-2026: la hoja del regador no marca los valores iniciales de la línea de riego (decisión por defecto; con RIEGO_REG_MARCA_INI = true los marca) */
+      const iniIds=new Set(RIEGO_REG_MARCA_INI? P.filas.filter(({c})=>(c.ppInfo||{}).src==="ini").map(({q})=>q.id) : []);
+      const uIni=u=>u.partes.some(p=>iniIds.has(p.q.id));
       for(const pl of P.planes){
         const nVal = pl.sinN? "1 válvula a la vez (sin dato: revisar)" : pl.n+" válvula"+(pl.n>1?"s":"")+" a la vez";
         if(y>A.h-A.bottom-30){ d.addPage(); cab(f); y=A.top+4; }
@@ -16042,7 +16090,7 @@ async function riegoPDFRegador(o){
         for(const {i,ts} of pl.dias){
           if(!ts.length){ sin.push(RIEGO_DIA_N[i]); continue; }
           let t0=ini0; const tot=ts.reduce((s,t)=>s+t.h,0);
-          const body=ts.map(t=>{ const min=Math.round(t.h*60/5)*5, k0=Math.floor(t0/1440), k1=Math.floor((t0+min)/1440), fila=[ "", riegoHoraDia(t0,i)+"  a  "+(k1===k0? riegoHHMM(t0+min) : riegoHoraDia(t0+min,i)), riegoDur(min/60), t.items.map(u=>(u.cod? u.cod+"   " : "")+riegoUnidadTxt(u)+(uSv(u)? "  (horas por confirmar)" : "")).join("\n") ]; t0+=min; return fila.map(pdfSano); });
+          const body=ts.map(t=>{ const min=Math.round(t.h*60/5)*5, k0=Math.floor(t0/1440), k1=Math.floor((t0+min)/1440), fila=[ "", riegoHoraDia(t0,i)+"  a  "+(k1===k0? riegoHHMM(t0+min) : riegoHoraDia(t0+min,i)), riegoDur(min/60), t.items.map(u=>(u.cod? u.cod+"   " : "")+riegoUnidadTxt(u)+(uIni(u)? "  (horas con gotero supuesto)" : "")).join("\n") ]; t0+=min; return fila.map(pdfSano); });
           const finDia=riegoHoraDia(t0,i);
           if(y>A.h-A.bottom-28){ d.addPage(); cab(f); y=A.top+4; }
           d.autoTable({startY:y, margin:{left:A.ml, right:A.mr, top:A.top+2, bottom:A.bottom},
@@ -16065,13 +16113,6 @@ async function riegoPDFRegador(o){
         y+=2;
       }
       if(P.sinDatos.length){ pdfF(d,8.5,false,CP.suave); const l=d.splitTextToSize(pdfSano("Sin programa (faltan datos de riego): "+P.sinDatos.join(", ")+"."), ancho); d.text(l, A.ml, y); y+=l.length*4+2; }
-      if(svIds.size){
-        const nomSv=P.filas.filter(({q})=>svIds.has(q.id)).map(({q})=>q.nombre);
-        pdfF(d,9,true,"#7A5D0E"); const l=d.splitTextToSize(pdfSano("Pp sin verificar en "+nomSv.length+" de "+P.filas.length+" cuartel"+(P.filas.length>1?"es":"")+": "+nomSv.join(", ")+". Las horas de "+(nomSv.length>1? "esos cuarteles" : "ese cuartel")+" pueden estar mal: confirmar con el encargado antes de regar."), ancho-8);
-        const hB=l.length*4.2+5.5; if(y+hB>A.h-A.bottom-8){ d.addPage(); cab(f); y=A.top+4; }
-        pdfFill(d,"#FDF3D7"); pdfStroke(d,"#E2C07A",0.35); d.roundedRect(A.ml, y, ancho, hB, 1.4, 1.4, "FD");
-        pdfF(d,9,true,"#7A5D0E"); d.text(l, A.ml+4, y+5.3, {lineHeightFactor:1.3}); y+=hB+4;
-      }
       if(y>A.h-A.bottom-40){ d.addPage(); cab(f); y=A.top+4; }
       pdfFill(d, CP.pale2); pdfStroke(d, CP.linea, 0.3); d.roundedRect(A.ml, y, ancho, 17, 1.6, 1.6, "FD");
       pdfF(d,9.5,true,TINTA); pdfTxt(d,"Cómo usar esta hoja", A.ml+4, y+6);
@@ -16135,8 +16176,8 @@ async function riegoPDFPro(o){
         return [q.nombre, (q.especie||"")+(q.variedad? " "+q.variedad:""), fN(+q.ha||0,2), c.area? fN(c.area,1) : "s/marco",
           riegoSectores(q).map(s=>s.cod||"unico").join(" "), riegoEquipo(q)||"principal",
           fN(ki.kc,2)+" "+(ki.src==="fen"? "fen" : ki.src==="manual"? "man" : "mes")+(ki.cob? "\n"+fN(ki.kcBase,2)+" × "+riegoFmtCob(ki.cob)+" cob." : "")+(ki.aj? " "+ki.aj+"%" : ""), fN(c.etcDia,2), fN(c.lamSem,1), fN(p.ef,0), fN(c.lamBruta,1),
-          riegoDiasTxt(c.diasSel||[]), fN(c.lamRiego,1), fN(c.pp,2)+"\n"+((c.ppInfo||{}).src==="med"? "medida" : (c.ppInfo||{}).src==="dis"? "diseño" : "sin verificar"), fN(c.hRiego,1)+(c.hRiego!=null && c.hRiego>riegoUmbral()+1e-9? " (!)" : ""), fN(c.m3haRiego,1), fN(c.m3Sem,0)].map(pdfSano); });
-      const svP=P.filas.filter(({c})=>(c.ppInfo||{}).src==="sv");
+          riegoDiasTxt(c.diasSel||[]), fN(c.lamRiego,1), fN(c.pp,2)+"\n"+({med:"medida", dis:"diseno", ini:"inicial"}[(c.ppInfo||{}).src]||""), fN(c.hRiego,1)+(c.hRiego!=null && c.hRiego>riegoUmbral()+1e-9? " (!)" : ""), fN(c.m3haRiego,1), fN(c.m3Sem,0)].map(pdfSano); });
+      const iniP=P.filas.filter(({c})=>(c.ppInfo||{}).src==="ini");
       const tot=P.filas.reduce((s,x)=>s+(x.c.m3Sem||0),0);
       d.autoTable({startY:y, margin:{left:PG.ml,right:PG.mr,top:PG.y0,bottom:PG.mb+3},
         head:[["Cuartel","Especie","ha","m2/pl","Sectores","Equipo","Kc","ETc mm/d","Neta sem mm","Ef %","Bruta sem mm","Días","mm/riego","Pp mm/h","h/riego","m3/ha riego","m3/sem"]],
@@ -16147,12 +16188,13 @@ async function riegoPDFPro(o){
         alternateRowStyles:{fillColor:rgb("#FAFCFB")},
         columnStyles:{0:{halign:"left", fontStyle:"bold", cellWidth:30}, 1:{halign:"left", cellWidth:30}, 4:{halign:"left", cellWidth:26}, 5:{halign:"left", cellWidth:20}, 11:{halign:"center", cellWidth:18}, 14:{fontStyle:"bold"}},
         didParseCell:h=>{ if(h.section!=="body" && [0,1,4,5].indexOf(h.column.index)>=0) h.cell.styles.halign="left";
-          if(h.section==="body" && h.column.index===13 && /sin verificar/.test(String(h.cell.raw||""))){ h.cell.styles.fillColor=rgb("#FDF3D7"); h.cell.styles.textColor=rgb("#7A5D0E"); h.cell.styles.fontStyle="bold"; }   // Pp sin verificar: ámbar
+          if(h.section==="body" && h.column.index===13 && /inicial/.test(String(h.cell.raw||""))){ h.cell.styles.fillColor=rgb("#F1F4F1"); h.cell.styles.textColor=rgb("#48525D"); }   // Pp con valores iniciales: gris, sin negrita
           if(h.section==="body" && h.column.index===14 && /\(!\)/.test(String(h.cell.raw||""))) h.cell.styles.textColor=rgb("#9B1C1C"); },
         didDrawPage:()=>pdfCabecera(d,Rf)});
       y=d.lastAutoTable.finalY+7;
-      if(svP.length){ if(y>PG.yFin-12) y=pdfPagina(d,Rf); pdfF(d,7.4,true,"#7A5D0E");
-        const l=d.splitTextToSize(pdfSano("Pp sin verificar en "+svP.length+" de "+P.filas.length+" cuarteles (fórmula antigua: goteros por planta x caudal / m2 por planta; las horas pueden estar mal):"+svP.map(x=>x.q.nombre).join(", ")+"."), PG.ancho);
+      if(iniP.length){ if(y>PG.yFin-12) y=pdfPagina(d,Rf); pdfF(d,7.4,false,"#48525D");
+        const gI=riegoFmtL(RIEGO_LINEA_INI.caudal)+" L/h cada "+riegoFmtL(RIEGO_LINEA_INI.dg)+" m";
+        const l=d.splitTextToSize(pdfSano("Pp con valores iniciales de la linea de riego ("+gI+"; 1 linea si se planto en "+RIEGO_UNA_LINEA_DESDE+" o despues, 2 si antes) en "+iniP.length+" de "+P.filas.length+" cuartel"+(P.filas.length>1? "es" : "")+": "+iniP.map(x=>x.q.nombre).join(", ")+". Confirmar en la ficha de riego de cada cuartel."), PG.ancho);
         d.text(l, PG.ml, y); y+=l.length*3.3+3; }
       /* turnos */
       for(const pl of P.planes){
@@ -16179,7 +16221,7 @@ async function riegoPDFPro(o){
       if(y>PG.yFin-18) y=pdfPagina(d,Rf);
       pdfF(d,6.6,false,CP.gris);
       const notas=["ETc = ET0 x Kc"+(r.descLluvia? " - 75 % de la lluvia":"")+". Lamina neta de la semana = ETc x 7 x reposicion; bruta = neta / eficiencia; mm por riego = bruta / dias de riego del cuartel.",
-        "Pp (mm/h) = caudal del gotero / (entrehilera / lineas por hilera x distancia entre goteros), o la Pp medida (aforo o caudalimetro: m3/h / ha / 10). «Sin verificar» = formula antigua: goteros por planta x caudal / m2 por planta. Horas por riego = mm por riego / Pp. 1 mm = 10 m3/ha. Caudal de un sector = Pp x ha x 10 (m3/h).",
+        "Pp (mm/h) = (L/h por metro de la linea 1 + L/h por metro de la linea 2) / distancia entre hileras (primer numero del marco); L/h por metro = caudal del gotero / distancia entre goteros; con 1 linea solo la linea 1. O la Pp medida (aforo o caudalimetro: m3/h / ha / 10). Horas por riego = mm por riego / Pp. 1 mm = 10 m3/ha. Caudal de un sector = Pp x ha x 10 (m3/h).",
         "Kc efectivo = Kc de la tabla (mes o fenologia) x factor de cobertura de copa x ajuste %. h/riego (!) = pasa de "+riegoFmtG(riegoUmbral())+" h: revisar Pp o Kc.",
         "Turnos: cada equipo riega a la vez hasta su numero de sectores (y su caudal, si se anoto); cada turno dura lo del sector mas largo. (!) = el dia pasa las horas disponibles."];
       /* 28-10-2026: notas cortas con qué hacer (las mismas ideas que los avisos de la pantalla, sin botones) */
@@ -16190,8 +16232,8 @@ async function riegoPDFPro(o){
         const semH=ds.reduce((s,x)=>s+x.tot,0), nMar=ds.filter(x=>x.tot>0).length, dMin=Math.ceil(semH/24-1e-9);
         return (pl.nom||"Equipo del fundo")+": "+dp.map(x=>RIEGO_DIA[x.i]).join(" ")+" · hasta "+fN(Math.max(...dp.map(x=>x.tot)),1)+" h ("+(pl.n>1? "duracion de los turnos, "+pl.n+" sectores a la vez" : "suma de los sectores de a uno")+")"
           +"; necesita "+fN(semH,0)+" h de riego a la semana"+(dMin>7? ": ni regando los 7 dias cabe, hay que regar mas sectores a la vez" : dMin>nMar? ": al menos "+dMin+" dias de riego (hoy "+nMar+")" : " en "+nMar+" dias: emparejar los dias")+(pl.sinN? "; bomba sin dato de sectores a la vez (calculado de a uno)" : ""); }).filter(Boolean);
-      if(c24P.length) notas.push("Mas de 24 h en un dia (los sectores compartidos cuentan una vez): "+c24P.join(" · ")+". Que hacer: marcar mas dias de riego, regar mas sectores a la vez si la bomba da, o verificar la Pp.");
-      if(P.sinDatos.length) notas.push("Sin calcular (falta la Pp: marco o linea de riego): "+P.sinDatos.join(", ")+".");
+      if(c24P.length) notas.push("Mas de 24 h en un dia (los sectores compartidos cuentan una vez): "+c24P.join(" · ")+". Que hacer: marcar mas dias de riego, regar mas sectores a la vez si la bomba da, o confirmar la linea de riego.");
+      if(P.sinDatos.length) notas.push("Sin calcular (falta el marco de plantacion o no se entiende): "+P.sinDatos.join(", ")+".");
       notas.forEach(t=>{ const l=d.splitTextToSize(pdfSano(t), PG.ancho); d.text(l, PG.ml, y); y+=l.length*3; });
     }
     pdfPies(d,R);

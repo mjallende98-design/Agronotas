@@ -404,7 +404,7 @@ document.addEventListener("visibilitychange", ()=>{
 window.addEventListener("error", e=>{ if(!DEMO.corriendo) return; if(e.target && e.target !== window && (e.target.src || e.target.href)) return;
   DEMO.errores.push("Error de JavaScript: " + (e.message || "error") + " · " + String(e.filename || "").split("/").pop().split("?")[0] + ":" + (e.lineno || "")); }, true);
 window.addEventListener("unhandledrejection", e=>{ if(!DEMO.corriendo) return; const m = String((e.reason && (e.reason.message || e.reason)) || "rechazo");
-  if(/bots: |Failed to fetch|NetworkError|Load failed|AbortError|aborted|corsproxy/i.test(m)) return; DEMO.errores.push("Promesa sin manejar: " + m.slice(0, 200)); });
+  if(/bots: |Failed to fetch|NetworkError|Load failed|AbortError|aborted/i.test(m)) return; DEMO.errores.push("Promesa sin manejar: " + m.slice(0, 200)); });
 
 /* ---------- música de fondo y sonidos (Web Audio: se generan aquí, no hay archivos) ---------- */
 let _ac = null, _mus = null, _musH = null;
@@ -700,8 +700,6 @@ const FRASES = {
          "Con <b>Programar</b>, arriba, agregas una labor o un recordatorio, y aparece en Hoy, en Próximas acciones.",
          "Al avanzar marcas los días trabajados y el porcentaje: el plan y lo real quedan lado a lado, y sale en PDF para la reunión."],
   TAB:["El <b>Tablero</b> ordena ideas por fundo en columnas: ideas, decidido, en ejecución y listo."],
-  NOTI:[["En <b>Noticias</b> llegan las del agro y la fruta, con el dólar y la UF del día.",
-         "En <b>Noticias</b> llegan las del agro y la fruta, con el dólar y la UF, cuando hay señal."]],
   FITO:["La <b>Calc Fito</b> planifica una aplicación: eliges el producto de la base SAG y trae su dosis, su carencia y su registro por especie.",
         "Marcas los cuarteles y calcula el producto total, los envases, el agua y el costo, con la fecha desde la que se puede cosechar.",
         "Además avisa si el producto no está autorizado en la especie, si repites el mismo modo de acción o si pasas el máximo de aplicaciones.",
@@ -711,9 +709,9 @@ const FRASES = {
          "Arriba ves los cuarteles que siguen en carencia y hasta qué día."],
   RIEGO:["<b>Riego</b> calcula cuánto regar cada cuartel con la ET₀ de tu estación: horas por riego, milímetros y metros cúbicos.",
          "Los días en verde los midió la estación; los grises son estimados.",
-         "Cada tarjeta es un cuartel. La insignia dice de dónde sale la Pp: medida, de diseño o sin verificar.",
+         "Cada tarjeta es un cuartel. La insignia dice de dónde sale la Pp: medida, de diseño o con valores iniciales.",
          "Si algo no cuadra, arriba sale un aviso que explica qué es, por qué importa y qué hacer, con un botón por cuartel.",
-         "El botón abre la ficha de ese cuartel justo donde hay que corregir: la línea de riego, la Pp medida con un aforo o la cobertura de copa del huerto joven.",
+         "El botón abre la ficha de ese cuartel justo donde hay que corregir: las líneas de riego con su gotero, la Pp medida con un aforo o la cobertura de copa del huerto joven.",
          "En <b>Turnos</b> la app arma qué sectores riegan juntos según la bomba, y avisa si no cabe en el día.",
          "Y el <b>PDF para el regador</b> le dice qué válvula abrir, qué día y por cuántas horas."],
   EST:["La <b>Estación</b> trae los datos de tu Davis cada quince minutos y los guarda en este equipo.",
@@ -921,10 +919,6 @@ const BLOQUES = {
 
   TAB:{prep:async ()=>{ nav.filtroFundo = ""; await K().irA("tab"); }, pasos:[ async fr=>decir(fr, [".tab-cols", "#app"]) ]},
 
-  NOTI:{prep:async ()=>{ await K().irA("noti"); }, pasos:[
-    async fr=>{ const con = !!(D.noticias && (D.noticias.items || []).length); await decir(con? fr[0] : fr[1], "#app .card"); }
-  ]},
-
   FITO:{prep:async ()=>{ try{ D.planFito = cfDefault(); guardar(); }catch(e){} await K().irA("calcfito"); }, pasos:[
     async fr=>decir(fr, "#cfProdInput", async ()=>{
       const q0 = DEMO.q[0], k = cfEspKey(q0.especie), L = cfCatProd().filter(p=>p && p.n && p.id != null);
@@ -1054,7 +1048,7 @@ const BLOQUES = {
 
 /* ------------------------------------------------------------------ los guiones */
 const GUIONES = [
-  {id:"recorrido", nombre:"Recorrido completo", min:"10–11", para:"Conocer toda la app", sec:[["B0"],["HOY"],["MAPA"],["NOTA"],["BIT"],["FENO"],["LISTAS"],["GANTT"],["TAB"],["NOTI"],["FITO"],["CALC"],["APLIC"],["RIEGO"],["EST"],["ASIST"],["DATOS"],["FIN"]]},
+  {id:"recorrido", nombre:"Recorrido completo", min:"10–11", para:"Conocer toda la app", sec:[["B0"],["HOY"],["MAPA"],["NOTA"],["BIT"],["FENO"],["LISTAS"],["GANTT"],["TAB"],["FITO"],["CALC"],["APLIC"],["RIEGO"],["EST"],["ASIST"],["DATOS"],["FIN"]]},
   {id:"jefe", nombre:"Día a día del jefe de campo", min:"3", para:"Capacitar a jefes de campo y capataces", sec:[["B0",[1]],["HOY",[1,4,5,6,7]],["NOTA",[1,2,3,4,5,6]],["BIT",[1,3,4]],["REC"],["EST",[3,4]],["FIN_JEFE"]]},
   {id:"riego", nombre:"Riego y estación", min:"3", para:"Encargado de riego y quien decide aplicaciones", sec:[["INTRO_RIEGO"],["HOY_EST"],["EST",[2,3,4,5,6,7,8]],["RIEGO"],["FIN_RIEGO"]]},
   {id:"corta", nombre:"Presentación corta", min:"2", para:"Mostrar qué es AgroNotas (reunión)", sec:[["L1"],["HOY",[1,4]],["HOY",[5]],["L2"],["FITO",[1]],["L3"],["EST",[3]],["L4"],["L5"]]}
