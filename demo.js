@@ -1,5 +1,5 @@
 /* =====================================================================================
-   AgroNotas · Demostración guiada con voz (28-10-2026)
+   AgroNotas · Demostración guiada con voz (28-10-2026; voz, música, subtítulos y modo presentación rehechos el 29-10-2026)
    Un bot usa la app frente a la gente, con subtítulos, voz de presentador, música suave y sonidos,
    para enseñarla o presentarla. Port del motor de GesAgro (bots.js, sección DEMOSTRACIÓN), adaptado a AgroNotas.
 
@@ -27,22 +27,46 @@
       · Entradas: Hoy (junto a «Agregar widget»), Datos → Respaldo (tarjeta «Demostración guiada») y el panel de los bots.
    3) Este archivo NO abre nada solo al cargarse: define window.AgroDemo y espera que lo llamen.
 
+   ── VOZ, SUBTÍTULOS, MÚSICA Y MODO PRESENTACIÓN (29-10-2026) ─────────────────────────────
+   · Cada frase se parte en UNIDADES (oraciones reales; no corta en «1.250» ni en «…» seguido de minúscula; junta las cortas).
+     De cada unidad salen sus SUBTÍTULOS (#demoCap, aparte de los controles: trozos de ≤ 84 letras y 2 líneas, sin dejar un
+     artículo al final ni separar un número de su unidad) y su TEXTO HABLADO (paraVoz o el mapa VOZ: números en palabras con
+     su género, «el Sag», «lápiz»…; las frases largas van en dos piezas). El subtítulo cambia al empezar cada pieza hablada.
+   · Voz del sistema (Web Speech): velocidad 1 y tono 1 («Más lento» = más pausa entre frases, no voz más lenta); cancel() solo
+     si algo suena y 300 ms antes del speak() siguiente; reloj de seguridad por la duración prevista, con onstart/onboundary
+     y un reintento. Se elige «Voz de mujer» o «Voz de hombre» y la voz queda por voiceURI.
+   · Música generada (0 KB, sin licencias): colchón cálido en Re mayor, 8 acordes de 8 s, reverberación generada; baja
+     cuando habla y espera 1,5 s antes de subir. Tres niveles (Normal, Baja, Muy baja) y Apagada.
+   · Modo presentación: esconde los controles y los paneles; un toque real muestra una barra mínima que se esconde sola;
+     pantalla completa si el navegador la deja; Wake Lock en toda demostración (si no hay, se sigue y el panel lo dice).
+   · MUDO intacto: en este PC no se llama a la voz ni se crea un AudioContext. La música se mide con OfflineAudioContext
+     (_medirMusica: renderiza en memoria, nunca a los parlantes).
+
    ── API PÚBLICA (window.AgroDemo) ─────────────────────────────────────────────────────────
    abrir(id)        panel de inicio (#demoPanel); id = guion preseleccionado. No arma la caja todavía.
    comenzar(id)     arma la caja (si falta), siembra los ejemplos, prepara la estación falsa y corre el guion con voz.
-   pausa()          Pausa / Seguir (en el iPad: cancel() y al seguir se repite la frase desde el principio).
-   siguiente()      salta a la frase siguiente.   salir()  calla todo y vuelve a la app (recarga).
-   probar(id, op)   para el bot y la prueba en el navegador: sin voz, música ni sonidos, rápido, sin recargar.
-                    Devuelve {id, pasos, total, directos, atajos, sinElemento, errores, textos, laminas, ms}.
+                    En el mismo toque: audio, voz, pantalla completa (modo presentación) y pantalla encendida (Wake Lock).
+   pausa()          Pausa / Seguir (la voz se calla y al seguir se repite la oración que sonaba).
+   siguiente()      salta a la frase siguiente.   salir()  calla todo y vuelve a la app (recarga); en el modo presentación pide otro toque en 3 s.
+   musica()         Normal → Baja → Muy baja → Apagada.   subtitulos()  sí / no.   presentacion(on)  entra o sale del modo presentación.
+   tecla(k)         como el teclado del modo presentación: " " pausa, "ArrowRight"/"PageDown" siguiente, "m" música, "s" subtítulos, "Escape" sale del modo.
+   probar(id, op)   para el bot y la prueba en el navegador: sin voz, música ni sonidos, rápido, sin recargar. op = {voz, musica, sonidos, pres, vel, rapido}.
+                    Devuelve {id, pasos, total, directos, atajos, sinElemento, errores, textos, laminas, ms, cap}.
                     · directos   = toques que NO encontraron su botón y llegaron por código (deberían ser 0).
                     · atajos     = acciones que van por código A PROPÓSITO (ver ATAJOS): no son falla.
                     · sinElemento= frases cuyo resaltado no se encontró en pantalla (deberían ser 0).
                     · textos     = todos los subtítulos mostrados (texto plano), para revisar undefined/NaN/null.
                     · laminas    = {mostradas, escondidas} de #demoDiapo.
+                    · cap        = {trozos, maxCar, maxLineas, minPx, ctlMostrados, escudo, lamMedidas, lamSinEscudo, visibles, textos} de los subtítulos y del modo presentación
+                                   (con pres:true: sin pantalla completa ni Wake Lock; ctlMostrados cuenta solo toques reales, los del bot no abren la barra;
+                                   lamSinEscudo = láminas en que el centro de la pantalla no era el escudo: un toque ahí no abriría la barra).
                     Requiere la caja de arena ya armada o la arma (en ese caso la página queda en la caja: recargar después).
                     Restaura D, las funciones falsas y lo que cambió en nav al terminar.
-   estado()         {corriendo, id, n, total, pausa, pausaPor ("oculta" = la página se escondió, "boton"), modo, titulo, mudo, mudas}   (para consultar en tandas de ≤ 40 s)
-   GUIONES, FRASES, ATAJOS, _estimar() (pasos y duración estimada por guion), _revisar() (frases vs pasos), limpiar().
+   estado()         {corriendo, id, n, total, pausa, pausaPor ("oculta" = la página se escondió, "boton"), modo, titulo, mudo, mudas,
+                     pres, ctl, subs, musica, vozTipo, fin, wakeLock, pantallaCompleta}   (para consultar en tandas de ≤ 40 s)
+   GUIONES, FRASES, VOZ, ATAJOS, _estimar() (pasos y duración estimada por guion), _revisar() (frases vs pasos, mapa VOZ y trozos), limpiar().
+   Sin sonido, para los bots: _planFrase(texto, clave), _unidadesVoz(), _vozParams(), _voces(), _controles(on), _planMusica(k0, n, op),
+   _medirMusica(seg, op) (promesa: {pico, rmsDb, bajaDb, saltoMax, clics…}), _numVoz(n, g).
 
    ── SELECTORES QUE DEPENDEN DE OTRAS PARTES (verificados en el navegador por D-integrar, 28-10-2026) ──
    (H) #hoyNotas (Notas recientes · últimas 2 semanas) · .hoy-prox (solo Carta Gantt y recordatorios) · franja
@@ -50,6 +74,7 @@
        y su botón riegoFicha(id,'linea') que abre la ficha en «Línea de riego» (.rf-sec[data-rf]) · Turnos .rgt-dia/.rgt-conf.
    (G) #estGCtrl .chip[data-v="1a"|"gd"|"frio"], la 3.ª fila .est-ctrl-sub («Base 5/10/12,5 °C», «Porciones») y #estGKpi.
    (A) EST·4: #estKAplicar .est-factores (los cinco puntos), chips estAplicarEq('turbo'|'barra') y .est-h48.
+   (B) EST·10 (barómetro, 29-10): #estKPres (tarjeta «Presión» de Ahora) o su botón de la franja.
    probar() devuelve además respaldos (frases que resaltaron su alternativa de respaldo) y traza (qué se resaltó en cada frase).
    ===================================================================================== */
 (function(){
@@ -57,6 +82,7 @@
 if(window.AgroDemo) return;
 
 const K = ()=> (window.AgroBots && window.AgroBots.kit) || null;
+const $ = id=>document.getElementById(id);
 const esperar = ms => new Promise(r=>setTimeout(r, ms));
 const escH = s => String(s==null? "" : s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const plano = s => String(s==null? "" : s).replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, " ").trim();
@@ -74,16 +100,31 @@ const ATAJOS = ["puntos de la regla de medir", "mapolyInfo (ficha del cuartel en
    Para oírla a propósito en el PC: agregar ?sonido a la dirección. En el iPad (GitHub Pages) suena normal. Todo motor de voz nuevo lleva lo mismo. */
 const esMudo = loc=>(loc.protocol === "file:" || /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)$/.test(loc.hostname) || /\.localhost$/.test(loc.hostname)) && !/[?&]sonido\b/.test(loc.search);
 const MUDO = esMudo(location);
+/* el iPad y el iPhone (el iPad con iPadOS se presenta como «MacIntel» con pantalla táctil) */
+const ES_IOS = (()=>{ try{ return /iPad|iPhone|iPod/.test(navigator.userAgent || "") || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); }catch(e){ return false; } })();
+/* niveles de la música (ganancia del colchón): «Baja» por defecto */
+const MUS_NIV = {normal:.55, baja:.35, muybaja:.2};
+const NIV_ORDEN = ["normal", "baja", "muybaja"];
+const NIV_NOM = {normal:"Normal", baja:"Baja", muybaja:"Muy baja", no:"Apagada"};
 /* ------------------------------------------------------------------ estado y preferencias */
-const DEMO = {modo:"auto", voz:true, musica:true, sonidos:true, ritmo:1, vozNombre:"", sel:"recorrido",
+const DEMO = {modo:"auto", voz:true, musica:true, sonidos:true, ritmo:1, sel:"recorrido", vozTipo:"mujer", musNivel:"baja", subs:"si", presG:{},
   pausa:false, pausaPor:"", salto:null, cortar:false, corriendo:false, probando:false, rapido:false, n:0, total:0, titulo:"", id:"", _mudas:0,
+  presOn:false, fin:false, plan:null, _cps:13.5, _arriba:false, _ctl:false, _salirT:0, _enLamina:false, _vozURI:"",
   directos:[], atajos:[], sinElemento:[], respaldos:[], traza:[], tapados:[], errores:[], textos:[], laminas:{mostradas:0, escondidas:0},
+  cap:{trozos:0, maxCar:0, maxLineas:0, minPx:0, ctlMostrados:0, escudo:false, lamMedidas:0, lamSinEscudo:0, visibles:[], textos:[]}, wl:{pedidos:0, soltados:0, falta:false}, pc:{fs:0},
   _nPausas:0, _hablando:false, base:null, _orig:null, _estOk:false};
 const PREF = "agronotasDemoPref";
+const PREF_K = ["modo","voz","musica","sonidos","ritmo","sel","vozTipo","musNivel","subs","presG"];
 function lsGet(k){ try{ const x = K(); return (x && x.ORIG && x.ORIG.ls)? x.ORIG.ls.get.call(localStorage, k) : localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k, v){ try{ const x = K(); if(x && x.ORIG && x.ORIG.ls) x.ORIG.ls.set.call(localStorage, k, v); else localStorage.setItem(k, v); }catch(e){} }
-try{ const g = JSON.parse(lsGet(PREF) || "{}"); ["modo","voz","musica","sonidos","ritmo","vozNombre","sel"].forEach(k=>{ if(g[k] !== undefined) DEMO[k] = g[k]; }); }catch(e){}
-function guardarPref(){ if(DEMO.probando) return; lsSet(PREF, JSON.stringify({modo:DEMO.modo, voz:DEMO.voz, musica:DEMO.musica, sonidos:DEMO.sonidos, ritmo:DEMO.ritmo, vozNombre:DEMO.vozNombre, sel:DEMO.sel})); }
+try{ const g = JSON.parse(lsGet(PREF) || "{}"); PREF_K.forEach(k=>{ if(g[k] !== undefined) DEMO[k] = g[k]; }); }catch(e){}
+if(DEMO.vozTipo !== "hombre") DEMO.vozTipo = "mujer";
+if(!MUS_NIV[DEMO.musNivel]) DEMO.musNivel = "baja";
+if(!/^(si|grande|no)$/.test(DEMO.subs)) DEMO.subs = "si";
+if(!DEMO.presG || typeof DEMO.presG !== "object" || Array.isArray(DEMO.presG)) DEMO.presG = {};
+function guardarPref(){ if(DEMO.probando) return; const o = {}; PREF_K.forEach(k=>{ o[k] = DEMO[k]; }); lsSet(PREF, JSON.stringify(o)); }
+/* modo presentación: encendido por defecto en «Presentación corta»; en cada guion se recuerda lo que se eligió */
+const presDe = id=>(DEMO.presG && typeof DEMO.presG[id] === "boolean")? DEMO.presG[id] : id === "corta";
 
 /* ------------------------------------------------------------------ íconos propios (sin emojis en el chrome) */
 const SVG = {
@@ -96,37 +137,69 @@ const SVG = {
   musNo:'<svg viewBox="0 0 24 24" aria-hidden="true" class="di"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/><path d="M3 3l18 18"/></svg>',
   voz:'<svg viewBox="0 0 24 24" aria-hidden="true" class="di"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
   vozNo:'<svg viewBox="0 0 24 24" aria-hidden="true" class="di"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M16 10l5 5M21 10l-5 5"/></svg>',
-  campana:'<svg viewBox="0 0 24 24" aria-hidden="true" class="di"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>'
+  campana:'<svg viewBox="0 0 24 24" aria-hidden="true" class="di"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>',
+  cc:'<svg viewBox="0 0 24 24" aria-hidden="true" class="di"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10.5 10.3a2.3 2.3 0 1 0 0 3.4M17 10.3a2.3 2.3 0 1 0 0 3.4"/></svg>',
+  ccNo:'<svg viewBox="0 0 24 24" aria-hidden="true" class="di"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10.5 10.3a2.3 2.3 0 1 0 0 3.4M17 10.3a2.3 2.3 0 1 0 0 3.4M3 3l18 18"/></svg>'
 };
 
 /* ------------------------------------------------------------------ estilos */
 function cssDemo(){
-  if(document.getElementById("demoCSS")) return;
+  if($("demoCSS")) return;
   const s = document.createElement("style"); s.id = "demoCSS"; s.textContent = `
   html.demo-on #botsCursor{z-index:5060 !important}
-  html.demo-on body{padding-bottom:240px !important}
-  #demoSub .di,#demoPanel .di{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
-  #demoSub .di.f,#demoPanel .di.f{fill:currentColor;stroke:none}
+  html.demo-on body{padding-bottom:var(--demo-pad,240px) !important}
+  html.demo-on #avisoCapa{bottom:calc(var(--demo-aviso,24px) + env(safe-area-inset-bottom)) !important}
+  #demoSub .di,#demoPanel .di,#demoCtl .di{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+  #demoSub .di.f,#demoPanel .di.f,#demoCtl .di.f{fill:currentColor;stroke:none}
+  #demoSub button *,#demoCtl button *{pointer-events:none}
   #demoSub{position:fixed;z-index:5100;left:50%;transform:translateX(-50%);bottom:max(14px,env(safe-area-inset-bottom));width:min(760px,calc(100vw - 20px));box-sizing:border-box;
-    background:rgba(15,42,31,.97);color:#fff;border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.4);padding:14px 16px 12px;font:500 18px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+    background:rgba(15,42,31,.97);color:#fff;border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.4);padding:12px 14px 10px;font:500 16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
   #demoSub.arriba{bottom:auto;top:max(14px,env(safe-area-inset-top))}
-  #demoSub .dt{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#9fe0b5;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-bottom:6px}
+  #demoSub .dt{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#9fe0b5;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-bottom:4px}
   #demoSub .dt span.tt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #demoSub .dx{min-height:2.9em}
+  #demoSub .dx{min-height:2.9em;font-size:18px}
   #demoSub .dp{font-size:14px;color:#ffd28a;margin:0 0 6px}
-  #demoSub .dx b{color:#ffd28a}
-  #demoSub .db{display:flex;gap:8px;margin-top:10px;align-items:center}
+  #demoSub .dp:empty{display:none}
+  #demoSub .dx b,#demoSub .dp b{color:#ffd28a}
+  #demoSub .db{display:flex;gap:8px;margin-top:8px;align-items:center}
   #demoSub button{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 15px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;border:0;border-radius:12px;padding:10px 14px;cursor:pointer;min-height:44px;min-width:44px;background:rgba(255,255,255,.12);color:#fff}
   #demoSub button.pri{background:#e8892b;color:#1b1206}
-  #demoSub button:focus-visible,#demoPanel button:focus-visible,#demoPanel select:focus-visible,#demoPanel input:focus-visible{outline:3px solid #ffd28a;outline-offset:2px}
+  #demoSub button:focus-visible,#demoPanel button:focus-visible,#demoPanel select:focus-visible,#demoPanel input:focus-visible,#demoCtl button:focus-visible{outline:3px solid #ffd28a;outline-offset:2px}
   #demoSub .bar{flex:1;height:6px;background:rgba(255,255,255,.15);border-radius:4px;overflow:hidden;min-width:40px} #demoSub .bar i{display:block;height:100%;background:#5fbf86;transition:width .4s}
   #demoSub .hablando{display:inline-flex;gap:3px;align-items:flex-end;height:12px;margin-left:6px;vertical-align:middle} #demoSub .hablando i{width:3px;background:#9fe0b5;border-radius:2px;animation:demoOnda .9s ease-in-out infinite}
   #demoSub .hablando i:nth-child(2){animation-delay:.15s} #demoSub .hablando i:nth-child(3){animation-delay:.3s}
   @keyframes demoOnda{0%,100%{height:3px}50%{height:12px}}
+  #demoCap{position:fixed;z-index:5100;left:50%;transform:translateX(-50%);bottom:calc(var(--demo-pie,0px) + 16px + env(safe-area-inset-bottom));width:max-content;max-width:min(34em,calc(100vw - 32px));
+    box-sizing:border-box;text-align:center;pointer-events:none;text-wrap:balance;font:600 clamp(17px,min(3.3vh,4.6vw),32px)/1.32 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:none}
+  #demoCap.on{display:block}
+  #demoCap.arriba{bottom:auto;top:calc(var(--demo-techo,0px) + 14px + env(safe-area-inset-top))}
+  html.demo-capg #demoCap{font-size:clamp(20px,min(3.96vh,5.52vw),38px)}
+  #demoCap .ln{display:inline;background:rgba(0,0,0,.72);color:#fff;padding:.12em .45em;border-radius:.3em;-webkit-box-decoration-break:clone;box-decoration-break:clone;text-shadow:0 1px 2px rgba(0,0,0,.6);animation:demoCapIn .15s ease}
+  #demoCap b{color:#ffd28a;font-weight:700}
+  @keyframes demoCapIn{from{opacity:0}to{opacity:1}}
+  #demoEscudo{position:fixed;inset:0;z-index:5085;background:transparent;touch-action:none;-webkit-tap-highlight-color:transparent}
+  #demoEscudo.quieto{cursor:none}
+  #demoCtl{position:fixed;z-index:5110;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translate(-50%,8px);display:flex;flex-direction:column;gap:6px;box-sizing:border-box;width:max-content;max-width:calc(100vw - 24px);
+    background:rgba(15,42,31,.88);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#fff;border-radius:14px;padding:8px 10px;box-shadow:0 12px 34px rgba(0,0,0,.35);
+    font:600 14px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;opacity:0;pointer-events:none;transition:opacity .15s,transform .15s}
+  #demoCtl.on{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
+  #demoCtl .cb{display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap}
+  #demoCtl button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:48px;min-height:48px;border:0;border-radius:12px;padding:0 12px;background:rgba(255,255,255,.12);color:#fff;font:inherit;cursor:pointer}
+  #demoCtl button.pri{background:#e8892b;color:#1b1206}
+  #demoCtl button.ojo{background:#b3412e;color:#fff}
+  #demoCtl .cp{font-size:14px;color:#ffd28a;text-align:center;max-width:30em;margin:0 auto} #demoCtl .cp:empty{display:none} #demoCtl .cp b{color:#fff}
+  #demoCtl .ci{display:flex;align-items:center;gap:8px;font-size:12px;color:#9fe0b5}
+  #demoCtl .ci .bar{flex:1;height:3px;background:rgba(255,255,255,.15);border-radius:2px;overflow:hidden;min-width:40px} #demoCtl .ci .bar i{display:block;height:100%;background:#5fbf86}
+  html.demo-pres #demoSub,html.demo-pres #demoPanel,html.demo-pres #botsUI,html.demo-pres #botsLey{display:none !important}
+  html.demo-pres.demo-fin #demoSub{display:block !important}
+  html.demo-pres #demoAro{border-width:3px;box-shadow:0 0 0 9999px rgba(10,20,15,.3),0 0 14px rgba(232,137,43,.85)}
+  html.demo-pres #demoAro.on{animation:demoLate1 1.6s ease-in-out 1}
+  @keyframes demoLate1{50%{box-shadow:0 0 0 9999px rgba(10,20,15,.3),0 0 26px rgba(232,137,43,1)}}
+  html.demo-pres #botsCursor{width:16px !important;height:16px !important;background:#fff !important;box-shadow:0 0 0 2px #e8892b,0 3px 8px rgba(0,0,0,.35) !important}
   #demoAro{position:fixed;z-index:5050;pointer-events:none;border:5px solid #e8892b;border-radius:14px;box-shadow:0 0 0 9999px rgba(10,20,15,.42),0 0 22px rgba(232,137,43,.8);transition:all .35s ease;opacity:0;left:-60px;top:-60px;width:10px;height:10px}
   #demoAro.on{opacity:1;animation:demoLate 1.6s ease-in-out infinite}
   @keyframes demoLate{50%{box-shadow:0 0 0 9999px rgba(10,20,15,.42),0 0 34px rgba(232,137,43,1)}}
-  #demoDiapo{position:fixed;inset:0;z-index:5080;display:none;align-items:center;justify-content:center;padding:24px 24px 170px;background:linear-gradient(135deg,#0f2a1f,#1c4a33)}
+  #demoDiapo{position:fixed;inset:0;z-index:5080;display:none;align-items:center;justify-content:center;padding:24px 24px max(24px,calc(var(--demo-pad,170px) - 50px));background:linear-gradient(135deg,#0f2a1f,#1c4a33)}
   #demoDiapo.on{display:flex}
   #demoDiapo .dc{max-width:860px;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
   #demoDiapo .dk{color:#e8892b;font-weight:800;letter-spacing:.08em;text-transform:uppercase;font-size:14px;margin-bottom:10px}
@@ -134,6 +207,7 @@ function cssDemo(){
   #demoDiapo ul{margin:0;padding:0;list-style:none;display:grid;gap:12px}
   #demoDiapo li{font-size:clamp(17px,2.6vw,23px);line-height:1.4;padding-left:34px;position:relative;opacity:0;transform:translateY(8px);animation:demoEntra .5s ease forwards}
   #demoDiapo li::before{content:"";position:absolute;left:6px;top:.55em;width:12px;height:12px;border-radius:50%;background:#5fbf86}
+  #demoDiapo.portada li::before{display:none} #demoDiapo.portada li{padding-left:0;color:#9fe0b5}
   @keyframes demoEntra{to{opacity:1;transform:none}}
   #demoPanel{position:fixed;z-index:5100;right:12px;bottom:12px;width:min(440px,calc(100vw - 24px));max-height:min(86vh,780px);display:flex;flex-direction:column;box-sizing:border-box;
     background:#0f2a1f;color:#e8f0ea;border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.35);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden}
@@ -146,72 +220,170 @@ function cssDemo(){
   #demoPanel button:disabled{opacity:.45;cursor:not-allowed}
   #demoPanel .px{min-width:44px;padding:0}
   #demoPanel .seg{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap} #demoPanel .seg button{flex:1 1 auto}
-  #demoPanel label.gi{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid rgba(255,255,255,.07);cursor:pointer}
+  #demoPanel label.gi{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid rgba(255,255,255,.07);cursor:pointer;min-height:44px;box-sizing:border-box}
   #demoPanel label.gi input{width:22px;height:22px;margin:1px 0 0;flex:0 0 auto;accent-color:#e8892b}
   #demoPanel label.gi small{display:block;color:#9fb8a8;font-size:12.5px;margin-top:2px}
+  #demoPanel label.gp{border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:4px}
   #demoPanel .nota{font-size:12px;color:#9fb8a8;margin:6px 0}
   #demoPanel .ojo{font-size:12.5px;color:#ffd28a;margin:6px 0}
-  #demoPanel .voz{display:flex;gap:6px;align-items:center;margin:4px 0 6px}
-  #demoPanel select{flex:1;min-width:0;background:#183a2b;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:10px;padding:8px;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:44px}
+  #demoPanel .voz{display:flex;gap:8px;align-items:center;margin:4px 0 6px}
+  #demoPanel .voz .vn{flex:1;min-width:0;font-size:13px;color:#cfe0d4;overflow:hidden;text-overflow:ellipsis}
+  #demoPanel .tit{font-size:12px;color:#9fb8a8;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin:10px 0 0}
   @media(max-width:560px){
-    #demoSub{font-size:16px;padding:12px 12px 10px;border-radius:16px}
+    #demoSub{font-size:15px;padding:10px 12px 8px;border-radius:16px}
     #demoSub .db{flex-wrap:wrap} #demoSub .bar{flex-basis:100%;order:-1}
-    #demoSub .db button{flex:1 1 auto;padding:8px 10px} #demoSub .db button .tx{display:none}
+    #demoSub .db button{flex:1 1 auto;padding:8px 10px} #demoSub .db button .tx,#demoCtl button .tx{display:none}
     #demoPanel{right:8px;left:8px;bottom:8px;width:auto}
   }
-  @media(prefers-reduced-motion:reduce){ #demoAro,#demoAro.on,#demoDiapo li,#demoSub .hablando i,#demoSub .bar i{animation:none;transition:none;opacity:1;transform:none} #demoAro:not(.on){opacity:0} }`;
+  @media(prefers-reduced-motion:reduce){ #demoAro,#demoAro.on,#demoDiapo li,#demoSub .hablando i,#demoSub .bar i,#demoCap .ln,#demoCtl{animation:none;transition:none;opacity:1;transform:none}
+    #demoAro:not(.on){opacity:0} #demoCtl{transform:translateX(-50%)} #demoCtl:not(.on){opacity:0} }`;
   document.head.appendChild(s);
 }
 
-/* ------------------------------------------------------------------ subtítulo, anillo y lámina */
+/* ------------------------------------------------------------------ controles, subtítulo, anillo y lámina */
 function subDemo(){
   cssDemo();
-  let s = document.getElementById("demoSub");
-  if(!s){
-    s = document.createElement("div"); s.id = "demoSub"; s.setAttribute("role", "region"); s.setAttribute("aria-label", "Demostración guiada"); document.body.appendChild(s);
-    if(!document.getElementById("demoAro")){ const a = document.createElement("div"); a.id = "demoAro"; a.setAttribute("aria-hidden", "true"); document.body.appendChild(a); }
-    if(!document.getElementById("demoDiapo")){ const d = document.createElement("div"); d.id = "demoDiapo"; document.body.appendChild(d); }
-  }
+  let s = $("demoSub");
+  if(!s){ s = document.createElement("div"); s.id = "demoSub"; s.setAttribute("role", "region"); s.setAttribute("aria-label", "Demostración guiada"); document.body.appendChild(s); }
+  if(!$("demoCap")){ const c = document.createElement("div"); c.id = "demoCap"; c.setAttribute("aria-live", "polite"); document.body.appendChild(c); }
+  if(!$("demoAro")){ const a = document.createElement("div"); a.id = "demoAro"; a.setAttribute("aria-hidden", "true"); document.body.appendChild(a); }
+  if(!$("demoDiapo")){ const d = document.createElement("div"); d.id = "demoDiapo"; document.body.appendChild(d); }
   return s;
 }
-let _subTxt = "";
-function pintarSub(texto){
-  if(texto != null) _subTxt = texto;
-  if(!DEMO.corriendo && texto == null) return;
+/* botones que se crean una vez y después solo cambian su contenido (un toque no se pierde si la barra se repinta justo entonces) */
+function botones(cont, defs){
+  defs.forEach(d=>{
+    let b = cont.querySelector('button[data-k="' + d.k + '"]');
+    if(!b){ b = document.createElement("button"); b.type = "button"; b.dataset.k = d.k; b.onclick = d.fn; cont.appendChild(b); }
+    if(b._h !== d.html){ b.innerHTML = d.html; b._h = d.html; }
+    b.className = d.cls || ""; b.setAttribute("aria-label", d.aria); if(d.title) b.title = d.title;
+  });
+}
+const avisoPausa = ()=>!DEMO.pausa? "" : DEMO.pausaPor === "oculta"? "En pausa porque la pantalla se escondió (otra app, pantalla apagada o ventana minimizada). Toca <b>Seguir</b> para continuar." +
+  (DEMO.wl.falta? " Este equipo no dejó mantener la pantalla encendida: para presentar, Ajustes → Pantalla y brillo → Bloqueo automático → Nunca." : "") : "En pausa. Toca <b>Seguir</b> para continuar.";
+const pctAvance = ()=>DEMO.total? Math.min(100, Math.round(DEMO.n / DEMO.total * 100)) : 0;
+const musIco = ()=>DEMO.musica? SVG.mus : SVG.musNo;
+const musAria = ()=>"Música: " + (DEMO.musica? NIV_NOM[DEMO.musNivel] : "apagada") + ". Tocar para cambiar";
+/* la caja de controles (sin el subtítulo, que va aparte en #demoCap) */
+function pintarSub(){
+  if(!DEMO.corriendo) return;
   const s = subDemo();
-  const pct = DEMO.total? Math.min(100, Math.round(DEMO.n / DEMO.total * 100)) : 0;
-  s.innerHTML = `<div class="dt">${SVG.film}<span class="tt">${escH(DEMO.titulo || "Demostración guiada")}${DEMO._hablando? '<span class="hablando" aria-hidden="true"><i></i><i></i><i></i></span>' : ""}</span>${DEMO.n}/${DEMO.total || "…"}</div>
-    ${DEMO.pausa && DEMO.pausaPor === "oculta"? `<div class="dp" role="status">En pausa porque la pantalla se escondió (otra app, pantalla apagada o ventana minimizada). Toca <b>Seguir</b> para continuar.</div>` : ""}
-    <div class="dx" aria-live="polite">${_subTxt}</div>
-    <div class="db"><div class="bar" role="progressbar" aria-label="Avance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>
-      <button type="button" onclick="AgroDemo.pausa()" aria-label="${DEMO.pausa? "Seguir" : "Pausa"}">${DEMO.pausa? SVG.play+'<span class="tx">Seguir</span>' : SVG.pausa+'<span class="tx">Pausa</span>'}</button>
-      <button type="button" onclick="AgroDemo.musica()" aria-label="Música ${DEMO.musica? "encendida: tocar para apagarla" : "apagada: tocar para encenderla"}" title="Música">${DEMO.musica? SVG.mus : SVG.musNo}</button>
-      <button type="button" class="pri" onclick="AgroDemo.siguiente()" aria-label="Siguiente">${SVG.sig}<span class="tx">Siguiente</span></button>
-      <button type="button" onclick="AgroDemo.salir()" aria-label="Salir de la demostración">${SVG.x}<span class="tx">Salir</span></button></div>`;
+  if(!s._armado){
+    s._armado = true;
+    s.innerHTML = `<div class="dt">${SVG.film}<span class="tt"></span><span class="dn"></span></div><div class="dp" role="status"></div><div class="db"><div class="bar" role="progressbar" aria-label="Avance" aria-valuemin="0" aria-valuemax="100"><i></i></div></div>`;
+  }
+  s.querySelector(".tt").innerHTML = escH(DEMO.titulo || "Demostración guiada") + (DEMO._hablando? '<span class="hablando" aria-hidden="true"><i></i><i></i><i></i></span>' : "");
+  s.querySelector(".dn").textContent = DEMO.n + "/" + (DEMO.total || "…");
+  s.querySelector(".dp").innerHTML = avisoPausa();
+  const pct = pctAvance(), bar = s.querySelector(".bar");
+  bar.setAttribute("aria-valuenow", pct); bar.firstChild.style.width = pct + "%";
+  botones(s.querySelector(".db"), [
+    {k:"pausa", fn:()=>AgroDemo.pausa(), aria:DEMO.pausa? "Seguir" : "Pausa", html:DEMO.pausa? SVG.play + '<span class="tx">Seguir</span>' : SVG.pausa + '<span class="tx">Pausa</span>'},
+    {k:"mus", fn:()=>musicaCiclo(), aria:musAria(), title:"Música", html:musIco()},
+    {k:"cc", fn:()=>subsCiclo(), aria:"Subtítulos " + (DEMO.subs === "no"? "apagados: tocar para mostrarlos" : "encendidos: tocar para esconderlos"), title:"Subtítulos", html:DEMO.subs === "no"? SVG.ccNo : SVG.cc},
+    {k:"sig", fn:()=>siguiente(), aria:"Siguiente", cls:"pri", html:SVG.sig + '<span class="tx">Siguiente</span>'},
+    {k:"salir", fn:()=>salir(), aria:"Salir de la demostración", html:SVG.x + '<span class="tx">Salir</span>'}
+  ]);
+  pintarCtl();
+  ubicarCapas();
+}
+/* modo presentación: barra mínima que aparece con un toque real y se esconde sola (nunca en pausa) */
+function pintarCtl(){
+  let c = $("demoCtl");
+  if(!DEMO.presOn || !DEMO.corriendo){ if(c) c.remove(); return; }
+  if(!c){
+    c = document.createElement("div"); c.id = "demoCtl"; c.setAttribute("role", "toolbar"); c.setAttribute("aria-label", "Controles de la demostración");
+    c.innerHTML = '<div class="cp" role="status"></div><div class="cb"></div><div class="ci"><span class="cn"></span><div class="bar"><i></i></div></div>';
+    c.addEventListener("pointerdown", e=>{ if(e.isTrusted) ctlReloj(); });
+    document.body.appendChild(c);
+  }
+  /* «Salir» armado: el aviso va arriba de los botones (la barra crece hacia arriba) y el botón no cambia de tamaño, así el segundo toque cae
+     en el mismo lugar; también se ve en el celular, donde los botones van sin texto (revisión del 29-10) */
+  const armado = DEMO._salirT && Date.now() - DEMO._salirT < 3000;
+  c.querySelector(".cp").innerHTML = armado? "¿Salir de la demostración? Toca <b>Salir</b> otra vez." : avisoPausa();
+  botones(c.querySelector(".cb"), [
+    {k:"pausa", fn:()=>AgroDemo.pausa(), aria:DEMO.pausa? "Seguir" : "Pausa", cls:DEMO.pausa? "pri" : "", html:DEMO.pausa? SVG.play + '<span class="tx">Seguir</span>' : SVG.pausa + '<span class="tx">Pausa</span>'},
+    {k:"sig", fn:()=>siguiente(), aria:"Siguiente", cls:DEMO.modo === "paso" && !DEMO.pausa? "pri" : "", html:SVG.sig + '<span class="tx">Siguiente</span>'},
+    {k:"mus", fn:()=>musicaCiclo(), aria:musAria(), html:musIco() + '<span class="tx">' + (DEMO.musica? NIV_NOM[DEMO.musNivel] : "Sin música") + "</span>"},
+    {k:"cc", fn:()=>subsCiclo(), aria:"Subtítulos " + (DEMO.subs === "no"? "apagados" : "encendidos"), html:(DEMO.subs === "no"? SVG.ccNo : SVG.cc) + '<span class="tx">Subtítulos</span>'},
+    {k:"salir", fn:()=>salir(), aria:armado? "¿Salir? Toca otra vez para salir" : "Salir de la demostración", cls:armado? "ojo" : "", html:SVG.x + '<span class="tx">Salir</span>'}
+  ]);
+  c.querySelector(".cn").textContent = DEMO.n + "/" + (DEMO.total || "…");
+  c.querySelector(".ci .bar i").style.width = pctAvance() + "%";
+  c.classList.toggle("on", !!(DEMO._ctl || DEMO.pausa));
+}
+let _ctlH = null;
+function ctlReloj(){ clearTimeout(_ctlH); _ctlH = setTimeout(()=>{ _ctlH = null; if(DEMO.pausa || DEMO.fin || !DEMO.corriendo) return; DEMO._ctl = false; pintarCtl(); ubicarCapas(); }, DEMO.probando? 300 : 4000); }
+/* real = la abrió un toque de verdad (isTrusted); los clics del bot nunca la abren */
+function controles(on, real){
+  if(!DEMO.presOn || !DEMO.corriendo){ DEMO._ctl = false; return false; }
+  DEMO._ctl = !!on;
+  if(on && real) DEMO.cap.ctlMostrados++;
+  clearTimeout(_ctlH); _ctlH = null;
+  pintarCtl(); ubicarCapas();
+  if(on) ctlReloj();
+  return DEMO._ctl;
+}
+/* capa transparente sobre la app: el presentador no la toca ni la desplaza sin querer; el bot sigue tocando con el.click().
+   Va también sobre la lámina y la portada (z-index 5085 > #demoDiapo 5080): un toque en una lámina abre la barra (antes no llegaba);
+   debajo del subtítulo (5100) y de la barra (5110) */
+function escudo(on){
+  let e = $("demoEscudo");
+  if(!on){ if(e) e.remove(); return; }
+  if(e) return;
+  e = document.createElement("div"); e.id = "demoEscudo"; e.setAttribute("aria-hidden", "true");
+  e.addEventListener("pointerdown", ev=>{ if(!ev.isTrusted) return; ev.preventDefault(); if(DEMO._ctl && !DEMO.pausa) controles(false); else controles(true, true); });
+  e.addEventListener("wheel", ev=>ev.preventDefault(), {passive:false});
+  e.addEventListener("touchmove", ev=>ev.preventDefault(), {passive:false});
+  let q = null; e.addEventListener("pointermove", ev=>{ if(!ev.isTrusted) return; e.classList.remove("quieto"); clearTimeout(q); q = setTimeout(()=>e.classList.add("quieto"), 2000); });
+  document.body.appendChild(e);
+}
+/* ubica el subtítulo sobre los controles (o arriba, bajo ellos) y deja a la app el espacio de abajo: --demo-pie, --demo-techo, --demo-pad, --demo-aviso */
+function ubicarCapas(){
+  const h = document.documentElement, s = $("demoSub"), c = $("demoCap"), t = $("demoCtl");
+  const hs = s? s.getBoundingClientRect().height : 0, ht = t && t.classList.contains("on")? t.getBoundingClientRect().height : 0, arriba = !!DEMO._arriba;
+  if(s) s.classList.toggle("arriba", arriba);
+  if(c) c.classList.toggle("arriba", arriba);
+  h.style.setProperty("--demo-pie", Math.round((arriba || !hs? 0 : hs + 10) + (ht? ht + 10 : 0)) + "px");
+  h.style.setProperty("--demo-techo", Math.round(arriba && hs? hs + 10 : 0) + "px");
+  const pila = Math.round(altoSub());
+  h.style.setProperty("--demo-pad", pila + "px");
+  h.style.setProperty("--demo-aviso", (arriba? 24 : pila) + "px");
+}
+/* lo que ocupan abajo los controles y el subtítulo (dos líneas reservadas, para que la página no salte con cada trozo) */
+function capReserva(){
+  if(DEMO.subs === "no") return 0;
+  const c = $("demoCap"); let fs = 27;
+  try{ if(c) fs = parseFloat(getComputedStyle(c).fontSize) || 27; }catch(e){}
+  return fs * 1.32 * 2 + fs * .3 + 8;
+}
+function altoSub(){
+  const s = $("demoSub"), hs = s? s.getBoundingClientRect().height : 0;
+  if(!s && !$("demoCap")) return 160;
+  return hs + (hs? 10 : 0) + capReserva() + 24;
 }
 /* el anillo sigue al elemento mientras está encendido: si la página se mueve o se redibuja, no queda corrido */
 let _aroEl = null, _aroH = null;
 function aroPos(){
-  const a = document.getElementById("demoAro"); if(!a || !_aroEl) return;
+  const a = $("demoAro"); if(!a || !_aroEl) return;
   if(!_aroEl.isConnected){ a.classList.remove("on"); return; }
   const r = _aroEl.getBoundingClientRect(), p = 6, hs = altoSub();
   /* lo que se muestra quedó abajo, donde está el subtítulo, y no se puede subir (mapa a pantalla completa, barras fijas):
      el subtítulo pasa arriba mientras tanto */
   const bajo = r.top > innerHeight * .45 && r.bottom > innerHeight - hs;
-  const s = document.getElementById("demoSub"); if(s) s.classList.toggle("arriba", bajo);
+  if(bajo !== DEMO._arriba){ DEMO._arriba = bajo; ubicarCapas(); }
   const techo = bajo? innerHeight : innerHeight - hs + 14 - r.top;   // el anillo no se mete bajo el subtítulo
   const alto = Math.min(r.height, innerHeight * .62, Math.max(36, techo));
   if(r.width < 1 && r.height < 1){ a.classList.remove("on"); return; }
   a.classList.add("on");
   a.style.left = (r.left - p) + "px"; a.style.top = (r.top - p) + "px"; a.style.width = (r.width + 2 * p) + "px"; a.style.height = (alto + 2 * p) + "px";
 }
-function altoSub(){ const s = document.getElementById("demoSub"); return s? s.getBoundingClientRect().height + 24 : 160; }
 function aro(obj){
-  const a = document.getElementById("demoAro");
+  const a = $("demoAro");
   const el = obj? hallar(obj) : null;
   clearInterval(_aroH); _aroH = null; _aroEl = el;
   if(!a) return el;
-  if(!el){ a.classList.remove("on"); const s = document.getElementById("demoSub"); if(s) s.classList.remove("arriba"); return null; }
+  if(!el){ a.classList.remove("on"); if(DEMO._arriba){ DEMO._arriba = false; ubicarCapas(); } return null; }
   /* que quede a la vista, arriba del subtítulo */
   try{
     if(!el.closest(".mapa-full")){
@@ -255,228 +427,770 @@ function trazar(obj, el){
   let t = ""; try{ t = el? String(el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80) : ""; }catch(e){}
   DEMO.traza.push({p:DEMO.bloque, alt, el:el? descDe(el) : "(nada)", t, tap:tapadoPorSub(el)});
 }
-/* ¿el subtítulo tapa casi todo lo que se está mostrando? (parte visible del elemento cubierta en más de un 60 %) */
+/* ¿los controles y el subtítulo tapan casi todo lo que se está mostrando? (parte visible del elemento cubierta en más de un 60 %) */
 function tapadoPorSub(el){
-  const s = document.getElementById("demoSub"); if(!s || !el || !el.isConnected) return false;
-  const r = el.getBoundingClientRect(), q = s.getBoundingClientRect();
+  if(!el || !el.isConnected) return false;
+  const capas = [$("demoSub"), $("demoCap")].filter(x=>x && x.getBoundingClientRect().height > 0);
+  if(!capas.length) return false;
+  const r = el.getBoundingClientRect();
   const t = Math.max(0, r.top), b = Math.min(innerHeight, r.bottom), l = Math.max(0, r.left), d = Math.min(innerWidth, r.right);
   if(b - t < 4 || d - l < 4) return false;
-  const cub = Math.max(0, Math.min(b, q.bottom) - Math.max(t, q.top)) * Math.max(0, Math.min(d, q.right) - Math.max(l, q.left));
+  let cub = 0;
+  capas.forEach(x=>{ const q = x.getBoundingClientRect(); cub += Math.max(0, Math.min(b, q.bottom) - Math.max(t, q.top)) * Math.max(0, Math.min(d, q.right) - Math.max(l, q.left)); });
   return cub / ((b - t) * (d - l)) > .6;
 }
 
-/* ------------------------------------------------------------------ la voz del presentador */
-/* voces en español del equipo, las mejores primero: las «mejoradas», «premium» o «naturales» suenan casi humanas;
-   las de broma de Apple (Eddy, Flo, Abuela…) quedan al final. Preferencia de idioma: es-CL, luego es-419/US/MX, luego es-ES */
+/* ------------------------------------------------------------------ texto hablado y trozos (29-10-2026)
+   Una frase se parte en UNIDADES: oraciones reales (punto, signo o «…» seguido de mayúscula, ¡ o ¿), juntando las cortas.
+   Cada unidad tiene sus subtítulos (trozos de su texto en pantalla) y su texto hablado (una o dos piezas). Así voz y
+   subtítulo salen de la misma unidad: el subtítulo de la unidad aparece cuando empieza a sonar. */
+const UNID = ["cero","uno","dos","tres","cuatro","cinco","seis","siete","ocho","nueve","diez","once","doce","trece","catorce","quince","dieciséis","diecisiete","dieciocho","diecinueve","veinte","veintiuno","veintidós","veintitrés","veinticuatro","veinticinco","veintiséis","veintisiete","veintiocho","veintinueve"];
+const DECE = ["","","","treinta","cuarenta","cincuenta","sesenta","setenta","ochenta","noventa"];
+const CENT = ["","ciento","doscientos","trescientos","cuatrocientos","quinientos","seiscientos","setecientos","ochocientos","novecientos"];
+/* g = "f" (femenino: «una», «doscientas»), "m" (ante un nombre masculino: «un», «veintiún») o "u" (solo: «uno») */
+function numUno(g){ return g === "f"? "una" : g === "m"? "un" : "uno"; }
+function numBajo100(r, g){
+  if(r === 1) return numUno(g);
+  if(r === 21) return g === "f"? "veintiuna" : g === "m"? "veintiún" : "veintiuno";
+  if(r < 30) return UNID[r];
+  const d = Math.floor(r / 10), u = r % 10;
+  return DECE[d] + (u? " y " + (u === 1? numUno(g) : UNID[u]) : "");
+}
+function numBajo1000(n, g){
+  if(n === 100) return "cien";
+  const c = Math.floor(n / 100), r = n % 100;
+  return [c? (g === "f" || g === "fm"? CENT[c].replace(/os$/, "as") : CENT[c]) : "", r? numBajo100(r, g === "fm"? "m" : g) : ""].filter(Boolean).join(" ");
+}
+/* ante «mil» con un nombre femenino: las centenas concuerdan y el uno se acorta («doscientas veintiún mil plantas», no «veintiuna mil») */
+function numPalabras(n, g){
+  n = Math.floor(Math.abs(+n || 0)); if(!n) return "cero";
+  const mi = Math.floor(n / 1e6), ml = Math.floor(n / 1000) % 1000, re = n % 1000, out = [];
+  if(mi) out.push(mi === 1? "un millón" : numBajo1000(mi, "m") + " millones");
+  if(ml) out.push(ml === 1? "mil" : numBajo1000(ml, g === "f"? "fm" : "m") + " mil");
+  if(re) out.push(numBajo1000(re, g));
+  return out.join(" ");
+}
+const NO_NOMBRE = /^(y|o|u|e|a|al|de|del|en|con|por|para|hasta|desde|entre|sobre|sin|que|como|la|las|el|los|un|una|unos|unas|se|es|son|coma|más|menos)$/i;
+const FEM_SI = /^(veces|fotos?|labores?|flores?|porciones?|plantas?|hect[aá]reas?|horas?|personas?|semanas?|unidades?|l[aá]minas?|frases?|notas?|hileras?|v[aá]lvulas?|l[ií]neas?|aplicaciones?|tarjetas?|cajas?|noches?|tardes?|ma[ñn]anas?)$/i;
+const MASC_A = /^(d[ií]as?|mapas?|problemas?|sistemas?|programas?|climas?|temas?|idiomas?|planetas?)$/i;
+const femenino = w=>FEM_SI.test(w) || (!MASC_A.test(w) && w.length > 3 && /(as?|i[oó]n|iones|dad|dades|tud|tudes)$/i.test(w));
+/* «1.250 plantas» → «mil doscientas cincuenta plantas»; «12,5» → «doce coma cinco»; lo pegado a letras (4x2, F1) se deja */
+function numerosVoz(s){
+  return String(s).replace(/\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?/g, (m, off, todo)=>{
+    if(/[A-Za-zÁÉÍÓÚÑáéíóúñü_]/.test(todo.charAt(off - 1)) || /[A-Za-zÁÉÍÓÚÑáéíóúñü_\d]/.test(todo.charAt(off + m.length))) return m;
+    const pz = m.split(","), n = parseInt(pz[0].replace(/\./g, ""), 10);
+    if(!isFinite(n) || n > 999999999) return m;
+    let g = "u";
+    if(pz[1] == null){ const sig = (todo.slice(off + m.length).match(/^\s+([A-Za-zÁÉÍÓÚÑáéíóúñü]+)/) || [])[1]; if(sig && !NO_NOMBRE.test(sig)) g = femenino(sig)? "f" : "m"; }
+    let w = numPalabras(n, g);
+    if(pz[1] != null) w += " coma " + (/^0/.test(pz[1])? pz[1].split("").map(d=>UNID[+d]).join(" ") : numPalabras(+pz[1], "u"));
+    return w;
+  });
+}
+/* cómo se dicen en voz alta las cosas que en pantalla van abreviadas (lo que se LEE no cambia) */
+const VOZ_UNO = {"mm/h":"milímetro por hora", "km/h":"kilómetro por hora", h:"hora", mm:"milímetro", ha:"hectárea", "°C":"grado"};   // la unidad en singular cuando el número es 1
+function paraVoz(t){
+  let s = plano(t);
+  s = s.replace(/AgroNotas/g, "Agro Notas").replace(/ET₀|\bET0\b/g, "E T cero").replace(/\bBBCH\b/g, "be be ce hache")
+    .replace(/\bPp\b/g, "pe pe").replace(/\bKc\b/g, "ka ce").replace(/\bGD\b/g, "grados día")
+    .replace(/\b(base|registro) SAG\b/g, "$1 del Sag").replace(/\bSAG\b/g, "Sag").replace(/\b(?:Apple )?Pencil\b/g, "lápiz")
+    .replace(/\bPDF\b/g, "pe de efe").replace(/\bUF\b/g, "u efe").replace(/\bGPS\b/g, "ge pe ese").replace(/\bIA\b/g, "i a")
+    .replace(/Open-Meteo/g, "Open Meteo").replace(/\bClaude\b/g, "Clod").replace(/Delta T\b/g, "delta te")
+    .replace(/(^|[^\d.,])1\s?(mm\/h|km\/h|h|mm|ha|°C)(?![\wáéíóúñ/])/g, (m, a, u)=>a + "1 " + VOZ_UNO[u])   // «1 h» → «una hora» (no «una horas»)
+    .replace(/mm\/h\b/g, "milímetros por hora").replace(/km\/h\b/g, "kilómetros por hora").replace(/m³\/ha/g, "metros cúbicos por hectárea").replace(/m³/g, "metros cúbicos")
+    .replace(/(\d)\s?°C/g, "$1 grados").replace(/°C/g, "grados").replace(/(\d)\s?ha\b/g, "$1 hectáreas").replace(/\bha\b/g, "hectáreas")
+    .replace(/(\d)\s?mm\b/g, "$1 milímetros").replace(/(\d)\s?h\b/g, "$1 horas").replace(/(\d)\s?%/g, "$1 por ciento").replace(/%/g, " por ciento")
+    .replace(/✓/g, "visto bueno").replace(/\s*·\s*/g, ", ").replace(/[“”«»"]/g, "");
+  s = numerosVoz(s).replace(/([?!])\s*\./g, "$1").replace(/…/g, "...").replace(/\s+/g, " ").trim();
+  if(s && !/[.!?:]$/.test(s)) s += ".";   // con su punto final, la voz baja la entonación como al terminar (puntos de las láminas)
+  return s;
+}
+/* palabras del texto en pantalla, con su negrita (<b>) por parte: «<b>Hoy</b>,» es una palabra con dos partes */
+function palabrasHTML(html){
+  const out = []; let neg = false, pegado = false;
+  String(html == null? "" : html).split(/(<\/?b\b[^>]*>)/i).forEach(seg=>{
+    if(/^<b\b/i.test(seg)){ neg = true; return; }
+    if(/^<\/b/i.test(seg)){ neg = false; return; }
+    const t = seg.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+    t.split(/(\s+)/).forEach(p=>{
+      if(!p) return;
+      if(/^\s+$/.test(p)){ pegado = false; return; }
+      const w = out[out.length - 1];
+      if(pegado && w) w.p.push({t:p, b:neg}); else out.push({p:[{t:p, b:neg}]});
+      pegado = true;
+    });
+  });
+  out.forEach(w=>{ w.t = w.p.map(x=>x.t).join(""); });
+  return out;
+}
+const largoWs = ws=>ws.reduce((a, w)=>a + w.t.length + 1, -1);
+const txtWs = ws=>ws.map(w=>w.t).join(" ");
+function htmlWs(ws){
+  let h = "", b = false;
+  ws.forEach((w, i)=>{ if(i){ if(b && !w.p[0].b){ h += "</b>"; b = false; } h += " "; } w.p.forEach(x=>{ if(x.b !== b){ h += x.b? "<b>" : "</b>"; b = x.b; } h += escH(x.t); }); });
+  return h + (b? "</b>" : "");
+}
+const FIN_OR = /[.!?…]["»”')]*$/, INI_OR = /^["«“'(]*[¡¿A-ZÁÉÍÓÚÑ]/;
+/* oraciones reales; una corta (< 25 letras) o una que sigue a otra corta (< 40) se juntan, hasta 220 letras */
+function unidadesDe(ws){
+  const cr = []; let cur = [];
+  ws.forEach((w, i)=>{ cur.push(w); const s = ws[i + 1]; if(s && FIN_OR.test(w.t) && INI_OR.test(s.t)){ cr.push(cur); cur = []; } });
+  if(cur.length) cr.push(cur);
+  const out = [];
+  cr.forEach(c=>{ const u = out[out.length - 1];
+    if(u && (largoWs(u) < 40 || largoWs(c) < 25) && largoWs(u) + largoWs(c) + 1 <= 220) out[out.length - 1] = u.concat(c); else out.push(c); });
+  return out;
+}
+/* un subtítulo nunca termina en artículo, preposición o conjunción, ni separa un número de lo que sigue («4 por 2 metros», «1.250 plantas») */
+const CORTA_NO = /^(el|la|los|las|lo|un|una|unos|unas|de|del|a|al|en|con|por|para|y|o|u|e|ni|que|su|sus|tu|tus|mi|mis|se|sin|entre|sobre|desde|hasta|hacia|según|cada|como|muy|más|cuando|si|no)$/i;
+const esNumTxt = t=>/^\d[\d.,]*$/.test(t);
+function puntajeCorte(ws, k){   // cortar después de ws[k]: null = prohibido; más alto = mejor lugar
+  const w = ws[k].t, s = ws[k + 1];
+  if(CORTA_NO.test(w.replace(/[«“"(¿¡]/g, ""))) return null;
+  if(esNumTxt(w) && s && !/^[,;:.]/.test(s.t)) return null;
+  if(s && esNumTxt(s.t) && /^(de|a|por|y|o)$/i.test(w)) return null;
+  if(/[.!?…]["»”')]*$/.test(w)) return 4;
+  if(/[:;]["»”')]*$/.test(w)) return 3;
+  if(/,["»”')]*$/.test(w)) return 2;
+  if(s && /^(y|o|pero|que|con|para|porque|donde|cuando|mientras)$/i.test(s.t)) return 1;
+  return 0;
+}
+/* cortes = fracciones de la unidad donde empieza otra pieza hablada: un subtítulo que corta ahí cambia justo cuando parte esa pieza */
+function trozosSub(ws, max, cortes){
+  max = max || 84; cortes = cortes || [];
+  const out = [], T = largoWs(ws) || 1; let i = 0;
+  while(i < ws.length){
+    const resto = ws.slice(i), L = largoWs(resto), ini = i? largoWs(ws.slice(0, i)) + 1 : 0;
+    if(L <= max){ out.push(resto); break; }
+    const meta = L / Math.ceil(L / max);
+    let mejor = -1, mp = -1e9;
+    for(let k = 0; k < resto.length - 1; k++){
+      const l = largoWs(resto.slice(0, k + 1)); if(l > max) break;
+      const p = puntajeCorte(resto, k); if(p == null) continue;
+      const enPieza = cortes.some(f=>Math.abs((ini + l) / T - f) < .06);
+      const v = p * 22 - Math.abs(l - meta) + (L - l - 1 <= max? 25 : 0) - (l < 20? 60 : 0) - (L - l < 18? 80 : 0) + (enPieza? 30 : 0);
+      if(v > mp){ mp = v; mejor = k; }
+    }
+    if(mejor < 0){ for(let k = 0; k < resto.length - 1; k++){ if(largoWs(resto.slice(0, k + 1)) <= max) mejor = k; else break; } if(mejor < 0) mejor = 0; }
+    out.push(resto.slice(0, mejor + 1)); i += mejor + 1;
+  }
+  return out;
+}
+/* letras por trozo según el ancho real del subtítulo (2 líneas): 84 en el iPad, menos en el celular o con letra grande */
+function capMax(){
+  try{
+    const c = $("demoCap"); if(!c || typeof getComputedStyle !== "function") return 84;
+    const fs = parseFloat(getComputedStyle(c).fontSize) || 27, ancho = Math.min(fs * 34, innerWidth - 32);
+    return Math.max(40, Math.min(84, Math.floor(2 * ancho / (fs * .56) * .95)));
+  }catch(e){ return 84; }
+}
+/* peso para repartir el tiempo dentro de una unidad: las comas y los puntos valen como letras extra (son pausas) */
+const pesoTxt = s=>String(s).length + 5 * (String(s).match(/[,;:]/g) || []).length + 8 * (String(s).match(/[.!?…](\s|$)/g) || []).length;
+/* el plan de una frase: {texto, u:[{pant, caps:[{txt, html, peso}], voz:[piezas habladas], …}], tot} */
+function planFrase(texto, clave, lam){
+  const ws = palabrasHTML(texto), us = unidadesDe(ws), max = capMax();
+  let over = clave && VOZ[clave];
+  if(over && (!Array.isArray(over) || over.length !== us.length)) over = null;   // el texto cambió (p. ej. un nombre con punto): se dice como se lee
+  const P = {clave:clave || "", texto:txtWs(ws), u:[], tot:0, lamina:!!lam};
+  us.forEach((u, i)=>{
+    const crudo = over && over[i] != null? over[i] : txtWs(u);
+    const voz = (Array.isArray(crudo)? crudo : [crudo]).map(paraVoz).filter(Boolean);
+    let a = 0, b = 0;
+    const vozPeso = voz.map(pesoTxt), vozOff = vozPeso.map(p=>{ const o = b; b += p; return o; }), vozTot = b || 1;
+    const caps = trozosSub(u, max, vozOff.slice(1).map(o=>o / vozTot)).map(c=>{ const t = txtWs(c); return {txt:t, html:htmlWs(c), peso:pesoTxt(t)}; });
+    const U = {pant:txtWs(u), caps, voz, capFin:caps.map(c=>a += c.peso), capTot:a || 1, vozPeso, vozOff, vozTot};
+    P.u.push(U); P.tot += U.capTot;
+  });
+  return P;
+}
+const textoLamina = L=>L.titulo + ". " + (L.puntos || []).map(p=>/[.!?…]$/.test(p)? p : p + ".").join(" ");
+const textoFrase = f=>(f && typeof f === "object")? textoLamina(f) : String(f == null? "" : f);
+
+/* ------------------------------------------------------------------ subtítulos sincronizados (#demoCap) */
+const CAPT = {u:-1, c:-1, pu:-1, pj:0, t0:0, dur:1000, ci:null, h:null};
+function capHTML(html){
+  const c = $("demoCap"); if(!c) return;
+  if(c._h !== html){ c._h = html; c.innerHTML = html? '<span class="ln">' + html + "</span>" : ""; }
+  const ver = !!html && DEMO.subs !== "no" && !DEMO._enLamina;
+  if(c.classList.contains("on") !== ver){ c.classList.toggle("on", ver); ubicarCapas(); }
+}
+function capMostrar(u, c){
+  const P = DEMO.plan, U = P && P.u[u], cap = U && U.caps[c]; if(!cap) return;
+  if(CAPT.u === u && CAPT.c === c) return;
+  CAPT.u = u; CAPT.c = c;
+  capHTML(cap.html);
+  if(DEMO.probando) capMedir(cap);
+}
+/* en probar(): largo, líneas medidas en pantalla y tamaño de la letra de cada trozo */
+function capMedir(cap){
+  const C = DEMO.cap, el = $("demoCap"), ln = el && el.querySelector(".ln");
+  C.trozos++; C.maxCar = Math.max(C.maxCar, cap.txt.length); C.textos.push(cap.txt);
+  if(ln && el.classList.contains("on")){
+    try{ C.maxLineas = Math.max(C.maxLineas, ln.getClientRects().length); const px = parseFloat(getComputedStyle(el).fontSize) || 0; C.minPx = C.minPx? Math.min(C.minPx, px) : px; }catch(e){}
+  }
+}
+const capDeFrac = (U, f)=>{ const x = f * U.capTot; for(let i = 0; i < U.capFin.length; i++) if(x < U.capFin[i] - 1e-6) return i; return U.caps.length - 1; };
+/* empieza a sonar la pieza j de la unidad u (dur = lo que se espera que dure, en ms) */
+function capPieza(u, j, dur){
+  CAPT.pu = u; CAPT.pj = j; CAPT.t0 = Date.now(); CAPT.dur = Math.max(400, dur || 1000); CAPT.ci = null;
+  capActualizar();
+  if(!CAPT.h) CAPT.h = setInterval(capActualizar, 150);
+}
+function capBorde(ci){ CAPT.ci = ci; capActualizar(); }
+function capHasta(u, j){
+  const P = DEMO.plan, U = P && P.u[u]; if(!U) return;
+  const c = capDeFrac(U, Math.min(.999, ((U.vozOff[j] || 0) + (U.vozPeso[j] || 0)) / U.vozTot - .001));
+  if(CAPT.u !== u || c > CAPT.c) capMostrar(u, c);
+}
+function capActualizar(){
+  const P = DEMO.plan, U = P && P.u[CAPT.pu]; if(!U || DEMO.pausa) return;
+  const lj = U.vozPeso[CAPT.pj] || 1, largo = String(U.voz[CAPT.pj] || "").length || 1;
+  const dentro = CAPT.ci != null? Math.min(1, CAPT.ci / largo) : Math.min(1, (Date.now() - CAPT.t0) / CAPT.dur);
+  let c = capDeFrac(U, ((U.vozOff[CAPT.pj] || 0) + dentro * lj) / U.vozTot);
+  if(CAPT.u === CAPT.pu && c < CAPT.c) c = CAPT.c;   // no vuelve atrás
+  capMostrar(CAPT.pu, c);
+}
+/* sin voz: por tiempo, repartido según el largo de cada trozo */
+function capTiempo(P, f){
+  if(!P || !P.u.length) return;
+  let x = Math.min(1, Math.max(0, f)) * P.tot;
+  for(let i = 0; i < P.u.length; i++){
+    const U = P.u[i];
+    if(x < U.capTot || i === P.u.length - 1){ const c = capDeFrac(U, Math.min(1, x / U.capTot)); if(i > CAPT.u || (i === CAPT.u && c > CAPT.c)) capMostrar(i, c); return; }
+    x -= U.capTot;
+  }
+}
+function capParar(){ clearInterval(CAPT.h); CAPT.h = null; CAPT.pu = -1; }
+/* frase nueva: el primer trozo al tiro (y en probar se revisan también la barra, el escudo y lo que no debe verse) */
+function capFrase(P){
+  capParar(); CAPT.u = CAPT.c = -1;
+  if(P && P.u.length) capMostrar(0, 0); else capHTML("");
+  if(DEMO.probando && DEMO.presOn){
+    const e = $("demoEscudo"), H = document.documentElement;   // ancho útil (clientWidth): en el PC innerWidth suma la barra de desplazamiento, que el escudo no cubre
+    if(e){ const r = e.getBoundingClientRect(); DEMO.cap.escudo = r.width >= (H.clientWidth || innerWidth) - 2 && r.height >= (H.clientHeight || innerHeight) - 2; }
+    /* con una lámina a la vista, lo que está al centro debe ser el escudo: si no, un toque del presentador no abre la barra */
+    const d = $("demoDiapo");
+    if(d && d.classList.contains("on")){ const y = document.elementFromPoint((H.clientWidth || innerWidth) / 2, (H.clientHeight || innerHeight) / 2); DEMO.cap.lamMedidas++; if(!y || y.id !== "demoEscudo") DEMO.cap.lamSinEscudo++; }
+    ["demoSub", "demoPanel", "botsUI", "botsLey"].forEach(id=>{ const x = $(id); if(x && x.getBoundingClientRect().height > 0 && DEMO.cap.visibles.indexOf(id) < 0) DEMO.cap.visibles.push(id); });
+  }
+}
+/* modo rápido (probar): pasa por todos los trozos para medirlos */
+function capRapido(P){ if(!P) return; P.u.forEach((U, i)=>U.caps.forEach((_, c)=>capMostrar(i, c))); }
+
+/* ------------------------------------------------------------------ la voz del presentador (Web Speech, fase 0 del 29-10-2026)
+   En el iPad, Safari solo entrega las voces que trae el sistema (compactas o Eloquence): suenan robóticas y eso no se arregla
+   con código. Lo que sí se arregla: velocidad 1 y tono 1, sin cortes en «1.250», sin cancel() pegado al speak() siguiente
+   (WebKit 238189: la frase siguiente no avisa que empezó ni que terminó) y un reloj de seguridad que no deja 10–15 s mudos. */
 function vocesES(){ try{ return window.speechSynthesis? speechSynthesis.getVoices().filter(v=>/^es([-_]|$)/i.test(v.lang || "")) : []; }catch(e){ return []; } }
-function puntajeVoz(v){
-  let p = 0; const n = v.name || "", l = v.lang || "";
-  if(/premium|enhanced|mejorad|natural|neural|online/i.test(n)) p += 10;
-  if(/google/i.test(n)) p += 6;
+/* nombres conocidos de voces en español (iOS/macOS, también las compactas y las Eloquence; Windows; Google) */
+const VOZ_MUJER = /paulina|m[oó]nica|marisol|ang[eé]lica|isabela|francisca|soledad|jimena|ximena|helena|laura|sabina|elvira|dalia|catalina|elena|paloma|lupe|pen[eé]lope|conchita|luc[ií]a|carmen|valentina|camila|renata|\bflo\b|sandy|shelley|grandma|abuela|google espa[nñ]ol|\bfemale\b|mujer|femenin/i;
+const VOZ_HOMBRE = /jorge|\bjuan\b|diego|carlos|eddy|\breed\b|rocko|grandpa|abuelo|pablo|ra[uú]l|[aá]lvaro|lorenzo|tom[aá]s|alonso|enrique|miguel|andr[eé]s|gonzalo|gerardo|liberto|\bmale\b|hombre|masculin/i;
+const ELOQ = /eloquence|\b(eddy|flo|grandma|grandpa|abuel[ao]|reed|rocko|sandy|shelley)\b/i;
+function generoVoz(v){ const n = (v.name || "") + " " + (v.voiceURI || ""); return VOZ_MUJER.test(n)? "mujer" : VOZ_HOMBRE.test(n)? "hombre" : ""; }
+/* calidad por voiceURI y nombre: premium > mejorada/natural > compacta > Eloquence; idioma: es-CL, luego es-419/US/MX, luego es-ES */
+function calidadVoz(v){
+  const u = (v.voiceURI || "") + " " + (v.name || "");
+  let p = 0;
+  if(/premium/i.test(u)) p += 30; else if(/enhanced|mejorad|natural|neural|online/i.test(u)) p += 20;
+  if(/google/i.test(u)) p += 12;
+  if(ELOQ.test(u)) p -= 20;
+  const l = v.lang || "";
   if(/es[-_]CL/i.test(l)) p += 5; else if(/es[-_](419|US|MX)/i.test(l)) p += 3; else if(/es[-_]ES/i.test(l)) p += 2; else p += 1;
-  if(/eddy|flo\b|grandma|grandpa|abuel|rocko|shelley|reed|sandy|jacques|compact|eloquence/i.test(n)) p -= 12;
-  if(v.default) p += 1;
+  if(v.localService) p += 1;
   return p;
 }
-const vocesOrden = ()=>vocesES().sort((a, b)=>puntajeVoz(b) - puntajeVoz(a));
-function mejorVoz(){ const vs = vocesOrden(); if(DEMO.vozNombre){ const x = vs.find(v=>v.name === DEMO.vozNombre); if(x) return x; } return vs[0] || null; }
-function vozActiva(){ return !!(DEMO.voz && !DEMO.rapido && window.speechSynthesis && window.SpeechSynthesisUtterance && mejorVoz()); }
+const nombreVoz = v=>String(v.name || "").replace(/\s*\(.*$/, "").replace(/^Microsoft\s+/i, "").replace(/\s+-\s+.*$/, "").replace(/\s+Online.*$/i, "").trim() || "voz del sistema";
+/* la voz del tipo elegido (mujer u hombre); si no hay de ese tipo, la mejor disponible, y lo dice */
+function vozElegida(){
+  const vs = vocesES().sort((a, b)=>calidadVoz(b) - calidadVoz(a));
+  if(!vs.length) return {v:null, aviso:""};
+  const t = DEMO.vozTipo === "hombre"? "hombre" : "mujer", del = vs.filter(v=>generoVoz(v) === t);
+  if(del.length){ const v = del[0], m = vs[0];   // en el iPad la única de hombre suele ser una Eloquence: se usa igual, pero se dice
+    return {v, aviso:calidadVoz(v) < 0 && calidadVoz(m) >= 0? "La única voz de " + t + " en español de este equipo es de baja calidad («" + nombreVoz(v) + "»); «" + nombreVoz(m) + "» suena mejor." : ""}; }
+  const v = vs[0], g = generoVoz(v);
+  return {v, aviso:"Este equipo no tiene voz de " + t + " en español: se usa «" + nombreVoz(v) + "»" + (g? " (de " + g + ")" : "") + "."};
+}
+/* durante una demostración la voz queda fija por su voiceURI (la lista de voces puede cambiar de orden) */
+function mejorVoz(){
+  if(DEMO._vozURI){ const x = vocesES().find(v=>v.voiceURI === DEMO._vozURI); if(x) return x; }
+  return vozElegida().v;
+}
+function vozActiva(){ return !!(DEMO.voz && !DEMO.rapido && (MUDO || (window.speechSynthesis && window.SpeechSynthesisUtterance && mejorVoz()))); }
+const vozParams = ()=>({rate:1, pitch:1, volume:1});   // «Más lento» = más pausa entre frases (no voz más lenta)
+/* las voces llegan de a poco: voiceschanged con addEventListener y, de respaldo, onvoiceschanged (algunos Safari no tienen el primero) */
+const _vozCbs = []; let _vozT = 0;
+function vocesCambiaron(){
+  if(Date.now() - _vozT < 60) return; _vozT = Date.now();
+  _vozCbs.splice(0).forEach(f=>{ try{ f(); }catch(e){} });
+  const n = vocesES().length; if(n === DEMO._nVoces) return; DEMO._nVoces = n;
+  if(!DEMO.corriendo && $("demoPanel")) abrir();
+}
+try{ const s = window.speechSynthesis; if(s){
+  try{ if(typeof s.addEventListener === "function") s.addEventListener("voiceschanged", vocesCambiaron); }catch(e){}
+  const prev = s.onvoiceschanged; s.onvoiceschanged = function(e){ if(typeof prev === "function"){ try{ prev.call(this, e); }catch(x){} } vocesCambiaron(); };
+} }catch(e){}
 function esperarVoces(ms){
   return new Promise(res=>{
     if(!window.speechSynthesis || vocesES().length) return res();
     let listo = false; const fin = ()=>{ if(!listo){ listo = true; res(); } };
-    try{ speechSynthesis.addEventListener("voiceschanged", fin, {once:true}); }catch(e){}
-    setTimeout(fin, ms || 1500);
+    _vozCbs.push(fin); setTimeout(fin, ms || 1500);
   });
 }
-/* cómo se dicen en voz alta las cosas que en pantalla van abreviadas */
-function paraVoz(t){
-  let s = plano(t);
-  s = s.replace(/AgroNotas/g, "Agro Notas").replace(/ET₀|\bET0\b/g, "E T cero").replace(/\bBBCH\b/g, "be be ce hache")
-    .replace(/\bPp\b/g, "pe pe").replace(/\bKc\b/g, "ka ce").replace(/\bGD\b/g, "grados día").replace(/\bSAG\b/g, "S A G")
-    .replace(/\bPDF\b/g, "pe de efe").replace(/\bUF\b/g, "u efe").replace(/\bGPS\b/g, "ge pe ese").replace(/\bIA\b/g, "i a")
-    .replace(/Open-Meteo/g, "Open Meteo").replace(/\bClaude\b/g, "Clod").replace(/Delta T\b/g, "delta te")
-    .replace(/mm\/h\b/g, "milímetros por hora").replace(/km\/h\b/g, "kilómetros por hora").replace(/m³\/ha/g, "metros cúbicos por hectárea").replace(/m³/g, "metros cúbicos")
-    .replace(/(\d)\s?°C/g, "$1 grados").replace(/°C/g, "grados").replace(/(\d)\s?ha\b/g, "$1 hectáreas").replace(/\bha\b/g, "hectáreas")
-    .replace(/(\d)\s?mm\b/g, "$1 milímetros").replace(/(\d)\s?h\b/g, "$1 horas").replace(/(\d)\s?%/g, "$1 por ciento").replace(/%/g, " por ciento")
-    .replace(/✓/g, "visto bueno").replace(/\s*·\s*/g, ", ").replace(/…/g, "...").replace(/[“”«»"]/g, "").replace(/\s+/g, " ").trim();
-  return s;
-}
-function callarVoz(){ try{ if(window.speechSynthesis) speechSynthesis.cancel(); }catch(e){} }
-/* MUDO: la frase no se dice; se espera lo que tardaría (~70 ms por letra a ritmo normal). Termina antes con Pausa, Siguiente, Salir o parar,
-   igual que cuando cancel() corta la voz de verdad (hablar() repite la frase al seguir) */
-function decirMuda(f){
+/* cancel() solo si algo suena; se anota la hora para esperar 300 ms antes del speak() siguiente */
+let _tCancel = 0, _uViva = null;
+function callarVoz(){ try{ const s = window.speechSynthesis; if(s && (s.speaking || s.pending)){ s.cancel(); _tCancel = Date.now(); } }catch(e){} _uViva = null; }
+/* MUDO: la frase no se dice; se espera lo que tardaría (400 ms + 70 ms por letra). Termina antes con Pausa, Siguiente, Salir o parar,
+   igual que cuando cancel() corta la voz de verdad (hablar() repite la oración al seguir) */
+function decirMuda(f, cb){
   DEMO._mudas++;
-  const meta = 400 + String(f).length * 70 / (DEMO.ritmo < 1? 0.92 : 1.03), p0 = DEMO._nPausas;
+  const meta = 400 + String(f).length * 70, p0 = DEMO._nPausas;
+  if(cb) cb("start", null, meta);
   return new Promise(ok=>{
     let t = 0;
-    const paso = ()=>{ const k = K(); if(t >= meta || DEMO.cortar || DEMO.pausa || DEMO._nPausas !== p0 || (k && k.parar())){ ok(); return; } t += 100; setTimeout(paso, 100); };
+    const paso = ()=>{ const k = K(); if(t >= meta || DEMO.cortar || DEMO.pausa || DEMO._nPausas !== p0 || (k && k.parar())){ ok(t >= meta? "ok" : "cortada"); return; } t += 100; setTimeout(paso, 100); };
     setTimeout(paso, 100);
   });
 }
-/* una frase; el reloj de seguridad (6 s + 150 ms por letra) CALLA la frase si el equipo nunca avisa que terminó (no encola otra encima) */
-function decirFrase(f, v){
-  if(MUDO) return decirMuda(f);
+/* una pieza hablada. cb("start", null, msPrevistos) al empezar a sonar y cb("borde", charIndex) en cada palabra.
+   Reloj de seguridad: si no empieza en 2,5 s, calla, espera 300 ms y reintenta UNA vez; si empezó y se pasa de lo previsto
+   (×1,4 + 1,5 s) sin avisar una palabra en 1,5 s, la da por terminada. Si deja de sonar sin avisar, también. */
+function decirFrase(f, v, cb){
+  if(MUDO) return decirMuda(f, cb);
   return new Promise(ok=>{
-    let hecho = false; const fin = ()=>{ if(!hecho){ hecho = true; ok(); } };
-    try{
-      const u = new SpeechSynthesisUtterance(f);
-      if(v){ u.voice = v; u.lang = v.lang; } else u.lang = "es-CL";
-      u.rate = DEMO.ritmo < 1? 0.92 : 1.03; u.pitch = 1.05; u.volume = MUDO? 0 : 1;
-      u.onend = fin; u.onerror = fin;
-      const vigilar = ()=>{ if(hecho) return; const k = K(); if(DEMO.pausa && !DEMO.cortar && !(k && k.parar())){ setTimeout(vigilar, 500); return; } callarVoz(); fin(); };
-      setTimeout(vigilar, 6000 + f.length * 150);
-      if(speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
-      speechSynthesis.speak(u);
-    }catch(e){ fin(); }
+    const s = window.speechSynthesis; let hecho = false, h = null, otra = false, st = null;
+    const fin = r=>{ if(hecho) return; hecho = true; clearInterval(h); _uViva = null; ok(r); };
+    const corte = ()=>{ const k = K(); return DEMO.cortar || DEMO.pausa || (k && k.parar()); };
+    const previsto = ()=>String(f).length / Math.max(8, DEMO._cps || 13.5) * 1000;
+    const decirUna = ()=>{
+      if(hecho) return;
+      if(corte()){ fin("cortada"); return; }
+      try{
+        const u = new SpeechSynthesisUtterance(f), P = vozParams();
+        if(v){ u.voice = v; u.lang = v.lang; } else u.lang = "es-CL";
+        u.rate = P.rate; u.pitch = P.pitch; u.volume = P.volume;
+        const yo = st = {u, t0:Date.now(), empezo:false, tIni:0, ultimo:Date.now(), calla:0};
+        const empezar = ()=>{ if(yo.empezo) return; yo.empezo = true; yo.tIni = yo.ultimo = Date.now(); if(cb) cb("start", null, previsto()); };
+        u.onstart = ()=>{ if(st === yo && !hecho) empezar(); };   // avisos que llegan tarde (de una pieza ya terminada) no mueven el subtítulo
+        u.onboundary = e=>{ if(st !== yo || hecho) return; empezar(); yo.ultimo = Date.now(); if(cb && e && e.charIndex != null) cb("borde", e.charIndex); };
+        u.onend = ()=>{ if(st !== yo) return;
+          if(yo.empezo){ const seg = (Date.now() - yo.tIni) / 1000; if(seg > 1) DEMO._cps = Math.min(25, Math.max(8, .7 * DEMO._cps + .3 * String(f).length / seg)); }   // velocidad medida de esta voz
+          fin("ok"); };
+        u.onerror = e=>{ if(st !== yo) return; fin(e && /interrupt|cancel/i.test(e.error || "")? "cortada" : "error"); };
+        _uViva = u;   // la referencia queda viva hasta el final (que el navegador no la descarte sin avisar onend)
+        s.speak(u);
+      }catch(e){ fin("error"); }
+    };
+    (async()=>{ const falta = 300 - (Date.now() - _tCancel); if(falta > 0) await esperar(falta); decirUna(); })();   // el cancel() anterior se asienta
+    /* fin(...) va ANTES de callarVoz(): el onerror que dispara cancel() ya no cambia el resultado */
+    h = setInterval(()=>{
+      if(hecho || !st) return;
+      if(corte()){ fin("cortada"); callarVoz(); return; }
+      const ahora = Date.now(); let habla = false;
+      try{ habla = !!(s.speaking || s.pending); }catch(e){}
+      if(!st.empezo){
+        if(habla){ st.oyo = true; if(ahora - st.t0 > 1200){ st.empezo = true; st.tIni = st.ultimo = st.t0; if(cb) cb("start", null, previsto()); } return; }   // suena sin avisar
+        if(st.oyo){ st.calla++; if(st.calla >= 2) fin("ok"); return; }   // sonó sin avisar y ya terminó
+        if(ahora - st.t0 > 2500){
+          if(!otra){ otra = true; st = null; callarVoz(); setTimeout(decirUna, 300); }   // st = null antes: el onerror de la que no partió no cuenta
+          else { fin("muda"); callarVoz(); }
+        }
+        return;
+      }
+      st.calla = habla? 0 : st.calla + 1;
+      if(st.calla >= 3){ fin("ok"); return; }   // dejó de sonar y no avisó onend
+      if(ahora - st.tIni > previsto() * 1.4 + 1500 && ahora - st.ultimo > 1500){ fin("reloj"); callarVoz(); }
+    }, 300);
   });
 }
-/* habla frase por frase (iOS y Chrome cortan los textos largos). Pausa = cancel() (pause() falla en iOS) y al seguir se repite la frase */
-function hablar(texto){
-  return new Promise(async res=>{
-    if(!vozActiva()){ res(); return; }
-    const frases = (paraVoz(texto).match(/[^.!?]+[.!?]*/g) || []).map(x=>x.trim()).filter(x=>/[a-záéíóúñ0-9]/i.test(x));
-    const v = mejorVoz(), k = K(), corte = ()=>DEMO.cortar || (k && k.parar()) || !DEMO.corriendo;
-    DEMO._hablando = true; pintarSub(); musicaBaja(true);
-    for(let i = 0; i < frases.length; i++){
-      if(corte()) break;
-      const p0 = DEMO._nPausas;
-      await decirFrase(frases[i], v);
-      if(corte()) break;
-      if(DEMO._nPausas !== p0 || DEMO.pausa){
-        while(DEMO.pausa && !corte()) await esperar(150);
-        if(corte()) break;
-        i--;   // se cortó por la pausa: se repite desde el principio
+/* espera ms sin contar la pausa (se corta con Siguiente, Salir o parar) */
+async function esperarQuieto(ms){ let t = 0; const k = K(); while(t < ms){ if(DEMO.cortar || (k && k.parar()) || !DEMO.corriendo) return; await esperar(100); if(!DEMO.pausa) t += 100; } }
+/* habla la frase unidad por unidad, pieza por pieza. Pausa = cancel() (pause() falla en iOS) y al seguir se repite la pieza que sonaba */
+async function hablar(P){
+  if(!vozActiva() || !P || !P.u.length) return;
+  const v = MUDO? null : mejorVoz(), k = K(), corte = ()=>DEMO.cortar || (k && k.parar()) || !DEMO.corriendo;
+  DEMO._hablando = true; pintarSub();
+  try{
+    for(let i = 0; i < P.u.length; i++){
+      const U = P.u[i];
+      for(let j = 0; j < U.voz.length; j++){
+        if(corte()) return;
+        const p0 = DEMO._nPausas;
+        musicaVoz(true);
+        await decirFrase(U.voz[j], v, (ev, ci, dur)=>{ if(ev === "start") capPieza(i, j, dur); else if(ev === "borde") capBorde(ci); });
+        if(corte()) return;
+        if(DEMO._nPausas !== p0 || DEMO.pausa){
+          while(DEMO.pausa && !corte()) await esperar(150);
+          if(corte()) return;
+          j--; continue;   // se cortó por la pausa: se repite esa pieza
+        }
+        capHasta(i, j);   // terminó la pieza: el subtítulo alcanza hasta donde llegó la voz (si la voz fue más rápida que lo previsto)
+        if(DEMO.ritmo < 1 && (i < P.u.length - 1 || j < U.voz.length - 1)) await esperarQuieto(400);   // «Más lento»: más pausa entre oraciones
       }
     }
-    DEMO._hablando = false; if(DEMO.corriendo) pintarSub(); musicaBaja(false);
-    res();
-  });
+  } finally {
+    DEMO._hablando = false; capParar(); if(DEMO.corriendo) pintarSub(); musicaVoz(false);
+  }
 }
-function msLectura(texto){ return Math.max(2600, plano(texto).length * 62) / (DEMO.ritmo || 1); }
+const msLectura = P=>Math.max(2600, String(P && P.texto || "").length * 62) / (DEMO.ritmo || 1);
+/* lo que se espera que dure la voz de la frase (en MUDO, lo mismo que espera decirMuda) */
+function durVoz(P){ let ms = 0; if(P) P.u.forEach(U=>U.voz.forEach(x=>{ ms += MUDO? 400 + x.length * 70 : x.length / Math.max(8, DEMO._cps || 13.5) * 1000 + 150; })); return ms; }
 /* espera: lo que dura la voz (o lo que tarda en leerse), respetando pausa y «siguiente». En «Paso a paso», hasta tocar Siguiente */
-async function esperarLectura(texto){
+async function esperarLectura(P){
   const k = K();
-  if(DEMO.rapido){ await esperar(40); pararSi(); return; }
-  const ms = msLectura(texto), conVoz = vozActiva();
-  let listo = false, vozFin = !conVoz, t = 0;
+  if(DEMO.rapido){ capRapido(P); await esperar(40); pararSi(); return; }
+  const ms = msLectura(P), conVoz = vozActiva(), tras = DEMO.ritmo < 1? 800 : 200;
+  let listo = false, vozFin = !conVoz, t = 0, tv = 0;
   DEMO.cortar = false;
   DEMO.salto = ()=>{ listo = true; DEMO.cortar = true; callarVoz(); };
-  const voz = conVoz? hablar(texto).then(()=>{ vozFin = true; }) : Promise.resolve();
+  const voz = conVoz? hablar(P).then(()=>{ vozFin = true; }) : Promise.resolve();
   try{
     while(!listo){
       if(k && k.parar()) throw k.PARAR;
       await esperar(120);
       if(DEMO.pausa) continue;
       t += 120;
-      if(DEMO.modo === "auto" && (conVoz? (vozFin && t > 700) : t >= ms)) listo = true;
+      if(!conVoz) capTiempo(P, t / ms); else if(vozFin) tv += 120;
+      if(DEMO.modo === "auto" && (conVoz? (vozFin && tv >= tras) : t >= ms)) listo = true;
     }
   } finally {
-    DEMO.salto = null; DEMO.cortar = true; if(conVoz) callarVoz();
+    DEMO.salto = null;
+    const cortada = conVoz && !vozFin;
+    DEMO.cortar = true;
+    if(cortada) callarVoz();   // solo si se cortó (Siguiente, Salir, parar): si la voz terminó bien no hay cancel()
     await voz.catch(()=>{});
+    capParar();
   }
 }
 /* espera una parte de lo que dura la frase (para tocar algo mientras se habla) */
 async function esperarParte(frac, texto){
   if(DEMO.rapido) return;
-  const meta = (vozActiva()? plano(texto || _subTxt).length / 13.5 * 1000 : msLectura(texto || _subTxt)) * frac;
+  const P = DEMO.plan || planFrase(texto || "");
+  const meta = (vozActiva()? durVoz(P) : msLectura(P)) * frac;
   let t = 0;
   while(t < meta){ pararSi(); if(DEMO.cortar && t > 0) return; await esperar(120); if(!DEMO.pausa) t += 120; }
+}
+
+/* ---------- pantalla completa y pantalla encendida (se detectan: si el navegador no las tiene, la demostración sigue igual) ---------- */
+const enApp = ()=>{ try{ return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches; }catch(e){ return false; } };
+const pcOk = ()=>!!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+const enPC = ()=>!!(document.fullscreenElement || document.webkitFullscreenElement);
+const wlOk = ()=>!!(navigator.wakeLock && typeof navigator.wakeLock.request === "function");
+function pantallaCompleta(on){
+  try{
+    if(on){
+      if(enApp() || enPC()) return;   // desde el ícono de inicio ya no hay barras de Safari
+      const de = document.documentElement, f = de.requestFullscreen || de.webkitRequestFullscreen; if(!f) return;
+      DEMO.pc.fs++; const r = f.call(de, {navigationUI:"hide"}); if(r && r.catch) r.catch(()=>{});
+    } else if(enPC()){ const f = document.exitFullscreen || document.webkitExitFullscreen; if(f){ const r = f.call(document); if(r && r.catch) r.catch(()=>{}); } }
+  }catch(e){}
+}
+let _wl = null;
+/* Wake Lock en toda demostración (el bloqueo automático del iPad la dejaba en pausa a los 2–5 min); se pide de nuevo al volver a la vista */
+function pantallaEncendida(on){
+  if(!on){ const s = _wl; _wl = null; if(s){ DEMO.wl.soltados++; try{ const r = s.release(); if(r && r.catch) r.catch(()=>{}); }catch(e){} } return; }
+  if(!wlOk()){ DEMO.wl.falta = true; return; }
+  if(_wl && !_wl.released) return;
+  DEMO.wl.pedidos++;
+  /* existe pero el equipo puede negarla (permiso, modo de ahorro): se sigue igual y la pausa por pantalla escondida dice cómo evitarlo */
+  try{ const p = navigator.wakeLock.request("screen"); if(p && p.then) p.then(x=>{ if(!DEMO.corriendo){ try{ x.release(); }catch(e){} return; } _wl = x; DEMO.wl.falta = false; }).catch(()=>{ DEMO.wl.falta = true; }); }catch(e){ DEMO.wl.falta = true; }
 }
 
 /* ---------- silencio al cerrar o esconder la página ----------
    La voz la habla Windows o el iPad, no la página: si no se corta aquí, sigue sonando después de cerrar. */
 function callarTodo(){
   callarVoz();
-  try{ clearInterval(_musH); }catch(e){} _musH = null;
-  try{ if(_ac) _ac.close(); }catch(e){}
-  _mus = null; _ac = null;
+  clearTimeout(_vozH); clearTimeout(_susH);
+  if(_mus){ clearInterval(_mus.h); _mus = null; }
+  const ac = _ac, G = _G; _ac = null; _G = null;
+  if(ac){ try{ if(G) G.master.gain.setTargetAtTime(0, ac.currentTime, .02); }catch(e){} setTimeout(()=>{ try{ ac.close(); }catch(e){} }, 120); }
 }
 window.addEventListener("pagehide", ()=>{ if(DEMO.corriendo && !DEMO.probando){ const k = K(); if(k) k.parar(true); } callarTodo(); });
 window.addEventListener("beforeunload", ()=>{ if(DEMO.corriendo && !DEMO.probando){ const k = K(); if(k) k.parar(true); } callarTodo(); });
-/* página escondida (otra app, pantalla apagada, ventana minimizada) = pausa; al volver NO sigue sola: el subtítulo dice por qué quedó en pausa
-   (revisión 28-10: una prueba vio «pausa» sin que nadie tocara, con la página ya a la vista; era esto) */
+/* página escondida (otra app, pantalla apagada, ventana minimizada) = pausa; al volver NO sigue sola: el aviso dice por qué quedó en pausa
+   (revisión 28-10: una prueba vio «pausa» sin que nadie tocara, con la página ya a la vista; era esto). Al volver se pide otra vez la pantalla encendida */
 document.addEventListener("visibilitychange", ()=>{
-  if(!document.hidden || !DEMO.corriendo || DEMO.probando) return;
-  if(!DEMO.pausa) ponerPausa(true, "oculta"); else { callarVoz(); audioPausa(true); }
+  if(!DEMO.corriendo || DEMO.probando) return;
+  if(document.hidden){ if(!DEMO.pausa) ponerPausa(true, "oculta"); else { callarVoz(); audioPausa(true); } }
+  else { pantallaEncendida(true); if(DEMO.presOn) controles(true); }
 });
+/* si se sale de la pantalla completa (Esc, gesto del sistema) la demostración sigue y aparecen los controles */
+["fullscreenchange", "webkitfullscreenchange"].forEach(n=>document.addEventListener(n, ()=>{ if(DEMO.corriendo && DEMO.presOn && !enPC()) controles(true); }));
+/* teclado en el modo presentación (también los controles de presentación, que mandan → y AvPág) */
+document.addEventListener("keydown", e=>{ if(!DEMO.corriendo || !DEMO.presOn || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return; if(tecla(e.key)) e.preventDefault(); });
 /* errores de la app mientras corre la demostración (los anota; la demostración sigue) */
 window.addEventListener("error", e=>{ if(!DEMO.corriendo) return; if(e.target && e.target !== window && (e.target.src || e.target.href)) return;
   DEMO.errores.push("Error de JavaScript: " + (e.message || "error") + " · " + String(e.filename || "").split("/").pop().split("?")[0] + ":" + (e.lineno || "")); }, true);
 window.addEventListener("unhandledrejection", e=>{ if(!DEMO.corriendo) return; const m = String((e.reason && (e.reason.message || e.reason)) || "rechazo");
   if(/bots: |Failed to fetch|NetworkError|Load failed|AbortError|aborted/i.test(m)) return; DEMO.errores.push("Promesa sin manejar: " + m.slice(0, 200)); });
 
-/* ---------- música de fondo y sonidos (Web Audio: se generan aquí, no hay archivos) ---------- */
-let _ac = null, _mus = null, _musH = null;
-const VOL_MUS = .2;
+/* ---------- música de fondo y sonidos (Web Audio: se generan aquí, no hay archivos; composición propia, sin licencias) ----------
+   Colchón cálido en Re mayor: 8 acordes de 8 s (ciclo de 64 s, con dos variantes), dos osciladores desafinados ±6 cents por nota,
+   pasa-bajos que «respira» (LFO de 0,05 Hz), bajo con su 2.º armónico (se oye en los parlantes del iPad), arpegio suave solo en
+   los silencios y reverberación con impulso generado (RT60 2,6 s). Mezcla:
+     colchón/bajo/arpegio → NIVEL (lo elige el usuario) → MEZCLA ─┬→ seco 0,75 ──────────────────────┐
+     efectos (envío) ──────────────────────────────────────────────┴→ HPF 180 → reverberación → 0,35 ┴→ DIP 2,2 kHz → DUCK → COMPRESOR → MASTER
+     efectos (directo) ─────────────────────────────────────────────────────────────────────────────────────────────────→ COMPRESOR
+   Mientras habla la voz: DUCK −10 dB (−5 dB en el iPad, que ya la baja solo: WebKit 278598), DIP −6 dB y arpegio a 0; al terminar
+   espera 1,5 s antes de subir (se acabó el «sube y baja» entre frase y frase). Reloj con programación anticipada (2 s, cada 250 ms). */
+let _ac = null, _G = null, _mus = null, _vozH = null, _susH = null;
+const DUCK_PC = .32, DUCK_IOS = .56, DUCK = ES_IOS? DUCK_IOS : DUCK_PC;
+const MUS = {paso:8, arp:[440, 493.88, 587.33, 659.26, 739.99, 880, 987.77], niv:{pad:.05, bajo:.12, bajo2:.04, arp:.035},
+  acordes:[   // [bajo, colchón de 4 notas]: Re maj9, Si m11, Sol maj7(13), La sus4 → La, Re/Fa♯ (add9), Sol maj9, Mi m9, La sus2
+    [73.42, [185.00, 220.00, 277.18, 329.63]], [123.47, [185.00, 220.00, 293.66, 329.63]], [98.00, [185.00, 246.94, 293.66, 329.63]], [110.00, [164.81, 220.00, 293.66, 329.63]],
+    [92.50, [220.00, 293.66, 329.63, 369.99]], [98.00, [220.00, 246.94, 293.66, 369.99]], [82.41, [196.00, 246.94, 293.66, 369.99]], [110.00, [164.81, 220.00, 246.94, 329.63]]]};
 function audioCtx(){
   if(MUDO) return null;   // sin música ni sonidos en este PC (las funciones ya aceptan null)
   try{ if(!_ac){ const C = window.AudioContext || window.webkitAudioContext; if(!C) return null; _ac = new C(); }
     if(_ac.state === "suspended" && !DEMO.pausa) _ac.resume(); return _ac; }catch(e){ return null; }
 }
-function audioPausa(on){ try{ if(!_ac) return; if(on && _ac.state === "running") _ac.suspend(); else if(!on && _ac.state === "suspended") _ac.resume(); }catch(e){} }
-/* una base cálida y tranquila: acordes de Do, La menor, Fa y Sol, con un arpegio suave encima */
-function musicaIniciar(){
-  const ac = audioCtx(); if(!ac || _mus) return;
-  _mus = ac.createGain(); _mus.gain.value = 0; _mus.connect(ac.destination);
-  const lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1500; lp.Q.value = .4; lp.connect(_mus);
-  const acordes = [[261.63,329.63,392],[220,261.63,329.63],[174.61,220,261.63],[196,246.94,293.66]];
-  const dur = 4.8; let i = 0;
-  const sonar = ()=>{
-    if(!_mus || !_ac || _ac.state !== "running") return; const t = ac.currentTime, a0 = acordes[i % acordes.length];
-    a0.forEach((f, k)=>{ const o = ac.createOscillator(), g = ac.createGain(); o.type = k? "sine" : "triangle"; o.frequency.value = k? f : f / 2;
-      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(k? .11 : .16, t + 1.4); g.gain.linearRampToValueAtTime(k? .08 : .12, t + dur - .5); g.gain.linearRampToValueAtTime(0, t + dur + 1);
-      o.connect(g); g.connect(lp); o.start(t); o.stop(t + dur + 1.1); });
-    a0.concat([a0[0] * 2]).forEach((f, k)=>{ const o = ac.createOscillator(), g = ac.createGain(), s = t + .7 + k * 1.0; o.type = "sine"; o.frequency.value = f * 2;
-      g.gain.setValueAtTime(0, s); g.gain.linearRampToValueAtTime(.045, s + .04); g.gain.exponentialRampToValueAtTime(.0008, s + 1.8);
-      o.connect(g); g.connect(lp); o.start(s); o.stop(s + 1.9); });
-    i++;
-  };
-  sonar(); _musH = setInterval(sonar, dur * 1000);
-  _mus.gain.linearRampToValueAtTime(DEMO.musica? VOL_MUS : 0, ac.currentTime + 2.5);
+/* cambio suave anclado al valor de ahora (sin saltos aunque haya un fundido a medio camino) */
+function rampa(p, v, tc, ac){
+  ac = ac || _ac; if(!p || !ac) return;
+  try{ const t = ac.currentTime;
+    if(p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(t); else { const x = p.value; p.cancelScheduledValues(t); p.setValueAtTime(x, t); }
+    p.setTargetAtTime(v, t, tc); }catch(e){}
 }
-/* mientras habla el presentador, la música baja */
-function musicaBaja(si){
-  if(!_mus || !_ac) return; const t = _ac.currentTime;
-  try{ _mus.gain.cancelScheduledValues(t); _mus.gain.setTargetAtTime(DEMO.musica? (si? VOL_MUS * .35 : VOL_MUS) : 0, t, .3); }catch(e){}
+/* azar con semilla (mulberry32): el arpegio nunca suena igual y el bot lo puede revisar */
+function azarSem(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+/* el acorde k (k = 0, 1, 2…): función pura, sin sonido. voz:true = mientras habla (sin arpegio) */
+function planAcorde(k, op){
+  op = op || {};
+  const i = ((k % 8) + 8) % 8, va = Math.floor(k / 8) % 2, A = MUS.acordes[i], pad = A[1].slice();
+  if(va && i >= 4) pad[3] = pad[3] * 2;   // variante B: la nota de arriba sube una octava en los acordes 5 a 8
+  const r = azarSem((op.semilla || 1) * 7919 + k * 104729 + va * 13), arp = [];
+  if(!op.voz){
+    const n = i === 7? 1 : 2 + Math.floor(r() * 3), pos = [];   // 2 a 4 notas (1 en el último, para que la frase respire)
+    while(pos.length < n){ const p = Math.floor(r() * 9); if(pos.indexOf(p) < 0) pos.push(p); }
+    pos.sort((a, b)=>a - b);
+    let prev = -1;
+    pos.forEach(p=>{ let j = Math.floor(r() * MUS.arp.length); if(j === prev) j = (j + 1 + Math.floor(r() * (MUS.arp.length - 1))) % MUS.arp.length; prev = j;
+      arp.push({t:+(p * .75).toFixed(2), f:MUS.arp[j], vel:+(.6 + r() * .4).toFixed(2)}); });
+  }
+  return {k, i, va, bajo:A[0], pad, sus:i === 3? {de:293.66, a:277.18, t:5} : null, arp, dur:MUS.paso, niv:MUS.niv};
 }
-function musicaParar(){ if(!_mus || !_ac) return; try{ _mus.gain.setTargetAtTime(0, _ac.currentTime, .4); }catch(e){} const m = _mus; _mus = null; setTimeout(()=>{ clearInterval(_musH); _musH = null; try{ m.disconnect(); }catch(e){} }, 1600); }
+function planMusica(k0, n, op){ const out = []; k0 = k0 || 0; for(let k = k0; k < k0 + (n || 16); k++) out.push(planAcorde(k, op)); return out; }
+function ondaSuave(ac){ const N = 16, re = new Float32Array(N), im = new Float32Array(N); for(let n = 1; n < N; n++) im[n] = 1 / Math.pow(n, 1.7); return ac.createPeriodicWave(re, im); }
+/* respuesta al impulso de una sala: estéreo, 3 s, RT60 2,6 s, 25 ms de pre-retardo, cola que se oscurece de 7 a 1,2 kHz */
+function irSala(ac, seg, rt60, pre){
+  seg = seg || 3; rt60 = rt60 || 2.6; pre = pre || .025;
+  const sr = ac.sampleRate, n = Math.floor(sr * seg), p = Math.floor(sr * pre), b = ac.createBuffer(2, n, sr), kEnv = Math.exp(-6.91 / (rt60 * sr));
+  for(let c = 0; c < 2; c++){
+    const d = b.getChannelData(c); let lp = 0, env = 1, a = 0;
+    for(let i = p; i < n; i++){
+      if((i - p) % 64 === 0) a = 1 - Math.exp(-2 * Math.PI * 7000 * Math.pow(1200 / 7000, (i - p) / sr / seg) / sr);
+      lp += a * ((Math.random() * 2 - 1) - lp); d[i] = lp * env; env *= kEnv;
+    }
+  }
+  return b;
+}
+/* arma la mezcla en cualquier contexto (el de verdad o un OfflineAudioContext para medir) */
+function armarMezcla(ac){
+  const g = v=>{ const n = ac.createGain(); n.gain.value = v; return n; }, G = {ac};
+  G.master = g(0); G.master.connect(ac.destination);
+  G.comp = ac.createDynamicsCompressor();
+  try{ G.comp.threshold.value = -20; G.comp.knee.value = 12; G.comp.ratio.value = 3; G.comp.attack.value = .02; G.comp.release.value = .35; }catch(e){}
+  G.comp.connect(G.master);
+  G.duck = g(1); G.duck.connect(G.comp);
+  G.dip = ac.createBiquadFilter(); G.dip.type = "peaking"; G.dip.frequency.value = 2200; G.dip.Q.value = .9; G.dip.gain.value = 0; G.dip.connect(G.duck);
+  G.seco = g(.75); G.seco.connect(G.dip);
+  G.hum = g(.35); G.hum.connect(G.dip);
+  G.conv = ac.createConvolver(); G.conv.buffer = irSala(ac); G.conv.connect(G.hum);
+  G.hpf = ac.createBiquadFilter(); G.hpf.type = "highpass"; G.hpf.frequency.value = 180; G.hpf.connect(G.conv);
+  G.mezcla = g(1); G.mezcla.connect(G.seco); G.mezcla.connect(G.hpf);
+  G.nivel = g(0); G.nivel.connect(G.mezcla);
+  G.lp = ac.createBiquadFilter(); G.lp.type = "lowpass"; G.lp.frequency.value = 1100; G.lp.Q.value = .7; G.lp.connect(G.nivel);
+  G.lfo = ac.createOscillator(); G.lfo.type = "sine"; G.lfo.frequency.value = .05; G.lfoG = g(250); G.lfo.connect(G.lfoG); G.lfoG.connect(G.lp.frequency); G.lfo.start();
+  G.bajo = g(1); G.bajo.connect(G.nivel);
+  G.arp = g(1); G.arp.connect(G.nivel);
+  G.efx = g(1); G.efx.connect(G.comp);
+  G.efxRev = g(1); G.efxRev.connect(G.hpf);
+  G.onda = ondaSuave(ac);
+  return G;
+}
+const soltar = (o, ...ns)=>{ o.onended = ()=>{ ns.forEach(n=>{ try{ n.disconnect(); }catch(e){} }); }; };
+function notaPad(G, t0, f, dur, ataque){
+  const ac = G.ac;
+  [-6, 6].forEach((c, k)=>{
+    const o = ac.createOscillator(); o.setPeriodicWave(G.onda); o.frequency.value = f; o.detune.value = c + (Math.random() * 3 - 1.5);
+    const g = ac.createGain(); g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(MUS.niv.pad, t0 + ataque);
+    g.gain.setValueAtTime(MUS.niv.pad, t0 + Math.max(dur, ataque)); g.gain.setTargetAtTime(0, t0 + Math.max(dur, ataque), 1);
+    let sal = g; if(ac.createStereoPanner){ const p = ac.createStereoPanner(); p.pan.value = k? .35 : -.35; g.connect(p); sal = p; }
+    o.connect(g); sal.connect(G.lp); o.start(t0); o.stop(t0 + Math.max(dur, ataque) + 6); soltar(o, g, sal);
+  });
+}
+/* «celesta»: f + 2f + 3,01f, ataque de 12 ms (sin clic) y caída natural */
+function notaCelesta(G, t, f, v, dest, envio){
+  const ac = G.ac;
+  [[1, 1, .9], [2, .2, .35], [3.01, .08, .35]].forEach(([m, a, tc])=>{
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = "sine"; o.frequency.value = f * m;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v * a, t + .012); g.gain.setTargetAtTime(0, t + .012, tc);
+    o.connect(g); g.connect(dest); if(envio) g.connect(envio);
+    o.start(t); o.stop(t + .012 + tc * 7); soltar(o, g);
+  });
+}
+function programarAcorde(G, P, t0){
+  const ac = G.ac, d = P.dur;
+  [[P.bajo, MUS.niv.bajo], [P.bajo * 2, MUS.niv.bajo2]].forEach(([f, v])=>{
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = "sine"; o.frequency.value = f;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(v, t0 + 2); g.gain.setValueAtTime(v, t0 + d); g.gain.setTargetAtTime(0, t0 + d, 1);
+    o.connect(g); g.connect(G.bajo); o.start(t0); o.stop(t0 + d + 6); soltar(o, g);
+  });
+  P.pad.forEach(f=>{
+    if(P.sus && Math.abs(f - P.sus.de) < .01){ notaPad(G, t0, f, P.sus.t, 3); notaPad(G, t0 + P.sus.t - .5, P.sus.a, d - P.sus.t + .5, 1.5); }   // La sus4 → La a los 5 s
+    else notaPad(G, t0, f, d, 3);
+  });
+  P.arp.forEach(a=>notaCelesta(G, t0 + a.t, a.f, MUS.niv.arp * a.vel, G.arp));
+}
+function nivelMusica(){ return (DEMO.musica || (_mus && _mus.forzada))? (MUS_NIV[DEMO.musNivel] || MUS_NIV.baja) : 0; }
+function musicaIniciar(forzada){
+  const ac = audioCtx(); if(!ac) return;
+  if(!_G || _G.ac !== ac) _G = armarMezcla(ac);
+  if(!_mus){
+    const M = _mus = {k:0, tSig:ac.currentTime + .1, semilla:(Date.now() % 100000) + 1, forzada:!!forzada, h:null};
+    const tic = ()=>{
+      if(_mus !== M || !_ac || !_G || _ac.state !== "running") return;
+      if(M.tSig < _ac.currentTime) M.tSig = _ac.currentTime + .05;   // después de una pausa
+      while(M.tSig < _ac.currentTime + 2){ programarAcorde(_G, planAcorde(M.k, {semilla:M.semilla}), M.tSig); M.tSig += MUS.paso; M.k++; }
+    };
+    tic(); M.h = setInterval(tic, 250);
+  } else if(forzada) _mus.forzada = true;
+  rampa(_G.master.gain, 1, .3); rampa(_G.nivel.gain, nivelMusica(), 1.3);   // entrada: unos 4 s
+}
+/* nivel elegido (Normal, Baja, Muy baja) o Apagada: si se apaga, el reloj se detiene a los 1,5 s */
+function musicaNivel(){
+  if(!_G) return;
+  rampa(_G.nivel.gain, nivelMusica(), .3);
+  if(!nivelMusica() && _mus){ const M = _mus; setTimeout(()=>{ if(_mus === M && !nivelMusica()){ clearInterval(M.h); _mus = null; } }, 1500); }
+}
+/* mientras habla: baja de verdad; al terminar espera 1,5 s antes de subir (si parte otra frase, no sube) */
+function musicaVoz(on){
+  DEMO._vozSuena = !!on;
+  clearTimeout(_vozH); _vozH = null;
+  if(!_G || !_ac) return;
+  if(on){ rampa(_G.duck.gain, DUCK, .12); rampa(_G.dip.gain, -6, .12); rampa(_G.arp.gain, 0, .15); }
+  else _vozH = setTimeout(()=>{ _vozH = null; if(!_G || DEMO._vozSuena) return; rampa(_G.duck.gain, 1, .9); rampa(_G.dip.gain, 0, .9); rampa(_G.arp.gain, 1, .9); }, 1500);
+}
+/* pausa: fundido corto y suspend() a los 400 ms; al seguir, resume() y vuelve el nivel */
+function audioPausa(on){
+  if(!_ac) return;
+  try{
+    clearTimeout(_susH); _susH = null;
+    if(on){ if(_G) rampa(_G.master.gain, 0, .1); _susH = setTimeout(()=>{ _susH = null; try{ if(DEMO.pausa && _ac && _ac.state === "running") _ac.suspend(); }catch(e){} }, 400); }
+    else { if(_ac.state === "suspended"){ const r = _ac.resume(); if(r && r.catch) r.catch(()=>{}); } if(_G) rampa(_G.master.gain, 1, .25); }
+  }catch(e){}
+}
+/* final: cierra en Re maj9 sostenido y baja en ~6 s (el contexto queda vivo por si se toca «Repetir») */
+function musicaFin(){
+  if(!_G || !_ac) return;
+  if(_mus){ clearInterval(_mus.h); _mus = null;
+    if(nivelMusica() || DEMO.musica) programarAcorde(_G, {bajo:MUS.acordes[0][0], pad:MUS.acordes[0][1].slice(), sus:null, arp:[], dur:6}, _ac.currentTime + .05); }
+  const p = _G.master.gain, t = _ac.currentTime;
+  try{ if(p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(t); else { const x = p.value; p.cancelScheduledValues(t); p.setValueAtTime(x, t); } p.setTargetAtTime(0, t + 3, 1.6); }catch(e){}
+}
+function musicaParar(){ if(_mus){ clearInterval(_mus.h); _mus = null; } if(_G) rampa(_G.master.gain, 0, .4); }
+/* toque (apagado en el modo presentación: el cursor ya lo muestra), lámina y fin. Pasan por la reverberación y bajan con la voz */
 function sonido(tipo){
-  if(!DEMO.sonidos || !DEMO.corriendo || DEMO.rapido || DEMO.pausa) return; const ac = audioCtx(); if(!ac) return;
-  const t = ac.currentTime;
-  const tono = (f, d, tp, v, dt)=>{ const o = ac.createOscillator(), g = ac.createGain(), s = t + (dt || 0); o.type = tp || "sine"; o.frequency.setValueAtTime(f, s);
-    g.gain.setValueAtTime(0, s); g.gain.linearRampToValueAtTime(v || .08, s + .012); g.gain.exponentialRampToValueAtTime(.0008, s + d);
-    o.connect(g); g.connect(ac.destination); o.start(s); o.stop(s + d + .02); };
-  if(tipo === "toque") tono(1046.5, .07, "sine", .05);
-  else if(tipo === "lamina"){ tono(392, .5, "triangle", .07); tono(587.33, .6, "sine", .05, .09); tono(783.99, .7, "sine", .04, .18); }
-  else if(tipo === "fin") [523.25, 659.25, 783.99, 1046.5].forEach((f, k)=>tono(f, .9, "sine", .07, k * .13));
+  if(!DEMO.sonidos || !DEMO.corriendo || DEMO.rapido || DEMO.pausa) return;
+  if(tipo === "toque" && DEMO.presOn) return;
+  const ac = audioCtx(); if(!ac) return;
+  if(!_G || _G.ac !== ac){ _G = armarMezcla(ac); }
+  rampa(_G.master.gain, 1, .05);
+  const G = _G, t = ac.currentTime + .02, envio = v=>{ const e = ac.createGain(); e.gain.value = v; e.connect(G.efxRev); return e; };
+  if(tipo === "toque"){
+    const o = ac.createOscillator(), g = ac.createGain(), lp = ac.createBiquadFilter(), e = envio(.15), v = .02 * (DEMO._vozSuena? .4 : 1);
+    o.type = "triangle"; o.frequency.setValueAtTime(740, t); o.frequency.exponentialRampToValueAtTime(520, t + .06);
+    lp.type = "lowpass"; lp.frequency.value = 2500;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + .004); g.gain.setTargetAtTime(0, t + .004, .04);
+    o.connect(lp); lp.connect(g); g.connect(G.efx); g.connect(e); o.start(t); o.stop(t + .4); soltar(o, lp, g, e);
+  } else if(tipo === "lamina"){
+    const e = envio(.6);
+    [369.99, 440, 554.37, 659.26].forEach(f=>{ const o = ac.createOscillator(), g = ac.createGain(); o.type = "sine"; o.frequency.value = f;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.025, t + .6); g.gain.setTargetAtTime(0, t + .6, 1.2);
+      o.connect(g); g.connect(G.efx); g.connect(e); o.start(t); o.stop(t + 9); soltar(o, g); });
+  } else if(tipo === "fin"){
+    const e = envio(.7);
+    [440, 587.33, 739.99, 880].forEach((f, k)=>notaCelesta(G, t + k * .18, f, .035, G.efx, e));
+  }
+}
+/* «Probar mezcla» del panel (no existe en MUDO): 15 s de música con una frase encima, para elegir el nivel de oído en el iPad */
+function probarMezcla(){
+  if(MUDO || DEMO.corriendo) return false;
+  const ac = audioCtx(); if(!ac) return false;
+  musicaIniciar(true);
+  clearTimeout(DEMO._pmH); clearTimeout(DEMO._pmH2);
+  DEMO._pmH = setTimeout(()=>{
+    try{ const s = window.speechSynthesis; if(!s || !window.SpeechSynthesisUtterance || !DEMO.voz) return;
+      const v = mejorVoz(), u = new SpeechSynthesisUtterance(paraVoz("Así se oye la voz sobre la música. Si cuesta entenderla, elige un nivel más bajo.")), P = vozParams();
+      if(v){ u.voice = v; u.lang = v.lang; } else u.lang = "es-CL";
+      u.rate = P.rate; u.pitch = P.pitch; u.volume = 1; u.onend = u.onerror = ()=>musicaVoz(false);
+      musicaVoz(true); s.speak(u); }catch(e){} }, 5000);
+  DEMO._pmH2 = setTimeout(()=>{ if(!DEMO.corriendo) musicaParar(); }, 16000);
+  return true;
+}
+/* Mide la música SIN SONAR: la renderiza en memoria con OfflineAudioContext (no tiene salida a los parlantes; MUDO lo permite).
+   Por omisión 30 s en «Baja», con la voz entre el 50 % y el 80 % del tiempo. Devuelve el pico, el RMS con y sin voz (bajaDb),
+   el salto máximo entre muestras y cuántos saltos pasan de 0,05 (clics). Para correrla en el navegador: await AgroDemo._medirMusica(30) */
+async function medirMusica(seg, op){
+  op = op || {}; seg = Math.max(8, Math.min(60, +seg || 30));
+  const C = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if(!C) return {error:"este navegador no tiene OfflineAudioContext"};
+  const sr = 44100, oac = new C(2, Math.round(sr * seg), sr), t0 = (window.performance && performance.now())? performance.now() : Date.now();
+  const G = armarMezcla(oac), niv = MUS_NIV[op.nivel] || MUS_NIV.baja, duck = op.ios? DUCK_IOS : DUCK_PC;
+  const vDe = op.vozDe != null? +op.vozDe : seg * .5, vA = op.vozA != null? +op.vozA : seg * .8;
+  G.master.gain.setValueAtTime(1, 0);
+  G.nivel.gain.setValueAtTime(0, 0); G.nivel.gain.setTargetAtTime(niv, .05, 1.3);
+  [[G.duck.gain, 1, duck, .12], [G.dip.gain, 0, -6, .12], [G.arp.gain, 1, 0, .15]].forEach(([p, base, baja, tc])=>{
+    p.setValueAtTime(base, 0); p.setValueAtTime(base, vDe); p.setTargetAtTime(baja, vDe, tc); p.setTargetAtTime(base, vA + 1.5, .9); });
+  for(let k = 0, t = .1; t < seg; k++, t += MUS.paso) programarAcorde(G, planAcorde(k, {semilla:op.semilla || 1}), t);
+  const buf = await new Promise((ok, mal)=>{ oac.oncomplete = e=>ok(e.renderedBuffer); try{ const p = oac.startRendering(); if(p && p.then) p.then(ok, mal); }catch(e){ mal(e); } });
+  const L = buf.getChannelData(0), R = buf.numberOfChannels > 1? buf.getChannelData(1) : L;
+  let pico = 0, salto = 0, clics = 0;
+  for(let i = 0; i < L.length; i++){
+    const x = Math.max(Math.abs(L[i]), Math.abs(R[i])); if(x > pico) pico = x;
+    if(i){ const d = Math.max(Math.abs(L[i] - L[i - 1]), Math.abs(R[i] - R[i - 1])); if(d > salto) salto = d; if(d > .05) clics++; }
+  }
+  const rms = (a, b)=>{ let s = 0, n = 0; for(let i = Math.max(0, Math.floor(a * sr)); i < Math.min(L.length, Math.floor(b * sr)); i++){ s += L[i] * L[i] + R[i] * R[i]; n += 2; } return n? Math.sqrt(s / n) : 0; };
+  const db = x=>x > 0? Math.round(200 * Math.log10(x)) / 10 : null;
+  const rTodo = rms(5, seg), rSin = rms(Math.max(5, vDe - 6), vDe), rCon = rms(vDe + 1.5, vA);
+  return {seg, sr, nivel:op.nivel || "baja", duck, pico:+pico.toFixed(4), picoDb:db(pico), rms:+rTodo.toFixed(5), rmsDb:db(rTodo), rmsSinVozDb:db(rSin), rmsConVozDb:db(rCon),
+    bajaDb:(rSin && rCon)? Math.round(200 * Math.log10(rCon / rSin)) / 10 : null, saltoMax:+salto.toFixed(5), clics,
+    ms:Math.round(((window.performance && performance.now())? performance.now() : Date.now()) - t0)};
 }
 
 /* ------------------------------------------------------------------ narrador y toques */
 /* muestra el subtítulo, resalta (si se pide), habla y espera. «accion» (opcional) corre mientras se habla */
 async function decir(texto, obj, accion){
   pararSi();
-  DEMO.n++; pintarSub(texto); DEMO.textos.push(plano(texto));
+  DEMO.n++; subDemo(); DEMO.plan = planFrase(texto, DEMO.bloque); capFrase(DEMO.plan); pintarSub(); DEMO.textos.push(plano(texto));
   if(obj !== undefined && obj !== null){ const el = aro(obj); if(!el) DEMO.sinElemento.push(DEMO.bloque + ": " + descDe(obj)); trazar(obj, el); }
   else aro(null);
-  if(!accion){ await esperarLectura(texto); return; }
+  if(!accion){ await esperarLectura(DEMO.plan); return; }
   let errA = null, errL = null;
   const pA = (async()=>{ try{ if(!DEMO.rapido) await esperar(450); await accion(); }catch(e){ errA = e; } })();
-  try{ await esperarLectura(texto); }catch(e){ errL = e; }
+  try{ await esperarLectura(DEMO.plan); }catch(e){ errL = e; }
   await pA;
   if(errL) throw errL;
   if(errA){ if(esParar(errA)) throw errA; DEMO.errores.push(DEMO.bloque + ": " + msg(errA)); }
 }
-/* una lámina a pantalla completa (para presentar) */
+/* una lámina a pantalla completa (para presentar): la voz la dice y no lleva subtítulo (la lámina ya muestra el texto) */
 async function lamina(L){
   pararSi();
-  subDemo(); const d = document.getElementById("demoDiapo");
+  subDemo(); const d = $("demoDiapo");
   aro(null); sonido("lamina");
+  d.classList.remove("portada");
   d.innerHTML = `<div class="dc"><div class="dk">${L.kicker}</div><h2>${L.titulo}</h2><ul>${(L.puntos || []).map((p, i)=>`<li style="animation-delay:${.35 + i * .45}s">${p}</li>`).join("")}</ul></div>`;
   d.classList.add("on"); DEMO.laminas.mostradas++;
-  DEMO.n++; pintarSub("<b>" + L.titulo + "</b>"); DEMO.textos.push(plano(L.kicker + " · " + L.titulo + " · " + (L.puntos || []).join(" · ")));
-  try{ await esperarLectura(L.titulo + ". " + (L.puntos || []).join(". ")); }
-  finally { d.classList.remove("on"); DEMO.laminas.escondidas++; }
+  DEMO.n++; DEMO._enLamina = true; DEMO.plan = planFrase(textoLamina(L), DEMO.bloque, true); capFrase(DEMO.plan); pintarSub();
+  DEMO.textos.push(plano(L.kicker + " · " + L.titulo + " · " + (L.puntos || []).join(" · ")));
+  try{ await esperarLectura(DEMO.plan); }
+  finally { d.classList.remove("on"); DEMO.laminas.escondidas++; DEMO._enLamina = false; }
+}
+/* portada del modo presentación mientras se arma la copia de ejemplo (no cuenta como lámina) */
+function portada(on, g){
+  const d = $("demoDiapo"); if(!d) return;
+  if(!on){ if(d.classList.contains("portada")) d.classList.remove("on", "portada"); return; }
+  d.innerHTML = `<div class="dc"><div class="dk">Total Fruit · AgroNotas</div><h2>${escH(g.nombre)}</h2><ul><li>Preparando la demostración…</li></ul></div>`;
+  d.classList.add("on", "portada");
 }
 /* toca como una persona, con resaltado y sonido (= kit.tocar + sonido("toque")); lanza SinProbar si no está */
 async function toque(obj, desc){
@@ -718,11 +1432,12 @@ const FRASES = {
        "En <b>Ahora</b> ves temperatura, viento con su rosa, lluvia, humedad, radiación y el pronóstico.",
        "<b>Para el campo</b> traduce el clima a decisiones: si se puede aplicar, helada esta noche, lluvia en cosecha de cerezas, mojamiento, calor y viento fuerte.",
        "Para aplicar mira cinco puntos según el equipo, turbo o barra: Delta T, viento, inversión térmica, lluvia y calor. La calma de día no frena: lo que manda es la inversión al amanecer y al atardecer. Abajo, las horas aptas de los próximos dos días.",
-       "En <b>Gráficos</b> ves cualquier dato en 24 horas, 7 o 30 días, o en 3, 6 o 9 meses y hasta un año.",
+       "En <b>Gráficos</b> ves cualquier dato en 24 horas, 7 o 30 días, 3 o 6 meses, un año o el período que elijas.",
        "Los días en que la estación no tenía datos se completan con Open-Meteo y se ven en gris, como en Riego. Desde seis meses, las barras van por semana.",
        "Aquí, los <b>grados día</b>: abajo eliges la base, 5, 10 o 12,5 grados, y arriba ves el total, el promedio por día y el acumulado de la temporada.",
        "Y el <b>frío invernal</b> en un solo dato: eliges horas frío, unidades Utah o porciones, para saber si el cerezo juntó lo que necesita.",
-       "En <b>Informes</b>: diario, semanal, mensual o de la temporada, en Excel o PDF."],
+       "En <b>Informes</b>: diario, semanal, mensual o de la temporada, en Excel o PDF.",
+       "La tarjeta <b>Presión</b> avisa cuando la presión, el cielo y la humedad coinciden en que viene un frente."],
   ASIST:["El <b>Asistente</b>: le cuentas lo del día con tus palabras, escrito o dictado, y Claude lo ordena.",
          "Por ejemplo…",
          "Lo separa en una labor, una nota y un recordatorio. Tú revisas, corriges si hace falta, y cada cosa queda en su lugar."],
@@ -742,6 +1457,22 @@ const FRASES = {
   L5:[{kicker:"AgroNotas · Total Fruit Curacaví", titulo:"Gracias", puntos:["Preguntas"]}]
 };
 const ASIS_EJEMPLO = "Hoy terminamos la poda en {cu0} con 6 personas, 420 plantas. Vi arañita roja en {cu1}. Mañana hay que llamar al proveedor de fertilizante.";
+/* lo que DICE la voz cuando no es lo mismo que se lee (aprobado por Manuel el 29-10-2026; la pantalla no cambia).
+   Clave "BLOQUE·i" (como DEMO.bloque); un elemento por UNIDAD de la frase (las oraciones de unidadesDe): null = se dice lo que se lee
+   (paraVoz ya pone los números en palabras con su género, «el Sag», «lápiz»…); un arreglo = la unidad se dice en dos piezas
+   (frases largas partidas). paraVoz se aplica igual a lo de aquí. AgroDemo._revisar() avisa si una clave no calza con su frase. */
+const VOZ = {
+  "HOY·8":["Más abajo, el clima de la zona y una caja para preguntarle a tus datos en palabras normales, como: ¿cuándo apliqué en este fundo?"],
+  "MAPA·11":[["Marcar o dibujar sirve para hacer croquis encima del mapa.", "Líneas punto por punto o a mano alzada con el lápiz, con formas, texto y sellos, como un árbol, un gotero o una plaga."]],
+  "NOTA·6":["Y guardamos la nota."],
+  "CALC·1":[null, ["Un marco de cuatro por dos metros da mil doscientas cincuenta plantas por hectárea.", "En tres hectáreas, tres mil setecientas cincuenta plantas."],
+    ["En cosecha, con treinta kilos por planta, salen ciento doce mil quinientos kilos.", "Con los kilos por balde y por bin, te dice cuántos días y cuánta gente necesitas."], null],
+  "RIEGO·5":[["El botón abre la ficha de ese cuartel justo donde hay que corregir.", "Las líneas de riego con su gotero, la Pp medida con un aforo, o la cobertura de copa del huerto joven."]],
+  "EST·3":[["Para el campo traduce el clima a decisiones.", "Si se puede aplicar, helada esta noche, lluvia en cosecha de cerezas, mojamiento, calor y viento fuerte."]],
+  "EST·7":[["Aquí, los grados día: abajo eliges la base, cinco, diez o doce y medio grados.", "Y arriba ves el total, el promedio por día y el acumulado de la temporada."]],
+  "ASIST·2":["Por ejemplo, le escribo lo que pasó hoy."],
+  "L5·1":["Gracias. ¿Preguntas?"]
+};
 function txt(x, crudo){
   if(Array.isArray(x)) return x.map(y=>txt(y, crudo));
   if(x && typeof x === "object") return {kicker:txt(x.kicker, crudo), titulo:txt(x.titulo, crudo), puntos:(x.puntos || []).map(y=>txt(y, crudo))};
@@ -961,11 +1692,11 @@ const BLOQUES = {
   RIEGO:{prep:async ()=>{ const k = K(); await k.irA("riego");
       try{ if(nav.riegoFundo !== DEMO.fundo && riegoFundosConCuarteles().indexOf(DEMO.fundo) >= 0) riegoFundo(DEMO.fundo); }catch(e){}
       window.scrollTo(0, 0); await k.pausa(); }, pasos:[
-    async fr=>decir(fr, "#riegoScroll .card"),
+    async fr=>decir(fr, "#riegoScroll .card:not(.rg-sem)"),   // v163: la tarjeta del programa, no «Esta semana en el campo»
     async fr=>decir(fr, fn("días de la serie de ET₀", ()=>{ const g = document.querySelector("#riegoScroll .gkpi"); return g && g.nextElementSibling; })),
     async fr=>{ await ir2(`#riegoScroll .chip[onclick="riegoVistaSet('cu')"]`, "Por cuartel", ()=>riegoVistaSet("cu")); await K().pausa();
       await decir(fr, [`.rgcard[data-rgcu="${DEMO.q[0].id}"]`, ".rgcard"]); },
-    async fr=>decir(fr, ["[data-rg-res]", "#riegoScroll .card"]),
+    async fr=>decir(fr, ["[data-rg-res]", "#riegoScroll .card:not(.rg-sem)"]),
     async fr=>{ await ir2(["[data-rg-res] button[onclick*=\"'linea'\"]", "[data-rg-res] button[onclick^=\"riegoFicha\"]", `.rgcard[data-rgcu="${DEMO.q[0].id}"] button[onclick^="riegoFicha"]`, '.rgcard button[onclick^="riegoFicha"]'], "ficha de riego desde el aviso", ()=>riegoFicha(DEMO.q[0].id, "linea"));
       await K().pausa(1.2); await decir(fr, [fn("línea de riego de la ficha", ()=>{ const h = document.querySelector('#capaModal .rf-sec[data-rf="linea"]'); return h && h.nextElementSibling; }), '#capaModal .rf-sec[data-rf="linea"]', S.modal]); await K().cerrarTodo(); },
     async fr=>{ await ir2(`#riegoScroll .chip[onclick="riegoVistaSet('turnos')"]`, "Turnos", ()=>riegoVistaSet("turnos")); await K().pausa();
@@ -1004,7 +1735,9 @@ const BLOQUES = {
         aro(["#estGCtrl .est-ctrl-sub", "#estGCtrl"]); await esperarParte(.2, fr);
         await ir2({texto:/Porciones/, sel:"#estGCtrl .est-ctrl-sub .chip"}, "Porciones", ()=>{ if(typeof estGrafSub === "function") estGrafSub("pf"); });
         await K().pausa(); aro(["#estGPrin", "#estGKpi"]); }); },
-    async fr=>{ await seccionEst("inf"); await decir(fr, "#estVista"); }
+    async fr=>{ await seccionEst("inf"); await decir(fr, "#estVista"); },
+    /* 29-10: el aviso del barómetro (tarjeta «Presión» de Ahora); en el recorrido va justo después de «Ahora» (EST·2) */
+    async fr=>{ await seccionEst("ahora"); await decir(fr, ["#estKPres", `#estVista button[onclick="estIrCard('estKPres')"]`, "#estVista"]); }
   ]},
 
   ASIST:{prep:async ()=>{ const k = K(); await k.irA("asist"); window.scrollTo(0, 0); }, pasos:[
@@ -1048,7 +1781,7 @@ const BLOQUES = {
 
 /* ------------------------------------------------------------------ los guiones */
 const GUIONES = [
-  {id:"recorrido", nombre:"Recorrido completo", min:"10–11", para:"Conocer toda la app", sec:[["B0"],["HOY"],["MAPA"],["NOTA"],["BIT"],["FENO"],["LISTAS"],["GANTT"],["TAB"],["FITO"],["CALC"],["APLIC"],["RIEGO"],["EST"],["ASIST"],["DATOS"],["FIN"]]},
+  {id:"recorrido", nombre:"Recorrido completo", min:"10–11", para:"Conocer toda la app", sec:[["B0"],["HOY"],["MAPA"],["NOTA"],["BIT"],["FENO"],["LISTAS"],["GANTT"],["TAB"],["FITO"],["CALC"],["APLIC"],["RIEGO"],["EST",[1,2,10,3,4,5,6,7,8,9]],["ASIST"],["DATOS"],["FIN"]]},
   {id:"jefe", nombre:"Día a día del jefe de campo", min:"3", para:"Capacitar a jefes de campo y capataces", sec:[["B0",[1]],["HOY",[1,4,5,6,7]],["NOTA",[1,2,3,4,5,6]],["BIT",[1,3,4]],["REC"],["EST",[3,4]],["FIN_JEFE"]]},
   {id:"riego", nombre:"Riego y estación", min:"3", para:"Encargado de riego y quien decide aplicaciones", sec:[["INTRO_RIEGO"],["HOY_EST"],["EST",[2,3,4,5,6,7,8]],["RIEGO"],["FIN_RIEGO"]]},
   {id:"corta", nombre:"Presentación corta", min:"2", para:"Mostrar qué es AgroNotas (reunión)", sec:[["L1"],["HOY",[1,4]],["HOY",[5]],["L2"],["FITO",[1]],["L3"],["EST",[3]],["L4"],["L5"]]}
@@ -1074,17 +1807,22 @@ async function correrGuion(g){
 }
 function reiniciar(g){
   Object.assign(DEMO, {id:g.id, titulo:g.nombre, n:0, total:pasosDe(g).length, pausa:false, salto:null, cortar:false, _nPausas:0, _hablando:false,
-    directos:[], atajos:[], sinElemento:[], respaldos:[], traza:[], tapados:[], errores:[], textos:[], laminas:{mostradas:0, escondidas:0}});
-  _subTxt = "";
+    directos:[], atajos:[], sinElemento:[], respaldos:[], traza:[], tapados:[], errores:[], textos:[], laminas:{mostradas:0, escondidas:0},
+    presOn:false, fin:false, plan:null, _ctl:false, _salirT:0, _arriba:false, _enLamina:false,
+    cap:{trozos:0, maxCar:0, maxLineas:0, minPx:0, ctlMostrados:0, escudo:false, lamMedidas:0, lamSinEscudo:0, visibles:[], textos:[]}, wl:{pedidos:0, soltados:0, falta:false}, pc:{fs:0}});
+  capParar(); CAPT.u = CAPT.c = -1;
 }
 
 /* ------------------------------------------------------------------ panel de inicio */
-function quitarPanel(){ const p = document.getElementById("demoPanel"); if(p) p.remove(); }
+function quitarPanel(){ const p = $("demoPanel"); if(p) p.remove(); }
 function quitarUI(){
-  clearInterval(_aroH); _aroH = null; _aroEl = null;
-  ["demoSub", "demoAro", "demoDiapo", "demoPanel"].forEach(id=>{ const e = document.getElementById(id); if(e) e.remove(); });
-  document.documentElement.classList.remove("demo-on");
-  const c = document.getElementById("botsCursor"); if(c) c.classList.remove("on");
+  clearInterval(_aroH); _aroH = null; _aroEl = null; capParar(); clearTimeout(_ctlH); _ctlH = null;
+  ["demoSub", "demoAro", "demoDiapo", "demoPanel", "demoCap", "demoCtl", "demoEscudo"].forEach(id=>{ const e = $(id); if(e) e.remove(); });
+  const h = document.documentElement;
+  ["demo-on", "demo-pres", "demo-fin", "demo-capg"].forEach(c=>h.classList.remove(c));
+  ["--demo-pie", "--demo-techo", "--demo-pad", "--demo-aviso"].forEach(v=>h.style.removeProperty(v));
+  DEMO.presOn = false; DEMO._ctl = false; DEMO._arriba = false; DEMO._enLamina = false;
+  const c = $("botsCursor"); if(c) c.classList.remove("on");
 }
 function abrir(id){
   if(DEMO.corriendo) return;
@@ -1093,84 +1831,158 @@ function abrir(id){
   cssDemo();
   const k = K();
   try{ if(window.AgroBots && window.AgroBots.cerrarInicio) window.AgroBots.cerrarInicio(); }catch(e){}
-  let p = document.getElementById("demoPanel");
+  let p = $("demoPanel");
   if(!p){ p = document.createElement("div"); p.id = "demoPanel"; p.setAttribute("role", "dialog"); p.setAttribute("aria-label", "Demostración guiada"); document.body.appendChild(p); }
-  const vs = vocesOrden(), vSel = mejorVoz(), sinKit = !k, botsCorriendo = !!(k && k.R && k.R.inicio && !k.R.fin);
-  DEMO._nVoces = vocesES().length;
-  const etiqueta = v=>escH(String(v.name || "").replace(/\s*\(.*?\)\s*/g, " ").trim()) + " · " + escH(v.lang) + (puntajeVoz(v) >= 10? " ★" : "");
+  const vs = vocesES(), E = vozElegida(), vSel = E.v, sinKit = !k, botsCorriendo = !!(k && k.R && k.R.inicio && !k.R.fin);
+  DEMO._nVoces = vs.length;
+  const soloMalas = vs.length > 0 && vs.every(v=>calidadVoz(v) < 0);
   const b = (on, onclick, html, aria)=>`<button type="button" class="${on? "act" : ""}" onclick="${onclick}" aria-pressed="${on}"${aria? ` aria-label="${aria}"` : ""}>${html}</button>`;
+  const pcTxt = enApp()? "Abierta desde el ícono: ya ocupa toda la pantalla." : pcOk()? "Pasa a pantalla completa al comenzar." : "Este navegador no deja la pantalla completa: se ve igual, con sus barras.";
+  const vozHTML = (vs.length || MUDO)? `<div class="tit">Voz</div>
+    <div class="seg">${b(DEMO.vozTipo === "mujer", "AgroDemo._vozTipo('mujer')", "Voz de mujer")}${b(DEMO.vozTipo === "hombre", "AgroDemo._vozTipo('hombre')", "Voz de hombre")}</div>
+    ${vSel? `<div class="voz"><span class="vn">Se usa: <b>${escH(nombreVoz(vSel))}</b> · ${escH(vSel.lang)}</span>${MUDO? "" : `<button type="button" onclick="AgroDemo._probarVoz()">${SVG.play}Probar</button>`}</div>` : ""}
+    ${E.aviso? `<div class="ojo">${escH(E.aviso)}</div>` : ""}
+    ${soloMalas? `<div class="ojo">Este equipo solo ofrece voces de baja calidad en español: se entiende, pero suena robótica.</div>` : ""}
+    <div class="nota">${ES_IOS? "En el iPad, Safari solo deja usar las voces que trae el sistema: las voces mejoradas que se descargan en Ajustes no llegan a las páginas web." : "Windows: Configuración → Hora e idioma → Voz agrega voces en español."}</div>`
+    : `<div class="ojo">Este equipo no tiene voces en español: se verá con subtítulos.</div>`;
   p.innerHTML = `<div class="ph">${SVG.film}<span>Demostración guiada</span><button type="button" class="px" onclick="AgroDemo.cerrarPanel()" aria-label="Cerrar">${SVG.x}</button></div>
   <div class="pb">
     <div style="font-size:13px;color:#b7cbbd;margin-bottom:8px">Un bot usa la app frente a ti, con voz y subtítulos, sobre una <b>copia en memoria</b> de tus datos con ejemplos. Nada se guarda: al salir, la app vuelve a como estaba.</div>
     ${GUIONES.map(g=>`<label class="gi"><input type="radio" name="demoSel" value="${g.id}" ${g.id === DEMO.sel? "checked" : ""} onchange="AgroDemo._sel(this.value)"><span><b>${escH(g.nombre)}</b> · ${escH(g.min)} min<small>${escH(g.para)}</small></span></label>`).join("")}
+    <label class="gi gp"><input type="checkbox" id="demoPres" ${presDe(DEMO.sel)? "checked" : ""} onchange="AgroDemo._pres(this.checked)"><span><b>Modo presentación</b><small>Esconde los controles: queda la app, los subtítulos y la música. Toca la pantalla para ver los controles; Esc vuelve a la vista con controles. ${pcTxt}</small></span></label>
     <div class="seg">${b(DEMO.modo === "auto", "AgroDemo._modo('auto')", "Automática")}${b(DEMO.modo === "paso", "AgroDemo._modo('paso')", "Paso a paso")}</div>
     <div class="seg">${b(DEMO.ritmo === 1, "AgroDemo._ritmo(1)", "Ritmo normal")}${b(DEMO.ritmo < 1, "AgroDemo._ritmo(0.7)", "Más lento")}</div>
     <div class="seg">${b(DEMO.voz, "AgroDemo._voz()", (DEMO.voz? SVG.voz : SVG.vozNo) + (DEMO.voz? "Voz" : "Sin voz"))}${b(DEMO.musica, "AgroDemo._musicaPref()", (DEMO.musica? SVG.mus : SVG.musNo) + (DEMO.musica? "Música" : "Sin música"))}${b(DEMO.sonidos, "AgroDemo._sonidos()", SVG.campana + (DEMO.sonidos? "Sonidos" : "Sin sonidos"))}</div>
-    ${DEMO.voz? (vs.length? `<div class="voz"><select id="demoVozSel" onchange="AgroDemo._vozElegir(this.value)" aria-label="Voz del presentador">${vs.map(v=>`<option value="${escH(v.name)}" ${vSel && v.name === vSel.name? "selected" : ""}>${etiqueta(v)}</option>`).join("")}</select>
-        <button type="button" onclick="AgroDemo._probarVoz()">${SVG.play}Probar</button></div>
-      <div class="nota">★ = voz de alta calidad. ¿Suena robótica? iPad: Ajustes → Accesibilidad → Contenido leído → Voces → Español, descarga una voz mejorada (Paulina o Mónica). Windows: Configuración → Hora e idioma → Voz.</div>`
-      : `<div class="ojo">Este equipo no tiene voces en español: se verá con subtítulos.</div>`) : ""}
+    ${DEMO.voz? vozHTML : ""}
+    ${DEMO.musica? `<div class="tit">Música</div><div class="seg">${NIV_ORDEN.map(n=>b(DEMO.musNivel === n, "AgroDemo._musNivel('" + n + "')", NIV_NOM[n])).join("")}</div>${MUDO? "" : `<div class="seg">${b(false, "AgroDemo._probarMezcla()", SVG.mus + "Probar mezcla (15 s)")}</div>`}` : ""}
+    <div class="tit">Subtítulos</div>
+    <div class="seg">${b(DEMO.subs === "si", "AgroDemo._subs('si')", SVG.cc + "Normales")}${b(DEMO.subs === "grande", "AgroDemo._subs('grande')", SVG.cc + "Grandes")}${b(DEMO.subs === "no", "AgroDemo._subs('no')", SVG.ccNo + "Sin subtítulos")}</div>
+    ${wlOk()? "" : `<div class="ojo">Este equipo no deja mantener la pantalla encendida desde la app. Para presentar: Ajustes → Pantalla y brillo → Bloqueo automático → Nunca.</div>`}
+    ${MUDO? `<div class="nota">En este computador de pruebas la demostración no suena (ni voz ni música).</div>` : ""}
     ${sinKit? `<div class="ojo">Falta la versión de bots.js con el kit de la demostración (AgroBots.kit). Recarga la app con señal.</div>` : ""}
     ${botsCorriendo? `<div class="ojo">Hay una prueba de bots corriendo: espera a que termine.</div>` : ""}
     <button type="button" class="pri" onclick="AgroDemo.comenzar()" ${sinKit || botsCorriendo? "disabled" : ""}>${SVG.play}Comenzar</button>
-    <div class="nota">Para presentar: «Automática» y «Más lento». En «Paso a paso» avanza cuando tocas Siguiente. Abajo quedan Pausa, Siguiente y Salir.</div>
+    <div class="nota">Para presentar: «Automática» y «Más lento» (más pausa entre frases, la voz no cambia). En «Paso a paso» avanza cuando tocas Siguiente.</div>
     ${innerWidth < 700? `<div class="nota">Se ve mejor en el iPad o el computador.</div>` : ""}
   </div>`;
 }
-/* las voces llegan de a poco (sobre todo en Chrome): si cambia cuántas hay, se repinta el panel abierto */
-try{ if(window.speechSynthesis) speechSynthesis.addEventListener("voiceschanged", ()=>{ const n = vocesES().length; if(n === DEMO._nVoces) return; DEMO._nVoces = n; if(!DEMO.corriendo && document.getElementById("demoPanel")) abrir(); }); }catch(e){}
 
 /* ------------------------------------------------------------------ comenzar, probar, controles */
 function ponerPausa(on, por){   // por: "oculta" (la página se escondió) o "boton"
   DEMO.pausa = !!on; DEMO.pausaPor = DEMO.pausa? (por || "boton") : "";
   if(DEMO.pausa){ DEMO._nPausas++; callarVoz(); audioPausa(true); }
   else audioPausa(false);
+  if(DEMO.presOn){ DEMO._ctl = true; if(!DEMO.pausa) ctlReloj(); }   // en pausa la barra queda a la vista; al seguir se esconde sola
   pintarSub();
+}
+function siguiente(){ if(DEMO.pausa) ponerPausa(false); if(DEMO.salto) DEMO.salto(); }
+/* música: Normal → Baja → Muy baja → Apagada → Normal */
+function musicaCiclo(){
+  if(!DEMO.musica){ DEMO.musica = true; DEMO.musNivel = "normal"; }
+  else { const i = NIV_ORDEN.indexOf(DEMO.musNivel); if(i < 0 || i >= NIV_ORDEN.length - 1) DEMO.musica = false; else DEMO.musNivel = NIV_ORDEN[i + 1]; }
+  guardarPref();
+  if(DEMO.corriendo){ if(DEMO.musica && !_mus) musicaIniciar(); else musicaNivel(); pintarSub(); if(DEMO.presOn && DEMO._ctl) ctlReloj(); }
+  return DEMO.musica? DEMO.musNivel : "no";
+}
+/* subtítulos: sí / no (vuelve al tamaño que había) */
+function subsCiclo(){
+  if(DEMO.subs === "no") DEMO.subs = DEMO._subsAntes || "si"; else { DEMO._subsAntes = DEMO.subs; DEMO.subs = "no"; }
+  guardarPref();
+  document.documentElement.classList.toggle("demo-capg", DEMO.subs === "grande");
+  const c = $("demoCap"); if(c) capHTML(c._h || "");
+  if(DEMO.corriendo){ pintarSub(); if(DEMO.presOn && DEMO._ctl) ctlReloj(); }
+  return DEMO.subs;
+}
+/* entra o sale del modo presentación durante la demostración (Esc sale; la demostración sigue con sus controles normales) */
+function presentacion(on){
+  on = !!on;
+  if(!DEMO.corriendo){ DEMO.presOn = false; return false; }
+  DEMO.presOn = on; DEMO._salirT = 0;
+  document.documentElement.classList.toggle("demo-pres", on);
+  escudo(on);
+  if(!on){ DEMO._ctl = false; clearTimeout(_ctlH); const c = $("demoCtl"); if(c) c.remove(); if(!DEMO.probando) pantallaCompleta(false); }
+  pintarSub(); ubicarCapas(); aroPos();
+  return on;
+}
+/* teclas del modo presentación (también para los bots: AgroDemo.tecla("ArrowRight")) */
+function tecla(k){
+  if(!DEMO.corriendo) return false;
+  if(k === " " || k === "Spacebar"){ AgroDemo.pausa(); return true; }
+  if(k === "ArrowRight" || k === "PageDown"){ siguiente(); return true; }
+  if(/^m$/i.test(k)){ musicaCiclo(); return true; }
+  if(/^s$/i.test(k)){ subsCiclo(); return true; }
+  if(k === "Escape" || k === "Esc"){ if(DEMO.presOn){ presentacion(false); return true; } return false; }
+  return false;
 }
 async function comenzar(id){
   if(DEMO.corriendo) return;
   const k = K(); if(!k){ abrir(); return; }
   if(k.R && k.R.inicio && !k.R.fin){ abrir(); return; }
   if(k.parar()){ /* una demostración anterior se cerró sin recargar: se permite partir de nuevo */ k.parar(false); }
-  const g = GUIONES.find(x=>x.id === (typeof id === "string"? id : DEMO.sel)) || GUIONES[0];
-  /* el audio se habilita aquí, en el mismo toque de «Comenzar» (el iPad no deja sonar nada sin un toque) */
+  const g = GUIONES.find(x=>x.id === (typeof id === "string"? id : DEMO.sel)) || GUIONES[0], pres = presDe(g.id);
+  /* todo lo que pide un toque del usuario va aquí, antes del primer await: audio, voz, pantalla completa y pantalla encendida */
   if(DEMO.musica || DEMO.sonidos) audioCtx();
-  if(DEMO.voz && !MUDO && window.speechSynthesis && window.SpeechSynthesisUtterance){ try{ speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); }catch(e){} }
+  if(!MUDO && DEMO.musica){ try{ if(navigator.audioSession) navigator.audioSession.type = "playback"; }catch(e){} }   // que el interruptor de silencio del iPad no calle la música (WebKit 251532)
+  if(DEMO.voz && !MUDO && window.speechSynthesis && window.SpeechSynthesisUtterance){ try{ if(!(speechSynthesis.speaking || speechSynthesis.pending)){ const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } }catch(e){} }
   DEMO.sel = g.id; guardarPref();
   quitarPanel();
-  const bu = document.getElementById("botsUI"); if(bu) bu.remove();
+  const bu = $("botsUI"); if(bu) bu.remove();
   reiniciar(g); DEMO.corriendo = true; DEMO.probando = false; DEMO.rapido = false;
-  document.documentElement.classList.add("demo-on");
+  if(pres) pantallaCompleta(true);
+  pantallaEncendida(true);
+  const h = document.documentElement; h.classList.add("demo-on"); h.classList.remove("demo-fin"); h.classList.toggle("demo-capg", DEMO.subs === "grande");
   k.vel("mirar");
-  pintarSub("Preparando la demostración con datos de ejemplo…");
+  pintarSub();
+  if(pres){ presentacion(true); portada(true, g); }
+  else capHTML("Preparando la demostración con datos de ejemplo…");
+  if(DEMO.musica) musicaIniciar();   // la música entra con la portada (en este PC no suena: MUDO)
   try{ await preparar(); }
-  catch(e){ if(esParar(e)) return; DEMO.corriendo = false; mostrarFin("No se pudo preparar la demostración: " + escH(msg(e))); return; }
-  if(DEMO.voz) await esperarVoces(1500);
-  if(DEMO.musica) musicaIniciar();
+  catch(e){ if(esParar(e)) return; DEMO.corriendo = false; portada(false); musicaParar(); pantallaEncendida(false); mostrarFin("No se pudo preparar la demostración: " + escH(msg(e))); return; }
+  if(DEMO.voz){ await esperarVoces(1500); const v = MUDO? null : vozElegida().v; DEMO._vozURI = v? (v.voiceURI || "") : ""; }
+  capHTML("");
+  if(pres){ portada(false); await esperar(DEMO.rapido? 0 : 1200); }
   try{ await correrGuion(g); }
-  catch(e){ if(esParar(e)) return; DEMO.errores.push("Se detuvo: " + msg(e)); DEMO.corriendo = false; musicaParar(); mostrarFin("La demostración se detuvo: " + escH(msg(e)) + "."); return; }
+  catch(e){ if(esParar(e)) return; DEMO.errores.push("Se detuvo: " + msg(e)); DEMO.corriendo = false; musicaParar(); pantallaEncendida(false); mostrarFin("La demostración se detuvo: " + escH(msg(e)) + "."); return; }
   finally { aro(null); }
-  sonido("fin"); setTimeout(musicaParar, 2500);
+  sonido("fin"); musicaFin();
   DEMO.corriendo = false;
+  pantallaEncendida(false);
   mostrarFin();
 }
 function mostrarFin(aviso){
-  const s = subDemo();
+  DEMO.fin = true; DEMO._ctl = false; clearTimeout(_ctlH);
+  const h = document.documentElement; h.classList.add("demo-fin");
+  escudo(false); const c = $("demoCtl"); if(c) c.remove();
+  capParar(); capHTML("");
+  const s = subDemo(); s._armado = false;
   s.innerHTML = `<div class="dt">${SVG.film}<span class="tt">${escH(DEMO.titulo || "Demostración guiada")}</span>fin</div>
     <div class="dx" aria-live="polite">${aviso? aviso + " " : ""}Fin de la demostración. Nada de lo que se vio quedó guardado.</div>
-    <div class="db"><div class="bar"><i style="width:100%"></i></div><button type="button" class="pri" onclick="AgroDemo.salir()">Volver a la app</button></div>`;
+    <div class="db"><div class="bar"><i style="width:100%"></i></div><button type="button" onclick="AgroDemo.comenzar('${escH(DEMO.id)}')">${SVG.play}<span class="tx">Repetir</span></button><button type="button" class="pri" onclick="AgroDemo.salir()">Volver a la app</button></div>`;
   DEMO.textos.push(plano(s.querySelector(".dx").innerHTML));
+  ubicarCapas();
 }
 function sinDemoEnUrl(){ try{ if(/[?&]demo\b/.test(location.search)){ const q = location.search.replace(/^\?/, "").split("&").filter(p=>p && !/^demo(=|$)/.test(p)).join("&"); history.replaceState(null, "", location.pathname + (q? "?" + q : "") + location.hash); } }catch(e){} }
+/* en el modo presentación, «Salir» pide un segundo toque dentro de 3 s (un toque sin querer no corta la presentación) */
 function salir(){
   const k = K();
+  if(DEMO.corriendo && DEMO.presOn && !DEMO.probando){
+    const t = Date.now();
+    if(!(DEMO._salirT && t - DEMO._salirT < 3000)){
+      DEMO._salirT = t; controles(true);
+      setTimeout(()=>{ if(DEMO._salirT === t){ DEMO._salirT = 0; pintarCtl(); ubicarCapas(); } }, 3000);   // el aviso de arriba se va: el subtítulo baja
+      return false;
+    }
+  }
+  DEMO._salirT = 0;
   const habia = DEMO.corriendo;
   DEMO.corriendo = false; DEMO.pausa = false; DEMO.cortar = true;
   if(k && !DEMO.probando) k.parar(true);
+  pantallaEncendida(false); if(!DEMO.probando) pantallaCompleta(false);
   callarTodo(); clearInterval(_aroH); _aroH = null;
-  if(k && k.enCaja() && !DEMO.probando){ quitarUI(); sinDemoEnUrl(); k.volver(); return; }   // borra las bases de prueba y recarga: lo real queda como estaba
+  if(k && k.enCaja() && !DEMO.probando){ quitarUI(); sinDemoEnUrl(); k.volver(); return true; }   // borra las bases de prueba y recarga: lo real queda como estaba
   quitarUI();
   if(habia && k && k.parar()) k.parar(false);
+  return true;
 }
 async function probar(id, op){
   op = op || {};
@@ -1179,20 +1991,22 @@ async function probar(id, op){
   if(!g) return {id, error:"no existe el guion " + id};
   if(DEMO.corriendo) return {id, error:"ya hay una demostración corriendo"};
   if(k.parar()) return {id, error:"la prueba está detenida (AgroBots.parar)"};
-  const pref = {modo:DEMO.modo, voz:DEMO.voz, musica:DEMO.musica, sonidos:DEMO.sonidos, ritmo:DEMO.ritmo};
+  const pref = {modo:DEMO.modo, voz:DEMO.voz, musica:DEMO.musica, sonidos:DEMO.sonidos, ritmo:DEMO.ritmo, subs:DEMO.subs};
   const navK = ["tab","hoyFundo","filtroFundo","notaBuscar","lc","datosSec","riegoVista","riegoFundo","calcTab","calcVals","clActiva","est"], nav0 = {};   // calcVals: lo que la demostración escribió en la Calc (4 × 2 m, 30 kg…)
   navK.forEach(x=>{ try{ nav0[x] = nav[x] === undefined? undefined : JSON.stringify(nav[x]); }catch(e){} });
   const vel0 = k.vel();
-  Object.assign(DEMO, {modo:"auto", voz:!!op.voz, musica:!!op.musica, sonidos:!!op.sonidos, ritmo:1});
+  Object.assign(DEMO, {modo:"auto", voz:!!op.voz, musica:!!op.musica, sonidos:!!op.sonidos, ritmo:1, subs:"si"});
   reiniciar(g); DEMO.corriendo = true; DEMO.probando = true; DEMO.rapido = op.rapido !== false;
   k.vel(op.vel || "rapida");
+  if(op.pres) presentacion(true);   // sin pantalla completa ni Wake Lock (probando)
   let detenido = false;
   try{ await preparar(); await correrGuion(g); }
   catch(e){ if(esParar(e)) detenido = true; else DEMO.errores.push("Se detuvo: " + msg(e)); }
   finally {
     aro(null);
     const r = {id, pasos:DEMO.n, total:DEMO.total, directos:DEMO.directos.slice(), atajos:DEMO.atajos.slice(), sinElemento:DEMO.sinElemento.slice(), respaldos:DEMO.respaldos.slice(), traza:DEMO.traza.slice(), tapados:DEMO.tapados.slice(),
-      errores:DEMO.errores.slice(), textos:DEMO.textos.slice(), laminas:Object.assign({}, DEMO.laminas), detenido, ms:Math.round(performance.now() - t0)};
+      errores:DEMO.errores.slice(), textos:DEMO.textos.slice(), laminas:Object.assign({}, DEMO.laminas), detenido, pres:!!DEMO.presOn, cap:JSON.parse(JSON.stringify(DEMO.cap)),
+      fs:DEMO.pc.fs, wl:DEMO.wl.pedidos, ms:Math.round(performance.now() - t0)};   // fs y wl: en probar() deben quedar en 0 (sin pantalla completa ni Wake Lock)
     DEMO._r = r;
     DEMO.corriendo = false; DEMO.probando = false; DEMO.rapido = false; Object.assign(DEMO, pref);
     k.vel(vel0);
@@ -1206,39 +2020,72 @@ async function probar(id, op){
   }
   return DEMO._r;
 }
-function estado(){ return {corriendo:DEMO.corriendo, id:DEMO.id, n:DEMO.n, total:DEMO.total, pausa:DEMO.pausa, pausaPor:DEMO.pausaPor, modo:DEMO.modo, titulo:DEMO.titulo, probando:DEMO.probando, mudo:MUDO, mudas:DEMO._mudas}; }
+function estado(){ return {corriendo:DEMO.corriendo, id:DEMO.id, n:DEMO.n, total:DEMO.total, pausa:DEMO.pausa, pausaPor:DEMO.pausaPor, modo:DEMO.modo, titulo:DEMO.titulo, probando:DEMO.probando, mudo:MUDO, mudas:DEMO._mudas,
+  pres:DEMO.presOn, ctl:!!(DEMO.presOn && (DEMO._ctl || DEMO.pausa)), subs:DEMO.subs, musica:DEMO.musica? DEMO.musNivel : "no", vozTipo:DEMO.vozTipo, fin:DEMO.fin,
+  wakeLock:{activo:!!_wl, pedidos:DEMO.wl.pedidos, soltados:DEMO.wl.soltados, falta:DEMO.wl.falta}, pantallaCompleta:DEMO.pc.fs}; }
 
-/* duración estimada: voz a ~13,5 letras por segundo + 0,8 s entre frases + ~1,6 s de toques por paso (las láminas no tocan) */
+/* duración estimada: voz a ~13,5 letras por segundo (texto HABLADO) + 0,8 s entre frases + ~1,6 s de toques por paso (las láminas no tocan) */
 function estimar(){
   return GUIONES.map(g=>{
     let pasos = 0, chars = 0, laminas = 0;
-    pasosDe(g).forEach(({b, i})=>{ let f = (FRASES[b] || [])[i - 1]; if(Array.isArray(f)) f = f[0];
-      if(f && typeof f === "object"){ laminas++; f = f.titulo + ". " + (f.puntos || []).join(". "); }
-      pasos++; chars += plano(txt(String(f || ""), true)).length; });
+    pasosDe(g).forEach(({b, i})=>{ const f = (FRASES[b] || [])[i - 1];
+      if(f && typeof f === "object") laminas++;
+      pasos++; planFrase(textoFrase(txt(f, true)), b + "·" + i).u.forEach(U=>U.voz.forEach(x=>{ chars += x.length; })); });
     const seg = Math.round(chars / 13.5 + pasos * 0.8 + (pasos - laminas) * 1.6);
     return {id:g.id, nombre:g.nombre, pasos, laminas, chars, seg, min:Math.round(seg / 6) / 10};
   });
 }
+/* todas las piezas habladas de los 4 guiones (sin repetir): para revisar la voz o generarla grabada algún día */
+function unidadesVoz(){
+  const out = [], vistos = {};
+  Object.keys(FRASES).forEach(b=>FRASES[b].forEach((f, i)=>{ const clave = b + "·" + (i + 1);
+    planFrase(textoFrase(txt(f, true)), clave).u.forEach((U, u)=>U.voz.forEach((x, j)=>{ if(vistos[x]) return; vistos[x] = 1; out.push({clave, u, j, texto:x}); })); }));
+  return out;
+}
+const SALUDO = /^(¡?hola|gracias)\b/i;
+/* frases = pasos, guiones con sus bloques y pasos, el mapa VOZ calza con las unidades, y las reglas de la voz y de los subtítulos */
 function revisar(){ const out = []; Object.keys(BLOQUES).forEach(b=>{ const nf = (FRASES[b] || []).length, np = BLOQUES[b].pasos.length; if(nf !== np) out.push(b + ": " + nf + " frases y " + np + " pasos"); });
   GUIONES.forEach(g=>g.sec.forEach(([b, idx])=>{ if(!BLOQUES[b]) out.push(g.id + ": falta el bloque " + b); (idx || []).forEach(i=>{ if(BLOQUES[b] && !BLOQUES[b].pasos[i - 1]) out.push(g.id + ": " + b + " no tiene el paso " + i); }); }));
+  Object.keys(VOZ).forEach(c=>{ const m = c.split("·"), f = (FRASES[m[0]] || [])[+m[1] - 1];
+    if(f == null){ out.push("VOZ «" + c + "»: no existe esa frase"); return; }
+    const n = unidadesDe(palabrasHTML(textoFrase(txt(f, true)))).length;
+    if(!Array.isArray(VOZ[c]) || VOZ[c].length !== n) out.push("VOZ «" + c + "»: " + (Array.isArray(VOZ[c])? VOZ[c].length : "?") + " unidades y la frase tiene " + n); });
+  Object.keys(FRASES).forEach(b=>FRASES[b].forEach((f, i)=>{ const clave = b + "·" + (i + 1), P = planFrase(textoFrase(txt(f, true)), clave);
+    P.u.forEach(U=>{
+      U.voz.forEach(x=>{ if(/\d\.$/.test(x)) out.push(clave + ": la voz termina en número y punto («" + x.slice(-30) + "»)");
+        if(x.split(/\s+/).length < 3 && !SALUDO.test(x)) out.push(clave + ": pieza de voz de menos de 3 palabras («" + x + "»)"); });
+      if(U.caps.map(c=>c.txt).join(" ") !== U.pant) out.push(clave + ": los subtítulos no reconstruyen el texto");
+      U.caps.forEach((c, j)=>{ if(c.txt.length > 84) out.push(clave + ": subtítulo de " + c.txt.length + " letras");
+        if(j < U.caps.length - 1 && CORTA_NO.test((c.txt.split(" ").pop() || "").replace(/[«“"(¿¡]/g, ""))) out.push(clave + ": subtítulo que termina en «" + c.txt.split(" ").pop() + "»");
+        if(j < U.caps.length - 1 && esNumTxt(c.txt.split(" ").pop() || "")) out.push(clave + ": subtítulo que separa un número de su unidad"); });
+    }); }));
   return out; }
 
 window.AgroDemo = {
-  abrir, comenzar, salir, probar, estado, GUIONES, FRASES, ATAJOS,
+  abrir, comenzar, salir, probar, estado, GUIONES, FRASES, VOZ, ATAJOS,
   pausa:()=>{ if(!DEMO.corriendo) return; ponerPausa(!DEMO.pausa); },
-  siguiente:()=>{ if(DEMO.pausa) ponerPausa(false); if(DEMO.salto) DEMO.salto(); },
-  musica:()=>{ DEMO.musica = !DEMO.musica; guardarPref(); if(DEMO.corriendo){ if(DEMO.musica){ if(!_mus) musicaIniciar(); else musicaBaja(!!DEMO._hablando); } else musicaBaja(false); pintarSub(); } },
+  siguiente, musica:musicaCiclo, subtitulos:subsCiclo, presentacion, tecla,
   cerrarPanel:()=>{ quitarPanel(); },
-  limpiar:()=>{ if(!DEMO.corriendo){ callarTodo(); quitarUI(); } },
-  _sel:v=>{ if(GUIONES.some(g=>g.id === v)){ DEMO.sel = v; guardarPref(); } },
+  limpiar:()=>{ if(!DEMO.corriendo){ callarTodo(); pantallaEncendida(false); quitarUI(); } },
+  _sel:v=>{ if(GUIONES.some(g=>g.id === v)){ DEMO.sel = v; guardarPref(); const c = $("demoPres"); if(c) c.checked = presDe(v); } },
+  _pres:on=>{ DEMO.presG = Object.assign({}, DEMO.presG, {[DEMO.sel]:!!on}); guardarPref(); },
   _modo:m=>{ DEMO.modo = m === "paso"? "paso" : "auto"; guardarPref(); abrir(); },
   _ritmo:r=>{ DEMO.ritmo = +r < 1? 0.7 : 1; guardarPref(); abrir(); },
   _voz:()=>{ DEMO.voz = !DEMO.voz; guardarPref(); abrir(); },
-  _musicaPref:()=>{ DEMO.musica = !DEMO.musica; guardarPref(); abrir(); },
+  _musicaPref:()=>{ DEMO.musica = !DEMO.musica; guardarPref(); if(!DEMO.corriendo) musicaNivel(); abrir(); },
+  _musNivel:n=>{ if(!MUS_NIV[n]) return; DEMO.musNivel = n; DEMO.musica = true; guardarPref(); musicaNivel(); abrir(); },
   _sonidos:()=>{ DEMO.sonidos = !DEMO.sonidos; guardarPref(); abrir(); },
-  _vozElegir:n=>{ DEMO.vozNombre = String(n || ""); guardarPref(); },
-  _probarVoz:()=>{ try{ if(!window.speechSynthesis || MUDO) return; speechSynthesis.cancel(); const v = mejorVoz(); const u = new SpeechSynthesisUtterance(paraVoz("¡Hola! Soy la voz de AgroNotas. Hoy te muestro el cuaderno de campo de Total Fruit."));
-    if(v){ u.voice = v; u.lang = v.lang; } else u.lang = "es-CL"; u.rate = DEMO.ritmo < 1? 0.92 : 1.03; u.pitch = 1.05; u.volume = MUDO? 0 : 1; speechSynthesis.speak(u); }catch(e){} },
-  _estimar:estimar, _revisar:revisar, _paraVoz:paraVoz, _estado:()=>DEMO, _esMudo:esMudo, _decirFrase:decirFrase
+  _subs:v=>{ if(!/^(si|grande|no)$/.test(v)) return; DEMO.subs = v; guardarPref(); abrir(); },
+  _vozTipo:t=>{ DEMO.vozTipo = t === "hombre"? "hombre" : "mujer"; DEMO._vozURI = ""; guardarPref(); abrir(); },
+  _probarVoz:()=>{ try{ if(!window.speechSynthesis || MUDO) return; callarVoz(); const v = mejorVoz(), P = vozParams();
+    const u = new SpeechSynthesisUtterance(paraVoz("¡Hola! Soy la voz de AgroNotas. Hoy te muestro el cuaderno de campo de Total Fruit."));
+    if(v){ u.voice = v; u.lang = v.lang; } else u.lang = "es-CL"; u.rate = P.rate; u.pitch = P.pitch; u.volume = 1;
+    const falta = 300 - (Date.now() - _tCancel); if(falta > 0) setTimeout(()=>speechSynthesis.speak(u), falta); else speechSynthesis.speak(u); }catch(e){} },
+  _probarMezcla:probarMezcla,
+  _controles:on=>controles(on),
+  _estimar:estimar, _revisar:revisar, _paraVoz:paraVoz, _numVoz:numPalabras, _estado:()=>DEMO, _esMudo:esMudo, _decirFrase:decirFrase,
+  _planFrase:(texto, clave)=>planFrase(texto, clave), _unidadesVoz:unidadesVoz, _vozParams:vozParams,
+  _voces:()=>vocesES().map(v=>({nombre:v.name, lang:v.lang, uri:v.voiceURI, genero:generoVoz(v), calidad:calidadVoz(v)})).sort((a, b)=>b.calidad - a.calidad),
+  _planMusica:planMusica, _medirMusica:medirMusica
 };
 })();

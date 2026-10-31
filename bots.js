@@ -23,7 +23,7 @@ let botActual = null, pasoActual = "", vel = "mirar", enMono = false;
 const LS_INFORME = "agronotasBotsUltimo";
 const XSS = `<img src="x-bot" onerror="window.__xss=(window.__xss||0)+1">`;
 /* funciones que ningún bot debe tocar nunca (aunque esté en la copia de prueba) */
-const PELIGROSAS = /\b(borrarTodo|restaurar|inpRest|sync[A-Z]\w*|asisMic|asisOrdenar|asisBandejaMirar|asisColaEnviar|asisLeer|asisLeerSet|fenSugerir|wlConectar|guardarIA|probarIA|iaAnalizar\w*|iaBuscar|iaIdentificar|iaEscanearEtiqueta|iaInterpretarDoc|iaTranscribir|iaResumenInforme|importarGesAgro|quitarGesAgro|ortoOff\w*|salirProyecto|nuevoProyecto|pedirEntrar|lluviaGPS|mapaVerEarth|mapaMedRelieve|botsAbrir|espacioContarNube|cfPDFRedactarIA|lluviaOficialIA|lluviaAnalizar|cfReset|estRebajarTodo|estBorrarLocal|AgroBots|demoAbrir|AgroDemo)\b/;
+const PELIGROSAS = /\b(borrarTodo|restaurar|inpRest|sync[A-Z]\w*|asisMic|asisOrdenar|asisBandejaMirar|asisColaEnviar|asisLeer|asisLeerSet|fenSugerir|wlConectar|guardarIA|probarIA|iaAnalizar\w*|iaBuscar|iaIdentificar|iaEscanearEtiqueta|iaInterpretarDoc|iaTranscribir|iaResumenInforme|importarGesAgro|quitarGesAgro|ortoOff\w*|salirProyecto|nuevoProyecto|pedirEntrar|lluviaGPS|mapaVerEarth|mapaMedRelieve|botsAbrir|espacioContarNube|cfPDFRedactarIA|lluviaOficialIA|lluviaAnalizar|riegoMsjCompartir|cfReset|estRebajarTodo|estBorrarLocal|AgroBots|demoAbrir|AgroDemo)\b/;
 /* MUDO (28-10-2026): en este PC (localhost, 127.0.0.1, archivo abierto con doble clic) nada de lo que prueban los bots suena: dentro de la caja,
    speechSynthesis.speak no habla (cuenta la frase en AB.vozMuda y avisa «terminó» al rato). Lo mismo que demo.js. ?sonido en la dirección lo desactiva */
 const esMudo = loc=>(loc.protocol==="file:" || /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)$/.test(loc.hostname) || /\.localhost$/.test(loc.hostname)) && !/[?&]sonido\b/.test(loc.search);
@@ -122,6 +122,9 @@ function huboMsg(i, re){ return msgsDesde(i).some(t=>re.test(t)); }
 /* ------------------------------------------------------------------ caja de arena */
 const ORIG = {};
 async function entrarCaja(){
+  /* una sola vez (29-10-2026): AgroBots.kit.entrarCaja() antes de comenzar() envolvía fetch y Storage dos veces (ORIG compartido → bucle
+     «Maximum call stack size exceeded» en cada fetch). La demostración ya lo revisaba con kit.enCaja() */
+  if(ORIG.ls) return;
   const S = Storage.prototype;
   ORIG.ls = {get:S.getItem, set:S.setItem, rem:S.removeItem, clear:S.clear, key:S.key};
   const mem = new Map();
@@ -1301,7 +1304,7 @@ BOTS.push({id:"aplicador", modulo:"Calc Fito y Aplicaciones", nombre:"Pedro, apl
 }});
 
 /* 💧 RIEGO ------------------------------------------------------------------------------- */
-BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que:"Riego: horas recalculadas con la fórmula, Pp por líneas de riego y marco (tabla de los 32 cuarteles y casos del pedido del 28-10), valores iniciales, Línea 2 oculta y conservada, «Aplicar a todos los cuarteles del fundo» con Deshacer, m³ iguales, cobertura de copa, prioridad de la Pp, semilla del plano, datos guardados antes, cadena del Kc, alertas de huerto joven, de 8 h y de 24 h (con qué hacer, botón a la ficha y días de riego sugeridos), notas del PDF Pro, días (y que no salten), mínimo un día, bases y vistas, ficha (Kc %, sectores, validaciones, cancelar), Kc manual, bomba y turnos, descuento por lluvia, PDF con sus validaciones", correr: async ()=>{
+BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que:"Riego: horas recalculadas con la fórmula, Pp por líneas de riego y marco (tabla de los 32 cuarteles y casos del pedido del 28-10), valores iniciales, Línea 2 oculta y conservada, «Aplicar a todos los cuarteles del fundo» con Deshacer, m³ iguales, cobertura de copa, prioridad de la Pp, semilla del plano, datos guardados antes, cadena del Kc, alertas de huerto joven, de 8 h y de 24 h (con qué hacer, botón a la ficha y días de riego sugeridos), notas del PDF Pro, días (y que no salten), mínimo un día, bases y vistas, ficha (Kc %, sectores, validaciones, cancelar), Kc manual, bomba y turnos, sin «descontar la lluvia», PDF con sus validaciones, detalles de la Pp (motivo real del marco, «Borrar» de 44 px, «no es un número», Deshacer sobre «Guardar») y año de plantación «2006-2007»; balance con la lluvia medida (copia del programa, Sí/No/En parte, lluvia efectiva, tope, capacidad, válvula compartida, arrastre, mensaje y hoja corregida, espejo)", correr: async ()=>{
   let serie = null;
   /* ---- Pedido de Manuel (28-10-2026, hecho el 29-10): Pp por líneas de riego y marco. Reemplaza los casos del 27-10.
      Casos de prueba EXACTOS con cuarteles de prueba en la caja de arena y una serie fija: ET₀ 3,586 mm/día los 7 días,
@@ -1379,7 +1382,7 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
       if(c.hRiego==null || !pb.pp) continue;
       if((c.ppInfo||{}).src!==pb.src) malos.push(q.fundo+" · "+q.nombre+": la Pp sale de «"+(c.ppInfo||{}).src+"» y debía salir de «"+pb.src+"»");
       const p = riegoParam(q), pp = pb.pp; let etc=0;
-      for(const d of serie){ if(d.et==null) continue; const e=d.et*riegoKc(q, new Date(d.k+"T12:00:00").getMonth()); etc += riegoCfg().descLluvia? Math.max(0, e-0.75*(d.ll||0)) : e; }
+      for(const d of serie){ if(d.et==null) continue; const e=d.et*riegoKc(q, new Date(d.k+"T12:00:00").getMonth()); etc += e; }   // v163: se quitó «descontar la lluvia»
       const etcDia = etc/(serie.length||7), lam = etcDia*7*riegoRep(q)/100, bruta = lam/(p.ef/100), nD = (riegoDias(q).length||1), h = bruta/nD/pp;
       n++; if(Math.abs(h-c.hRiego) > Math.max(0.02, h*0.01)) malos.push(q.fundo+" · "+q.nombre+": app "+c.hRiego.toFixed(2)+" h, fórmula "+h.toFixed(2)+" h");
     }
@@ -1596,7 +1599,9 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     chk(res && /Valores iniciales en 1 de 1 cuartel/.test(txtDe(res)), "El resumen del fundo no cuenta los cuarteles con valores iniciales: «"+txtDe(res)+"»", "media");
     await tocar(`[onclick="riegoVistaSet('tabla')"]`, "vista tabla");
     const fila = document.querySelector(`#riegoScroll tr[data-rgcu="${q.id}"]`);
-    chk(fila && /valores iniciales · 18 got\.\/pl · 36 L\/h\/pl/.test(txtDe(fila)) && /2 líneas: 2 L\/h c\/0,5 m · 2 L\/h c\/0,5 m/.test(txtDe(fila)), "La tabla no muestra la fuente, los goteros y L/h por planta y la línea de riego: «"+txtDe(fila).slice(0,200)+"»", "media");
+    /* 29-10-2026 (detalles): la fuente «Valores iniciales» va una sola vez en la columna Pp (la insignia), seguida de los goteros y L/h por planta */
+    const tpp = txtDe(fila && fila.querySelector(".rg-tpp"));
+    chk(fila && /Valores iniciales 18 got\.\/pl · 36 L\/h\/pl/.test(tpp) && (tpp.match(/valores iniciales/gi)||[]).length===1 && /2 líneas: 2 L\/h c\/0,5 m · 2 L\/h c\/0,5 m/.test(txtDe(fila)), "La tabla no muestra la fuente (una sola vez), los goteros y L/h por planta y la línea de riego: «"+txtDe(fila).slice(0,200)+"»", "media");
     chk(!document.querySelector(`#riegoScroll input[onchange^="riegoSet(${q.id},'caudal'"]`) && !document.querySelector(`#riegoScroll table [onchange*="'gpp'"]`), "La tabla sigue con la casilla L/h (o got./pl) editable", "media");
     await tocar(`[onclick="riegoVistaSet('cu')"]`, "vista cuarteles");
   }));
@@ -1637,7 +1642,7 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     chk(fmtCL(c.pp,2)==="1,33" && c.ppInfo.src==="dis", "Con la línea del 27-10 completa (2 líneas, 0,5 m, 2 L/h) en 6x4,5 la Pp no es la misma de antes, 1,33 de diseño ("+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»)", "grave");
     [q, c] = pp({}, {lin:1, dg:0.5, caudal:2}); chk(fmtCL(c.pp,2)==="0,67", "Con 1 línea del 27-10 en 6x4,5 la Pp no es 0,67 ("+fmtCL(c.pp,2)+")", "grave");
     [q, c] = pp({nombre:"Caudal antiguo bot", marco:"5x2", anio:"2016"}, {caudal:4});
-    chk(fmtCL(c.pp,2)==="3,20" && c.ppInfo.src==="ini" && riegoLineaTxt(c.ppInfo)==="Marco 5×2 · 2 líneas (4 L/h c/0,5 m · 4 L/h c/0,5 m) → Pp 3,20", "Solo con el caudal antiguo de 4 L/h (5x2, 2016) debía dar 3,20 con valores iniciales y la tarjeta «Marco 5×2 · 2 líneas (4 L/h c/0,5 m · 4 L/h c/0,5 m) → Pp 3,20»: "+fmtCL(c.pp,2)+" «"+riegoLineaTxt(c.ppInfo)+"»", "media");
+    chk(fmtCL(c.pp,2)==="3,20" && c.ppInfo.src==="ini" && riegoLineaTxt(c.ppInfo).replace(/\u00A0/g," ")==="Marco 5×2 · 2 líneas (4 L/h c/0,5 m · 4 L/h c/0,5 m) → Pp 3,20", "Solo con el caudal antiguo de 4 L/h (5x2, 2016) debía dar 3,20 con valores iniciales y la tarjeta «Marco 5×2 · 2 líneas (4 L/h c/0,5 m · 4 L/h c/0,5 m) → Pp 3,20»: "+fmtCL(c.pp,2)+" «"+riegoLineaTxt(c.ppInfo)+"»", "media");
     /* goteros/pl antiguos: ya no se usan, la ficha lo dice y Guardar no los borra */
     [q, c] = pp({nombre:"Goteros antiguos bot"}, {gpp:8});
     chk(fmtCL(c.pp,2)==="0,67" && c.ppInfo.src==="ini", "Con 8 goteros/pl antiguos la Pp no sale de la línea (0,67 con valores iniciales): "+fmtCL(c.pp,2)+" «"+c.ppInfo.src+"»", "grave");
@@ -1888,6 +1893,817 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     chk(/hasta 27,0 h \(suma de los sectores de a uno\); necesita 81 h de riego a la semana: al menos 4 dias de riego \(hoy 3\); bomba sin dato de sectores a la vez/.test(tp) && /Kc de adulto en huerto joven: Inicial bot \(2026\), Medida bot \(2026\) usan el Kc de un huerto adulto/.test(tp), "Las notas del PDF Pro no traen qué hacer (24 h: 27 h × 3 días = 81 h → al menos 4 días; huerto joven con su año): «"+((tp.match(/Mas de 24 h[^]{0,260}/)||[""])[0])+"»", "leve");
     chk(/Mas de 24 h en un dia \(los sectores compartidos cuentan una vez\): Equipo del fundo: L Mi V · hasta 27,0 h \(suma de los sectores de a uno\)/.test(tp) && /o confirmar la linea de riego\./.test(tp), "La nota de 24 h del PDF Pro no dice «Equipo del fundo: L Mi V · hasta 27,0 h (suma de los sectores de a uno)» o no termina en «o confirmar la linea de riego»: «"+((tp.match(/Mas de 24 h[^.]*\./)||[""])[0])+"»", "media");
   }));
+  /* ---- v162 (respuesta 1 de Manuel, 29-10): el factor de cobertura se ve como «Canopia 30 %» en la tarjeta, la tabla, la ficha y el PDF Pro ---- */
+  await paso("Canopia (v162): «Canopia 40 %» en la tarjeta, la tabla y la ficha, porcentaje con un decimal, gris con Kc manual, sin el aviso de huerto joven y nota del PDF Pro", ()=>enCaja(async ()=>{
+    const sb0 = window.riegoSerieBase; window.riegoSerieBase = ()=>SERIE_BOT.map(d=>Object.assign({}, d));
+    try{
+    await irA("riego");
+    const q = cuBot({nombre:"Canopia bot"}); prepBot(q, {lin:2, dg:0.5, caudal:2});
+    const rc = riegoCfg(), bt = z=>txtHTML(riegoCobBadge(z));
+    chk(typeof RIEGO_COB_ROT!=="undefined" && RIEGO_COB_ROT==="Canopia" && !riegoCobBadge(q) && riegoJoven(q), "Sin factor de cobertura ya sale la etiqueta de canopia, o el rótulo no es «Canopia» ("+(typeof RIEGO_COB_ROT!=="undefined"? RIEGO_COB_ROT : "—")+")", "media");
+    chk(await fichaBot(q, [["rf_cob","0,4"]]), "La ficha no se cerró con el factor 0,4", "grave");
+    let t = tarjetaBot(q), b = document.querySelector(`#riegoScroll .rgcard[data-rgcu="${q.id}"] .rg-bdg .rg-cob[data-cob="0.4"]`);
+    chk(b && txtDe(b)==="Canopia 40 %" && b.classList.contains("b-verde") && /factor de cobertura 0,40/.test(b.title) && !/Kc de adulto en huerto joven/.test(t) && !document.querySelector('#riegoScroll [data-res="joven"]'),
+      "Con el factor 0,4 la tarjeta no muestra la etiqueta verde «Canopia 40 %» (o sigue el aviso del huerto joven): «"+(b? txtDe(b) : "sin etiqueta")+"»", "media");
+    nav.riegoVista = "tabla"; riegoPintar(); await pausa();
+    const bT = document.querySelector(`#riegoScroll tr[data-rgcu="${q.id}"] .rg-cob`);
+    chk(bT && txtDe(bT)==="Canopia 40 %", "La tabla no muestra «Canopia 40 %» en la celda del cuartel", "media");
+    riegoFicha(q.id); await pausa(); necesito(modalAbierto(), "la ficha de riego");
+    const bF = document.querySelector("#capaModal .rg-cob"), ay = txtDe(document.querySelector("#capaModal [data-cob-ayuda]"));
+    chk(bF && txtDe(bF)==="Canopia 40 %" && ay==="En la tarjeta se ve como «Canopia 30 %».", "La ficha reabierta no muestra «Canopia 40 %» o no trae la ayuda «En la tarjeta se ve como «Canopia 30 %».» («"+ay+"»)", "media");
+    /* revisión v162: en la cabecera de la ficha, «Pp …» y «Canopia 40 %» van separadas (antes pegadas, como una sola píldora) */
+    const pF = bF && bF.previousElementSibling, rP = pF && pF.getBoundingClientRect(), rC = bF && bF.getBoundingClientRect();
+    chk(pF && pF.classList.contains("rg-ppb") && (rC.left - rP.right >= 2 || rC.top >= rP.bottom - 1), "En la cabecera de la ficha la insignia de la Pp y «Canopia 40 %» van pegadas ("+(rP? Math.round(rC.left - rP.right) : "—")+" px entre ellas)", "leve");
+    /* «Usar el % calculado como factor» (diámetro 3 m en 27 m²/pl = 0,262) */
+    await escribir("rf_diam", "3", "diámetro de copa"); await tocar({texto:/usar el % calculado/i}, "Usar el % calculado como factor", "#capaModal");
+    chk(await guardarModal_(), "La ficha no se cerró con el factor calculado", "grave");
+    chk(bt(q)==="Canopia 26,2 %", "Con el factor 0,262 la etiqueta no dice «Canopia 26,2 %» («"+bt(q)+"»)", "leve");
+    const pct = [[0.35,"Canopia 35 %"],[0.357,"Canopia 35,7 %"],[0.3,"Canopia 30 %"],[0.01,"Canopia 1 %"]].filter(([x, e])=>{ rc.cu[q.id].cob = x; return bt(q)!==e; });
+    chk(!pct.length, "El porcentaje de la canopia no sale con hasta un decimal: "+pct.map(z=>z[0]+" → «"+(rc.cu[q.id].cob = z[0], bt(q))+"»").join(", "), "leve");
+    /* huerto adulto (2015) con 0,6, Kc manual (gris, no se usa) y la nota del PDF Pro */
+    const q2 = cuBot({nombre:"Canopia adulto bot", anio:"2015"}); prepBot(q2, {lin:2, dg:0.5, caudal:2, cob:0.6});
+    const q3 = cuBot({nombre:"Canopia manual bot", anio:"2015"}); prepBot(q3, {lin:2, dg:0.5, caudal:2, cob:0.4, modo:"manual", kc:0.5});
+    rc.cu[q.id].cob = 0.4; guardar();
+    const b3 = document.createElement("div"); b3.innerHTML = riegoCobBadge(q3); const e3 = b3.firstElementChild;
+    chk(bt(q2)==="Canopia 60 %" && e3 && e3.dataset.cob==="man" && e3.classList.contains("b-gris") && txtDe(e3)==="Canopia 40 % · no se usa (Kc manual)", "El huerto adulto con 0,6 no dice «Canopia 60 %», o con Kc manual la etiqueta no es gris «Canopia 40 % · no se usa (Kc manual)»: «"+(e3? txtDe(e3) : "—")+"»", "media");
+    nav.riegoVista = "cu"; riegoPintar(); await pausa();
+    const todas = [...document.querySelectorAll("#riegoScroll .rg-cob")];
+    chk(todas.length===3 && todas.every(e=>txtDe(e).indexOf(RIEGO_COB_ROT)===0), "Las etiquetas de canopia no empiezan todas con el rótulo «"+RIEGO_COB_ROT+"» ("+todas.length+")", "leve");
+    const o = {lunes:riegoLunesProximo(), hora:"08:00", fundos:[FU_BOT]}, tp = await textoPDF(()=>riegoPDFPro(o));
+    chk(/Canopia anotada \(factor de cobertura de copa; el Kc de la tabla se multiplica por ese factor\): Canopia bot 40 %, Canopia adulto bot 60 %\./.test(tp) && !/Canopia manual bot \d/.test(tp),
+      "El PDF Pro no trae la nota «Canopia anotada (factor de cobertura de copa; …): Canopia bot 40 %, Canopia adulto bot 60 %» sin el de Kc manual: «"+((tp.match(/Canopia anotada[^.]*\./)||[""])[0])+"»", "media");
+    /* a 375 px la etiqueta no se parte en dos líneas */
+    const card = document.querySelector(`#riegoScroll .rgcard[data-rgcu="${q.id}"]`), w0 = card? card.style.width : "";
+    if(card){ card.style.width = "343px"; await pausa(.1); const e = card.querySelector(".rg-cob"), r = e && e.getBoundingClientRect(), R = card.getBoundingClientRect();
+      chk(e && getComputedStyle(e).whiteSpace==="nowrap" && r.height<26 && r.right<=R.right+1, "A 375 px la etiqueta de canopia se parte en dos líneas o se sale de la tarjeta", "leve"); card.style.width = w0; }
+    /* sin el factor: ninguna etiqueta y vuelve el aviso del huerto joven */
+    chk(await fichaBot(q, [["rf_cob",""]]), "La ficha no se cerró al borrar el factor", "grave");
+    t = tarjetaBot(q);
+    chk(!document.querySelector(`#riegoScroll .rgcard[data-rgcu="${q.id}"] .rg-cob`) && /Kc de adulto en huerto joven/.test(t), "Sin el factor de cobertura queda la etiqueta de canopia o no vuelve el aviso del huerto joven", "media");
+    } finally { window.riegoSerieBase = sb0; }
+  }));
+  /* ---- v162 (pedido de Manuel 29-10): «No alcanzan las horas disponibles» de Turnos, también arriba en las 4 vistas, en Por día, en el PDF Pro y en «Riego hoy» ---- */
+  await paso("Aviso de horas disponibles en todas las vistas (pedido 29-10): Por cuartel, Por día, Turnos y Tabla, «Ir a Turnos», tope de 24 h, PDF y «Riego hoy» de Hoy", ()=>enCaja(async ()=>{
+    const sb0 = window.riegoSerieBase, hf0 = nav.hoyFundo, ui0 = JSON.stringify(D.ui||{}), FUCAP = "Bot Riego Cap";
+    window.riegoSerieBase = ()=>SERIE_BOT.map(d=>Object.assign({}, d));   // la pantalla, el PDF y Hoy calculan con la misma serie fija que calcBot
+    try{
+    const rc = riegoCfg(); rc.bombas = Object.assign({}, rc.bombas||{});
+    const ref = cuBot({nombre:"Ref cap bot", anio:"2015"}); prepBot(ref, {lin:2, dg:0.5, caudal:2});
+    const L = calcBot(ref).lamRiego;   // la lámina de un riego (L-Mi-V): con ppMed = L ÷ h el cuartel riega h horas
+    let nQ = 0;
+    const mk = (h, extra)=>{ nQ++; const z = cuBot({fundo:FUCAP, nombre:"Cap "+nQ+" bot", anio:"2015", ha:1}); prepBot(z, Object.assign({sectores:[{cod:"CAP-"+nQ, nom:"Sector 1", ha:1}]}, extra||{}));
+      rc.cu[z.id].ppMed = calcBot(z).lamRiego/h; guardar(); return z; };
+    const horas = (z, h)=>{ rc.cu[z.id].ppMed = calcBot(z).lamRiego/h; };
+    const quitar = (...zs)=>zs.forEach(z=>{ const i = D.cuarteles.indexOf(z); if(i>=0) D.cuarteles.splice(i, 1); });
+    const A = mk(6), B = mk(5);   // 11 h cada lunes, miércoles y viernes, de a un sector
+    rc.bombas[FUCAP] = {n:1, h:8}; guardar();   // directo en los datos: nunca se pasa por Turnos antes de mirar
+    await irA("riego"); nav.riegoFundo = FUCAP; nav.riegoVista = "cu"; riegoPintar(); await pausa();
+    const capDe = ()=>[...document.querySelectorAll('#riegoScroll [data-res="cap"]')], vista = async v=>{ riegoVistaSet(v); await pausa(.3); };
+    const T_DIAS = "lunes, miércoles y viernes piden hasta 11,0 h y hay 8 h de riego disponibles por día (anotadas en Turnos)", T_MIN = "al menos 5 días de riego (hoy son 3: lunes, miércoles y viernes; libres: martes, jueves, sábado y domingo)";
+    const malV = [];
+    for(const [lab, v] of [["Por día","dia"],["Tabla","tabla"],["Turnos","turnos"],["Por cuartel","cu"]]){
+      await tocar({texto:new RegExp("^"+lab+"$"), sel:"#riegoScroll button.chip"}, lab);
+      const cs = capDe(), c = cs[0], tc = txtDe(c), bI = c && c.querySelector(`button[onclick="riegoVistaSet('turnos')"]`);
+      if(nav.riegoVista!==v || cs.length!==1 || !c.classList.contains("roj") || c.dataset.eq!=="" || c.dataset.sinn!=="0" || txtDe(c.querySelector(".badge"))!=="No alcanzan las horas disponibles"
+        || tc.indexOf(T_DIAS)<0 || tc.indexOf(T_MIN)<0 || !/Marca más días/.test(tc) || !/sube las horas disponibles/.test(tc) || document.querySelector('#riegoScroll [data-res="24h"]')
+        || (v==="turnos"? !!bI : (!bI || bI.getBoundingClientRect().height<44)))   // revisión v162: en Turnos no va «Ir a Turnos» (no hacía nada)
+        malV.push(lab+": "+cs.length+" aviso(s), vista «"+nav.riegoVista+"»"+(v==="turnos" && bI? ", con «Ir a Turnos» estando en Turnos" : "")+" · «"+tc.slice(0,220)+"»");
+    }
+    chk(!malV.length, "El aviso «No alcanzan las horas disponibles» no sale igual arriba en las 4 vistas (en Turnos, sin «Ir a Turnos»): "+malV.join(" · "), "grave");
+    await vista("dia");
+    const pd = [...document.querySelectorAll("#riegoScroll [data-cap-dia]")];
+    chk(pd.length===3 && pd.every(e=>txtDe(e).indexOf("los turnos duran 11,0 h y hay 8 h de riego disponibles (faltan 3,0 h)")>=0), "Por día no trae en cada día de riego «No alcanza el día · …: los turnos duran 11,0 h y hay 8 h de riego disponibles (faltan 3,0 h)» ("+pd.length+")", "media");
+    await vista("turnos");
+    let bs = [...document.querySelectorAll("#riegoScroll .rgt-dia .rgdia-h .badge")], cg = riegoCarga24([A,B].map(z=>({q:z, c:calcBot(z)})));
+    chk(bs.length===3 && bs.every(e=>txtDe(e)==="11,0 h de 8 h" && e.classList.contains("b-rojo")) && cg.length===3 && cg.every(x=>fmtCL(x.tot,1)==="11,0" && x.pasaH && !x.pasa)
+      && /No alcanza el día: faltan 3,0 h para las 8 h/.test(txtDe(document.getElementById("riegoScroll"))) && capDe().length===1,
+      "Turnos no cuadra con el aviso de arriba (insignias «"+bs.map(txtDe).join(", ")+"», riegoCarga24 "+cg.map(x=>fmtCL(x.tot,1)).join(", ")+", «No alcanza el día: faltan 3,0 h para las 8 h…», 1 aviso arriba)", "media");
+    horas(A, 5); horas(B, 3); riegoPintar(); await pausa(.3);   // borde: 5 + 3 = 8,0 h de 8 h
+    bs = [...document.querySelectorAll("#riegoScroll .rgt-dia .rgdia-h .badge")];
+    const sinCapT = !capDe().length; await vista("dia");
+    chk(bs.length===3 && bs.every(e=>txtDe(e)==="8,0 h de 8 h" && e.classList.contains("b-verde")) && sinCapT && !document.querySelector("#riegoScroll [data-cap-dia]"), "Con 8,0 h de 8 h (justo en el borde) igual avisa que no alcanzan las horas", "media");
+    horas(A, 6); horas(B, 5); await vista("cu");
+    const bI = capDe()[0] && capDe()[0].querySelector(`button[onclick="riegoVistaSet('turnos')"]`);
+    if(bI){ await tocar(bI, "Ir a Turnos"); chk(nav.riegoVista==="turnos" && visible(document.querySelector("#riegoScroll .rgt-conf")), "«Ir a Turnos» del aviso no abre Turnos", "media"); }
+    else chk(false, "El aviso «No alcanzan las horas disponibles» no trae «Ir a Turnos»", "media");
+    /* escribir 12 h disponibles en Turnos (como una persona) apaga el aviso en las 4 vistas */
+    const inH = necesito(document.querySelector(`#riegoScroll .rgt-conf input[onchange*="'h'"]`), "«Horas de riego disponibles por día»");
+    await escribir(inH, "12", "horas de riego disponibles"); await pausa(.3);
+    const conCap = []; for(const v of ["cu","dia","turnos","tabla"]){ await vista(v); if(capDe().length) conCap.push(v); }
+    chk(rc.bombas[FUCAP].h===12 && !conCap.length, "Con 12 h disponibles anotadas en Turnos sigue el aviso en: "+conCap.join(", ")+" (h = "+rc.bombas[FUCAP].h+")", "media");
+    /* sin horas anotadas: las 20 h de origen */
+    rc.bombas[FUCAP] = {n:1}; horas(A, 11); horas(B, 10); await vista("cu");
+    chk(txtDe(capDe()[0]).indexOf("piden hasta 21,0 h y hay 20 h de riego disponibles por día (las de origen; se cambian en Turnos)")>=0, "Sin horas anotadas el aviso no dice «hay 20 h de riego disponibles por día (las de origen; se cambian en Turnos)»: «"+txtDe(capDe()[0]).slice(0,200)+"»", "media");
+    /* 24 h y horas disponibles juntas: una sola tarjeta (la de 24 h) con «Además…» */
+    rc.bombas[FUCAP] = {n:1, h:18}; horas(A, 10); horas(B, 10);
+    const C = mk(5, {dias:[1]}); await vista("cu");
+    let c24 = [...document.querySelectorAll('#riegoScroll [data-res="24h"]')], t24 = txtDe(c24[0]);
+    chk(c24.length===1 && !capDe().length && t24.indexOf("Además, miércoles y viernes pasan las 18 h de riego disponibles (hasta 20,0 h).")>=0 && /la frase «Además», con las horas de riego disponibles/.test(t24),
+      "Con un día de 25 h y dos de 20 h (18 h disponibles) no sale una sola tarjeta de 24 h con «Además, miércoles y viernes pasan las 18 h…» y su pie: «"+t24.slice(0,300)+"»", "media");
+    const Dq = mk(9, {equipo:"2"}); rc.bombas[FUCAP+" · 2"] = {n:1, h:8}; guardar(); await vista("cu");
+    c24 = [...document.querySelectorAll('#riegoScroll [data-res="24h"]')];
+    const pies = [...document.querySelectorAll("#riegoScroll .rg-res-p.muted")].filter(e=>/Los sectores compartidos cuentan una vez/.test(txtDe(e)));
+    chk(c24.length===1 && capDe().length===1 && capDe()[0].dataset.eq==="2" && pies.length===1 && /«Más de 24 h» compara con el día completo; «No alcanzan las horas disponibles», con las horas de riego disponibles/.test(txtDe(pies[0])),
+      "Con un equipo de 24 h y otro que solo pasa las horas disponibles no salen 2 tarjetas (una de cada tipo) con el pie mixto una sola vez ("+c24.length+" de 24 h, "+capDe().length+" de horas, "+pies.length+" pies)", "media");
+    /* dos equipos, uno pasa y el otro no: una sola tarjeta, la del que pasa */
+    quitar(C); horas(A, 6); horas(B, 5); rc.bombas[FUCAP] = {n:1, h:12}; await vista("cu");
+    chk(capDe().length===1 && capDe()[0].dataset.eq==="2" && !document.querySelector('#riegoScroll [data-res="24h"]'), "Con dos equipos (solo el «2» pasa sus horas disponibles) no sale una sola tarjeta con data-eq=\"2\"", "media");
+    quitar(Dq); delete rc.bombas[FUCAP+" · 2"];
+    /* sin dato de sectores a la vez ni caudal (fundo fuera de SEED_SIMULT): ámbar, de a un sector */
+    rc.bombas[FUCAP] = {h:8}; await vista("cu");
+    let c0 = capDe()[0], tc0 = txtDe(c0);
+    chk(capDe().length===1 && c0.dataset.sinn==="1" && c0.classList.contains("amb") && /^Puede que no alcancen las horas$/.test(txtDe(c0.querySelector(".badge"))) && /Se calculó de a un sector/.test(tc0) && /anota en Turnos cuántos sectores riegan a la vez/.test(tc0),
+      "Sin dato de sectores a la vez el aviso no es ámbar «Puede que no alcancen las horas» con «Se calculó de a un sector…» y «anota en Turnos cuántos sectores riegan a la vez»: «"+tc0.slice(0,200)+"»", "media");
+    /* tope de 24 h y el mismo formato de las horas */
+    const nA0 = R.alerts.length; riegoBombaSet(FUCAP, "h", "30"); await pausa(.3);
+    chk(rc.bombas[FUCAP].h===24 && /Un día tiene 24 h: las horas disponibles quedaron en 24/.test(txtDe(document.getElementById("avisoCapa"))) && R.alerts.length===nA0, "Con 30 h disponibles no quedaron 24 con el aviso «Un día tiene 24 h…» (o salió un alert): h = "+rc.bombas[FUCAP].h, "media");
+    rc.bombas[FUCAP] = {n:1, h:7.5}; await vista("turnos");
+    chk([...document.querySelectorAll("#riegoScroll .rgt-dia .rgdia-h .badge")].some(e=>/de 7,5 h$/.test(txtDe(e))), "Con 7,5 h disponibles la insignia de Turnos no dice «… de 7,5 h»", "leve");
+    /* revisión v162: 7,25 h anotadas se escriben con sus 2 decimales (antes «7,3 h») */
+    rc.bombas[FUCAP] = {n:1, h:7.25}; await vista("turnos");
+    const b725 = [...document.querySelectorAll("#riegoScroll .rgt-dia .rgdia-h .badge")].map(txtDe); await vista("cu");
+    chk(b725.length===3 && b725.every(t=>t==="11,0 h de 7,25 h") && txtDe(capDe()[0]).indexOf("piden hasta 11,0 h y hay 7,25 h de riego disponibles por día")>=0, "Con 7,25 h disponibles no se escribe «7,25 h» (Turnos «"+b725.join(", ")+"», aviso «"+txtDe(capDe()[0]).slice(0,160)+"»)", "leve");
+    /* revisión v162: se compara lo que se muestra: 8,03 h con 8 h no avisa «faltan 0,0 h»; 8,1 h sí («faltan 0,1 h») */
+    rc.bombas[FUCAP] = {n:1, h:8}; horas(A, 5.03); horas(B, 3); await vista("turnos");
+    const b803 = [...document.querySelectorAll("#riegoScroll .rgt-dia .rgdia-h .badge")], c803 = riegoCarga24([A,B].map(z=>({q:z, c:calcBot(z)}))), cap803 = capDe().length;
+    await vista("dia"); const d803 = document.querySelectorAll("#riegoScroll [data-cap-dia]").length;
+    chk(b803.length===3 && b803.every(e=>txtDe(e)==="8,0 h de 8 h" && e.classList.contains("b-verde")) && c803.every(x=>!x.pasaH) && !cap803 && !d803 && !riegoPasaH(8.03, 8) && !riegoPasaH(2.7+2.6+2.7, 8),
+      "Con 8,03 h de 8 h (se ve «8,0 h de 8 h») igual sale el aviso de horas disponibles ("+cap803+" arriba, "+d803+" en Por día, insignias «"+b803.map(txtDe).join(", ")+"»)", "media");
+    horas(A, 5.1); await vista("dia");
+    const d81 = [...document.querySelectorAll("#riegoScroll [data-cap-dia]")];
+    chk(d81.length===3 && d81.every(e=>txtDe(e).indexOf("los turnos duran 8,1 h y hay 8 h de riego disponibles (faltan 0,1 h)")>=0) && capDe().length===1 && txtDe(capDe()[0]).indexOf("necesita 24,3 h de riego a la semana; con 8 h disponibles por día hacen falta al menos 4 días de riego")>=0,
+      "Con 8,1 h de 8 h el aviso no dice «faltan 0,1 h» o la semana no cuadra con lo que se ve («24,3 h … al menos 4 días»): «"+(capDe()[0]? txtDe(capDe()[0]).slice(0,260) : "sin aviso")+"»", "media");
+    horas(A, 6); horas(B, 5);
+    /* a 375 px nada se sale y el botón mide 44 px */
+    rc.bombas[FUCAP] = {n:1, h:8}; D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar(); await vista("cu");
+    const rv = document.getElementById("riegoVista");
+    if(rv){ rv.style.right = "auto"; rv.style.width = "375px"; await pausa(.3);
+      const sc = document.getElementById("riegoScroll"), b375 = capDe()[0] && capDe()[0].querySelector("button");
+      chk(sc && sc.scrollWidth<=sc.clientWidth+1 && b375 && b375.getBoundingClientRect().height>=44, "A 375 px el aviso de horas disponibles se sale por el costado o su botón mide menos de 44 px", "leve");
+      rv.style.right = ""; rv.style.width = ""; }
+    D.ui = JSON.parse(ui0); uiAplicar();
+    /* PDF: la hoja sigue igual; el PDF Pro trae la nota nueva */
+    const o = {lunes:riegoLunesProximo(), hora:"08:00", fundos:[FUCAP]};
+    const tr = await textoPDF(()=>riegoPDFRegador(o)), tp = await textoPDF(()=>riegoPDFPro(o));
+    chk(/ATENCIÓN: este día pide 11 h de riego y hay 8 h disponibles/.test(tr), "La hoja del regador ya no dice «ATENCIÓN: este día pide 11 h de riego y hay 8 h disponibles»", "media");
+    chk(/No alcanzan las horas disponibles: Equipo del fundo: L Mi V · hasta 11,0 h de 8 h disponibles; necesita 33 h a la semana: al menos 5 dias de riego \(hoy 3\)/.test(tp), "El PDF Pro no trae la nota «No alcanzan las horas disponibles: Equipo del fundo: L Mi V · hasta 11,0 h de 8 h disponibles; …»: «"+((tp.match(/No alcanzan las horas[^.]*\./)||[""])[0])+"»", "media");
+    /* Hoy: «Riego hoy» con los 7 días marcados (hoy es día de riego cualquiera sea el día) */
+    [A,B].forEach(z=>{ rc.cu[z.id].dias = [0,1,2,3,4,5,6]; }); horas(A, 6); horas(B, 5); guardar();
+    await irA("panel"); hoyFundoSet(FUCAP); await pausa(1);
+    let card = document.querySelector(".hoy-ac.riego"), av = card && card.querySelector(".hoy-ac-av");
+    chk(av && txtDe(av)==="No alcanzan las 8 h" && /pide 11,0 h y hay 8 h \(faltan 3,0 h\)/.test(card.title) && /hasta 11,0 h\. Hoy no alcanzan/.test(card.title) && card.title===card.getAttribute("aria-label"), "«Riego hoy» no dice «No alcanzan las 8 h» o su título no explica «hasta 11,0 h… pide 11,0 h y hay 8 h (faltan 3,0 h)» con el mismo formato: «"+(av? txtDe(av) : "—")+"» · «"+(card? card.title : "")+"»", "media");
+    if(card && av){ const w0 = card.style.width; card.style.width = "165px"; await pausa(.1);
+      chk(av.scrollWidth<=av.clientWidth+1, "A 375 px la línea «No alcanzan las 8 h» de «Riego hoy» se corta", "leve"); card.style.width = w0; }
+    nav.riegoVista = "tabla";   // revisión v162: Riego se abre con la última vista usada; el aviso tiene que quedar a la vista igual
+    if(card){ await tocar(card, "Riego hoy"); await esperarQue(()=>document.getElementById("riegoScroll"), 3000); await pausa(.4);
+      const tA = capDe()[0] ? capDe()[0].getBoundingClientRect().top : 1e4;
+      chk(nav.tab==="riego" && nav.riegoFundo===FUCAP && capDe().length===1, "Tocar «Riego hoy» con el aviso no abre Riego en «"+FUCAP+"» con el aviso arriba (pestaña "+nav.tab+", fundo "+nav.riegoFundo+")", "media");
+      chk(tA>=-2 && tA<innerHeight/2, "Tocar «Riego hoy» abre Riego (vista Tabla) con el aviso fuera de la vista: empieza a "+Math.round(tA)+" px de "+innerHeight, "leve"); }
+    rc.bombas[FUCAP] = {n:1, h:12}; guardar(); await irA("panel"); hoyFundoSet(FUCAP); await pausa(1);
+    chk(!document.querySelector(".hoy-ac.riego .hoy-ac-av"), "Con 12 h disponibles «Riego hoy» igual avisa que no alcanzan", "media");
+    /* revisión v162: dos fundos que no alcanzan, con «Todos»: «No alcanzan: N equipos» no se corta a 375 px con texto grande (baja a otra línea)
+       y el fundo va entre paréntesis solo si el nombre del equipo no lo trae («Equipo de Bot Riego Cap (Bot Riego Cap)» no) */
+    const FUCAP2 = "Bot Riego Cap B", E = cuBot({fundo:FUCAP2, nombre:"Cap B bot", anio:"2015", ha:1});
+    prepBot(E, {sectores:[{cod:"CAPB-1", nom:"Sector 1", ha:1}], dias:[0,1,2,3,4,5,6]}); horas(E, 9);
+    rc.bombas[FUCAP] = {n:1, h:8}; rc.bombas[FUCAP2] = {n:1, h:7.25}; guardar();
+    D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:true}); uiAplicar();
+    await irA("panel"); hoyFundoSet(""); await pausa(1);
+    card = document.querySelector(".hoy-ac.riego"); av = card && card.querySelector(".hoy-ac-av");
+    const tt2 = card ? card.title : "";
+    chk(av && /^No alcanzan: \d+ equipos$/.test(txtDe(av)) && tt2.indexOf("Equipo de "+FUCAP+" pide 11,0 h y hay 8 h")>=0 && tt2.indexOf("Equipo de "+FUCAP2+" pide 9,0 h y hay 7,25 h (faltan ")>=0 && !/\(Bot Riego Cap( B)?\) pide/.test(tt2),
+      "Con dos fundos que no alcanzan, «Riego hoy» no dice «No alcanzan: N equipos» o su título repite el fundo o no dice «hay 7,25 h»: «"+(av? txtDe(av) : "—")+"» · «"+tt2+"»", "media");
+    if(card && av){ const w0 = card.style.width; card.style.width = "165px"; await pausa(.15);
+      const lh = parseFloat(getComputedStyle(av).lineHeight) || 17, hA = av.getBoundingClientRect().height;
+      chk(av.scrollWidth<=av.clientWidth+1 && hA<=lh*2+2, "A 375 px con texto grande «"+txtDe(av)+"» de «Riego hoy» se corta o usa más de 2 líneas ("+av.scrollWidth+" de "+av.clientWidth+" px, alto "+Math.round(hA)+")", "leve"); card.style.width = w0; }
+    D.ui = JSON.parse(ui0); uiAplicar();
+    } finally { window.riegoSerieBase = sb0; nav.hoyFundo = hf0; D.ui = JSON.parse(ui0); try{ uiAplicar(); }catch(e){} }
+  }));
+  /* ---- v162 (punto nuevo B3): la lluvia del pluviómetro manda aunque la estación no complete el día; Open-Meteo pone la ET₀ (y la lluvia sin ninguna lectura) ---- */
+  await paso("Lluvia medida en Riego: el pluviómetro manda aunque la estación no complete el día, y la lectura vieja del puente caído no es lluvia de hoy (v162)", ()=>enCaja(async ()=>{
+    const w = wlCfg(), dias0 = JSON.stringify(w.dias||{}), om0 = w.om? JSON.stringify(w.om) : null, eP0 = w.etPuente, eD0 = w.etDiasOk, eH0 = w.etHoy? JSON.stringify(w.etHoy) : null;
+    const viv0 = {}; ["hoy","ult","intento","errAct","pro"].forEach(k=>{ viv0[k] = w[k]; });   // lo que cambia wlActualizarPaso (k7)
+    const wf0 = window.wlFetch, f0 = window.fetch;
+    const [k1, k2, k3, k4, k5, k6] = [2,3,4,5,6,7].map(i=>wlDiaMenos(i)), tsDe = (f, h, m)=>Math.round(new Date(f+"T"+String(h).padStart(2,"0")+":"+String(m||0).padStart(2,"0")+":00").getTime()/1000);
+    /* muestras [ts, T, HR, u (m/s), Rs, lluvia del día] cada 15 min; el contador sube parejo hasta mm */
+    const muestras = (f, h0, h1, mm)=>{ const a = tsDe(f, h0, 0), b = tsDe(f, h1[0], h1[1]), n = Math.round((b-a)/900)+1, out = [];
+      for(let i = 0; i < n; i++){ const ts = a+i*900, h = new Date(ts*1000).getHours(); out.push([ts, 15, 60, 1.5, (h>=7 && h<=19)? 500 : 0, Math.round(mm*i/(n-1)*10)/10]); } return out; };
+    const S1 = muestras(k1, 5, [19,45], 8.4), S2 = muestras(k2, 0, [21,45], 2.0), S6 = muestras(k6, 0, [18,0], 5.0);
+    const OM = {[k1]:2.0, [k2]:5.0, [k3]:1.0, [k4]:0.5, [k5]:0.7, [k6]:0.9};
+    const tiempos = []; for(let i = 14; i >= -13; i--) tiempos.push(wlDiaMenos(i));
+    const etOM = k=>Math.round((3 + tiempos.indexOf(k)*0.01)*100)/100;
+    const cuerpo = {daily:{time:tiempos, et0_fao_evapotranspiration:tiempos.map(etOM), precipitation_sum:tiempos.map(k=>OM[k]||0), temperature_2m_max:tiempos.map(()=>24), temperature_2m_min:tiempos.map(()=>8)}};
+    let nOM = 0;
+    try{
+      window.wlFetch = async function(r, p, o){ if(String(r)==="dias") return {dias:{[k1]:{s:S1}, [k2]:{s:S2}, [k6]:{s:S6}}, hoy:hoy(), version:3}; return wf0.apply(this, arguments); };
+      window.fetch = function(u){ const url = String((u && u.url) || u); if(/api\.open-meteo\.com\/v1\/forecast/.test(url)){ nOM++; return Promise.resolve(new Response(JSON.stringify(cuerpo), {status:200, headers:{"Content-Type":"application/json"}})); } return f0.apply(this, arguments); };
+      [k1,k2,k3].forEach(k=>{ delete w.dias[k]; });
+      w.dias[k4] = {et:null, tmax:null, tmin:null, ll:3.2, llWl:3.2, llTs:tsDe(k4, 10, 0), src:"wl", parcial:true};   // solo la lectura del momento, sin el puente
+      w.dias[k5] = {et:null, tmax:null, tmin:null, ll:4.1, src:"wl", parcial:true};                                     // guardado antes de la v162 (sin llWl)
+      w.dias[k6] = {et:null, tmax:null, tmin:null, ll:6.1, llWl:6.1, llTs:tsDe(k6, 21, 0), src:"wl", parcial:true};   // la lectura del momento de las 21:00 es más nueva que el puente (18:00)
+      await wlEtEstacion(w); await wlOpenMeteo();
+      const d = k=>w.dias[k]||{}, r1 = d(k1);
+      chk(nOM===1 && r1.ll===8.4 && r1.llSrc==="wl" && r1.llOM===2 && r1.src==="om" && r1.et===etOM(k1) && r1.etWl!=null && r1.horasWl<20, "Día de 15 h (la estación se cortó a las 19:45): la lluvia no quedó en los 8,4 mm del pluviómetro con la ET₀ de Open-Meteo: "+JSON.stringify({ll:r1.ll, llSrc:r1.llSrc, llOM:r1.llOM, src:r1.src, et:r1.et, etWl:r1.etWl}), "grave");
+      chk(d(k2).src==="wl" && d(k2).ll===2 && d(k2).llSrc==="wl" && d(k3).ll===1 && d(k3).llSrc==="om", "El día completo (2,0 mm medidos) o el día sin lecturas (1,0 mm de Open-Meteo) cambiaron: "+JSON.stringify([d(k2).src, d(k2).ll, d(k3).ll, d(k3).llSrc]), "media");
+      chk(d(k4).ll===3.2 && d(k5).ll===4.1 && d(k6).ll===6.1 && [k4,k5,k6].every(k=>d(k).llSrc==="wl" && d(k).src==="om"), "La lectura del momento, el día guardado antes de la v162 o la lectura más nueva no mandan sobre Open-Meteo: "+[k4,k5,k6].map(k=>d(k).ll+" ("+d(k).llSrc+")").join(", "), "media");
+      const j1 = JSON.stringify(w.dias); await wlOpenMeteo();
+      chk(JSON.stringify(w.dias)===j1, "Un segundo wlOpenMeteo() cambió los días (no da lo mismo si se repite)", "media");
+      const s14 = riegoSerie(14).find(x=>x.k===k1) || {};
+      chk(s14.ll===8.4 && s14.llSrc==="wl" && s14.src==="om", "riegoSerie no trae la lluvia medida del día incompleto: "+JSON.stringify(s14), "media");
+      /* v163: «descontar la lluvia» se quitó (la lluvia la cuenta el balance día a día): la lluvia medida llega a Riego por el KPI de la semana y por riegoLluviaWl */
+      const rc = riegoCfg(); rc.base = "med";
+      const q = cuBot({nombre:"Lluvia medida bot", anio:"2015"}); prepBot(q, {lin:2, dg:0.5, caudal:2});
+      const se = riegoSerie(7), llS = se.reduce((s, x)=>s+(x.ll||0), 0);
+      await irA("riego"); nav.riegoFundo = FU_BOT; nav.riegoVista = "cu"; riegoPintar(); await pausa();
+      const kpi = [...document.querySelectorAll("#riegoScroll .gk")].find(g=>/^lluvia últimos 7 días/.test(txtDe(g.querySelector(".gkl")))), lw = riegoLluviaWl(w.dias[k1], k1);
+      chk(se.some(x=>x.k===k1 && x.ll===8.4) && kpi && Math.abs(numCL(txtDe(kpi.querySelector(".gkn")))-Math.round(llS*10)/10)<0.051 && lw && lw.mm===8.4 && lw.completo===false && lw.hasta==="19:45",
+        "La lluvia medida del "+k1+" (8,4 mm hasta las 19:45) no llega al KPI de la semana («"+(kpi? txtDe(kpi) : "—")+"», suma "+fmtCL(llS,1)+") o a riegoLluviaWl: "+JSON.stringify(lw), "media");
+      const caja = document.querySelector(`#riegoScroll [data-rg-dia="${k1}"]`), ley = txtDe(document.querySelector("#riegoScroll [data-rg-ley]"));
+      chk(caja && /ET₀ estimada con Open-Meteo \(la estación no completó el día\); lluvia medida por la estación hasta las 19:45\./.test(caja.title) && caja.getAttribute("aria-label").indexOf(caja.title)>0 && /La lluvia es la del pluviómetro/.test(ley),
+        "La cajita del día no dice de dónde salen la ET₀ y la lluvia («"+(caja? caja.title : "—")+"») o la leyenda no dice «La lluvia es la del pluviómetro»", "media");
+      const tp = await textoPDF(()=>riegoPDFPro({lunes:riegoLunesProximo(), hora:"08:00", fundos:[FU_BOT]}));
+      chk(new RegExp("Lluvia medida por la estacion tambien en los dias con la ET0 estimada \\(la estacion no completo el dia\\): [^.]*"+fmtF(k1).slice(0,5)+" hasta las 19:45").test(tp), "El PDF Pro no trae la nota «Lluvia medida por la estacion tambien en los dias con la ET0 estimada…»: «"+((tp.match(/Lluvia medida por la estacion[^.]*\./)||[""])[0])+"»", "media");
+      /* revisión v162 (k7): con la estación caída el puente repite su última lectura (la de la víspera a las 19:45, con el contador de ese día).
+         No es lluvia de hoy: wlActualizarPaso no la guarda en hoy y wlOpenMeteo no la toma como medida en un día sin lecturas del puente */
+      const k7 = wlDiaMenos(8), hoyK = hoy(), ayerK = wlDiaMenos(1);
+      w.dias[k7] = {et:null, tmax:null, tmin:null, ll:8.4, llWl:8.4, llTs:tsDe(wlDiaMenos(9), 19, 45), src:"wl", parcial:true};   // como la guardaba la v162 antes de la revisión
+      await wlOpenMeteo();
+      chk(d(k7).llSrc==="om" && d(k7).ll===0 && d(k7).llWl==null && d(k7).src==="om", "Un día sin lecturas del puente con la lectura vieja de la víspera (8,4 mm a las 19:45) quedó con esa lluvia como medida: "+JSON.stringify({ll:d(k7).ll, llSrc:d(k7).llSrc, llWl:d(k7).llWl}), "media");
+      /* la lectura del sensor de afuera más el registro de estado del equipo, que sigue llegando con la hora de ahora aunque el sensor esté caído */
+      const lect = (ts, mm)=>({station_id:1, sensors:[{lsid:1, data:[{ts, temp:59, hum:60, rainfall_daily_mm:mm, et_day:0.05}]}, {lsid:4, sensor_type:504, data:[{ts:Math.round(Date.now()/1000), battery_voltage:4100}]}]});
+      let cur = lect(tsDe(ayerK, 19, 45), 8.4);
+      window.wlFetch = async function(r){ const s = String(r); if(s.indexOf("current/")===0) return cur; if(s==="dias") return {dias:{}, hoy:hoy(), version:3}; throw new Error("ruta "+s+" sin simular"); };
+      w.pro = false; delete w.dias[hoyK];
+      await wlActualizarPaso(w, false);
+      const dH1 = d(hoyK);
+      chk(dH1.llSrc==="om" && dH1.ll===0 && dH1.llWl==null && dH1.tmax===24, "La lectura vieja del puente caído (ayer a las 19:45, 8,4 mm) quedó guardada en hoy: "+JSON.stringify({ll:dH1.ll, llSrc:dH1.llSrc, llWl:dH1.llWl, tmax:dH1.tmax, src:dH1.src}), "media");
+      const tsH = Math.max(tsDe(hoyK, 0, 5), Math.round(Date.now()/1000)-600); cur = lect(tsH, 3.0);
+      await wlActualizarPaso(w, false);
+      const dH2 = d(hoyK);
+      chk(dH2.ll===3 && dH2.llWl===3 && dH2.llTs===tsH && dH2.llSrc==="wl" && dH2.src==="wl", "La lectura de hoy (3,0 mm) no quedó como lluvia medida de hoy: "+JSON.stringify({ll:dH2.ll, llSrc:dH2.llSrc, llWl:dH2.llWl, src:dH2.src}), "media");
+    } finally {
+      window.wlFetch = wf0; window.fetch = f0;
+      w.dias = JSON.parse(dias0); if(om0==null) delete w.om; else w.om = JSON.parse(om0); w.etPuente = eP0; w.etDiasOk = eD0; if(eH0==null) delete w.etHoy; else w.etHoy = JSON.parse(eH0);
+      Object.keys(viv0).forEach(k=>{ if(viv0[k]===undefined) delete w[k]; else w[k] = viv0[k]; });
+      guardar();
+    }
+  }));
+  /* ---- v163 (30-10-2026): balance de riego con la lluvia medida (contrato_v163_lluvia.md §12.1). Todo en la caja: una semana 4 a 5 semanas
+     ADELANTE (ahí no hay lecturas de la estación ni del modelo), una serie fija de ET₀ 6,43 mm/día (Kc 0,70 → 4,5 mm netos/día), el fundo «Bot Lluvia»
+     con «Corte 1 bot» (5 mm por riego todos los días, Pp 1,6 mm/h = 3 h 10 min) y «Corte 2 bot» (solo el jueves, 35 mm en 30 min) ---- */
+  const LL = (()=>{ const L = riegoLunesDe(sumarDiasISO(hoy(), 28)), d = n=>sumarDiasISO(L, n); return {L, d, MIE:d(2), JUE:d(3), VIE:d(4), SAB:d(5), DOM:d(6)}; })();
+  const FUL = "Bot Lluvia", ETH = 4.5/0.7, ddmm = f=>fmtF(f).slice(0,5);
+  const climaLl = (f, et, ll)=>{ wlCfg().dias[f] = {et, ll, tmax:20, tmin:8, src:"wl", parcial:false, horas:24, n:96}; };
+  const realDe = (f, F)=>((((riegoCfg().real||{})[f]||{}).f||{})[F])||{};
+  async function enCajaLl(fn){   // enCaja + D.wl, el día del balance, la serie, el fundo de Hoy, el rol del celular y la pantalla
+    const w0 = JSON.stringify(D.wl||null), sb0 = window.riegoSerieBase, hf0 = nav.hoyFundo, rol0 = D.sync? D.sync.rol : undefined, ui0 = JSON.stringify(D.ui||{}), h0 = RIEGO_LL_HOY;
+    return enCaja(async ()=>{
+      try{ window.riegoSerieBase = ()=>[0,1,2,3,4,5,6].map(j=>({k:sumarDiasISO(LL.L,-7+j), et:ETH, ll:0, src:"wl"})); return await fn(); }
+      finally { RIEGO_LL_HOY = h0; window.riegoSerieBase = sb0; const w = JSON.parse(w0); if(w==null) delete D.wl; else D.wl = w; nav.hoyFundo = hf0; if(D.sync) D.sync.rol = rol0; D.ui = JSON.parse(ui0); try{ uiAplicar(); }catch(e){} }
+    });
+  }
+  /* el fundo del ejemplo y la hoja del lunes L (con «hoy» = L, como R1); después el lunes y el martes sin lluvia y «hoy» = jueves */
+  async function prepLl(op){
+    op = op || {};
+    const A = cuBot({fundo:FUL, nombre:"Corte 1 bot"}); prepBot(A, {dias:[0,1,2,3,4,5,6], ppMed:1.6});
+    const B = cuBot({fundo:FUL, nombre:"Corte 2 bot"}); prepBot(B, {dias:[4], ppMed:70});
+    if(op.bomba){ const r = riegoCfg(); r.bombas = Object.assign({}, r.bombas||{}, {[FUL]:op.bomba}); guardar(); }
+    RIEGO_LL_HOY = LL.L; const tx = await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FUL]}));
+    climaLl(LL.L, ETH, 0); climaLl(LL.d(1), ETH, 0); RIEGO_LL_HOY = LL.JUE;
+    return {A, B, tx};
+  }
+  async function riegoLl(F){ await irA("riego"); nav.riegoFundo = F || FUL; nav.riegoVista = "cu"; riegoPintar(); await pausa(); }
+  const estBtn = (F, f, k)=>`#rgSem [data-rgs-est="${k}"][data-f="${F}"][data-dia="${f}"]`;
+  const bloqueF = F=>document.querySelector(`#rgSem details[data-f="${F}"]`);
+  const msjDe = async F=>{ await tocar(`#rgSem details[data-f="${F}"] [data-rgs-msj]`, "Mensaje para el regador"); const p = necesito(document.getElementById("rgMsjTxt"), "el texto del mensaje"); const t = p.textContent; await cancelarModal(); return t; };
+  await paso("Balance con la lluvia medida (v163) · R1: el PDF del regador guarda en silencio una copia de la hoja (una sola si se rehace el mismo día)", ()=>enCajaLl(async ()=>{
+    const b0 = JSON.stringify(D.bitacora||[]), g0 = JSON.stringify(D.registros||[]);
+    const {A, B, tx} = await prepLl(), s = riegoSerieBase(), cA = riegoCalcCuartel(A, s), cB = riegoCalcCuartel(B, s);
+    chk(Math.abs(cA.lamRiego-5)<1e-9 && Math.abs(cA.hRiego-3.125)<1e-9 && riegoDur(cA.hRiego)==="3 h 10 min" && Math.abs(cB.lamRiego-35)<1e-9 && Math.abs(cB.hRiego-0.5)<1e-9 && riegoDur(cB.hRiego)==="30 min",
+      "La partida del balance no cuadra: Corte 1 bot "+fmtCL(cA.lamRiego,3)+" mm · "+fmtCL(cA.hRiego,3)+" h, Corte 2 bot "+fmtCL(cB.lamRiego,3)+" mm · "+fmtCL(cB.hRiego,3)+" h", "grave");
+    const vs = ((riegoCfg().prog||{})[LL.L]||{})[FUL]||[], v = vs[0]||{cu:{}}, ca = v.cu[A.id]||{}, cb = v.cu[B.id]||{};
+    chk(vs.length===1 && v.desde===LL.L && Math.abs(ca.mm-5)<1e-9 && Math.abs(ca.h-3.125)<1e-9 && ca.pp===1.6 && ca.ef===90 && Math.abs(ca.etc-4.5)<1e-9 && Math.abs(ca.kc-0.7)<1e-9
+      && JSON.stringify(ca.dias)==="[0,1,2,3,4,5,6]" && ca.eq==="" && JSON.stringify(cb.dias)==="[4]" && v.hora==="08:00" && v.creado,
+      "La copia del programa no quedó como la hoja: "+JSON.stringify({n:vs.length, desde:v.desde, mm:ca.mm, h:ca.h, pp:ca.pp, ef:ca.ef, etc:ca.etc, kc:ca.kc, dias:ca.dias, eq:ca.eq, diasB:cb.dias}), "grave");
+    chk(/3 h 10 min/.test(tx) && JSON.stringify(D.bitacora||[])===b0 && JSON.stringify(D.registros||[])===g0, "La hoja no trae «3 h 10 min» o la copia anotó algo en la Bitácora o en los registros", "media");
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FUL]}));
+    chk((((riegoCfg().prog||{})[LL.L]||{})[FUL]||[]).length===1, "Rehacer el PDF el mismo día dejó "+((((riegoCfg().prog||{})[LL.L]||{})[FUL]||[]).length)+" copias (debía quedar 1)", "media");
+  }));
+  await paso("R2: abrir Riego y Hoy y calcular el balance no escribe nada (con un pendiente y una corrección a la vista)", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); climaLl(LL.d(1), 2.0, 8.0); riegoRegoSet(LL.d(1), FUL, "no"); climaLl(LL.MIE, ETH, 0); climaLl(LL.JUE, 2.0, 3.0);   // martes «no se regó» (corrección) y hoy llueve (pendiente)
+    await riegoLl(); riegoCfg(); riegoBomba(FUL); wlCfg();
+    const j0 = JSON.stringify(D.riego), w0 = JSON.stringify(D.wl), g0 = window.guardar; let nG = 0;
+    window.guardar = function(){ nG++; return g0.apply(this, arguments); };
+    try{ riegoPintar(); vPanel(); riegoBalanceSemana(FUL, LL.L); riegoCorrVer(FUL); hoyRiego([FUL]); } finally { window.guardar = g0; }
+    chk(JSON.stringify(D.riego)===j0 && JSON.stringify(D.wl)===w0 && nG===0, "Pintar Riego y Hoy o calcular el balance escribió datos ("+(JSON.stringify(D.riego)!==j0? "D.riego " : "")+(JSON.stringify(D.wl)!==w0? "D.wl " : "")+nG+" guardar())", "grave");
+    const cd = riegoCorrDia(FUL, LL.JUE);
+    chk(document.querySelector(`#rgSem [data-rgs-pend="${LL.JUE}"][data-tipo="hoy"]`) && cd && cd.cu[A.id] && cd.cu[A.id].cambio, "No quedó a la vista el pendiente de hoy («Hoy llueve») o la corrección del jueves", "media");
+  }));
+  await paso("R3: un día sin lluvia medida corta el balance hasta «No llovió» (Open-Meteo solo en gris; nunca se supone 0)", ()=>enCajaLl(async ()=>{
+    await prepLl(); const M = LL.d(1); delete wlCfg().dias[M]; climaLl(LL.MIE, 2.0, 8.0);
+    await riegoLl();
+    const cel = document.querySelector(`#rgSem [data-rgs-dia="${M}"][data-f="${FUL}"]`), pe = document.querySelector(`#rgSem [data-rgs-pend="${M}"][data-tipo="sinDato"]`);
+    const bq = riegoBalanceSemana(FUL, LL.L), bm = bloqueF(FUL) && bloqueF(FUL).querySelector("[data-rgs-msj]"), mot = bloqueF(FUL) && bloqueF(FUL).querySelector("[data-rgs-mot]");
+    chk(cel && /Sin lluvia medida/.test(txtDe(cel)) && pe && txtDe(pe).indexOf("Martes "+ddmm(M)+": sin lluvia medida. ¿Llovió?")===0 && bq.bloq===M && bm && bm.disabled && mot && txtDe(mot)==="Falta la lluvia del martes",
+      "Sin lluvia medida el martes no se cortó el balance como debía: celda «"+txtDe(cel)+"», pendiente «"+txtDe(pe).slice(0,60)+"», corte "+bq.bloq+", botón "+(bm? (bm.disabled? "desactivado" : "activo") : "—")+" «"+txtDe(mot)+"»", "grave");
+    wlCfg().dias[M] = {src:"om", ll:0.4, et:3}; riegoPintar(); await pausa(.5);
+    const pe2 = document.querySelector(`#rgSem [data-rgs-pend="${M}"][data-tipo="sinDato"]`);
+    chk(pe2 && /el modelo Open-Meteo estima 0,4 mm/.test(txtDe(pe2)) && riegoBalanceSemana(FUL, LL.L).bloq===M, "Con la estimación de Open-Meteo (0,4 mm) el martes dejó de estar «sin lluvia medida» o no la muestra en gris", "grave");
+    await tocar(necesito(pe2 && pe2.querySelector("[data-rgs-nollovio]"), "«No llovió»"), "No llovió");
+    const b2 = riegoBalanceSemana(FUL, LL.L), r = (riegoCfg().real||{})[M]||{};
+    chk(r.llMan===0 && b2.bloq===LL.MIE && b2.pend[0] && b2.pend[0].tipo==="regar", "«No llovió» no dejó 0 mm anotado o el corte no pasó al miércoles (pendiente «regar»): "+JSON.stringify({llMan:r.llMan, bloq:b2.bloq, pend:b2.pend[0]}), "grave");
+  }));
+  await paso("R4: 8 mm y no se regó (ejemplo de Manuel): saldo +2,35 y el jueves 2,4 mm · 1 h 30 min en las 4 vistas y en «Riego hoy»", ()=>enCajaLl(async ()=>{
+    const {A, B} = await prepLl(); climaLl(LL.MIE, 2.0, 8.0);
+    await riegoLl(); await tocar(estBtn(FUL, LL.MIE, "no"), "No (miércoles)");
+    const r = realDe(LL.MIE, FUL);
+    chk(JSON.stringify(r.est)==='{"":"no"}' && r.ll===8 && r.llSrc==="wl" && r.et0===2 && r.et0Src==="est" && !!r.t, "«No» no guardó lo que pasó el miércoles: "+JSON.stringify(r), "grave");
+    const bq = riegoBalanceSemana(FUL, LL.L), fA = bq.cu[A.id].filas;
+    chk(Math.abs(fA[2].S-2.35)<0.005 && Math.abs(fA[3].C-2.389)<0.001 && riegoDur(fA[3].hC)==="1 h 30 min" && fmtCL(fA[3].C,1)==="2,4" && !bq.cu[B.id].filas[3].cambio,
+      "8 mm sin regar: saldo "+fmtCL(fA[2].S,3)+" (esperado 2,35), jueves "+fmtCL(fA[3].C,3)+" mm · "+riegoDur(fA[3].hC)+" (esperado 2,389 · 1 h 30 min), Corte 2 bot "+(bq.cu[B.id].filas[3].cambio? "cambió" : "igual"), "grave");
+    const dJ = "Jueves "+ddmm(LL.JUE);
+    let el = document.querySelector(`#riegoScroll .rgcard[data-rgcu="${A.id}"] [data-rg-corr="${LL.JUE}"]`);
+    chk(el && txtDe(el).indexOf(dJ+": 1 h 30 min (hoja 3 h 10 min)")===0 && /ajustado por lluvia/.test(txtDe(el)), "Por cuartel no dice «"+dJ+": 1 h 30 min (hoja 3 h 10 min) ajustado por lluvia»: «"+txtDe(el)+"»", "media");
+    await tocar(`#riegoScroll .chip[onclick="riegoVistaSet('dia')"]`, "Por día");
+    el = [...document.querySelectorAll(`#riegoScroll .fila [data-rg-corr="${LL.JUE}"]`)].find(x=>/Corte 1 bot/.test(txtDe(x.closest(".fila"))));
+    chk(el && /1 h 30 min/.test(txtDe(el)), "Por día no muestra «1 h 30 min» en Corte 1 bot del jueves", "media");
+    await tocar(`#riegoScroll .chip[onclick="riegoVistaSet('turnos')"]`, "Turnos");
+    el = document.querySelector(`#riegoScroll .rgt-corr[data-rg-corr="${LL.JUE}"]`);
+    chk(el && /los turnos duran 2 h \(hoja 3 h 40 min\)/.test(txtDe(el)), "Turnos no dice «los turnos duran 2 h (hoja 3 h 40 min)»: «"+txtDe(el)+"»", "media");
+    await tocar(`#riegoScroll .chip[onclick="riegoVistaSet('tabla')"]`, "Tabla");
+    el = document.querySelector(`#riegoScroll tr[data-rgcu="${A.id}"] .rg-corr-t`);
+    chk(el && txtDe(el)==="jue "+ddmm(LL.JUE)+": 1 h 30 min", "La Tabla no dice «jue "+ddmm(LL.JUE)+": 1 h 30 min»: «"+txtDe(el)+"»", "media");
+    await irA("panel"); hoyFundoSet(FUL); await pausa(1);
+    const card = document.querySelector(".hoy-ac.riego"), av = card && card.querySelector(".hoy-ac-av"), sub = card && card.querySelector(".hoy-ac-s");
+    chk(av && av.classList.contains("az") && txtDe(av)==="Ajustado por lluvia" && sub && /^hasta 2 h · ≈ /.test(txtDe(sub)) && /Corte 1 bot 1 h 30 min \(hoja 3 h 10 min\)/.test(card.title),
+      "«Riego hoy» no muestra las horas corregidas: «"+txtDe(av)+"» · «"+txtDe(sub)+"» · «"+(card? card.title.slice(0,160) : "")+"»", "media");
+  }));
+  await paso("R5: «Mensaje para el regador» con el texto exacto, y «Ya se lo dije» lo anota", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); climaLl(LL.MIE, 2.0, 8.0);
+    await riegoLl(); await tocar(estBtn(FUL, LL.MIE, "no"), "No (miércoles)");
+    await tocar(`#rgSem details[data-f="${FUL}"] [data-rgs-msj]`, "Mensaje para el regador");
+    const pre = necesito(document.getElementById("rgMsjTxt"), "el texto del mensaje");
+    const esp = ["Riego jueves "+ddmm(LL.JUE)+" · "+FUL, "Ayer llovió 8,0 mm y no se regó.", "Hoy se riega MENOS:", "- Corte 1 bot: 1 h 30 min (en vez de 3 h 10 min)", "Los demás cuarteles, igual que la hoja. El día termina a las 10:00 (no a las 11:40).", "Desde el viernes, la hoja de siempre."].join("\n");
+    chk(pre.textContent===esp, "El mensaje no es el del ejemplo (§7.7):\n"+pre.textContent, "grave");
+    await tocar("#capaModal [data-rgm-dicho]", "Ya se lo dije");
+    const av = realDe(LL.JUE, FUL).av||{}, res = bloqueF(FUL) && bloqueF(FUL).querySelector("[data-rgs-av]");
+    chk(av.por==="dicho" && Math.abs((av.cu||{})[A.id]-2.389)<0.001 && Object.keys(av.cu||{}).length===1 && res && /Avisado al regador/.test(txtDe(res)), "«Ya se lo dije» no anotó el aviso del jueves o la tarjeta no dice «Avisado al regador»: "+JSON.stringify(av)+" · «"+txtDe(res)+"»", "media");
+  }));
+  await paso("R6: 3 mm y no se regó: saldo −1,40 y el jueves 6,6 mm · 4 h 05 min («se riega MÁS»)", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); climaLl(LL.MIE, 2.0, 3.0);
+    await riegoLl(); await tocar(estBtn(FUL, LL.MIE, "no"), "No (miércoles)");
+    const fA = riegoBalanceSemana(FUL, LL.L).cu[A.id].filas;
+    chk(Math.abs(fA[2].S+1.4)<0.005 && Math.abs(fA[3].C-6.556)<0.001 && fmtCL(fA[3].C,1)==="6,6" && riegoDur(fA[3].hC)==="4 h 05 min", "3 mm sin regar: saldo "+fmtCL(fA[2].S,3)+" (esperado −1,40), jueves "+fmtCL(fA[3].C,3)+" mm · "+riegoDur(fA[3].hC), "grave");
+    const t = await msjDe(FUL);
+    chk(/\nHoy se riega MÁS:\n/.test(t) && t.indexOf("- Corte 1 bot: 4 h 05 min (en vez de 3 h 10 min)")>0 && t.indexOf("Los demás cuarteles, igual que la hoja. El día termina a las 12:35 (no a las 11:40).")>0, "El mensaje con 3 mm no es el esperado:\n"+t, "media");
+  }));
+  await paso("R7: 8 mm y alcanzó a regar: saldo +6,85, el jueves no se riega y el viernes 2,4 mm · 1 h 30 min", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); climaLl(LL.MIE, 2.0, 8.0);
+    await riegoLl(); await tocar(estBtn(FUL, LL.MIE, "si"), "Sí, todo (miércoles)");
+    const fA = riegoBalanceSemana(FUL, LL.L).cu[A.id].filas, cel = document.querySelector(`#rgSem [data-rgs-dia="${LL.JUE}"][data-f="${FUL}"]`);
+    chk(Math.abs(fA[2].S-6.85)<0.005 && fA[3].cero && cel && /No se riega/.test(txtDe(cel)) && Math.abs(fA[4].C-2.389)<0.001 && riegoDur(fA[4].hC)==="1 h 30 min",
+      "8 mm regando: saldo "+fmtCL(fA[2].S,3)+" (esperado 6,85), jueves "+(fA[3].cero? "no se riega" : fmtCL(fA[3].C,2))+" (celda «"+txtDe(cel)+"»), viernes "+fmtCL(fA[4].C,3)+" · "+riegoDur(fA[4].hC), "grave");
+    const t = await msjDe(FUL);
+    chk(/\nHoy se riega MENOS:\n/.test(t) && t.indexOf("- Corte 1 bot: hoy NO se riega")>0 && t.indexOf("Los demás cuarteles, igual que la hoja. El día termina a las 08:30 (no a las 11:40).")>0 && /El viernes también cambia: te aviso\.$/.test(t), "El mensaje con 8 mm regando no es el esperado:\n"+t, "media");
+    /* revisión r1: la fecha de «También cambia …» va en una sola pieza (en el celular se cortaba «02-» / «12.») */
+    const tb = bloqueF(FUL) && bloqueF(FUL).querySelector('[data-rgs-res="cambio"] .rgs-res-p .rgs-nw');
+    chk(tb && txtDe(tb)==="el viernes "+ddmm(LL.VIE) && getComputedStyle(tb).whiteSpace==="nowrap", "«También cambia el viernes "+ddmm(LL.VIE)+"» no lleva la fecha sin cortar: «"+txtDe(tb)+"»", "leve");
+  }));
+  await paso("R8: 2,9 mm no cuentan (Sí: al día); sin regar, el tope de 1,5 veces deja el jueves y el viernes en 7,5 mm · 4 h 40 min", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); climaLl(LL.MIE, ETH, 2.9);
+    await riegoLl(); await tocar(estBtn(FUL, LL.MIE, "si"), "Sí, todo (miércoles)");
+    const fA = riegoBalanceSemana(FUL, LL.L).cu[A.id].filas, bl = bloqueF(FUL), res = bl && bl.querySelector('[data-rgs-res="nada"]'), bm = bl && bl.querySelector("[data-rgs-msj]"), mot = bl && bl.querySelector("[data-rgs-mot]");
+    chk(riegoPe(2.9)===0 && fA[2].S===0 && res && txtDe(res)==="Al día: la hoja del regador sigue igual." && bm && bm.disabled && txtDe(mot)==="Sin cambios que avisar", "Con 2,9 mm regando no quedó «Al día» (saldo "+fA[2].S+", «"+txtDe(res)+"», «"+txtDe(mot)+"»)", "grave");
+    riegoDiaModal(LL.MIE, FUL); await pausa();
+    chk(/no pasa de 3 mm: no cuenta/.test(txtDe(document.querySelector("#capaModal [data-rgd-pe]"))), "La ventana del día no dice «no pasa de 3 mm: no cuenta»", "media");
+    await cancelarModal();
+    riegoRegoSet(LL.MIE, FUL, "no");
+    const g = riegoBalanceSemana(FUL, LL.L).cu[A.id].filas;
+    chk(Math.abs(g[3].C-7.5)<1e-6 && riegoDur(g[3].hC)==="4 h 40 min" && Math.abs(g[4].C-7.5)<1e-6 && riegoDur(g[4].hC)==="4 h 40 min" && !g[5].cambio, "2,9 mm sin regar: jueves "+fmtCL(g[3].C,2)+", viernes "+fmtCL(g[4].C,2)+", sábado "+(g[5].cambio? "cambia" : "hoja")+" (esperado 7,5 · 7,5 · hoja)", "grave");
+  }));
+  await paso("R9: 40 mm: el suelo guarda 10 mm (21,4 se pierden), aviso de revisar el suelo, «Suspender el riego hasta…» y «Retomar»", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); climaLl(LL.MIE, 1.2, 40);
+    await riegoLl(); await tocar(estBtn(FUL, LL.MIE, "si"), "Sí, todo (miércoles)");
+    const bq = riegoBalanceSemana(FUL, LL.L), fA = bq.cu[A.id].filas, bl = bloqueF(FUL);
+    const per = bl && bl.querySelector('[data-rgs-res="perdido"]'), gr = bl && bl.querySelector('[data-rgs-res="grande"]');
+    chk(fA[2].S===10 && Math.abs(bq.cu[A.id].perdido-21.41)<0.005 && per && /hasta 21,4 mm se dan por perdidos/.test(txtDe(per)) && gr && txtDe(gr).indexOf("Llovió 40,0 mm el miércoles "+ddmm(LL.MIE)+".")===0 && /revisa el suelo/.test(txtDe(gr)),
+      "40 mm: saldo "+fA[2].S+", perdido "+fmtCL(bq.cu[A.id].perdido,2)+" · «"+txtDe(per)+"» · «"+txtDe(gr).slice(0,80)+"»", "grave");
+    chk(fA[3].cero && fA[4].cero && Math.abs(fA[5].C-3.889)<0.001 && fmtCL(fA[5].C,1)==="3,9" && riegoDur(fA[5].hC)==="2 h 25 min", "Después de 40 mm: jueves y viernes debían no regarse y el sábado 3,9 mm · 2 h 25 min ("+fmtCL(fA[5].C,3)+" · "+riegoDur(fA[5].hC)+")", "grave");
+    await tocar(necesito(gr && gr.querySelector("button"), "«Suspender el riego hasta…»"), "Suspender el riego hasta…");
+    await fecha("rgp_hasta", LL.SAB, "hasta el sábado"); await guardarModal_();
+    const pa = (riegoCfg().pausa||[])[0]||{}, g = riegoBalanceSemana(FUL, LL.L).cu[A.id].filas;
+    const cels = [3,4,5].map(j=>txtDe(document.querySelector(`#rgSem [data-rgs-dia="${LL.d(j)}"][data-f="${FUL}"]`)));
+    chk((riegoCfg().pausa||[]).length===1 && pa.f===FUL && pa.desde===LL.JUE && pa.hasta===LL.SAB && cels.every(t=>/Suspendido/.test(t)) && !g[6].cambio && g.every(x=>x.S>=0),
+      "La suspensión no quedó del jueves al sábado o el domingo no vuelve a la hoja con saldo 0: "+JSON.stringify(riegoCfg().pausa)+" · celdas «"+cels.join("», «")+"»", "media");
+    await tocar(necesito(bloqueF(FUL) && bloqueF(FUL).querySelector('[data-rgs-res="pausa"] button'), "«Retomar el riego»"), "Retomar el riego");
+    chk(!(riegoCfg().pausa||[]).length, "«Retomar el riego» no quitó la suspensión", "media");
+  }));
+  await paso("R10: la falta no cabe en las 4 h del equipo: el jueves 5,6 mm · 3 h 30 min, 35 min pasan al viernes (3 h 45 min)", ()=>enCajaLl(async ()=>{
+    const {A, B} = await prepLl({bomba:{n:1, h:4}}); climaLl(LL.MIE, 2.0, 3.0);
+    await riegoLl(); await tocar(estBtn(FUL, LL.MIE, "no"), "No (miércoles)");
+    const bq = riegoBalanceSemana(FUL, LL.L), fA = bq.cu[A.id].filas, e = bq.eqDia[LL.JUE+"|"]||{}, cap = bloqueF(FUL) && bloqueF(FUL).querySelector('[data-rgs-res="cap"]');
+    chk(Math.abs(fA[3].C-5.6)<0.001 && riegoDur(fA[3].hC)==="3 h 30 min" && Math.abs(e.totC-4)<1e-6 && Math.abs(fA[4].C-5.96)<0.01 && riegoDur(fA[4].hC)==="3 h 45 min" && !bq.cu[B.id].filas[3].cambio,
+      "Con 4 h disponibles: jueves "+fmtCL(fA[3].C,3)+" · "+riegoDur(fA[3].hC)+" (día "+fmtCL(e.totC,2)+" h), viernes "+fmtCL(fA[4].C,3)+" · "+riegoDur(fA[4].hC), "grave");
+    chk(cap && txtDe(cap)==="Jueves "+ddmm(LL.JUE)+": no alcanzan las 4 h de riego disponibles del equipo; 35 min pasan al viernes.", "El aviso de capacidad no es el esperado: «"+txtDe(cap)+"»", "media");
+  }));
+  await paso("R11: válvula compartida: la válvula BOT-7 riega 2 h 20 min (en vez de 3 h 45 min) y cada cuartel lleva su saldo (X: lo que bajó la válvula, +0,28)", ()=>enCajaLl(async ()=>{
+    const FV = "Bot Lluvia V", sect = [{cod:"BOT-7", nom:"Compartido", ha:2}];
+    const X = cuBot({fundo:FV, nombre:"X bot"}); prepBot(X, {dias:[0,1,2,3,4,5,6], ppMed:1.6, sectores:sect});
+    const Y = cuBot({fundo:FV, nombre:"Y bot"}); prepBot(Y, {dias:[0,1,2,3,4,5,6], ppMed:1.6, sectores:sect, rep:120});
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FV]}));
+    climaLl(LL.L, ETH, 0); climaLl(LL.d(1), ETH, 0); climaLl(LL.MIE, 2.0, 8.0); RIEGO_LL_HOY = LL.JUE; riegoRegoSet(LL.MIE, FV, "no");
+    await riegoLl(FV); const t = await msjDe(FV), bq = riegoBalanceSemana(FV, LL.L), fx = bq.cu[X.id].filas[3], fy = bq.cu[Y.id].filas[3];
+    /* revisión r1: X pedía 1 h 30 min, pero la válvula la manda Y (2 h 20 min): X recibió 1 h 25 min menos que la hoja, no 1 h 40 min → le quedan 0,28 mm */
+    chk(t.indexOf("- X bot + Y bot (BOT-7): 2 h 20 min (en vez de 3 h 45 min)")>0 && Math.abs(fx.S-0.28)<0.005 && Math.abs(fx.I-2.7)<0.001 && fy.S===0 && Math.abs(fx.C-2.389)<0.001 && Math.abs(fy.C-3.7)<0.001,
+      "Válvula compartida: mensaje «"+((t.match(/- X bot[^\n]*/)||[""])[0])+"», saldos "+fx.S+" y "+fy.S+", riegos "+fmtCL(fx.C,3)+" y "+fmtCL(fy.C,3), "media");
+  }));
+  await paso("R12: «En parte» por turnos: marcar el turno de BOT-1 (3 de 4 ha); sin marcar, aviso dentro de la ventana", ()=>enCajaLl(async ()=>{
+    const FP = "Bot Lluvia P", A2 = cuBot({fundo:FP, nombre:"A2 bot"}); prepBot(A2, {dias:[0,1,2,3,4,5,6], ppMed:1.6, sectores:[{cod:"BOT-1", nom:"S1", ha:3}, {cod:"BOT-2", nom:"S2", ha:1}]});
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FP]}));
+    climaLl(LL.L, ETH, 0); climaLl(LL.d(1), ETH, 0); climaLl(LL.MIE, 2.0, 8.0); RIEGO_LL_HOY = LL.JUE;
+    await riegoLl(FP); await tocar(estBtn(FP, LL.MIE, "parte"), "En parte (miércoles)");
+    necesito(modalAbierto(), "la ventana del día"); const ok0 = await guardarModal_();
+    chk(!ok0 && /Marca al menos un turno hecho, o elige No\./.test(txtDe(document.getElementById("rgdAviso"))) && !realDe(LL.MIE, FP).t, "«En parte» sin marcar ningún turno se guardó o no avisó dentro de la ventana", "media");
+    const cb = [...document.querySelectorAll("#capaModal [data-rgd-turno]")].find(c=>(c.getAttribute("data-keys")||"").split(" ").indexOf("c:bot-1")>=0);
+    await marcar(necesito(cb, "el turno de BOT-1"), true, "turno de BOT-1"); await guardarModal_();
+    const r = realDe(LL.MIE, FP), fA = riegoBalanceSemana(FP, LL.L).cu[A2.id].filas;
+    chk(JSON.stringify(r.parte)==='{"":["c:bot-1"]}' && JSON.stringify(r.est)==='{"":"parte"}' && fA[3].cero && Math.abs(fA[4].C-3.639)<0.001 && fmtCL(fA[4].C,1)==="3,6" && riegoDur(fA[4].hC)==="2 h 15 min",
+      "«En parte» con BOT-1: "+JSON.stringify({parte:r.parte, est:r.est})+", jueves "+(fA[3].cero? "no se riega" : fmtCL(fA[3].C,2))+", viernes "+fmtCL(fA[4].C,3)+" · "+riegoDur(fA[4].hC)+" (esperado 3,6 · 2 h 15 min)", "grave");
+  }));
+  await paso("R13: lo del domingo pasa a la semana siguiente: «Semana pasada: ¿se regó el domingo?» y la hoja del lunes corregida; una falta de 0,45 mm se borra", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); [2,3,4,5].forEach(j=>climaLl(LL.d(j), ETH, 0)); climaLl(LL.DOM, 2.0, 8.0);
+    const L7 = LL.d(7); RIEGO_LL_HOY = L7; await riegoLl();
+    const q = document.querySelector(`#rgSem [data-rgs-pend="${LL.DOM}"][data-tipo="regar"]`);
+    chk(q && txtDe(q).indexOf("Semana pasada: ¿se regó el domingo "+ddmm(LL.DOM)+"?")===0, "La tarjeta no pregunta «Semana pasada: ¿se regó el domingo "+ddmm(LL.DOM)+"?»: «"+txtDe(q).slice(0,70)+"»", "media");
+    await tocar(estBtn(FUL, LL.DOM, "no"), "No (domingo de la semana pasada)");
+    const tx = await textoPDF(()=>riegoPDFRegador({lunes:L7, hora:"08:00", fundos:[FUL]}));
+    chk(/Corte 1 bot \(corregido\)/.test(tx) && /1 h 30 min/.test(tx) && new RegExp("lluvia de 8,0 mm el domingo "+ddmm(LL.DOM)).test(tx) && realDe(L7, FUL).av && realDe(L7, FUL).av.por==="hoja",
+      "La hoja del lunes siguiente no trae «Corte 1 bot (corregido)» con «1 h 30 min» y «lluvia de 8,0 mm el domingo», o no quedó avisada con la hoja", "grave");
+    /* variante: el domingo «en parte» (9 de 10 ha), sin lluvia y con la ET₀ de la hoja → falta 0,45 mm → se borra */
+    const FP2 = "Bot Lluvia P2", A3 = cuBot({fundo:FP2, nombre:"A3 bot"}); prepBot(A3, {dias:[0,1,2,3,4,5,6], ppMed:1.6, sectores:[{cod:"BOT-3", nom:"S1", ha:9}, {cod:"BOT-4", nom:"S2", ha:1}]});
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FP2]}));
+    climaLl(LL.DOM, ETH, 0); RIEGO_LL_HOY = L7; riegoRegoSet(LL.DOM, FP2, "parte", {"":["c:bot-3"]});
+    const b2 = riegoBalanceSemana(FP2, LL.L, L7), tx2 = await textoPDF(()=>riegoPDFRegador({lunes:L7, hora:"08:00", fundos:[FP2]}));
+    chk(Math.abs(b2.cu[A3.id].Sfin+0.45)<0.005 && b2.arrastre[A3.id]===0 && /3 h 10 min/.test(tx2) && !/\(corregido\)/.test(tx2), "La falta de 0,45 mm del domingo no se borró (saldo "+fmtCL(b2.cu[A3.id].Sfin,3)+", pasa "+b2.arrastre[A3.id]+") o la hoja siguiente salió corregida", "media");
+  }));
+  await paso("R14: PDF Pro «Lo que pasó la semana» con los números de la semana, la lluvia como referencia y sin «- 75 % de la lluvia»", ()=>enCajaLl(async ()=>{
+    await prepLl(); climaLl(LL.MIE, 2.0, 8.0); riegoRegoSet(LL.MIE, FUL, "no"); riegoAvisoReg(FUL, LL.JUE, "dicho");
+    [3,4,5,6].forEach(j=>climaLl(LL.d(j), ETH, 0)); RIEGO_LL_HOY = LL.d(7);
+    const tp = await textoPDF(()=>riegoPDFPro({lunes:LL.d(7), hora:"08:00", fundos:[FUL]}));
+    chk(new RegExp("Lo que pasó la semana del "+ddmm(LL.L)+" al "+ddmm(LL.DOM)).test(tp) && /Corte 1 bot 35,0 27,4 3,8 3,1 0,0/.test(tp) && /Corte 2 bot 35,0 35,0 [\d,]+ [\d,]+ 6,[89]/.test(tp),
+      "El PDF Pro no trae «Lo que pasó la semana» con Corte 1 bot 35,0 · 27,4 · 3,8 · 3,1 · 0,0 y Corte 2 bot 35,0 · 35,0 · saldo 6,85: «"+((tp.match(/Lo que pas[\s\S]{0,400}/)||[""])[0])+"»", "grave");
+    chk(/referencia: el balance la cuenta día a día/.test(tp) && !/75 % de la lluvia/.test(tp) && /ETc = ET0 x Kc\. Lamina/.test(tp), "El KPI de la lluvia o la nota del PDF Pro siguen con el descuento por lluvia", "media");
+  }));
+  await paso("R15: PDF rehecho a mitad de semana: 2 copias (lunes y jueves), cada día con la suya, y la hoja nueva trae el jueves corregido (50 min)", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); climaLl(LL.MIE, 2.0, 8.0); riegoRegoSet(LL.MIE, FUL, "no");
+    riegoCfg().cu[A.id].rep = 80; guardar();
+    const tx = await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FUL]}));
+    const vs = riegoCfg().prog[LL.L][FUL], bq = riegoBalanceSemana(FUL, LL.L), fA = bq.cu[A.id].filas, v2 = vs[1]||{cu:{}};
+    chk(vs.length===2 && vs[0].desde===LL.L && v2.desde===LL.JUE && fA[0].Hh===5 && fA[2].Hh===5 && Math.abs(fA[3].Hh-4)<1e-9 && riegoDur((v2.cu[A.id]||{}).h)==="2 h 30 min",
+      "Rehacer el PDF el jueves: "+vs.length+" copias ("+vs.map(v=>v.desde).join(", ")+"), mm "+[0,2,3].map(j=>fmtCL(fA[j].Hh,1)).join(" · "), "grave");
+    await riegoLl(); const res = bloqueF(FUL) && bloqueF(FUL).querySelector("[data-rgs-av]");
+    chk(/50 min/.test(tx) && /\(corregido\)/.test(tx) && realDe(LL.JUE, FUL).av && realDe(LL.JUE, FUL).av.por==="hoja" && res && /Avisado con la hoja corregida/.test(txtDe(res)),
+      "La hoja rehecha no trae el jueves «50 min (corregido)» o la tarjeta no dice «Avisado con la hoja corregida»: «"+txtDe(res)+"»", "media");
+  }));
+  await paso("R16: en el celular espejo se ve la tarjeta pero no se confirma ni se avisa, y nada se guarda", ()=>enCajaLl(async ()=>{
+    await prepLl(); climaLl(LL.MIE, 2.0, 8.0); D.sync = Object.assign({}, D.sync||{}, {rol:"receptor"}); uiAplicar();
+    await riegoLl(); const j0 = JSON.stringify(D.riego);
+    const bs = [...document.querySelectorAll("#rgSem [onclick]")].filter(b=>/^(riegoRegoSet|riegoContarLluvia|riegoLluvia|riegoSnap|riegoPausa|riegoMensaje|riegoHojaCorr)/.test(b.getAttribute("onclick")||""));
+    chk(document.getElementById("rgSem") && document.querySelector(`#rgSem [data-rgs-pend="${LL.MIE}"]`) && !bs.length && /Se confirma y se avisa desde el iPad/.test(txtDe(document.getElementById("rgSem"))),
+      "En el celular la tarjeta no se ve, falta «Se confirma y se avisa desde el iPad» o hay "+bs.length+" botones que escriben ("+bs.slice(0,3).map(b=>b.getAttribute("onclick").slice(0,24)).join(", ")+")", "media");
+    const r1 = riegoRegoSet(LL.MIE, FUL, "no");
+    await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FUL]}));
+    chk(r1===false && JSON.stringify(D.riego)===j0, "En el celular «No» o el PDF del regador escribieron en D.riego", "grave");
+    await irA("panel"); hoyFundoSet(FUL); await pausa(.8); const card = document.querySelector(".hoy-ac.riego");
+    chk(card && /Se confirma en el iPad/.test(card.title), "«Riego hoy» en el celular no dice «Se confirma en el iPad» en su título", "leve");
+  }));
+  await paso("R17: el pronóstico es solo un aviso: no cambia el balance", ()=>enCajaLl(async ()=>{
+    await prepLl(); climaLl(LL.MIE, 2.0, 8.0); riegoRegoSet(LL.MIE, FUL, "no");
+    const b0 = JSON.stringify(riegoBalanceSemana(FUL, LL.L, LL.JUE, {sinMemo:true}));
+    wlCfg().om = {pron:{[LL.VIE]:{ll:12, et:3}}, ts:new Date().toISOString()};
+    await riegoLl(); const p = document.querySelector("#rgSem [data-rgs-pron]");
+    chk(p && txtDe(p).indexOf("Pronóstico (Open-Meteo): mañana viernes 12 mm. No cambia la hoja")===0 && JSON.stringify(riegoBalanceSemana(FUL, LL.L, LL.JUE, {sinMemo:true}))===b0, "El pronóstico no salió como aviso («"+txtDe(p)+"») o cambió el balance", "media");
+  }));
+  await paso("R18: se quitó «descontar la lluvia»: sin casilla, las horas no cambian, las 3 casillas del balance y el aviso «Entendido» si estaba marcada", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); await riegoLl();
+    const det = necesito([...document.querySelectorAll("#riegoScroll details")].find(d=>/Configuración del riego/i.test(txtDe(d.querySelector("summary")))), "la sección de configuración del riego");
+    if(!det.open) await tocar(det.querySelector("summary"), "abrir configuración");
+    const ins = [...document.querySelectorAll("#riegoScroll [data-rg-llcfg]")].map(i=>i.value);
+    chk(![...document.querySelectorAll("#riegoScroll input")].some(i=>/riegoDescLluvia/.test((i.getAttribute("onchange")||"")+(i.getAttribute("onclick")||""))) && typeof window.riegoDescLluvia==="undefined" && ins.join("|")==="3|75|10",
+      "Sigue la casilla «descontar la lluvia» o faltan las 3 casillas del balance (3 · 75 · 10): «"+ins.join(" · ")+"»", "media");
+    const s20 = riegoSerieBase().map((x, i)=>Object.assign({}, x, {ll: i===2? 20 : 0})), r = riegoCfg();
+    r.descLluvia = false; const h1 = riegoCalcCuartel(A, s20).hRiego; r.descLluvia = true; const h2 = riegoCalcCuartel(A, s20).hRiego;
+    chk(Math.abs(h1-h2)<1e-12, "Con «descontar la lluvia» marcada en los datos las horas cambian ("+h1+" y "+h2+")", "grave");
+    const vistas = {}; for(const vv of ["cu","dia","turnos","tabla"]){ riegoVistaSet(vv); await pausa(.3); vistas[vv] = document.querySelectorAll('#riegoScroll [data-res="descll"]').length; }
+    const dl = document.querySelector('#riegoScroll [data-res="descll"]');
+    chk(Object.values(vistas).every(n=>n===1) && dl && /Se quitó «descontar la lluvia de esa semana»\./.test(txtDe(dl)), "Con la casilla marcada el aviso no sale una vez en cada vista: "+JSON.stringify(vistas), "media");
+    D.sync = Object.assign({}, D.sync||{}, {rol:"receptor"}); riegoPintar(); await pausa(.3);
+    const dlE = document.querySelector('#riegoScroll [data-res="descll"]');
+    chk(dlE && !dlE.querySelector("button"), "En el celular el aviso de la casilla quitada no sale o trae el botón «Entendido»", "leve");
+    D.sync.rol = "off"; riegoPintar(); await pausa(.3);
+    await tocar(necesito(document.querySelector('#riegoScroll [data-res="descll"] button'), "«Entendido»"), "Entendido");
+    chk(riegoCfg().descLluvia===false && !document.querySelector('#riegoScroll [data-res="descll"]'), "«Entendido» no apagó la casilla o el aviso sigue", "media");
+  }));
+  await paso("R19: rendimiento con 4 fundos y 5 semanas de copias: Riego en 150 ms, el balance en 5 ms y una sola cuenta por fundo y semana", ()=>enCajaLl(async ()=>{
+    const {A, B} = await prepLl(); climaLl(LL.MIE, 2.0, 8.0); riegoRegoSet(LL.MIE, FUL, "no");
+    const v0 = riegoCfg().prog[LL.L][FUL][0], P = riegoCfg().prog;
+    for(let k = 0; k <= 4; k++){ const Lk = sumarDiasISO(LL.L, -7*k); P[Lk] = P[Lk] || {};
+      for(let n = 1; n <= 4; n++){ const cu = {}; for(let c = 0; c < 12; c++) cu["9"+n+String(c).padStart(2,"0")] = Object.assign({}, v0.cu[A.id], {n:"Rend "+n+"-"+c, s:[["R"+n+"-"+c,"S1",2],["","S2",1]]});
+        P[Lk]["Bot Rend "+n] = [Object.assign({}, v0, {desde:Lk, cu})]; } }
+    for(let j = -28; j < 3; j++) climaLl(sumarDiasISO(LL.L, j), ETH, j%5===0? 6 : 0);
+    await riegoLl();
+    const c0 = window.riegoBalCalc, claves = []; window.riegoBalCalc = function(F, L){ claves.push(F+"|"+L); return c0.apply(this, arguments); };
+    let ms = 0; try{ const t0 = performance.now(); riegoPintar(); ms = performance.now()-t0; } finally { window.riegoBalCalc = c0; }
+    const rep = claves.filter((k, i)=>claves.indexOf(k)!==i);
+    chk(!rep.length && claves.length>=20 && _rgBalMemo===null, "Durante una pintada el balance se calculó más de una vez por fundo y semana ("+rep.length+" repetidas de "+claves.length+") o la memoria quedó viva", "media");
+    chk(ms<=150, "Pintar Riego con 4 fundos y 5 semanas de copias tardó "+Math.round(ms)+" ms (meta 150 ms)", "leve");
+    const t1 = performance.now(); let n = 0; for(let k = 0; k <= 4; k++) for(let f = 1; f <= 4; f++){ riegoBalanceSemana("Bot Rend "+f, sumarDiasISO(LL.L, -7*k), LL.JUE, {sinMemo:true, prof:6}); n++; }
+    const msS = (performance.now()-t1)/n;
+    chk(msS<=5, "El balance de un fundo y una semana tarda "+msS.toFixed(1)+" ms (meta 5 ms)", "leve");
+  }));
+  await paso("R20: «Contar la lluvia» en todos los fundos con un toque (solo con 2 o más fundos pendientes) y un solo guardar", ()=>enCajaLl(async ()=>{
+    await prepLl(); const F2 = "Bot Lluvia 2", F3 = "Bot Lluvia 3";
+    const q2 = cuBot({fundo:F2, nombre:"Lunes y viernes bot"}); prepBot(q2, {dias:[1,5], ppMed:1.6});
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FUL, F2]}));
+    climaLl(LL.d(1), 2.0, 6.2); climaLl(LL.MIE, 2.0, 6.2); RIEGO_LL_HOY = LL.JUE;
+    riegoRegoSet(LL.d(1), FUL, "si"); riegoRegoSet(LL.MIE, FUL, "si");
+    const p2 = riegoBalanceSemana(F2, LL.L).pend, p1 = riegoBalanceSemana(FUL, LL.L).pend;
+    await riegoLl();
+    chk(p2.some(p=>p.f===LL.MIE && p.tipo==="contar") && !p1.length && !document.querySelector("#rgSem [data-rgs-contar]"), "Con un solo fundo pendiente: "+JSON.stringify(p2.map(p=>p.f+" "+p.tipo))+" · FUL "+p1.length+" · aviso general "+(!!document.querySelector("#rgSem [data-rgs-contar]")), "media");
+    const q3 = cuBot({fundo:F3, nombre:"Lunes y viernes bot 3"}); prepBot(q3, {dias:[1,5], ppMed:1.6});
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[F3]})); RIEGO_LL_HOY = LL.JUE;
+    riegoPintar(); await pausa(.4);
+    const g = document.querySelector(`#rgSem [data-rgs-contar="${LL.MIE}"]`), j1 = JSON.stringify(realDe(LL.MIE, FUL));
+    chk(g && txtDe(g).indexOf("Miércoles "+ddmm(LL.MIE)+": llovió 6,2 mm y no tocaba riego en 2 fundos.")===0 && /Contar la lluvia en los 2/.test(txtDe(g)), "No salió «Miércoles "+ddmm(LL.MIE)+": llovió 6,2 mm y no tocaba riego en 2 fundos.»: «"+txtDe(g)+"»", "media");
+    const g0 = window.guardar; let nG = 0; window.guardar = function(){ nG++; return g0.apply(this, arguments); };
+    try{ await tocar(necesito(g && g.querySelector("button"), "«Contar la lluvia en los 2»"), "Contar la lluvia en los 2"); } finally { window.guardar = g0; }
+    chk(realDe(LL.MIE, F2).cuenta===true && realDe(LL.MIE, F3).cuenta===true && nG===1 && JSON.stringify(realDe(LL.MIE, FUL))===j1, "«Contar la lluvia en los 2» no contó en los dos fundos con un solo guardar ("+nG+") o cambió «"+FUL+"»", "media");
+  }));
+  await paso("R21: «Riego hoy» a 375 px: un solo aviso (capacidad > pendiente > ajustado), sin cortarse, y el título con todos", ()=>enCajaLl(async ()=>{
+    const medir = async (nom)=>{ await irA("panel"); hoyFundoSet(FUL); await pausa(.8);
+      const card = document.querySelector(".hoy-ac.riego"), avs = card? card.querySelectorAll(".hoy-ac-av") : [], s = card && card.querySelector(".hoy-ac-s");
+      if(card){ card.style.width = "165px"; await pausa(.15); }
+      const av = avs[0], lh = av? (parseFloat(getComputedStyle(av).lineHeight) || 17) : 17;
+      const ok = !!card && avs.length===1 && s && s.scrollWidth<=s.clientWidth+1 && av.scrollWidth<=av.clientWidth+1 && av.getBoundingClientRect().height<=lh*2+2;
+      chk(ok, "A 375 px «Riego hoy» ("+nom+") tiene "+avs.length+" avisos o se corta: «"+txtDe(av)+"» ("+(av? av.scrollWidth+" de "+av.clientWidth : "—")+" px), «"+txtDe(s)+"»", "leve");
+      if(card) card.style.width = "";
+      return {card, av, t: card? card.title : ""}; };
+    const ui0 = JSON.stringify(D.ui||{}); D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar();
+    await prepLl(); climaLl(LL.MIE, 2.0, 8.0); riegoRegoSet(LL.MIE, FUL, "no");
+    let m = await medir("ajustado");
+    chk(m.av && m.av.classList.contains("az") && txtDe(m.av)==="Ajustado por lluvia", "«Riego hoy» con el jueves ajustado no dice «Ajustado por lluvia» en azul: «"+txtDe(m.av)+"»", "media");
+    delete wlCfg().dias[LL.d(1)];
+    m = await medir("pendiente");
+    chk(m.av && m.av.classList.contains("amb") && txtDe(m.av)==="Falta la lluvia del martes" && /Falta la lluvia del martes/.test(m.t), "«Riego hoy» con el martes sin lluvia medida no dice «Falta la lluvia del martes» en ámbar: «"+txtDe(m.av)+"»", "media");
+    if(m.card){ await tocar(m.card, "Riego hoy"); await esperarQue(()=>document.getElementById("riegoScroll"), 3000); }
+    chk(nav.tab==="riego" && nav.riegoFundo===FUL, "Tocar «Riego hoy» con el pendiente no abre Riego en «"+FUL+"» (pestaña "+nav.tab+", fundo "+nav.riegoFundo+")", "media");
+    D.ui = JSON.parse(ui0); uiAplicar();
+  }));
+  await paso("R21 (capacidad): con 1,5 h disponibles la línea roja «No alcanzan las 1,5 h» manda y el título trae también «Ajustado por lluvia»", ()=>enCajaLl(async ()=>{
+    const ui0 = JSON.stringify(D.ui||{}); D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar();
+    await prepLl({bomba:{n:1, h:1.5}}); climaLl(LL.MIE, 2.0, 8.0); riegoRegoSet(LL.MIE, FUL, "no");
+    await irA("panel"); hoyFundoSet(FUL); await pausa(.8);
+    const card = document.querySelector(".hoy-ac.riego"), avs = card? card.querySelectorAll(".hoy-ac-av") : [], av = avs[0];
+    if(card){ card.style.width = "165px"; await pausa(.15); }
+    chk(avs.length===1 && av && !av.classList.contains("az") && !av.classList.contains("amb") && txtDe(av)==="No alcanzan las 1,5 h" && /Ajustado por lluvia/.test(card.title) && av.scrollWidth<=av.clientWidth+1,
+      "Con 1,5 h disponibles «Riego hoy» no muestra solo la línea roja «No alcanzan las 1,5 h» con «Ajustado por lluvia» en el título: «"+txtDe(av)+"» · «"+(card? card.title.slice(0,140) : "")+"»", "media");
+    if(card) card.style.width = "";
+    D.ui = JSON.parse(ui0); uiAplicar();
+  }));
+  /* ---- revisión v163 (30-10-2026): los arreglos de las dos revisiones (cálculos y pantalla) ---- */
+  const llParcial = (f, mm, hh)=>{ wlCfg().dias[f] = {src:"wl", parcial:true, ll:mm, llSrc:"wl", llWl:mm, llTs:Math.floor(new Date(f+"T"+hh+":00").getTime()/1000), tmax:15, tmin:8}; };
+  await paso("R22 (revisión): confirmar hoy a medio día y que siga lloviendo: el día queda «por actualizar» (lluvia y ET₀), corta el balance y «Actualizar con lo medido» corrige (12 mm: el viernes no se riega)", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); climaLl(LL.MIE, ETH, 0); llParcial(LL.JUE, 4.6, "15:30");
+    await riegoLl(); await tocar(estBtn(FUL, LL.JUE, "no"), "No (hoy, a las 15:30)");
+    const r = realDe(LL.JUE, FUL);
+    chk(r.ll===4.6 && r.llHasta==="15:30" && r.et0==null && r.et0Src==="plan" && JSON.stringify(r.est)==='{"":"no"}', "Confirmar hoy no guardó la lluvia «hasta las 15:30» y sin ET₀: "+JSON.stringify(r), "media");
+    /* revisión r1: mientras el panel Estación carga, el puente puede tener una lectura más vieja y más baja (4,0 mm a las 15:00): no es «siguió lloviendo» */
+    llParcial(LL.JUE, 4.0, "15:00"); riegoPintar(); await pausa(.3);
+    chk(!document.querySelector(`#rgSem [data-rgs-pend="${LL.JUE}"][data-tipo="act"]`) && riegoBalanceSemana(FUL, LL.L).bloq===null, "Una lectura más vieja y más baja (4,0 mm a las 15:00) pidió «Actualizar» contra los 4,6 mm confirmados a las 15:30", "media");
+    llParcial(LL.JUE, 8.0, "18:00"); riegoPintar(); await pausa(.4);
+    let q = document.querySelector(`#rgSem [data-rgs-pend="${LL.JUE}"][data-tipo="act"][data-f="${FUL}"]`);
+    chk(q && /Hoy siguió lloviendo: ahora 8,0 mm \(al confirmar: 4,6 mm\)\. Actualízalo para corregir desde mañana\./.test(txtDe(q)) && riegoBalanceSemana(FUL, LL.L).bloq===LL.JUE,
+      "Hoy siguió lloviendo (8 mm a las 18:00) y la tarjeta no pide actualizar: «"+txtDe(q)+"»", "media");
+    /* el día termina con 12 mm y ET₀ 2,0; «hoy» pasa a ser el viernes */
+    wlCfg().dias[LL.JUE] = {src:"wl", parcial:false, ll:12, et:2.0, tmax:15, tmin:8, horas:24, n:96}; RIEGO_LL_HOY = LL.VIE; riegoPintar(); await pausa(.4);
+    const b1 = riegoBalanceSemana(FUL, LL.L), bl = bloqueF(FUL), mot = bl && bl.querySelector("[data-rgs-mot]"), bm = bl && bl.querySelector("[data-rgs-msj]");
+    q = document.querySelector(`#rgSem [data-rgs-pend="${LL.JUE}"][data-tipo="act"][data-f="${FUL}"]`);
+    chk(b1.bloq===LL.JUE && !b1.cu[A.id].filas[4].cambio && q && txtDe(q).indexOf("Jueves "+ddmm(LL.JUE)+": cambió lo medido después de confirmarlo: ahora 12,0 mm y ET₀ 2,0 mm (al confirmar: 4,6 mm y la ET₀ de la hoja).")===0
+      && bm && bm.disabled && txtDe(mot)==="Falta actualizar el jueves", "El viernes, el jueves no quedó «por actualizar» cortando el balance: corte "+b1.bloq+", «"+txtDe(q).slice(0,140)+"», «"+txtDe(mot)+"»", "grave");
+    const cel = document.querySelector(`#rgSem [data-rgs-dia="${LL.JUE}"][data-f="${FUL}"]`);
+    chk(cel && /Cambió lo medido/.test(txtDe(cel)) && /cambió lo medido/.test(cel.getAttribute("aria-label")||"") && txtDe(cel.querySelector(".rgs-dl"))==="12,0 mm", "La celda del jueves no dice «12,0 mm · Cambió lo medido» (lo medido ahora, como el aviso): «"+txtDe(cel)+"»", "leve");
+    riegoDiaModal(LL.JUE, FUL); await pausa();
+    chk(/Lo medido cambió: ahora 12,0 mm y ET₀ 2,0 mm/.test(txtDe(document.querySelector("#capaModal [data-rgd-camb]"))), "La ventana del jueves no dice «Lo medido cambió: ahora 12,0 mm y ET₀ 2,0 mm»", "media");
+    await cancelarModal();
+    await irA("panel"); hoyFundoSet(FUL); await pausa(.8);
+    const card = document.querySelector(".hoy-ac.riego"), av = card && card.querySelector(".hoy-ac-av");
+    chk(av && av.classList.contains("amb") && txtDe(av)==="Cambió lo medido ayer" && /Ayer cambió lo medido después de confirmarlo en Bot Lluvia/.test(card.title), "«Riego hoy» no dice «Cambió lo medido ayer» en ámbar: «"+txtDe(av)+"»", "media");
+    await riegoLl();
+    await tocar(necesito(document.querySelector(`#rgSem [data-rgs-pend="${LL.JUE}"][data-tipo="act"] [data-rgs-act1]`), "«Actualizar con lo medido»"), "Actualizar con lo medido");
+    const b2 = riegoBalanceSemana(FUL, LL.L), f4 = b2.cu[A.id].filas, r2 = realDe(LL.JUE, FUL);
+    chk(b2.bloq===null && Math.abs(f4[3].S-5.35)<0.005 && f4[4].cero && r2.ll===12 && r2.et0===2 && r2.est && r2.est[""]==="no",
+      "«Actualizar con lo medido»: saldo "+fmtCL(f4[3].S,3)+" (esperado +5,35), viernes "+(f4[4].cero? "no se riega" : fmtCL(f4[4].C,2))+", "+JSON.stringify({ll:r2.ll, et0:r2.et0, est:r2.est}), "grave");
+  }));
+  await paso("R22 (2 fundos): el mismo día por actualizar en 2 fundos → «Actualizar en los 2» con un solo guardar", ()=>enCajaLl(async ()=>{
+    await prepLl(); const F2 = "Bot Lluvia 2", q2 = cuBot({fundo:F2, nombre:"Diario bot 2"}); prepBot(q2, {dias:[0,1,2,3,4,5,6], ppMed:1.6});
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[F2]})); climaLl(LL.MIE, ETH, 0); RIEGO_LL_HOY = LL.JUE;
+    llParcial(LL.JUE, 4.6, "15:30"); riegoRegoSet(LL.JUE, FUL, "no"); riegoRegoSet(LL.JUE, F2, "no");
+    wlCfg().dias[LL.JUE] = {src:"wl", parcial:false, ll:12, et:2.0, tmax:15, tmin:8, horas:24, n:96}; RIEGO_LL_HOY = LL.VIE; await riegoLl();
+    const g = document.querySelector(`#rgSem [data-rgs-act="${LL.JUE}"]`);
+    chk(g && txtDe(g).indexOf("Jueves "+ddmm(LL.JUE)+": cambió lo medido después de confirmarlo en 2 fundos.")===0 && /Actualizar en los 2/.test(txtDe(g)), "No salió «Jueves "+ddmm(LL.JUE)+": cambió lo medido después de confirmarlo en 2 fundos.»: «"+txtDe(g)+"»", "media");
+    const g0 = window.guardar; let nG = 0; window.guardar = function(){ nG++; return g0.apply(this, arguments); };
+    try{ await tocar(necesito(g && g.querySelector("button"), "«Actualizar en los 2»"), "Actualizar en los 2"); } finally { window.guardar = g0; }
+    chk(realDe(LL.JUE, FUL).ll===12 && realDe(LL.JUE, F2).ll===12 && nG===1 && riegoBalanceSemana(F2, LL.L).bloq===null && riegoBalanceSemana(FUL, LL.L).bloq===null,
+      "«Actualizar en los 2» no actualizó los dos fundos con un solo guardar ("+nG+"): "+realDe(LL.JUE, FUL).ll+" y "+realDe(LL.JUE, F2).ll, "media");
+  }));
+  await paso("R23 (revisión): un día avisado al regador que vuelve a la hoja pide avisar de nuevo (tarjeta, Por cuartel, «Riego hoy» y el mensaje «como en la hoja, no como te avisé»)", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); climaLl(LL.MIE, 2.0, 8.0);
+    await riegoLl(); await tocar(estBtn(FUL, LL.MIE, "no"), "No (miércoles)");
+    await tocar(`#rgSem details[data-f="${FUL}"] [data-rgs-msj]`, "Mensaje para el regador"); await tocar("#capaModal [data-rgm-dicho]", "Ya se lo dije");
+    chk((realDe(LL.JUE, FUL).av||{}).por==="dicho", "«Ya se lo dije» no anotó el aviso del jueves", "media");
+    /* Manuel corrige el miércoles: no llovió (para todos los fundos) y sí se regó */
+    await tocar(`#rgSem [data-rgs-dia="${LL.MIE}"][data-f="${FUL}"]`, "el miércoles"); necesito(modalAbierto(), "la ventana del miércoles");
+    const pe0 = txtDe(document.querySelector("#capaModal [data-rgd-pe]"));
+    await tocar("#capaModal [data-rgd-corr]", "Corregir mm"); await escribir("rgd_mm", "0", "lluvia del día");
+    const pe1 = txtDe(document.querySelector("#capaModal [data-rgd-pe]"));
+    chk(pe0==="Lluvia efectiva: (8,0 − 3) × 75 % = 3,8 mm" && pe1==="no pasa de 3 mm: no cuenta", "La línea de la lluvia efectiva no se rehace al escribir 0 mm: «"+pe0+"» → «"+pe1+"»", "leve");
+    await marcar(necesito(document.querySelector('#capaModal input[name="rgd_para"][value="todos"]'), "«Para todos los fundos»"), true, "para todos los fundos");
+    await tocar('#capaModal [data-rgd-est="si"]', "Sí, todo"); await guardarModal_();
+    const cd = riegoCorrDia(FUL, LL.JUE), rM = realDe(LL.MIE, FUL);
+    /* revisión r1: lo que Manuel corrige para todos con la lluvia que la estación YA midió (8,0 mm) queda como visto: sin «anotaste que no llovió, pero…» */
+    chk(((riegoCfg().real||{})[LL.MIE]||{}).llManOk===8 && !document.querySelector(`#rgSem [data-rgs-mandif="${LL.MIE}"]`), "Corregir el miércoles a 0 mm (con 8,0 medidos) le reclama al tiro «anotaste que no llovió, pero la estación midió 8,0 mm»", "media");
+    chk(rM.ll===0 && rM.est && rM.est[""]==="si" && cd && cd.vuelve && cd.avViejo && cd.cu[A.id] && cd.cu[A.id].reav && !cd.cu[A.id].cambio,
+      "Corregido el miércoles (0 mm, «Sí»), el jueves no quedó «vuelve a la hoja» con el aviso viejo: "+JSON.stringify({ll:rM.ll, est:rM.est, vuelve:cd && cd.vuelve, avViejo:cd && cd.avViejo}), "grave");
+    const bl = bloqueF(FUL), res = bl && bl.querySelector('[data-rgs-res="cambio"]'), bm = bl && bl.querySelector("[data-rgs-msj]");
+    chk(res && /se riega como la hoja en 1 cuartel, no como se le avisó al regador\. Cambió desde el último aviso: avísale de nuevo\./.test(txtDe(res)) && !bl.querySelector('[data-rgs-res="nada"]') && bm && !bm.disabled && /Jueves: avísale al regador/.test(txtDe(bl.querySelector("summary"))),
+      "La tarjeta no pide avisar de nuevo cuando el jueves vuelve a la hoja: «"+txtDe(res||bl)+"»", "grave");
+    const el = document.querySelector(`#riegoScroll .rgcard[data-rgcu="${A.id}"] [data-rg-reav]`);
+    chk(el && txtDe(el).indexOf("Jueves "+ddmm(LL.JUE)+": 3 h 10 min, como la hoja (al regador se le avisó 1 h 30 min)")===0, "Por cuartel no dice «Jueves "+ddmm(LL.JUE)+": 3 h 10 min, como la hoja (al regador se le avisó 1 h 30 min)»: «"+txtDe(el)+"»", "media");
+    const t = await msjDe(FUL);
+    const esp = ["Riego jueves "+ddmm(LL.JUE)+" · "+FUL, "Hoy se riega como en la hoja, no como te avisé:", "- Corte 1 bot: 3 h 10 min, como la hoja (no 1 h 30 min)", "Los demás cuarteles, igual que la hoja. El día termina a las 11:40 (no a las 10:00).", "Desde el viernes, la hoja de siempre."].join("\n");
+    chk(t===esp, "El mensaje del día que vuelve a la hoja no es el esperado:\n"+t, "media");
+    await irA("panel"); hoyFundoSet(FUL); await pausa(.8);
+    const card = document.querySelector(".hoy-ac.riego"), av = card && card.querySelector(".hoy-ac-av"), sub = card && card.querySelector(".hoy-ac-s");
+    chk(av && av.classList.contains("amb") && txtDe(av)==="Avísale de nuevo al regador" && /Cambió lo que se le avisó al regador para hoy en Bot Lluvia: avísale de nuevo/.test(card.title) && sub && /^hasta 3,6 h · ≈ /.test(txtDe(sub)),
+      "«Riego hoy» no dice «Avísale de nuevo al regador» con las horas de la hoja: «"+txtDe(av)+"» · «"+txtDe(sub)+"»", "media");
+    await riegoLl(); await tocar(`#rgSem details[data-f="${FUL}"] [data-rgs-msj]`, "Mensaje para el regador"); await tocar("#capaModal [data-rgm-dicho]", "Ya se lo dije");
+    const res2 = bloqueF(FUL) && bloqueF(FUL).querySelector('[data-rgs-res="nada"]');
+    chk(!riegoCorrDia(FUL, LL.JUE) && res2 && txtDe(res2)==="Al día: la hoja del regador sigue igual.", "Después de avisar de nuevo, el jueves no quedó «Al día»", "media");
+    /* revisión r1: si la estación cambia 0,5 mm o más después de la corrección (9,0 mm), el aviso sí sale */
+    climaLl(LL.MIE, 2.0, 9.0); riegoPintar(); await pausa(.4);
+    const md = document.querySelector(`#rgSem [data-rgs-mandif="${LL.MIE}"]`);
+    chk(md && txtDe(md).indexOf("Miércoles "+ddmm(LL.MIE)+": anotaste que no llovió, pero la estación midió 9,0 mm.")===0, "Con la estación en 9,0 mm después de corregir, no sale «anotaste que no llovió, pero la estación midió 9,0 mm»: «"+txtDe(md)+"»", "media");
+  }));
+  await paso("R24 (revisión): válvula compartida con Pp distintas: si la válvula no cambia 15 min, nada que avisar (sin «3 h 45 min (en vez de 3 h 45 min)») y el saldo del cuartel sigue", ()=>enCajaLl(async ()=>{
+    const FV = "Bot Lluvia V2", sect = [{cod:"BOT-8", nom:"Compartido", ha:2}];
+    const X = cuBot({fundo:FV, nombre:"X2 bot"}); prepBot(X, {dias:[0,1,2,3,4,5,6], ppMed:1.6, sectores:sect});
+    const Y = cuBot({fundo:FV, nombre:"Y2 bot"}); prepBot(Y, {dias:[0,1,2,3,4,5,6], ppMed:4, sectores:sect, rep:300});
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FV]}));
+    climaLl(LL.L, ETH, 0); climaLl(LL.d(1), ETH, 0); climaLl(LL.MIE, ETH, 4.0); RIEGO_LL_HOY = LL.JUE;
+    await riegoLl(FV); await tocar(estBtn(FV, LL.MIE, "si"), "Sí, todo (miércoles)");
+    const bq = riegoBalanceSemana(FV, LL.L), fx = bq.cu[X.id].filas, fy = bq.cu[Y.id].filas, v0 = riegoVersionDe(FV, LL.L, LL.JUE), hX = v0.cu[X.id].h, hY = v0.cu[Y.id].h;
+    chk(Math.abs(hY-3.75)<1e-9 && hX<hY && !fx[3].cambio && !fy[3].cambio && fx[2].S>0.5 && Math.abs(fx[3].S-fx[2].S)<1e-9,
+      "Válvula BOT-8 (manda Y2 bot, 3 h 45 min): X2 bot cambió aunque la válvula no cambia, o gastó su saldo: "+JSON.stringify({hX, hY, cX:!!fx[3].cambio, cY:!!fy[3].cambio, S2:fx[2].S, S3:fx[3].S}), "grave");
+    const bl = bloqueF(FV), bm = bl && bl.querySelector("[data-rgs-msj]");
+    chk(!riegoCorrDia(FV, LL.JUE) && riegoMensajeRegador(FV, LL.JUE)==="" && bm && bm.disabled && !/en vez de 3 h 45 min\)/.test(txtDe(bl)) && !/se riega menos/.test(txtDe(bl)),
+      "Con la válvula sin cambio la tarjeta igual anuncia un cambio: «"+txtDe(bl).slice(0,200)+"»", "media");
+    await irA("panel"); hoyFundoSet(FV); await pausa(.8);
+    const av = document.querySelector(".hoy-ac.riego .hoy-ac-av");
+    chk(!av || !/Ajustado/.test(txtDe(av)), "«Riego hoy» dice «"+txtDe(av)+"» sin que cambie el riego de la válvula", "media");
+  }));
+  await paso("R25 (revisión): hoy ya confirmado sigue mostrando lo indicado al regador (Por cuartel y «Riego hoy»), sin mensaje para hoy; día suspendido con lluvia y el aviso de la casilla quitada", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); climaLl(LL.MIE, 2.0, 8.0); riegoRegoSet(LL.MIE, FUL, "no"); riegoAvisoReg(FUL, LL.JUE, "dicho"); climaLl(LL.JUE, ETH, 0); riegoRegoSet(LL.JUE, FUL, "si");
+    await riegoLl(); const el = document.querySelector(`#riegoScroll .rgcard[data-rgcu="${A.id}"] [data-rg-corr="${LL.JUE}"]`);
+    chk(el && txtDe(el).indexOf("Jueves "+ddmm(LL.JUE)+": 1 h 30 min (hoja 3 h 10 min)")===0 && JSON.stringify(riegoMsjDias(FUL, LL.JUE))==="[]",
+      "Confirmado el jueves, Por cuartel no sigue con «1 h 30 min (hoja 3 h 10 min)» o se ofrece mensaje para hoy: «"+txtDe(el)+"» · "+JSON.stringify(riegoMsjDias(FUL, LL.JUE)), "media");
+    await irA("panel"); hoyFundoSet(FUL); await pausa(.8);
+    const card = document.querySelector(".hoy-ac.riego"), sub = card && card.querySelector(".hoy-ac-s");
+    chk(sub && /^hasta 2 h · ≈ /.test(txtDe(sub)), "Confirmado el jueves, «Riego hoy» volvió a la hoja: «"+txtDe(sub)+"» (debía seguir «hasta 2 h»)", "media");
+    /* revisión r1: el detalle por cuartel con hoy confirmado: el saldo después de hoy (lo indicado ya gastó lo que sobraba) y el próximo riego, el viernes */
+    await riegoLl(); const tr = bloqueF(FUL) && bloqueF(FUL).querySelector(".rgs-tab tbody tr"), td = tr ? [...tr.querySelectorAll("td")].map(x=>txtDe(x)) : [];
+    chk(td[0]==="Corte 1 bot" && td[2]==="0" && td[3]==="vie "+ddmm(LL.VIE)+": igual que la hoja", "«Detalle por cuartel» con hoy confirmado no muestra el saldo después de hoy y el viernes: "+JSON.stringify(td), "leve");
+    riegoCfg().descLluvia = true; await riegoLl(); const dl = document.querySelector('#riegoScroll [data-res="descll"]');
+    chk(dl && /son más altas que antes de la actualización/.test(txtDe(dl)) && !/un poco/.test(txtDe(dl)), "El aviso de la casilla quitada sigue diciendo «un poco más altas»: «"+txtDe(dl).slice(0,200)+"»", "leve");
+    riegoCfg().descLluvia = false;
+    /* un día suspendido con lluvia: «(riego suspendido)», no «(no tocaba riego)» (otro fundo, para no tocar el de arriba) */
+    const FS = "Bot Lluvia S", s1 = cuBot({fundo:FS, nombre:"Suspendido bot"}); prepBot(s1, {dias:[0,1,2,3,4,5,6], ppMed:1.6});
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FS]})); RIEGO_LL_HOY = LL.JUE;
+    riegoPausaSet(FS, LL.d(1), LL.d(1), 25); climaLl(LL.d(1), 2.0, 6.0); await riegoLl(FS);
+    const qs = document.querySelector(`#rgSem [data-rgs-pend="${LL.d(1)}"][data-tipo="contar"][data-f="${FS}"]`);
+    chk(qs && /llovió 6,0 mm \(riego suspendido\)\./.test(txtDe(qs)), "El día suspendido con lluvia no dice «(riego suspendido)»: «"+txtDe(qs)+"»", "leve");
+    /* revisión r1: el mismo día suspendido en 2 fundos: el aviso general no dice «no tocaba riego» */
+    const FS2 = "Bot Lluvia S2", s2 = cuBot({fundo:FS2, nombre:"Suspendido bot 2"}); prepBot(s2, {dias:[0,1,2,3,4,5,6], ppMed:1.6});
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FS2]})); RIEGO_LL_HOY = LL.JUE;
+    riegoPausaSet(FS2, LL.d(1), LL.d(1), 25); await riegoLl(FS);
+    const g2 = document.querySelector(`#rgSem [data-rgs-contar="${LL.d(1)}"]`);
+    chk(g2 && txtDe(g2).indexOf("Martes "+ddmm(LL.d(1))+": llovió 6,0 mm con el riego suspendido en 2 fundos.")===0, "Con 2 fundos suspendidos el aviso general no dice «con el riego suspendido en 2 fundos»: «"+txtDe(g2)+"»", "leve");
+  }));
+  await paso("R26 (revisión): 30 mm el domingo avisan el lunes «revisa el suelo» con «Suspender el riego hasta…»; en el celular, «confírmalo en el iPad»", ()=>enCajaLl(async ()=>{
+    await prepLl(); [2,3,4,5].forEach(j=>climaLl(LL.d(j), ETH, 0)); climaLl(LL.DOM, 1.2, 30); RIEGO_LL_HOY = LL.DOM; riegoRegoSet(LL.DOM, FUL, "si");
+    const L7 = LL.d(7); RIEGO_LL_HOY = L7;
+    /* revisión r1: sin la hoja nueva todavía (el lunes temprano) el aviso también sale, con su botón, y la ventana de la pausa trae la lluvia del domingo */
+    await riegoLl(); const g0 = document.querySelector(`#rgSem [data-rgs-sinhoja][data-f="${FUL}"] [data-rgs-res="grande"]`), b0 = g0 && g0.querySelector("button");
+    chk(g0 && txtDe(g0).indexOf("Llovió 30,0 mm el domingo "+ddmm(LL.DOM)+".")===0 && /revisa el suelo/.test(txtDe(g0)) && b0 && /Suspender el riego hasta/.test(txtDe(b0)),
+      "El lunes sin hoja nueva, la lluvia de 30 mm del domingo no avisa «revisa el suelo» con «Suspender el riego hasta…»: «"+txtDe(g0)+"»", "leve");
+    if(b0){ await tocar(b0, "Suspender el riego hasta…"); const mo = modalAbierto(); chk(mo && /Llovió 30,0 mm el domingo/.test(txtDe(mo)), "La ventana de la pausa (sin hoja nueva) no trae la lluvia del domingo: «"+txtDe(mo).slice(0,120)+"»", "leve"); await cancelarModal(); }
+    await textoPDF(()=>riegoPDFRegador({lunes:L7, hora:"08:00", fundos:[FUL]})); await riegoLl();
+    const gr = bloqueF(FUL) && bloqueF(FUL).querySelector('[data-rgs-res="grande"]');
+    chk(gr && txtDe(gr).indexOf("Llovió 30,0 mm el domingo "+ddmm(LL.DOM)+".")===0 && /revisa el suelo/.test(txtDe(gr)) && /Suspender el riego hasta/.test(txtDe(gr)),
+      "La lluvia de 30 mm del domingo no avisa el lunes con «Suspender el riego hasta…»: «"+txtDe(gr)+"»", "media");
+    climaLl(L7, ETH, 4.0); D.sync = Object.assign({}, D.sync||{}, {rol:"receptor"}); uiAplicar(); riegoPintar(); await pausa(.4);
+    const q = document.querySelector(`#rgSem [data-rgs-pend="${L7}"][data-tipo="hoy"]`);
+    chk(q && /Cuando sepas si se regó, confírmalo en el iPad\./.test(txtDe(q)) && /Se confirma y se avisa desde el iPad/.test(txtDe(q)), "En el celular el pendiente de hoy no dice «confírmalo en el iPad»: «"+txtDe(q)+"»", "leve");
+  }));
+  await paso("R27 (revisión): «No llovió» y después la estación mide: aviso con «Usar lo medido» y «Dejar lo anotado»; y Riego se vuelve a pintar cuando termina de cargar el panel Estación", ()=>enCajaLl(async ()=>{
+    await prepLl(); const M = LL.d(1); delete wlCfg().dias[M]; climaLl(LL.MIE, ETH, 0);
+    await riegoLl(); await tocar(necesito(document.querySelector(`#rgSem [data-rgs-pend="${M}"] [data-rgs-nollovio]`), "«No llovió»"), "No llovió");
+    climaLl(M, ETH, 5.2); riegoPintar(); await pausa(.4);
+    let a = document.querySelector(`#rgSem [data-rgs-mandif="${M}"]`);
+    chk(a && txtDe(a).indexOf("Martes "+ddmm(M)+": anotaste que no llovió, pero la estación midió 5,2 mm.")===0 && riegoLluviaDia(M, FUL).mm===0, "No salió «Martes "+ddmm(M)+": anotaste que no llovió, pero la estación midió 5,2 mm.»: «"+txtDe(a)+"»", "media");
+    await tocar(necesito(a && [...a.querySelectorAll("button")].find(b=>/Dejar lo anotado/.test(txtDe(b))), "«Dejar lo anotado»"), "Dejar lo anotado");
+    chk(!document.querySelector(`#rgSem [data-rgs-mandif="${M}"]`) && ((riegoCfg().real||{})[M]||{}).llMan===0, "«Dejar lo anotado» no quitó el aviso o cambió lo anotado", "media");
+    climaLl(M, ETH, 9.0); riegoPintar(); await pausa(.4); a = document.querySelector(`#rgSem [data-rgs-mandif="${M}"]`);
+    await tocar(necesito(a && [...a.querySelectorAll("button")].find(b=>/Usar lo medido/.test(txtDe(b))), "«Usar lo medido» (con 9,0 mm)"), "Usar lo medido");
+    const P = riegoLluviaDia(M, FUL);
+    chk(!document.querySelector("#rgSem [data-rgs-mandif]") && ((riegoCfg().real||{})[M]||{}).llMan===undefined && P && P.mm===9 && P.src==="wl" && riegoBalanceSemana(FUL, LL.L).pend.some(p=>p.f===M && p.tipo==="regar"),
+      "«Usar lo medido» no dejó la lluvia de la estación (9,0 mm) con su pregunta «¿se regó?»: "+JSON.stringify(P), "media");
+    /* el panel Estación termina de cargar con Riego a la vista: si la tarjeta cambió, se vuelve a pintar (no con una ventana abierta) */
+    chk(/riegoLlTrasEstacion\(\)/.test(String(estCargarLocal)), "estCargarLocal no llama a riegoLlTrasEstacion al terminar", "media");
+    delete wlCfg().dias[LL.MIE];   // la tarjeta pintada todavía no lo sabe
+    riegoDiaModal(M, FUL); await pausa(.3); const r0 = riegoLlTrasEstacion(); await cancelarModal();
+    const r1 = riegoLlTrasEstacion(), cel = document.querySelector(`#rgSem [data-rgs-dia="${LL.MIE}"][data-f="${FUL}"]`), r2 = riegoLlTrasEstacion();
+    chk(r0===false && r1===true && r2===false && cel && /Sin lluvia medida/.test(txtDe(cel)), "El repintado después de cargar la estación no funciona como debe (con ventana: "+r0+", sin ventana: "+r1+", sin cambios: "+r2+", celda «"+txtDe(cel)+"»)", "media");
+  }));
+  await paso("R28 (revisión): hoja corregida: «No se riega: …» en negrita y en color de tinta, y la nota «(corregido) = …» solo el día en que algún turno la lleva", ()=>enCajaLl(async ()=>{
+    await prepLl(); climaLl(LL.MIE, 2.0, 8.0); riegoRegoSet(LL.MIE, FUL, "si");   // R7: el jueves no se riega Corte 1 bot (Corte 2 bot igual) y el viernes 1 h 30 min
+    const J0 = window.jspdf && window.jspdf.jsPDF; if(!J0) throw new SinProbar("No cargó el motor de PDF");
+    const pz = []; function JW(...a){ const d = new J0(...a), t = d.text; d.text = function(s){ const f = d.getFont ? d.getFont() : {}; pz.push({t:[].concat(s).join(" "), b:/bold/i.test(f.fontStyle||""), sz:d.getFontSize ? d.getFontSize() : 0, c:d.getTextColor ? String(d.getTextColor()).toLowerCase() : ""}); return t.apply(this, arguments); }; return d; }
+    Object.setPrototypeOf(JW, J0); JW.API = J0.API; JW.prototype = J0.prototype; window.jspdf.jsPDF = JW;
+    try{ await riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FUL], corr:{desde:LL.JUE}}); } finally { window.jspdf.jsPDF = J0; }
+    const nr = pz.find(x=>/^No se riega: Corte 1 bot \(por la lluvia\)\./.test(x.t)), notas = pz.filter(x=>/^\(corregido\) = cambiado por lo que pasó/.test(x.t)), por = pz.find(x=>/^Por lo que pasó: lluvia de 8,0 mm el miércoles/.test(x.t));
+    chk(nr && nr.b && nr.sz >= 10 && (!nr.c || nr.c==="#1b2a33"), "«No se riega: Corte 1 bot (por la lluvia).» no va en negrita y en tinta: "+JSON.stringify(nr), "leve");
+    chk(notas.length===1 && por && pz.some(x=>/Corte 1 bot \(corregido\)/.test(x.t)), "La nota «(corregido) = …» salió "+notas.length+" veces (debía 1, el viernes) o falta «Por lo que pasó: …» del jueves", "leve");
+  }));
+  /* ---- revisión r1 de la v163 (30-10-2026, noche): ET₀ de hoy a medias, «Actualizar» solo si cambia la cuenta, válvula compartida (saldo y mensaje) ---- */
+  await paso("R29 (revisión r1): hoy confirmado a las 11:00 con la ET₀ a medias: lo de mañana usa la ET₀ en vivo y lo dice; al otro día «Cambió lo medido» y, actualizado, el viernes 2 h 15 min sin avisar de nuevo", ()=>enCajaLl(async ()=>{
+    const {A} = await prepLl(); climaLl(LL.MIE, ETH, 0); llParcial(LL.JUE, 7, "11:00");
+    const e0 = window.riegoEt0Dia; let E = {et0:0.4, src:"est", hasta:"11:00"};   // la ET₀ del panel del jueves (hoy), como la daría la estación
+    window.riegoEt0Dia = function(f){ return (f === LL.JUE && E) ? Object.assign({}, E) : e0.apply(this, arguments); };
+    try{
+      await riegoLl(); await tocar(estBtn(FUL, LL.JUE, "no"), "No (hoy, a las 11:00)");
+      const r = realDe(LL.JUE, FUL);
+      chk(r.ll===7 && r.llHasta==="11:00" && r.et0===0.4 && r.et0Hasta==="11:00", "Confirmar hoy a las 11:00 no guardó 7 mm y la ET₀ 0,4 «hasta las 11:00»: "+JSON.stringify(r), "media");
+      E = {et0:2.3, src:"est", hasta:"19:00"}; riegoPintar(); await pausa(.4);   // a las 19:00 la ET₀ del día va en 2,3
+      const nt = bloqueF(FUL) && bloqueF(FUL).querySelector('[data-rgs-res="et0hoy"]');
+      chk(nt && txtDe(nt).indexOf("Lo que viene se calcula con la ET₀ de hoy hasta las 19:00 (2,3 mm): puede cambiar en lo que queda del día.")===0 && riegoBalanceSemana(FUL, LL.L).pend.length===0,
+        "A las 19:00 la tarjeta no dice que lo que viene va con la ET₀ de hoy hasta las 19:00 (2,3 mm): «"+txtDe(nt)+"»", "media");
+      await tocar(`#rgSem details[data-f="${FUL}"] [data-rgs-msj]`, "Mensaje para el regador");
+      const t = txtDe(document.getElementById("rgMsjTxt")), nm = document.querySelector("#capaModal [data-rgm-et0]");
+      chk(/- Corte 1 bot: 2 h 10 min \(en vez de 3 h 10 min\)/.test(t) && nm && /hasta las 19:00 \(2,3 mm\)/.test(txtDe(nm)), "El mensaje de mañana a las 19:00 no usa la ET₀ en vivo (2,3: «2 h 10 min»; con la de las 11:00 decía «1 h 15 min») o la ventana no lo dice: «"+t+"» · «"+txtDe(nm)+"»", "grave");
+      await tocar("#capaModal [data-rgm-dicho]", "Ya se lo dije");
+      riegoDiaModal(LL.JUE, FUL); await pausa();
+      chk(txtDe(document.querySelector("#capaModal [data-rgd-et0]"))==="2,3 mm (estación, hasta las 19:00)", "La ventana del jueves no muestra la ET₀ con que cuenta el balance («2,3 mm (estación, hasta las 19:00)»): «"+txtDe(document.querySelector("#capaModal [data-rgd-et0]"))+"»", "leve");
+      await cancelarModal();
+    } finally { window.riegoEt0Dia = e0; }
+    /* el día termina con ET₀ 2,5; «hoy» pasa a ser el viernes */
+    wlCfg().dias[LL.JUE] = {src:"wl", parcial:false, ll:7, et:2.5, tmax:15, tmin:8, horas:24, n:96}; RIEGO_LL_HOY = LL.VIE; await riegoLl();
+    const q = document.querySelector(`#rgSem [data-rgs-pend="${LL.JUE}"][data-tipo="act"][data-f="${FUL}"]`);
+    chk(q && txtDe(q).indexOf("Jueves "+ddmm(LL.JUE)+": cambió lo medido después de confirmarlo: ahora ET₀ 2,5 mm (al confirmar: ET₀ 0,4 mm).")===0, "El viernes, el jueves no queda «cambió lo medido … ET₀ 2,5 mm (al confirmar: ET₀ 0,4 mm)»: «"+txtDe(q)+"»", "media");
+    await tocar(necesito(q && q.querySelector("[data-rgs-act1]"), "«Actualizar con lo medido»"), "Actualizar con lo medido");
+    const fV = riegoBalanceSemana(FUL, LL.L).cu[A.id].filas[4], cd = riegoCorrDia(FUL, LL.VIE), ea = bloqueF(FUL) && bloqueF(FUL).querySelector("[data-rgs-av]");
+    chk(riegoDur(fV.hC)==="2 h 15 min" && cd && !cd.avViejo && ea && /^Avisado al regador/.test(txtDe(ea)), "Actualizado, el viernes no queda en 2 h 15 min con lo avisado a las 19:00 (2 h 10 min) todavía válido: "+riegoDur(fV.hC)+" · «"+txtDe(ea)+"»", "grave");
+  }));
+  await paso("R29b (revisión r1): «Actualizar» solo si cambia la cuenta del día: «No» con 0,5 mm a las 15:30 y el día termina con 2,5 mm (sin lluvia efectiva en los dos casos)", ()=>enCajaLl(async ()=>{
+    await prepLl(); climaLl(LL.MIE, ETH, 0); llParcial(LL.JUE, 0.5, "15:30");
+    riegoRegoSet(LL.JUE, FUL, "no"); await riegoLl();   // con menos de 1 mm no hay pregunta en la tarjeta: se confirma desde la ventana del día
+    llParcial(LL.JUE, 2.5, "18:00"); riegoPintar(); await pausa(.3);
+    chk(!document.querySelector(`#rgSem [data-rgs-pend="${LL.JUE}"][data-tipo="act"]`), "Con 0,5 → 2,5 mm (la lluvia efectiva sigue en 0) igual pide «Hoy siguió lloviendo»", "media");
+    climaLl(LL.JUE, ETH, 2.5); RIEGO_LL_HOY = LL.VIE; riegoPintar(); await pausa(.3);
+    const b = riegoBalanceSemana(FUL, LL.L);
+    chk(b.bloq===null && !b.pend.length && !/Cambió lo medido/.test(txtDe(bloqueF(FUL))), "Al día siguiente (2,5 mm y la ET₀ de la hoja) pide «Cambió lo medido» aunque el saldo no cambia: "+JSON.stringify(b.pend.map(p=>p.tipo)), "media");
+    climaLl(LL.JUE, 2.0, 2.5); riegoPintar(); await pausa(.3);
+    chk(riegoBalanceSemana(FUL, LL.L).pend.some(p=>p.f===LL.JUE && p.tipo==="act"), "Con la ET₀ del jueves en 2,0 (sí cambia la cuenta) no pide «Cambió lo medido»", "media");
+  }));
+  await paso("R30 (revisión r1): válvula compartida: si cambia quién manda, el cuartel gasta solo lo que bajó la válvula; con una válvula compartida y otra propia, el mensaje nombra la propia", ()=>enCajaLl(async ()=>{
+    const FV = "Bot Lluvia V3", sect = [{cod:"BOT-9", nom:"Compartido", ha:2}];
+    const X = cuBot({fundo:FV, nombre:"X3 bot"}); prepBot(X, {dias:[0,1,2,3,4,5,6], ppMed:5/3.75, sectores:sect});   // X manda: 3 h 45 min
+    const Y = cuBot({fundo:FV, nombre:"Y3 bot"}); prepBot(Y, {dias:[0,1,2,3,4,5,6], ppMed:4, sectores:sect, rep:280});   // Y: 3 h 30 min
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FV]}));
+    climaLl(LL.L, ETH, 0); climaLl(LL.d(1), ETH, 0); climaLl(LL.MIE, ETH, 4.0); RIEGO_LL_HOY = LL.JUE;
+    await riegoLl(FV); await tocar(estBtn(FV, LL.MIE, "si"), "Sí, todo (miércoles)");
+    const bq = riegoBalanceSemana(FV, LL.L), fx = bq.cu[X.id].filas, e = bq.eqDia[LL.JUE+"|"] || {tsH:[], tsC:[]}, vH = e.tsH[0] ? riegoDur(e.tsH[0].h) : "—", vC = e.tsC[0] ? riegoDur(e.tsC[0].h) : "—";
+    chk(Math.abs(fx[2].S-0.75)<0.005 && fx[3].cambio && vH==="3 h 45 min" && vC==="3 h 30 min" && Math.abs(fx[3].S-0.45)<0.005,
+      "X3 bot manda BOT-9 y baja a 3 h 05 min, pero Y3 bot deja la válvula en 3 h 30 min: X3 debía gastar solo 0,3 mm (quedar en +0,45): "+JSON.stringify({S2:fx[2].S, S3:fx[3].S, valv:vH+"→"+vC}), "media");
+    const t = await msjDe(FV);
+    chk(t.indexOf("- X3 bot + Y3 bot (BOT-9): 3 h 30 min (en vez de 3 h 45 min)")>0, "El mensaje no trae la válvula BOT-9 en 3 h 30 min:\n"+t, "media");
+    /* X4 en BOT-10 (compartida con Y4, que manda y no cambia) y en BOT-11 (propia, baja 35 min) */
+    const FW = "Bot Lluvia V4", X4 = cuBot({fundo:FW, nombre:"X4 bot", ha:4}); prepBot(X4, {dias:[0,1,2,3,4,5,6], ppMed:1.6, sectores:[{cod:"BOT-10", nom:"Compartido", ha:2}, {cod:"BOT-11", nom:"Propio", ha:2}]});
+    const Y4 = cuBot({fundo:FW, nombre:"Y4 bot"}); prepBot(Y4, {dias:[0,1,2,3,4,5,6], ppMed:4, sectores:[{cod:"BOT-10", nom:"Compartido", ha:2}], rep:300});
+    RIEGO_LL_HOY = LL.L; await textoPDF(()=>riegoPDFRegador({lunes:LL.L, hora:"08:00", fundos:[FW]})); RIEGO_LL_HOY = LL.JUE;
+    await riegoLl(FW); await tocar(estBtn(FW, LL.MIE, "si"), "Sí, todo (miércoles)");
+    const t4 = await msjDe(FW), S4 = riegoBalanceSemana(FW, LL.L).cu[X4.id].filas[3].S;
+    chk(t4.indexOf("\n- X4 bot Propio (BOT-11): 2 h 35 min (en vez de 3 h 10 min)\n")>0 && t4.indexOf("BOT-10")<0 && t4.indexOf("- X4 bot: ")<0 && Math.abs(S4-0.375)<0.005,
+      "Con BOT-10 compartida sin cambio y BOT-11 propia que baja, el mensaje no nombra BOT-11 (el regador podía cortar también BOT-10) o X4 gastó de más (saldo "+fmtCL(S4,3)+", esperado 0,375):\n"+t4, "media");
+  }));
   await paso("Ficha: validaciones de las líneas de riego (0,5–8 L/h y 0,1–2 m), Pp medida y cobertura (avisos dentro de la ficha, sin alert y sin guardar nada)", ()=>enCaja(async ()=>{
     await irA("riego");
     const q = cuBot({nombre:"Validaciones bot", marco:"5x2", anio:"2016"}); prepBot(q, {lin:2, dg:0.5, caudal:2});
@@ -1957,6 +2773,145 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     const sc = document.getElementById("riegoScroll");
     chk(sc && !sc.querySelector(`[onchange*="riegoDef('gpp'"]`) && !sc.querySelector(`[onchange*="riegoDef('caudal'"]`) && /Línea de riego inicial de cada cuartel: gotero de 2 L\/h cada 0,5 m/.test(sc.textContent.replace(/\s+/g," ")), "Configuración sigue con las casillas generales de goteros/pl o L/h, o no explica la línea de riego inicial", "leve");
     chk(/\(L\/h por metro de la Línea 1 \+ L\/h por metro de la Línea 2\) ÷ distancia entre hileras \(el primer número del marco\)/.test(txtDe(sc)), "El pie de fórmulas de Riego no tiene la fórmula nueva de la Pp", "leve");
+  }));
+  /* ---- detalles de la Pp (29-10-2026): lo que anotaron los revisores de cálculos y de pantalla. Todo en la copia; D.riego y los cuarteles vuelven a como estaban ---- */
+  await paso("Detalles de la Pp: número junto a su unidad, motivo real del marco (tarjeta, tabla, resumen, ficha y mapa), «Borrar» de 44 px, avisos que no se contradicen, «no es un número», líneas en el selector, Kc por mes, «Aplicar» con los datos propios y Deshacer sobre «Guardar»", ()=>enCaja(async ()=>{
+    const sb0 = window.riegoSerieBase; window.riegoSerieBase = ()=>SERIE_BOT.map(d=>Object.assign({}, d));   // la pantalla calcula con la serie fija del bot
+    const hayMapa = typeof _mapaTemaSerie!=="undefined" && typeof mapaTemaDe==="function";
+    try{
+    await irA("riego");
+    const NB = String.fromCharCode(160), todos = [0,1,2,3,4,5,6];
+    /* (a) espacios duros: «Pp 1,60», «2 L/h» y «c/0,5 m» no se parten entre el número y su unidad */
+    const qa = cuBot({nombre:"Espacios bot", marco:"5x2", anio:"2016", especie:"Naranjo"}); prepBot(qa, {dias:todos});
+    const pa = riegoPp(qa), lt = riegoLineaTxt(pa), lc = riegoLineaCorta(pa);
+    chk(lt.indexOf("Pp"+NB+"1,60")>=0 && lt.indexOf("2"+NB+"L/h c/0,5"+NB+"m")>=0 && lc.indexOf("2"+NB+"L/h c/0,5"+NB+"m")>=0 && lt.split(NB).join(" ")==="Marco 5×2 · 2 líneas (2 L/h c/0,5 m · 2 L/h c/0,5 m) → Pp 1,60", "La línea de riego no lleva espacios duros entre el número y su unidad («Pp 1,60», «2 L/h», «c/0,5 m»): «"+lt+"» / «"+lc+"»", "leve");
+    /* (b) un marco que existe pero no sirve se dice con su motivo, no «falta el marco»: tarjeta, resumen, tabla, cabeza de la ficha y mapa */
+    const qF = cuBot({nombre:"Falta marco bot", marco:"", anio:"2016"}), qN = cuBot({nombre:"Marco raro bot", marco:"5 por 2", anio:"2016"}), qR = cuBot({nombre:"Marco ancho bot", marco:"50x2", anio:"2016"});
+    [qF, qN, qR].forEach(q=>prepBot(q, {dias:todos}));
+    nav.riegoFundo = FU_BOT; nav.riegoVista = "cu"; riegoPintar(); await pausa();
+    const nTar = q=>{ const c = document.querySelector(`#riegoScroll .rgcard[data-rgcu="${q.id}"]`); return txtDe(c && c.querySelector(".rgc-n")); };
+    chk(/falta el marco de plantación/.test(nTar(qF)) && /el marco no se entiende/.test(nTar(qN)) && /marco fuera de rango/.test(nTar(qR)), "Las tarjetas sin horas no dicen el motivo real del marco (falta / no se entiende / fuera de rango): «"+[qF,qN,qR].map(nTar).join("» «")+"»", "leve");
+    const sm = txtDe(document.querySelector('#riegoScroll [data-res="sinm"]'));
+    chk(/Falta marco bot: sin marco de plantación/.test(sm) && /Marco raro bot \(«5 por 2»\): el marco no se entiende/.test(sm) && /Marco ancho bot \(50 m entre hileras\): la distancia entre hileras del marco va de 1 a 12 m/.test(sm) && !/Marco (raro|ancho) bot[^.]*sin marco de plantación/.test(sm), "El resumen «Sin calcular» no da el motivo de cada cuartel: «"+sm.slice(0,300)+"»", "leve");
+    await tocar(`[onclick="riegoVistaSet('tabla')"]`, "vista tabla");
+    const fila = q=>document.querySelector(`#riegoScroll tr[data-rgcu="${q.id}"]`), sub = q=>txtDe(fila(q) && fila(q).querySelector("td .muted")), lin = q=>txtDe(fila(q) && fila(q).querySelector(".rg-tlin"));
+    chk(/sin marco/.test(sub(qF)) && /el marco no se entiende/.test(sub(qN)) && !/sin marco/.test(sub(qN)+" "+sub(qR)) && lin(qF)==="sin marco" && lin(qN)==="el marco no se entiende" && lin(qR)==="marco fuera de rango", "La tabla dice «sin marco» a un marco que existe pero no sirve: subtítulos «"+[qF,qN,qR].map(sub).join("» «")+"», línea de riego «"+[qF,qN,qR].map(lin).join("» «")+"»", "leve");
+    const tpp = txtDe(fila(qa) && fila(qa).querySelector(".rg-tpp"));
+    chk(/Valores iniciales 8 got\.\/pl · 16 L\/h\/pl/.test(tpp) && (tpp.match(/valores iniciales/gi)||[]).length===1, "La columna Pp de la tabla repite «Valores iniciales» (debe ir una vez, en la insignia): «"+tpp+"»", "leve");
+    await tocar(`[onclick="riegoVistaSet('cu')"]`, "vista cuarteles");
+    riegoFicha(qN.id); await pausa(); necesito(modalAbierto(), "la ficha de «Marco raro bot»");
+    const cab = txtDe(document.querySelector("#capaModal .mb > .muted"));
+    chk(/el marco no se entiende/.test(cab) && !/sin marco de plantación/.test(cab), "La cabeza de la ficha dice «sin marco de plantación» con un marco que existe («5 por 2»): «"+cab+"»", "leve");
+    await cancelarModal();
+    if(hayMapa){
+      const ms0 = _mapaTemaSerie, dt = q=>(mapaTemaDe(q, "riego")||{}).det;
+      try{
+        _mapaTemaSerie = SERIE_BOT.map(d=>Object.assign({}, d));
+        const dM = [qF,qN,qR].map(dt);
+        _mapaTemaSerie = [];   // sin ET₀: con la Pp calculada, lo que falta es el clima
+        const dC = dt(qa);
+        chk(dM.join("|")==="falta el marco de plantación|el marco no se entiende|marco fuera de rango" && dC==="falta el clima (ET₀)", "El mapa (tema Riego) no dice qué falta de verdad: «"+dM.join("» «")+"» · sin clima «"+dC+"» (esperado falta el marco / no se entiende / fuera de rango · falta el clima)", "leve");
+      } finally { _mapaTemaSerie = ms0; }
+    } else log("○ No encontré el tema Riego del mapa (mapaTemaDe): no se revisó su texto");
+    /* (c) dato guardado fuera de rango: «Borrar» de 44 px en su propia línea, el aviso «Valores iniciales» no dice «no tiene anotado» y «abc» no es un número */
+    const qm = cuBot({nombre:"Caudal 12 bot", marco:"5x2", anio:"2016"}); prepBot(qm, {caudal:12});
+    riegoFicha(qm.id); await pausa(); necesito(modalAbierto(), "la ficha de «Caudal 12 bot»");
+    const fr = document.querySelector('#capaModal [data-fal="caudal"]'), bb = fr && fr.querySelector("button");
+    chk(bb && bb.offsetHeight>=44 && bb.parentElement && bb.parentElement.classList.contains("rf-fal-acc") && bb.parentElement.parentElement===fr, "«Borrar el caudal guardado» no va en su propia línea o mide menos de 44 px ("+(bb? bb.offsetHeight : "—")+" px)", "leve");
+    const fi = txtDe(document.querySelector('#capaModal [data-fal="ini"]'));
+    chk(/no tiene un valor válido anotado para el caudal/.test(fi) && !/no tiene anotado el caudal/.test(fi), "Con 12 L/h guardados, el aviso «Valores iniciales» dice que el cuartel no tiene el caudal anotado (contradice al aviso rojo): «"+fi+"»", "leve");
+    await escribir("rf_caudal", "abc", "caudal «abc»");
+    const l1 = txtDe(document.getElementById("rfLhm1"));
+    chk(/el caudal «abc» no es un número/.test(l1) && !/fuera de rango/.test(l1), "Con «abc» en el caudal la ficha dice «"+l1+"» (debía decir que no es un número)", "leve");
+    await escribir("rf_caudal", "12", "caudal 12 L/h");
+    chk(/fuera de rango \(0,5 a 8 L\/h\)/.test(txtDe(document.getElementById("rfLhm1"))), "Con 12 L/h la ficha ya no dice «fuera de rango (0,5 a 8 L/h)»: «"+txtDe(document.getElementById("rfLhm1"))+"»", "leve");
+    await escribir("rf_dg2", "x", "distancia de la Línea 2 «x»");
+    chk(/la distancia «x» no es un número/.test(txtDe(document.getElementById("rfLhm2"))), "Con «x» en la distancia de la Línea 2 la ficha no dice que no es un número: «"+txtDe(document.getElementById("rfLhm2"))+"»", "leve");
+    await cancelarModal();
+    /* (d) solo las líneas por hilera distintas del plano: el aviso manda al selector, no a «vaciar un caudal» */
+    let cv = (D.cuarteles||[]).find(z=>norm(z.fundo)==="san joaquin" && norm(z.nombre)==="cuesta vieja");
+    if(!cv){ cv = cuBot({fundo:"San Joaquín", nombre:"Cuesta Vieja", especie:"Naranjo", ha:21.8, marco:"5x2", anio:"2023"}); log("○ Cuesta Vieja no está en tus datos: se creó en la copia de prueba"); }
+    const rc = riegoCfg(); rc.cu[cv.id] = Object.assign({}, rc.cu[cv.id]||{}, {lin:1}); ["caudal","dg","caudal2","dg2","ppMed","ppFecha"].forEach(k=>delete rc.cu[cv.id][k]); guardar();
+    riegoFicha(cv.id); await pausa();
+    let dl = txtDe(document.querySelector('#capaModal [data-fal="dif"]'));
+    chk(/elige 2 líneas en «Líneas por hilera»/.test(dl) && !/vacíos vuelven/.test(dl), "Con solo las líneas por hilera distintas del plano, el aviso no manda a elegir 2 líneas en el selector (o sugiere vaciar un caudal): «"+dl+"»", "leve");
+    await cancelarModal();
+    rc.cu[cv.id].caudal = 4; guardar();
+    riegoFicha(cv.id); await pausa();
+    dl = txtDe(document.querySelector('#capaModal [data-fal="dif"]'));
+    chk(/elige 2 líneas en «Líneas por hilera»/.test(dl) && /vacíos vuelven al plano/.test(dl), "Con las líneas y el caudal distintos del plano, el aviso no explica los dos arreglos: «"+dl+"»", "leve");
+    await cancelarModal();
+    /* (e) Kc por mes: las 12 casillas de Configuración se leen enteras (a 375 px medían 23 px y cortaban «0,72») */
+    nav.riegoFundo = FU_BOT; riegoPintar(); await pausa();
+    const det = [...document.querySelectorAll("#riegoScroll details")].find(d=>/Configuración del riego/i.test(txtDe(d.querySelector("summary"))));
+    if(det){
+      const ab = det.open; det.open = true; await pausa(.3);
+      const ins = [...det.querySelectorAll(".rg-kcmes input")].filter(visible), ang = ins.filter(i=>i.offsetWidth<40);
+      chk(ins.length>=12 && !ang.length, "Las casillas del Kc por mes miden menos de 40 px ("+ang.length+" de "+ins.length+"; la más angosta "+(ins.length? Math.min(...ins.map(i=>i.offsetWidth)) : "—")+" px a "+innerWidth+" px de ancho)", "leve");
+      det.open = ab;
+    } else log("○ No encontré «Configuración del riego»: no se midieron las casillas del Kc por mes");
+    /* pintar Riego no escribe D.riego.kcFen (antes riegoKcFenTabla lo creaba al leer) */
+    const rk = riegoCfg(), kf0 = rk.kcFen; delete rk.kcFen;
+    riegoKcFenTabla("citricos"); riegoPintar(); await pausa(.3);
+    chk(!("kcFen" in riegoCfg()), "Pintar Riego volvió a escribir D.riego.kcFen (riegoKcFenTabla debe solo leer)", "leve");
+    if(kf0!==undefined) rk.kcFen = kf0;
+    /* (f) «Aplicar a todos»: con un solo dato anotado no se nombra el valor inicial como del cuartel; y «Deshacer» no se monta sobre «Guardar» */
+    const FA = "Bot Riego F";
+    const A1 = cuBot({fundo:FA, nombre:"Solo distancia bot", marco:"5x2", anio:"2016", especie:"Naranjo"}); prepBot(A1, {dg:0.5});
+    const A2 = cuBot({fundo:FA, nombre:"Solo caudal bot", marco:"5x2", anio:"2016", especie:"Naranjo"}); prepBot(A2, {caudal:4});
+    const A3 = cuBot({fundo:FA, nombre:"Caudal L2 bot", marco:"5x2", anio:"2016", especie:"Naranjo"}); prepBot(A3, {caudal2:1.5});
+    const pr = riegoAplicarPrevia(FA, {caudal:1.6, dg:0.4, caudal2:1.6, dg2:0.4}), tx = q=>((pr.distintos.find(x=>x.q===q)||{}).txt)||"";
+    chk(tx(A1)==="goteros c/0,5 m" && tx(A2)==="4 L/h" && tx(A3)==="Línea 2: 1,5 L/h", "«Aplicar» nombra valores iniciales como datos del cuartel: «"+[A1,A2,A3].map(tx).join("» «")+"» (esperado «goteros c/0,5 m», «4 L/h», «Línea 2: 1,5 L/h»)", "leve");
+    nav.riegoFundo = FA; riegoPintar(); await pausa();
+    riegoFicha(A1.id); await pausa(); necesito(modalAbierto(), "la ficha de «Solo distancia bot»");
+    await escribir("rf_caudal", "1,6", "caudal Línea 1"); await escribir("rf_dg", "0,4", "distancia Línea 1");
+    await tocar("#rfAplBtn", "Aplicar a todos los cuarteles del fundo");
+    const tcf = txtDe(document.getElementById("rfAplConf"));
+    chk(/Solo distancia bot \(goteros c\/0,5 m\)/.test(tcf) && /Solo caudal bot \(4 L\/h\)/.test(tcf) && /Caudal L2 bot \(Línea 2: 1,5 L\/h\)/.test(tcf) && !/2 L\/h c\/0,5 m/.test(tcf), "La confirmación de «Aplicar» no nombra solo los datos propios de cada cuartel: «"+tcf.slice(0,260)+"»", "leve");
+    const cu0 = JSON.stringify(riegoCfg().cu);
+    await tocar('#rfAplConf [data-apl="si"]', "Sí, aplicar a los 3");
+    chk(await undoVisible(), "Después de aplicar no apareció «Deshacer»", "media");
+    await pausa(.5);   // el aviso entra con una animación corta
+    const bU = buscar(".aviso-acc"), pie = document.querySelector("#capaModal .modal .mf"), rU = bU && bU.getBoundingClientRect(), rP = pie && pie.getBoundingClientRect();
+    chk(bU && bU.offsetHeight>=44 && rP && rU.bottom<=rP.top+1, "Con la ficha abierta, «Deshacer» ("+(bU? bU.offsetHeight : "—")+" px de alto) se monta sobre el pie con «Guardar» (Deshacer termina en "+(rU? Math.round(rU.bottom) : "—")+" px y el pie empieza en "+(rP? Math.round(rP.top) : "—")+" px)", "leve");
+    await deshacer();
+    chk(JSON.stringify(riegoCfg().cu)===cu0 && !modalAbierto(), "«Deshacer» no dejó los cuarteles como estaban, o la ficha siguió abierta", "media");
+    /* 29-10 (revisión): al cerrar la ventana, un aviso que subió sobre su pie vuelve a su lugar (ya no hay pie que esquivar) */
+    riegoFicha(A1.id); await pausa(); aviso("Aviso de prueba con la ficha abierta (bot)");
+    const capa = document.getElementById("avisoCapa"), bAlto = capa ? capa.style.bottom : "";
+    cerrarModal(); await pausa(.2);
+    chk(!!bAlto && capa.style.bottom==="", "Al cerrar la ficha, el aviso queda alto, sobre donde estaba el pie («"+bAlto+"» → «"+(capa? capa.style.bottom : "—")+"»)", "leve");
+    } finally { window.riegoSerieBase = sb0; }
+  }));
+  /* Datos → cuartel: el año de plantación acepta «2006-2007» (Corte 6). Antes el campo era numérico y al guardar lo borraba */
+  await paso("Año de plantación en Datos → cuartel: «2006-2007» se guarda (y da 2 líneas por el primer año), «2016» también, un año antiguo sin tocar queda igual y lo que no es un año se rechaza", ()=>enCaja(async ()=>{
+    const q = cuBot({nombre:"Año doble bot", marco:"5x2", anio:"2006-2007", especie:"Naranjo"}); prepBot(q);
+    formCuartel(q.id); await pausa(); necesito(modalAbierto(), "el formulario del cuartel");
+    const ea = necesito(document.getElementById("m_anio"), "el campo «Año de plantación»");
+    chk(ea.type==="text" && ea.value==="2006-2007" && v("m_fundo")===FU_BOT, "El campo «Año de plantación» no muestra «2006-2007» (tipo «"+ea.type+"», valor «"+ea.value+"»)", "grave");
+    chk(await guardarModal_() && q.anio==="2006-2007", "Al guardar el cuartel sin tocar nada, el año «2006-2007» no quedó igual (quedó «"+q.anio+"»)", "grave");
+    const li = riegoLinIni(q);
+    chk(li.lin===2 && li.anio===2006 && riegoAnio(q)===2006, "Con «2006-2007» las líneas iniciales no salen del primer año (2006 → 2 líneas): "+JSON.stringify(li), "media");
+    const mal = [];
+    for(const [val, esp] of [["2006 - 2007","2006-2007"], ["2019–2020","2019-2020"], ["2016","2016"], ["2016-2016","2016"], ["",""]]){
+      formCuartel(q.id); await pausa(); await escribir("m_anio", val, "año «"+val+"»");
+      const ok = await guardarModal_(); if(!ok || q.anio!==esp) mal.push("«"+val+"» → "+(ok? "«"+q.anio+"»" : "no se guardó")+" (esperado «"+esp+"»)");
+      if(modalAbierto()) await cancelarModal();
+    }
+    chk(!mal.length, "El año de plantación no se guarda bien: "+mal.join(" · "), "media");
+    const malos = [];
+    for(const val of ["2007-2006", "abcd", "206", "2006/2007", "1850", String(new Date().getFullYear()+6), "2016-"]){
+      const a0 = R.alerts.length, an0 = q.anio;
+      formCuartel(q.id); await pausa(); await escribir("m_anio", val, "año «"+val+"»");
+      const ok = await guardarModal_();
+      if(ok || q.anio!==an0 || !huboMsg(a0, /año de plantación se escribe con 4 cifras/)) malos.push("«"+val+"»: "+(ok? "se guardó como «"+q.anio+"»" : "no avisó"));
+      if(modalAbierto()) await cancelarModal();
+    }
+    chk(!malos.length, "Un año de plantación que no sirve no se rechazó con aviso: "+malos.join(" · "), "media");
+    /* un año escrito antes de otra forma («plantado 2019») y sin tocar no impide guardar el cuartel */
+    q.anio = "plantado 2019"; guardar();
+    formCuartel(q.id); await pausa(); await escribir("m_variedad", "Lane Late", "variedad");
+    chk(await guardarModal_() && q.anio==="plantado 2019" && q.variedad==="Lane Late", "Un año de plantación antiguo sin tocar («plantado 2019») impidió guardar el cuartel o se cambió («"+q.anio+"»)", "media");
   }));
   await paso("m³/semana igual que antes en todos los cuarteles: la Pp no entra en el volumen (serie del bot y serie real)", async ()=>{
     const qs = plantados(); if(!qs.length) throw new SinProbar("No hay cuarteles plantados");
@@ -2056,23 +3011,17 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
   });
   await paso("La sección «Configuración del riego» no se cierra al tocar algo adentro", async ()=>{
     await irA("riego");
-    const det = necesito([...document.querySelectorAll("#riegoScroll details")].find(d=>/Configuración del riego/i.test(txtDe(d.querySelector("summary")))), "la sección de configuración del riego");
+    const secc = ()=>[...document.querySelectorAll("#riegoScroll details")].find(d=>/Configuración del riego/i.test(txtDe(d.querySelector("summary"))));
+    const det = necesito(secc(), "la sección de configuración del riego");
     if(!det.open) await tocar(det.querySelector("summary"), "abrir configuración");
-    const cb = necesito([...document.querySelectorAll("#riegoScroll input[type=checkbox]")].find(c=>/riegoDescLluvia/.test(c.getAttribute("onchange")||"")), "«descontar la lluvia»");
-    const d0 = riegoCfg().descLluvia;
-    await tocar(cb, "descontar la lluvia"); await esperar(300);
-    const det2 = [...document.querySelectorAll("#riegoScroll details")].find(d=>/Configuración del riego/i.test(txtDe(d.querySelector("summary"))));
-    chk(det2 && det2.open, "Al tocar «descontar la lluvia» se cerró la sección de configuración del riego", "media");
-    const cb2 = [...document.querySelectorAll("#riegoScroll input[type=checkbox]")].find(c=>/riegoDescLluvia/.test(c.getAttribute("onchange")||""));
-    if(cb2 && !!riegoCfg().descLluvia!==!!d0) await tocar(cb2, "descontar la lluvia (vuelve)");
-    const det3 = [...document.querySelectorAll("#riegoScroll details")].find(d=>/Configuración del riego/i.test(txtDe(d.querySelector("summary")))); if(det3 && det3.open) await tocar(det3.querySelector("summary"), "cerrar configuración");
-  });
-  await paso("Descuento por lluvia nunca aumenta las horas", async ()=>{
-    if(!serie) throw new SinProbar("Sin datos de clima");
-    const q = necesito(plantados().find(z=>riegoCalcCuartel(z, serie).hRiego!=null), "un cuartel con horas calculadas");
-    const r = riegoCfg(), d0 = r.descLluvia;
-    r.descLluvia = false; const h1 = riegoCalcCuartel(q, serie).hRiego; r.descLluvia = true; const h2 = riegoCalcCuartel(q, serie).hRiego; r.descLluvia = d0;
-    chk(h2 <= h1+1e-9, "Con descuento por lluvia las horas subieron ("+h1.toFixed(2)+" → "+h2.toFixed(2)+")", "grave");
+    const alerta = ()=>[...document.querySelectorAll("#riegoScroll input")].find(c=>/riegoUmbralSet/.test(c.getAttribute("onchange")||""));
+    const inp = necesito(alerta(), "«Alerta si un riego pasa de N h»"), u0 = riegoCfg().umbralH, v0 = inp.value;   // v163: se quitó la casilla «descontar la lluvia»
+    await escribir(inp, "9", "Alerta si un riego pasa de 9 h"); await esperar(300);
+    const det2 = secc();
+    chk(det2 && det2.open, "Al cambiar «Alerta si un riego pasa de N h» se cerró la sección de configuración del riego", "media");
+    const inp2 = alerta(); if(inp2) await escribir(inp2, v0, "Alerta (vuelve)");
+    if(u0==null) delete riegoCfg().umbralH; else riegoCfg().umbralH = u0; guardar();
+    const det3 = secc(); if(det3 && det3.open) await tocar(det3.querySelector("summary"), "cerrar configuración");
   });
   await paso("Sectores que no suman la superficie del cuartel", async ()=>{
     const dis = plantados().filter(q=>{ const s=riegoSectores(q); if(s.length<2) return false; const t=s.reduce((a,x)=>a+(+x.ha||0),0); return Math.abs(t-(+q.ha||0))>0.05; });
@@ -2277,13 +3226,13 @@ function estBotOMDia(f, op){
   return {f, th, tmax:Math.max(...th), tmin:Math.min(...th), tmed:Math.round(th.reduce((s, x)=>s + x, 0) / th.length * 10) / 10, ll:Math.round(ll * 100) / 100, et0:Math.round(et * 100) / 100};
 }
 async function estBotOMEspera(ms){
-  await esperarQue(()=>!estOMCargar._en && !estGrafLargoCargar._en && !estFrioCalcular._en && !estCampoFondo._en && estDat.omEst.estado !== "cargando", ms || 30000);
+  await esperarQue(()=>!estOMCargar._en && !estGrafLargoCargar._en && !estGrafLargoCargar._enR && !estFrioCalcular._en && !estCampoFondo._en && estDat.omEst.estado !== "cargando", ms || 30000);
   await pausa(.2);
 }
 async function estBotOMLimpio(){   // borra la caché de Open-Meteo de la base de prueba (estBotLimpio no la toca: no es de la estación)
   await estBotOMEspera();
   await _estBorrarRango("meta", "om|", "om|￿");
-  estDat.om = new Map(); estDat.omV++; estDat.omEst = {estado:"?", err:null, t:0}; estDat._gl = null; estDat._frio = null; estDat.resLargo = new Map();
+  estDat.om = new Map(); estDat.omV++; estDat.omEst = {estado:"?", err:null, t:0}; estDat._gl = null; estDat._glR = null; estDat._frio = null; estDat.resLargo = new Map();
 }
 /* sincroniza como el botón: espera que no haya otra vuelta en curso y evita que el reloj de fondo (estTic) meta otra al medio */
 async function estBotSinc(){ await esperarQue(()=>!estDat.sinc, 60000); estDat.ultIntento = Date.now(); const n = await estSincronizar(true); estDat.ultIntento = Date.now(); return n; }
@@ -2620,7 +3569,10 @@ async function estBotB(){
       }
     }
     revisarPantalla();
-    /* el valor con las flechas del teclado */
+    /* el valor con las flechas del teclado. Revisión v163 (30-10): el tic de cada minuto (estTic → estRepintarSiCambio) no repinta en medio de esta parte
+       (una vez el repintado cambió el gráfico entre «End» y «←» y el bot leyó el elemento viejo: «»); se devuelve al final del paso */
+    const rsc0 = window.estRepintarSiCambio; window.estRepintarSiCambio = function(){};
+    try{
     estGraf("temp", "24h"); const w = document.getElementById("estGPrin"); w.focus(); await pausa(.2);
     w.dispatchEvent(new KeyboardEvent("keydown", {key:"End", bubbles:true})); await pausa(.2);
     const vivo = document.getElementById("estGVivo"), v0 = txtDe(vivo);
@@ -2664,6 +3616,7 @@ async function estBotB(){
     /* la ráfaga más fuerte de 7 días = la de las lecturas */
     estGraf("viento", "7d"); const L7 = estDat.lect[estDat.lect.length - 1].ms, mxv = Math.max(...F.filter(x=>x[0] * 1000 > L7 - 7 * 86400000 && x[EST_I.vr] != null).map(x=>x[EST_I.vr]));
     chk(txtDe(document.getElementById("estGRes")).indexOf("Ráfaga más fuerte: " + estF1(mxv) + " km/h") >= 0 && txtDe(document.getElementById("estGKpi")).indexOf(estF1(mxv) + " km/h") >= 0, "Viento 7 días: la ráfaga más fuerte no es " + estF1(mxv) + " km/h");
+    } finally { window.estRepintarSiCambio = rsc0; }
     revisarPantalla();
   });
   await paso("Gráficos a 375 px: marcas del eje legibles (sin encimarse ni salirse) en los 21 gráficos", async ()=>{
@@ -3142,7 +4095,7 @@ async function estBotD(){
 }
 
 /* ===== estación: mejoras G (28-10-2026) ===== */
-/* Gráficos de 3, 6 y 9 meses y 1 año, grados día (base 5, 10 y 12,5) y frío (horas, Utah y porciones) con los días sin estación
+/* Gráficos de 3 y 6 meses y 1 año (v162: sin 9 meses), grados día (base 5, 10 y 12,5) y frío (horas, Utah y porciones) con los días sin estación
    estimados con Open-Meteo (falso: estBotOM). Cada número se cuadra con un cálculo hecho aparte sobre las lecturas y las horas falsas. */
 const EST_BOT_GD = (mx, mn, b)=>Math.round(Math.max(0, (mx + mn) / 2 - b) * 100) / 100;
 function estBotEstDia(PD, f){   // el día de la estación, de las filas crudas (PD = filas por día)
@@ -3161,7 +4114,7 @@ function estBotFuente(PD, f, op){   // la regla de cada día, escrita aparte: ho
 }
 function estBotDias(desde, hasta){ const out = []; for(let f = desde; f <= hasta; f = estSumarDias(f, 1)) out.push(f); return out; }
 async function estBotGrafListo(){
-  for(let i = 0; i < 3; i++){ await esperarQue(()=>!document.getElementById("estGCarga") && !estGrafLargoCargar._en && !estOMCargar._en && !estFrioCalcular._en && estDat.omEst.estado !== "cargando", 40000); await pausa(.2); }
+  for(let i = 0; i < 3; i++){ await esperarQue(()=>!document.getElementById("estGCarga") && !estGrafLargoCargar._en && !estGrafLargoCargar._enR && !estOMCargar._en && !estFrioCalcular._en && estDat.omEst.estado !== "cargando", 40000); await pausa(.2); }
   estGrafPos(); await pausa(.1);
   return EST_GRAF.estGPrin || null;
 }
@@ -3175,10 +4128,10 @@ async function estBotG(){
   const OM0 = window.estOMFetch, med = EST_BOT.medidas = {};
   const preparar = async (F, op)=>{ EST_BOT.modo = "v3"; EST_BOT.filas = F; await estBotLimpio(); await estBotOMLimpio(); window.estOMFetch = estBotOM(op || {modo:"ok"}); EST_BOT.omPedidos = []; await estBotSinc(); await estBotCampo("graf"); };
   try{
-  await paso("Gráficos de 3, 6 y 9 meses y 1 año (9 datos): sin valores raros, chip activo, promedio arriba y línea punteada; desde 6 meses las barras son semanas lunes–domingo que suman lo mismo que los días", async ()=>{
+  await paso("Gráficos de 3 y 6 meses y 1 año (9 datos): sin valores raros, chip activo, promedio arriba y línea punteada; desde 6 meses las barras son semanas lunes–domingo que suman lo mismo que los días", async ()=>{
     await preparar(estBotFilas(40));
     const malos = [];
-    for(const [v] of EST_GVARS) for(const p of ["3m", "6m", "9m", "1a"]){
+    for(const [v] of EST_GVARS) for(const p of ["3m", "6m", "1a"]){
       estGraf(v, p); const G = await estBotGrafListo(), card = document.getElementById("estKGraf"), svg = card.querySelector("#estGPrin svg");
       const html = card.innerHTML.replace(/aria-[a-z]+="[^"]*"/g, ""), S = G && G.S, nom = v + "·" + p;
       if(!S || !svg){ malos.push(nom + " sin dibujo"); continue; }
@@ -3353,7 +4306,7 @@ async function estBotG(){
     const c24b = document.querySelector('#estGCtrl .est-chips[aria-label="Período del gráfico"] .chip[data-v="24h"]');
     chk(c24b && !c24b.classList.contains("dis") && c24b.getAttribute("onclick") && !document.querySelector("#estGCtrl .est-ctrl-sub"), "Con temperatura «24 horas» sigue deshabilitado o queda el sub-selector");
   });
-  await paso("A 375 px: marcas del eje legibles en los 61 gráficos (9 datos × 7 períodos, sin 24 h en grados día y frío) y el selector no se sale de la tarjeta", async ()=>{
+  await paso("A 375 px: marcas del eje legibles en los 52 gráficos (9 datos × 6 períodos, sin 24 h en grados día y frío) y el selector no se sale de la tarjeta", async ()=>{
     await estBotCampo("graf"); const malos = [], fuera = [];
     /* revisión final 28-10: la tarjeta se busca en cada vuelta. Mientras se espera un gráfico largo, un repintado de fondo (la sincronización
        automática de la estación) puede reemplazar #estGPrin: medir el elemento viejo, ya fuera de la página, daba todo en 0 («3 encimadas»).
@@ -3388,6 +4341,8 @@ async function estBotG(){
       for(const [nom, u] of [["iPad", {movil:"no"}], ["celular", {movil:"si"}], ["sol", {movil:"no", sol:true}], ["texto grande", {movil:"no", grande:true}]]){
         D.ui = Object.assign({}, JSON.parse(ui0), {sol:false, grande:false}, u); uiAplicar(); render(); await pausa(.6);
         for(const v of ["temp", "gd", "frio"]){ estNav().sec = "graf"; estNav().var = v; estNav().per = "1a"; await irA("estacion"); estPintar(); await estBotGrafListo(); estBotZona(document.getElementById("estRaiz"), "Estación › Gráficos " + v + " 1 año (" + nom + ")"); }
+        { const Y = estBotAnioY(); estNav().var = "temp"; estNav().per = "rango"; estNav().rango = {desde:Y + "-03-05", hasta:Y + "-07-10"}; estPintar(); await estBotGrafListo();   // v162: un período elegido (R1)
+          estBotZona(document.getElementById("estRaiz"), "Estación › Gráficos temperatura del 05-03 al 10-07 (" + nom + ")"); delete estNav().rango; }
         estNav().sec = "campo"; estPintar(); await pausa(.4); estBotZona(document.getElementById("estRaiz"), "Estación › Para el campo (" + nom + ")");
       }
     } finally { D.ui = JSON.parse(ui0); uiAplicar(); render(); estNav().var = "temp"; estNav().per = "24h"; }
@@ -3499,7 +4454,7 @@ async function estBotAplicar(){
     const vc = estVentanaCuidado(L6);
     chk(!estVentanasAptas(L6).length && vc && vc.ini === h0 + 3600000 && vc.fin === h0 + 4 * 3600000, "Sin ventanas aptas no se busca la más larga «con cuidado» (" + JSON.stringify(vc) + ")");
   });
-  await paso("Aplicar · «Ahora» con lecturas armadas: calma de día con sol, anemómetro trabado (4 horas y un día entero), amanecer y atardecer calmos, ráfagas y noche con viento", async ()=>{
+  await paso("Aplicar · «Ahora» con lecturas armadas: calma de día con sol, anemómetro trabado (7 horas y un día entero), amanecer y atardecer calmos, ráfagas y noche con viento", async ()=>{
     const f1 = estSumarDias(estHoyF(), -1), s1 = estSol(f1), a1 = estLimitesDia(f1).a, tsM = m=>Math.floor((a1 + m * 60) / 900) * 900;
     const cero = (F, n, rs)=>{ for(let k = F.length - n; k < F.length; k++){ const r = F[k]; r[EST_I.v10] = 0; r[EST_I.vu] = 0; r[EST_I.vr] = 0; r[EST_I.dv] = null; r[EST_I.dr] = null; if(rs != null) r[EST_I.rs] = rs; } return F; };
     const cargar = async (finTs, mod)=>{ const F = estBotFilas(3, finTs); if(mod) mod(F); EST_BOT.modo = "v3"; EST_BOT.filas = F; await estBotLimpio(); await estBotSinc(); await estPronCargar(true); return F; };   // al limpiar se va el pronóstico: se vuelve a bajar (falso)
@@ -3514,16 +4469,16 @@ async function estBotAplicar(){
     chk(!/No conviene aplicar/.test(R.card) && /de día con sol: bien/.test(R.card) && /Nota: calma de día: cuida los bordes/.test(R.card), "La tarjeta con calma de día no explica que está bien y que hay que cuidar los bordes");
     chk(!/aplicar/i.test(R.av) && !/Anemómetro/.test(R.av), "Con calma de día y 1 hora en 0 «Ahora» igual avisa (" + R.av.slice(0, 120) + ")");
     chk(estDat.lect.slice(-4).every(x=>!x.anemo && x.sem === "ok"), "Las 4 lecturas en 0 de día con sol no quedan «aptas» en el historial");
-    /* 2. anemómetro trabado: 4 horas en 0 con 650 W/m² */
-    await cargar(fin, F=>cero(F, 16, 650)); R = evaluar(fin);
-    chk(R.A.AN.estado === "duda" && R.A.S.k.v === "anemo" && R.A.S.f.v === "am" && R.A.n === "am" && R.A.cuidado.some(m=>/sin dato fiable/.test(m)), "4 horas en 0 con sol fuerte no dejan el viento «sin dato fiable» (" + R.A.AN.estado + ", " + R.A.S.k.v + ", " + R.A.n + ")", "grave");
+    /* 2. anemómetro trabado: 7 horas en 0 con 650 W/m² (v162: la sospecha llega con 6 h de sol fuerte; antes 3) */
+    await cargar(fin, F=>cero(F, 28, 650)); R = evaluar(fin);
+    chk(R.A.AN.estado === "duda" && R.A.S.k.v === "anemo" && R.A.S.f.v === "am" && R.A.n === "am" && R.A.cuidado.some(m=>/sin dato fiable/.test(m)), "7 horas en 0 con sol fuerte no dejan el viento «sin dato fiable» (" + R.A.AN.estado + ", " + R.A.S.k.v + ", " + R.A.n + ")", "grave");
     chk(/Anemómetro: marca 0 desde las/.test(R.av) && /con sol fuerte/.test(R.av) && /copas giren/.test(R.av) && /Aplicar con cuidado: .*viento sin dato fiable/.test(R.av), "El aviso de «Ahora» no explica el anemómetro trabado (" + R.av.slice(0, 160) + ")");
     chk(/¿anemómetro trabado\?/.test(R.ahora) && /Sin dato fiable/.test(R.ahora) && /sin giro desde/.test(R.datos) && /Viento en 0/.test(R.et) && /ET₀ de la estación puede salir baja/.test(R.et), "El anemómetro trabado no se ve en la tarjeta Viento, en Datos o junto a la ET₀");
     { const dv = document.createElement("div"); dv.innerHTML = estBotEnHora(fin * 1000 + 5 * 60000, ()=>vEstAhora()); const tv = txtDe(dv.querySelector('.est-franja button[onclick*="estKViento"]'));   // corrector 28-10: la cifra de arriba (franja) no dice «calma» con el anemómetro en duda
       chk(tv && !/calma/.test(tv) && /sin dato fiable/.test(tv), "Con el anemómetro en duda, la cifra de Viento de arriba sigue diciendo «calma» («" + tv + "»)", "leve"); }
-    chk(estDat.lect.slice(-16).every(x=>x.anemo === "duda" && x.sem !== "ok") && !estDat.lect[estDat.lect.length - 17].anemo, "Las lecturas de la racha no quedan como viento desconocido (horas aptas)");
-    const Ro = estDatosRosa(estDat.lect.slice(-30));
-    chk(Ro.sinDato === 16 && Ro.n === 14, "La rosa cuenta el anemómetro trabado como calma (" + Ro.sinDato + " sin dato, " + Ro.n + " con dato)");
+    chk(estDat.lect.slice(-28).every(x=>x.anemo === "duda" && x.sem !== "ok") && !estDat.lect[estDat.lect.length - 29].anemo, "Las lecturas de la racha no quedan como viento desconocido (horas aptas)");
+    const Ro = estDatosRosa(estDat.lect.slice(-42));
+    chk(Ro.sinDato === 28 && Ro.n === 14, "La rosa cuenta el anemómetro trabado como calma (" + Ro.sinDato + " sin dato, " + Ro.n + " con dato)");
     /* 3. viento 0 todo el día con sol (25 h): malo, rojo, pero el viento sigue «Cuidado» (desconocido), no «No» */
     await cargar(fin, F=>cero(F, 100, null)); R = evaluar(fin);
     chk(R.A.AN.estado === "malo" && R.A.S.f.v === "am" && /más de un día/.test(R.av) && /Anemómetro/.test(R.av), "Un día entero en 0 con sol no queda como anemómetro malo (" + R.A.AN.estado + ")");
@@ -3582,25 +4537,26 @@ async function estBotAplicar(){
     } finally { if(est0 == null) delete D.est; else D.est = JSON.parse(est0); estDat._sesgo = null; try{ await estCargarLocal(); }catch(e){} }
     revisarPantalla();
   });
-  await paso("Aplicar · horas aptas: la versión de cálculo 4 rehace los días guardados con el criterio nuevo y cuadran con la regla escrita aparte; el resumen guardado usa el día anterior (racha del anemómetro que cruza la medianoche)", async ()=>{
+  await paso("Aplicar · horas aptas: la versión de cálculo 5 rehace los días guardados con el criterio nuevo y cuadran con la regla escrita aparte; el resumen guardado usa el día anterior (racha del anemómetro que cruza la medianoche)", async ()=>{
     EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(10); await estBotLimpio(); await estBotSinc();
     const f = estSumarDias(estHoyF(), -3), rec = await _estGet("dias", ST + "|" + f);
-    chk(EST_CALC_V === 4 && rec && /\|c4$/.test(rec.cfg), "El resumen guardado no lleva la versión de cálculo 4 (" + (rec && rec.cfg) + ")");
+    chk(EST_CALC_V === 5 && rec && /\|c5$/.test(rec.cfg), "El resumen guardado no lleva la versión de cálculo 5 (" + (rec && rec.cfg) + ")");
     if(rec){
-      await _estPutVarios("dias", [Object.assign({}, rec, {cfg:rec.cfg.replace(/\|c4$/, "|c3"), r:Object.assign({}, rec.r, {apt:99})})]);
+      await _estPutVarios("dias", [Object.assign({}, rec, {cfg:rec.cfg.replace(/\|c5$/, "|c4"), r:Object.assign({}, rec.r, {apt:99})})]);
       estDat.listo = false; await estCargarLocal();
       const r = estDat.res.get(f), l = estDat.porDia.get(f) || [], rec2 = await _estGet("dias", ST + "|" + f), esp = 0.25 * l.filter(estBotAptaA).length;
-      chk(r && r.apt !== 99 && Math.abs(r.apt - 0.25 * l.filter(x=>x.sem === "ok").length) < 1e-9 && rec2 && /\|c4$/.test(rec2.cfg) && rec2.r.apt === r.apt, "Un día guardado con la versión anterior no se rehízo (apt " + (r && r.apt) + ")");
+      chk(r && r.apt !== 99 && Math.abs(r.apt - 0.25 * l.filter(x=>x.sem === "ok").length) < 1e-9 && rec2 && /\|c5$/.test(rec2.cfg) && rec2.r.apt === r.apt, "Un día guardado con la versión anterior no se rehízo (apt " + (r && r.apt) + ")");
       chk(r && Math.abs(r.apt - esp) < 1e-9 && esp >= 1.5, "Las horas aptas del " + f + " (" + estF2(r && r.apt) + ") no calzan con la regla escrita aparte (" + estF2(esp) + ")");
       const sf = estSol(f), mi = x=>+x.hl.slice(0, 2) * 60 + (+x.hl.slice(3, 5)), noApt = l.filter(x=>x.sem === "ok" && (mi(x) < sf.sale + 60 || mi(x) >= sf.pone - 60));
       chk(!noApt.length, "Hay lecturas de noche o de madrugada marcadas aptas: " + noApt.slice(0, 3).map(x=>x.hl).join(", "));
     }
-    /* corrector 28-10 (R3-2): el anemómetro marca 0 desde las 14:00 de un día (3 h de sol fuerte: «duda») hasta las 13:00 del siguiente, que viene nublado.
+    /* corrector 28-10 (R3-2), ajustado a la regla v162: el anemómetro marca 0 desde las 09:00 de un día (8 h de sol fuerte, hasta las 17:00) hasta las
+       13:00 del siguiente, que viene nublado: 28 h. Aunque después gira, es un día entero con sol sin una ráfaga: queda «duda».
        La sincronización resume día por día: el resumen guardado de ayer tiene que ver la racha que empezó el día anterior (sus horas
        de la mañana no son aptas) y decir lo mismo que la columna «Aplicar» de cada lectura */
     const fB = estSumarDias(estHoyF(), -7), fA = estSumarDias(fB, -1),   /* días normales de la estación falsa (sin lluvia, helada, ráfaga ni hueco) */ aA = estLimitesDia(fA).a, aB = estLimitesDia(fB).a, F2 = estBotFilas(10);
-    F2.forEach(r=>{ const ts = r[0]; if(ts >= aA + 14 * 3600 && ts < aB + 13 * 3600){ r[EST_I.v10] = 0; r[EST_I.vu] = 0; r[EST_I.vr] = 0; r[EST_I.dv] = null; r[EST_I.dr] = null;
-      if(ts < aA + 17 * 3600) r[EST_I.rs] = 650; else if(ts >= aB && r[EST_I.rs] != null) r[EST_I.rs] = Math.min(r[EST_I.rs], 250); } });   // la mañana de ayer, sola, no alcanza a ser «duda» (sin sol fuerte y 13 h en 0): ahí la calma nublada de día sería apta
+    F2.forEach(r=>{ const ts = r[0]; if(ts >= aA + 9 * 3600 && ts < aB + 13 * 3600){ r[EST_I.v10] = 0; r[EST_I.vu] = 0; r[EST_I.vr] = 0; r[EST_I.dv] = null; r[EST_I.dr] = null;
+      if(ts < aA + 17 * 3600) r[EST_I.rs] = 650; else if(ts >= aB && r[EST_I.rs] != null) r[EST_I.rs] = Math.min(r[EST_I.rs], 250); } });   // la mañana de ayer, sola, no es «duda» (13 h en 0, sin sol fuerte, y después gira): ahí la calma nublada de día sería apta
     EST_BOT.filas = F2; await estBotLimpio(); await estBotSinc();
     const recB = await _estGet("dias", ST + "|" + fB), lB = estDat.porDia.get(fB) || [], soloB = estDerivar(F2.filter(r=>estFechaLocal(r[0]) === fB), wlEtCfg());
     const espB = 0.25 * lB.filter(x=>x.sem === "ok").length, manana = lB.filter(x=>x.ts < aB + 13 * 3600 && x.ts >= aB + 10.5 * 3600);
@@ -3609,7 +4565,7 @@ async function estBotAplicar(){
     chk(recB && Math.abs(recB.r.apt - espB) < 1e-9, "Las horas aptas guardadas del " + fB + " (" + estF2(recB && recB.r.apt) + ") no dicen lo mismo que la columna «Aplicar» de sus lecturas (" + estF2(espB) + "): el resumen no usó el día anterior", "media");
     /* revisión final 28-10: lo mismo en el borde de la memoria (el día de hace 34 días): estCargarLocal también deriva el día anterior */
     const fM = estSumarDias(estHoyF(), -34), fM0 = estSumarDias(fM, -1), aM0 = estLimitesDia(fM0).a, aM = estLimitesDia(fM).a, F3 = estBotFilas(40);
-    F3.forEach(r=>{ const ts = r[0]; if(ts >= aM0 + 14 * 3600 && ts < aM + 13 * 3600){ r[EST_I.v10] = 0; r[EST_I.vu] = 0; r[EST_I.vr] = 0; r[EST_I.dv] = null; r[EST_I.dr] = null;
+    F3.forEach(r=>{ const ts = r[0]; if(ts >= aM0 + 9 * 3600 && ts < aM + 13 * 3600){ r[EST_I.v10] = 0; r[EST_I.vu] = 0; r[EST_I.vr] = 0; r[EST_I.dv] = null; r[EST_I.dr] = null;
       if(ts < aM0 + 17 * 3600) r[EST_I.rs] = 650; else if(ts >= aM && r[EST_I.rs] != null) r[EST_I.rs] = Math.min(r[EST_I.rs], 250); } });
     EST_BOT.filas = F3; await estBotLimpio(); await estBotSinc();
     const lM = estDat.porDia.get(fM) || [], mM = lM.filter(x=>x.ts < aM + 13 * 3600 && x.ts >= aM + 10.5 * 3600), recM = await _estGet("dias", ST + "|" + fM);
@@ -3660,8 +4616,787 @@ async function estBotAplicar(){
   });
 }
 
+/* ===== estación: aviso del barómetro (29-10-2026) ===== */
+/* Series sintéticas, sin red: lecturas cada 15 min (arrays EST_COLS) armadas con la claridad buscada (rs = claridad × 0,75 × Ra del módulo
+   ET0 de la app, así la claridad de 3 h da exacto ese número), derivadas con estDerivar y evaluadas con estBarEstado / estBarMaquina en una
+   hora fija, con el corrimiento y el pronóstico dados. Los resultados esperados están escritos aquí a mano según
+   Investigacion_2026-10-29/barometro_calibracion_v2.md (umbrales de origen). «base» = la presión normal de la fecha + la marea + 1 hPa de
+   corrimiento: anomalía 0. La caída de 0,22 hPa/h cruza los umbrales a media hora (sin empates en el borde). */
+const EST_BOT_BH = 3600000, EST_BOT_BCFG = {lat:-33.448, lon:-71.028, z:185, zw:2};
+function estBotBaroBase(ms, corr){ return estBarNormal(ms) + estBarMarea(ms) + (corr == null ? 1 : corr); }
+/* op: {fin (ms, en el cuarto de hora), horas, bar(ms), kc(ms) (claridad, def. 0,9), td(ms) (rocío, def. 5 °C), ll(ms) (mm del intervalo),
+   v(ms) (km/h, def. 5), dv (def. 200°), sin(ms) → true = sin lectura, bart(ms)} */
+function estBotBaroFilas(op){
+  const c = EST_BOT_BCFG, out = [];
+  for(let ms = op.fin - op.horas * EST_BOT_BH; ms <= op.fin; ms += 900000){
+    if(op.sin && op.sin(ms)) continue;
+    const ts = Math.round(ms / 1000), d = new Date(ms), hs2 = ET0.horaSolar(d, c.lon), J = ET0.diaJ(d, c.lon), raW = ET0.raPeriodo(J, c.lat, hs2 - 0.25, hs2) / 0.25 * 1e6 / 3600;
+    const kc = op.kc ? op.kc(ms) : 0.9, v = op.v ? op.v(ms) : 5;
+    const o = {ts, f:estFechaLocal(ts), hl:estHoraLocal(ts), t:12, hr:70, pr:op.td ? op.td(ms) : 5, vu:v, v10:v, vr:v ? Math.round(v * 16) / 10 : 0, dv:v ? (op.dv != null ? op.dv : 200) : null, dr:null,
+      rs:Math.round(kc * 0.75 * raW * 1000) / 1000, uv:null, lld:null, ll15:op.ll ? op.ll(ms) : 0, bar:op.bar(ms), bart:op.bart ? op.bart(ms) : null, bat:0, rx:0, o:0, rec:ts};
+    out.push(EST_COLS.map(k=>o[k] === undefined ? null : o[k]));
+  }
+  return out;
+}
+function estBotBaroSerie(op){ return estDerivar(estBotBaroFilas(op), EST_BOT_BCFG); }
+function estBotBaroEst(L, t, op){ return estBarEstado(t, Object.assign({B:estBarPreparar(L.filter(x=>x.ms <= t)), corr:{v:1, n:100, de:"archivo"}, pron:null, cfg:EST_BOT_BCFG, U:Object.assign({}, EST_UMB_DEF)}, op || {})); }
+function estBotBaroMaq(L, t, op){ return estBarMaquina(t, Object.assign({B:estBarPreparar(L.filter(x=>x.ms <= t)), corr:1, cfg:EST_BOT_BCFG, U:Object.assign({}, EST_UMB_DEF)}, op || {})); }
+function estBotBaroP(prob, mm, torm){ return {prob24:prob, mm24:mm == null ? 0 : mm, vr24:20, torm:torm || null}; }
+/* frente de invierno: desde ts0 la presión baja 0,22 hPa/h (Δ24 ≤ −1,5 desde la hora 7, anomalía ≤ −2,5 desde la 12, ≤ −6 desde la 28), cielo cubierto (0,3) y rocío que sube 1 °C en 24 h */
+function estBotBaroFrente(ts0, horas, op){
+  op = op || {};
+  return estBotBaroSerie(Object.assign({fin:ts0 + horas * EST_BOT_BH, horas:horas + 30, bar:ms=>estBotBaroBase(ms) - (ms > ts0 ? 0.22 * Math.min(op.hasta || 1e9, (ms - ts0) / EST_BOT_BH) : 0),
+    kc:()=>0.3, td:ms=>5 + (ms > ts0 ? (ms - ts0) / (24 * EST_BOT_BH) : 0)}, op));
+}
+/* pronóstico falso para el barómetro (Open-Meteo con presión y CAPE): probabilidad pareja, mmh mm por hora en las horas 1 a 10, código y CAPE */
+function estBotBaroPron(prob, op){
+  op = op || {};
+  return async function(url){
+    (EST_BOT.baroUrls = EST_BOT.baroUrls || []).push(String(url));
+    await esperar(4);
+    const h0 = Math.floor(Date.now() / 3600000) * 3600, H = {time:[], temperature_2m:[], relative_humidity_2m:[], dew_point_2m:[], precipitation:[], precipitation_probability:[], cloud_cover:[], wind_speed_10m:[], wind_gusts_10m:[], wind_direction_10m:[], weather_code:[], pressure_msl:[], cape:[]};
+    for(let i = -2; i < 100; i++){
+      const ts = h0 + i * 3600;
+      H.time.push(ts); H.temperature_2m.push(12); H.relative_humidity_2m.push(80); H.dew_point_2m.push(8.6); H.precipitation.push(i >= 1 && i <= 10 ? (op.mmh != null ? op.mmh : 0.5) : 0);
+      H.precipitation_probability.push(prob); H.cloud_cover.push(90); H.wind_speed_10m.push(12); H.wind_gusts_10m.push(25); H.wind_direction_10m.push(0);
+      H.weather_code.push(op.code || 61); H.pressure_msl.push(Math.round((1012 - i * 0.05) * 10) / 10); H.cape.push(op.cape != null ? op.cape : 50);
+    }
+    return {latitude:-33.45, longitude:-71.03, hourly:H};
+  };
+}
+/* el corrimiento de la estación (1,0 hPa) para lo de ahora: días de Open-Meteo con pressure_msl = presión de la estación − 1 en cada hora (4 días) */
+async function estBotBaroCorr(corr){
+  const ck = estOMCk(); if(estDat.omCk !== ck){ estDat.om = new Map(); estDat.omCk = ck; }
+  const porF = new Map(), t = Date.now();
+  estDat.lect.forEach(x=>{ if(x.bar == null || x.ms % 3600000 || x.ms < t - 4 * 86400000) return; const f = estFechaLocal(x.ts); if(!porF.has(f)) porF.set(f, []); porF.get(f).push([x.ts, x.bar - corr]); });
+  const g = [];
+  porF.forEach((pm, f)=>{ const r = {f, src:"om", fuente:"archivo", ok:true, horas:24, th:[], tmax:12, tmin:12, tmed:12, hrmed:70, ll:0, et0:1, pm, t, firme:false}; estDat.om.set(f, r); g.push({k:"om|" + ck + "|" + f, v:r}); });
+  await _estPutVarios("meta", g); estDat.omV++;
+  return g.length;
+}
+async function estBotBaro(){
+  const H = EST_BOT_BH, ST = EST_BOT.st;
+  await paso("Barómetro · marea pura, normal y corrimiento: estable a toda hora, la tendencia de 3 h sin la marea, lo normal de la fecha y la mediana de 14 días", async ()=>{
+    /* 1) 3 días de junio con el ciclo del anexo A y sin tendencia: «estable» las 49 horas, sin avisos; a las 14 h la de 3 h sin marea es 0 y la bruta −1,9 */
+    const fin = Date.UTC(2026, 5, 18, 18), L = estBotBaroSerie({fin, horas:72, bar:ms=>1016 + estBarMarea(ms)}), est = new Set(); let av = 0;
+    for(let t = fin - 48 * H; t <= fin; t += H){ const o = estBotBaroEst(L, t, {corr:{v:0, n:100, de:"archivo"}}); est.add(o.est); if(o.R.F.on || o.R.C.on || o.R.M.on || o.aviso) av++; }
+    const o14 = estBotBaroEst(L, fin, {corr:{v:0, n:100, de:"archivo"}});
+    chk(est.size === 1 && est.has("estable") && !av, "La marea pura (3 días de junio) no da «estable» a toda hora: " + [...est].join(", ") + " · " + av + " horas con algo encendido");
+    chk(estHoraLocal(fin / 1000) === "14:00" && Math.abs(o14.d3.s) <= 0.3 && Math.abs(o14.d3.b + 1.9) <= 0.05 && /sin la marea/.test(estBarTend(o14.d3).txt) && /^Estable/.test(estBarTend(o14.d3).txt),
+      "A las 14 h de junio la tendencia de 3 h no descuenta la marea (sin marea " + o14.d3.s + ", bruta " + o14.d3.b + ")");
+    /* anexo A y B al pie de la letra */
+    chk(estBarNormal(Date.UTC(2026, 5, 15, 12)) === 1018.1 && Math.abs(estBarNormal(Date.UTC(2026, 0, 1, 12)) - 1013.161) < 0.001 && estBarMarea(Date.UTC(2026, 5, 18, 18)) === -0.9 && Math.abs(estBarMarea(Date.UTC(2026, 5, 18, 18, 30)) + 1.05) < 1e-9,
+      "La normal o la marea no son las del anexo (15-06 " + estBarNormal(Date.UTC(2026, 5, 15, 12)) + ", 01-01 " + estBarNormal(Date.UTC(2026, 0, 1, 12)) + ", junio 18 UTC " + estBarMarea(Date.UTC(2026, 5, 18, 18)) + ")");
+    /* corrimiento: mediana de bar − pressure_msl de 14 días con 72 horas o más; primero el archivo ERA5, si no alcanza también el pronóstico (provisional) */
+    const f2 = Date.UTC(2026, 9, 29, 15), B = estBarPreparar(estBotBaroSerie({fin:f2, horas:120, bar:ms=>1015 + Math.sin(ms / 7e6)})), bar = t=>B.find(x=>x.ms === t).bar;
+    const a = [], p = []; for(let i = 0, t = f2 - 99 * H; t <= f2; t += H, i++) (i < 50 ? a : p).push([t / 1000, bar(t) - (i < 50 ? 1.3 : 1.0)]);
+    const c1 = estBarCorrCalc(B, new Map([["a", {fuente:"archivo", pm:a}], ["p", {fuente:"pronostico", pm:p}]]), f2);
+    const c2 = estBarCorrCalc(B, new Map([["a", {fuente:"archivo", pm:a.concat(p.map(z=>[z[0], z[1] - 0.3]))}]]), f2);
+    const c3 = estBarCorrCalc(B, new Map([["a", {fuente:"archivo", pm:a.slice(0, 40)}], ["p", {fuente:"pronostico", pm:p.slice(0, 30)}]]), f2);
+    const c4 = estBarCorrCalc(B, new Map([["a", {fuente:"archivo", pm:a.concat(p.map(z=>[z[0], z[1] - 0.3]))}]]), f2 + 13 * 86400000);
+    chk(c2.v === 1.3 && c2.n === 100 && c2.de === "archivo" && c1.v === 1.15 && c1.de === "mixto" && c1.nArch === 50 && c3.v === null && c4.v === null && c4.n === 24,
+      "El corrimiento no es la mediana de 14 días con 72 horas: " + JSON.stringify([c1, c2, c3, c4]));
+  });
+  await paso("Barómetro · sistema frontal: la 1.ª hora con la condición no enciende, la 2.ª sí («Sistema frontal acercándose»); con el pronóstico en 80 % «Lluvia probable»; en invierno, 6 hPa bajo lo normal 2 horas = naranja; en septiembre no", async ()=>{
+    const ts0 = Date.UTC(2026, 6, 14, 6), L = estBotBaroFrente(ts0, 36);
+    const e12 = estBotBaroEst(L, ts0 + 12 * H), e13 = estBotBaroEst(L, ts0 + 13 * H);
+    chk(!e12.R.F.on && e12.est === "vigilar" && e12.x.d24 === -2.62 && e12.x.anom === -2.64 && e12.x.kc === 0.3, "La primera hora con la condición de frente no da «vigilar» sin aviso: " + [e12.est, e12.R.F.on, e12.x.d24, e12.x.anom, e12.x.kc].join(" · "));
+    /* revisión del 29-10: con las señales del frente y sin aviso, «vigilar» dice qué falta (nunca «estable … no un sistema»); el párrafo no repite el título y tutea */
+    chk(e12.vigS && e12.tit === "Vigilar: señal de sistema frontal" && /pero falta una segunda hora seguida con las mismas señales, sin lluvia, para encender el aviso/.test(e12.txt), "La 1.ª hora con las señales del frente no dice que falta una segunda hora seguida: " + e12.txt.slice(0, 220), "leve");
+    chk(e13.R.F.on && e13.R.F.av.ini === ts0 + 13 * H && e13.R.F.av.tipo === "nuevo" && e13.est === "frente" && e13.n === "am" && e13.aviso && e13.tit === "Sistema frontal acercándose" &&
+      /^La presión bajó 2,8 hPa en 24 h, está 2,9 hPa bajo lo normal de estos días y el cielo está cubierto/.test(e13.txt) && /en invierno, 5 de cada 10 situaciones así terminaron en 5 mm o más en un día y medio, y 6 de cada 10 en al menos 1 mm/.test(e13.txt) && /Sin pronóstico al día/.test(e13.txt),
+      "La segunda hora no enciende «Sistema frontal acercándose» con su texto (que empieza con «La presión bajó», sin repetir el título): " + e13.est + " · " + e13.txt.slice(0, 220));
+    const p80 = estBotBaroEst(L, ts0 + 13 * H, {pron:estBotBaroP(80, 6)}), p40 = estBotBaroEst(L, ts0 + 13 * H, {pron:estBotBaroP(40)}), p10 = estBotBaroEst(L, ts0 + 13 * H, {pron:estBotBaroP(10)});
+    chk(p80.est === "lluvia" && p80.n === "na" && /^Lluvia probable/.test(p80.tit) && /^La presión bajó/.test(p80.txt) && /El pronóstico también da lluvia: 80 % y 6,0 mm en 24 h/.test(p80.txt) && /Revisa el criterio de aplicar\.$/.test(p80.txt),
+      "Con el pronóstico en 80 % no sale «Lluvia probable» (naranja) con su texto (sin «Lluvia probable:» repetido, con «Revisa»): " + p80.est + " · " + p80.txt.slice(0, 200));
+    chk(p40.est === "frente" && /El pronóstico va en la misma línea \(40 % en 24 h\)/.test(p40.txt) && p10.est === "frente" && /El pronóstico no da lluvia \(10 % en 24 h\): vigila\./.test(p10.txt),
+      "Con el pronóstico en 40 % o 10 % el texto del frente no lo dice: " + p40.est + " / " + p10.est);
+    const usted = [e12, e13, p80, p40, p10].filter(o=>/\b(Revise|revise|vigile)\b/.test(o.txt + " " + o.corto));
+    chk(!usted.length, "Textos del barómetro que hablan de usted (el resto de la app tutea): " + usted.map(o=>o.txt.slice(0, 80)).join(" · "), "leve");
+    const e28 = estBotBaroEst(L, ts0 + 28 * H), e29 = estBotBaroEst(L, ts0 + 29 * H);
+    chk(e28.est === "frente" && !e28.R.F.av.naranja && e29.est === "lluvia" && e29.R.F.av.naranja === ts0 + 29 * H && /8 de cada 10 situaciones así dejaron 5 mm o más/.test(e29.txt),
+      "En julio, 6 hPa bajo lo normal durante 2 horas no pasa a naranja en la 2.ª hora: " + [e28.est, e28.R.F.av.naranja, e29.est, e29.R.F.av.naranja].join(" · "));
+    const s0 = Date.UTC(2026, 8, 14, 6), S = estBotBaroFrente(s0, 36), s29 = estBotBaroEst(S, s0 + 29 * H);
+    chk(s29.est === "frente" && s29.R.F.av.naranja === null && s29.R.F.av.ini === s0 + 11 * H && s29.x.anom <= -6 && /En esta época, entre 3 y 4 de cada 10/.test(s29.txt),
+      "En septiembre (claridad < 0,4 y anomalía ≤ −2) el aviso no enciende en la hora 11 o pasa a naranja sin pronóstico: " + [s29.est, s29.R.F.av.naranja, (s29.R.F.av.ini - s0) / H].join(" · "));
+  });
+  await paso("Barómetro · histéresis sin memoria: lluvia que apaga («lloviendo», «se cumplió»), no repetir antes de 12 h, «sigue el sistema», apagado por presión, cielo y tiempo, y la ventana de 48 h igual a la de 96 h", async ()=>{
+    const ts0 = Date.UTC(2026, 6, 14, 6), L = estBotBaroFrente(ts0, 40, {ll:ms=>(ms > ts0 + 15 * H && ms <= ts0 + 17 * H) ? 0.25 : 0});
+    const e16 = estBotBaroEst(L, ts0 + 16 * H), e21 = estBotBaroEst(L, ts0 + 21 * H), e27 = estBotBaroEst(L, ts0 + 27 * H), e28 = estBotBaroEst(L, ts0 + 28 * H);
+    chk(!e16.R.F.on && e16.R.F.av.motivo === "lluvia" && e16.R.F.av.fin === ts0 + 16 * H && e16.est === "lloviendo" && /Está lloviendo \(1,0 mm en las últimas 3 horas\)\. El aviso de las .+ se cumplió/.test(e16.txt),
+      "1 mm en una hora con el aviso encendido no lo apaga con «lluvia» ni dice «se cumplió»: " + e16.est + " · " + e16.txt);
+    chk(!e21.R.F.on && e21.est === "vigilar" && !e27.R.F.on && e28.R.F.on && e28.R.F.av.ini === ts0 + 28 * H && e28.R.F.av.tipo === "sigue" && e28.tit === "Sigue el sistema" && /^Paró de llover \(2,0 mm en las últimas 24 h\)/.test(e28.txt) && /3 de cada 4/.test(e28.txt),
+      "Después de apagarse por lluvia el aviso se repite antes de 12 h, o a las 12 h no vuelve como «sigue el sistema»: " + [e21.est, e21.R.F.on, e27.R.F.on, e28.R.F.on, e28.R.F.av && e28.R.F.av.tipo].join(" · "));
+    chk(e21.vigS && /el aviso se cumplió \(llovió\) y no se repite antes de 12 horas/.test(e21.txt) && !/no un sistema/.test(e21.txt), "Con las señales del frente y el aviso recién cumplido, «vigilar» no dice que no se repite antes de 12 h: " + e21.txt.slice(0, 220), "leve");
+    /* revisión del 29-10: la condición más de 48 h seguidas (en ERA5 2000–2025 no pasó nunca). La máquina sin memoria no vuelve a encender el aviso
+       después del apagado por tiempo; la tarjeta no dice «estable … no un sistema»: «vigilar» con «se apagó solo» */
+    const Lx = estBotBaroFrente(ts0, 66), x55 = estBotBaroEst(Lx, ts0 + 55 * H), x65 = estBotBaroEst(Lx, ts0 + 65 * H);
+    chk([x55, x65].every(o=>!o.R.F.on && o.est === "vigilar" && o.vigS && /se apagó solo: manda el pronóstico/.test(o.txt) && !/no un sistema/.test(o.txt)),
+      "Con las señales del frente más de 48 h seguidas, la tarjeta no dice «vigilar … se apagó solo»: " + [x55.est, x65.est, x65.txt.slice(0, 160)].join(" · "), "leve");
+    const dif = []; for(let t = ts0 + 5 * H; t <= ts0 + 40 * H; t += H){ const k = R=>[R.F.on, R.F.av && R.F.av.ini, R.F.av && R.F.av.naranja, R.C.on, R.M.on].join(); if(k(estBotBaroMaq(L, t)) !== k(estBotBaroMaq(L, t, {ventana:96}))) dif.push((t - ts0) / H); }
+    chk(!dif.length, "Reconstruir desde 48 h atrás no da lo mismo que desde 96 h en las horas " + dif.join(", "));
+    /* presión: cae 20 h y se queda → Δ24 > −0,5 en la hora 42 */
+    const P = estBotBaroFrente(ts0, 46, {hasta:20}), r41 = estBotBaroMaq(P, ts0 + 41 * H), r42 = estBotBaroMaq(P, ts0 + 42 * H);
+    chk(r41.F.on && !r42.F.on && r42.F.av.motivo === "presión" && r42.F.av.fin === ts0 + 42 * H && r42.F.av.ini === ts0 + 13 * H, "Cuando la presión deja de bajar el aviso no se apaga con «presión» en la hora 42: " + [r41.F.on, r42.F.on, r42.F.av && r42.F.av.motivo].join(" · "));
+    /* tiempo: 36 h encendido sin llover */
+    const T = estBotBaroFrente(ts0, 50), r48 = estBotBaroMaq(T, ts0 + 48 * H), r49 = estBotBaroMaq(T, ts0 + 49 * H);
+    chk(r48.F.on && !r49.F.on && r49.F.av.motivo === "tiempo", "El aviso no se apaga por tiempo a las 36 h de encendido (" + [r48.F.on, r49.F.on, r49.F.av && r49.F.av.motivo].join(" · ") + ")");
+    /* cielo: claridad de 0,85 medida al mediodía (desde las 10 del 15-07) apaga a las 13:00 */
+    const C = estBotBaroFrente(ts0, 46, {hasta:30, kc:ms=>ms > Date.UTC(2026, 6, 15, 14) ? 0.85 : 0.3}); let ap = null;
+    for(let t = ts0; t <= ts0 + 46 * H; t += H){ const R = estBotBaroMaq(C, t); if(R.F.av && R.F.av.motivo){ ap = R.F.av; break; } }
+    chk(ap && ap.motivo === "cielo" && ap.fin === Date.UTC(2026, 6, 15, 17) && estHoraLocal(ap.fin / 1000) === "13:00", "Con el cielo abierto (0,85 medido al mediodía) el aviso no se apaga con «cielo» a las 13:00 (" + (ap ? ap.motivo + " " + estHoraLocal(ap.fin / 1000) : "no se apagó") + ")");
+    /* la misma claridad, pero vieja (de la tarde, vista de noche), no apaga; y una hora sin lectura con el aviso encendido no rompe nada */
+    const V = estBotBaroFrente(ts0, 46, {hasta:30, kc:ms=>(ms > Date.UTC(2026, 6, 15, 19) && ms <= Date.UTC(2026, 6, 15, 21, 15)) ? 0.85 : 0.3, sin:ms=>ms > Date.UTC(2026, 6, 15, 21, 50) && ms <= Date.UTC(2026, 6, 16, 0, 10)});
+    const v1 = estBotBaroMaq(V, Date.UTC(2026, 6, 16, 1)), v22 = estBotBaroMaq(V, Date.UTC(2026, 6, 15, 22));
+    chk(v1.F.on && v1.x.kc === 0.85 && !v1.x.kcFresca && v22.F.on && v22.hueco && v22.x.t === Date.UTC(2026, 6, 15, 21), "La claridad de la tarde vista de noche apagó el aviso o el hueco cambió el estado: " + [v1.F.on, v1.x.kc, v1.x.kcFresca, v22.F.on, v22.hueco].join(" · "));
+    let eh = null; try{ eh = estBotBaroEst(V, Date.UTC(2026, 6, 16, 0, 20)); }catch(e){ eh = {est:"error: " + e.message}; }
+    chk(eh.est === "lluvia" && eh.R.hueco && eh.x.t === Date.UTC(2026, 6, 15, 21) && eh.R.F.on, "Con el aviso encendido y la última hora sin lectura, el estado se cae o cambia: " + eh.est);
+    /* una sola hora con la condición (la siguiente sin lectura) no enciende; vuelve a contar desde cero */
+    const U1 = estBotBaroFrente(ts0, 20, {sin:ms=>Math.abs(ms - (ts0 + 13 * H)) <= 10 * 60000}), u14 = estBotBaroMaq(U1, ts0 + 14 * H), u15 = estBotBaroMaq(U1, ts0 + 15 * H);
+    chk(!u14.F.on && u15.F.on && u15.F.av.ini === ts0 + 15 * H, "Un hueco en la 2.ª hora no cortó las «2 horas seguidas» (" + [u14.F.on, u15.F.on].join(" · ") + ")");
+  });
+  await paso("Barómetro · baja costera (nunca frente, ni con pronóstico), mejora (con la línea de la helada), caídas chicas y la flecha de Davis, tormentas solo del pronóstico", async ()=>{
+    /* costera: −4,6 hPa en 24 h, claridad 0,9, rocío −5 °C en 24 h */
+    const fC = Date.UTC(2026, 6, 15, 22), t0 = fC - 30 * H, Lc = estBotBaroSerie({fin:fC, horas:80, bar:ms=>estBotBaroBase(ms) - (ms > t0 ? 4.6 * (ms - t0) / (24 * H) : 0), kc:()=>0.9, td:ms=>5 - (ms > t0 ? 5 * (ms - t0) / (24 * H) : 0)});
+    let fr = 0, co = 0; for(let t = t0; t <= fC; t += H){ const o = estBotBaroEst(Lc, t, {pron:estBotBaroP(40, 1)}); if(o.R.F.on || o.est === "frente" || o.est === "lluvia") fr++; if(o.est === "costera") co++; }
+    const oc = estBotBaroEst(Lc, fC, {pron:estBotBaroP(40, 1)}), oc70 = estBotBaroEst(Lc, fC, {pron:estBotBaroP(70, 8)});
+    chk(!fr && co === 14 && oc.est === "costera" && oc.n === "in" && !oc.aviso && /^La presión bajó 4,6 hPa en 24 h, pero el aire se secó \(rocío −5,0 °C en 24 h\) y el cielo está despejado/.test(oc.txt) && /no llovieron 5 mm en las 12 horas siguientes ni una vez/.test(oc.txt) && /\(40 % en 24 h\): vigila\./.test(oc.txt) && /revisa el aviso de helada/.test(oc.txt) && oc70.est === "costera" && /manda el pronóstico/.test(oc70.txt),
+      "La baja costera no sale como estado informativo (o salió frente): " + fr + " horas de frente, " + co + " de costera · " + oc.txt.slice(0, 160));
+    /* mejora: 6 mm y luego +4,4 hPa (tras lluvia); y sin lluvia: +4,5 con cielo despejado y aire que se seca */
+    const fM = Date.UTC(2026, 6, 15, 18), tl = fM - 20 * H, Lm = estBotBaroSerie({fin:fM, horas:60, bar:ms=>estBotBaroBase(ms) + (ms > tl ? Math.min(4.4, 4.4 * (ms - tl) / (16 * H)) : 0), kc:ms=>ms > tl ? 0.9 : 0.3, ll:ms=>(ms > tl - 6 * H && ms <= tl) ? 0.25 : 0});
+    const om = estBotBaroEst(Lm, fM), t1 = fM - 30 * H, Ls = estBotBaroSerie({fin:Date.UTC(2026, 6, 15, 20), horas:80, bar:ms=>estBotBaroBase(ms) + (ms > t1 ? 4.5 * Math.min(1, (ms - t1) / (24 * H)) : 0), td:ms=>5 - (ms > t1 ? 2 * (ms - t1) / (24 * H) : 0)});
+    const os = estBotBaroEst(Ls, Date.UTC(2026, 6, 15, 20));
+    chk(om.est === "mejora" && om.R.M.av.tras && om.x.d24 === 4.42 && om.x.ll24 === 4 && om.tit === "Mejora: pasó el sistema" && /^La presión sube 4,4 hPa en 24 h\. Probable fin de la lluvia; pueden quedar chubascos/.test(om.txt) && /revisa el aviso de helada\.$/.test(om.txt) && os.est === "mejora" && !os.R.M.av.tras && os.tit === "Mejora: sube la presión" && /^La presión sube \d+,\d hPa en 24 h, con el cielo despejado/.test(os.txt),
+      "La mejora (con y sin lluvia antes) no sale: " + [om.est, om.R.M.on, om.x.d24, os.est, os.R.M.on].join(" · "));
+    /* caídas chicas (−2,5 y −1 hPa en 24 h, con la presión sobre lo normal) y la flecha de Davis en −2,5: estable a toda hora */
+    const fe = Date.UTC(2026, 6, 15, 18), te = fe - 24 * H, mk = c=>estBotBaroSerie({fin:fe, horas:72, bar:ms=>estBotBaroBase(ms, 3) - (ms > te ? c * (ms - te) / (24 * H) : 0), bart:ms=>ms === fe ? -2.5 : null});
+    const todos = c=>{ const s = new Set(), Lx = mk(c); for(let t = fe - 30 * H; t <= fe; t += H) s.add(estBotBaroEst(Lx, t).est); return [...s].join(","); }, o25 = estBotBaroEst(mk(2.5), fe);
+    chk(todos(2.5) === "estable" && todos(1) === "estable" && o25.d3.b === -2.5 && o25.d3.davis && o25.x.d24 === -2.48 && /\(estación: −2,5\)/.test(estBarTend(o25.d3).txt), "Una caída de 2,5 o 1 hPa en 24 h (o la flecha de Davis en −2,5) no queda en «estable»: " + todos(2.5) + " / " + todos(1));
+    /* tormentas: solo con el pronóstico (código 95–99 o CAPE ≥ 500 con 40 %); sin pronóstico, nada */
+    const Lt = estBotBaroSerie({fin:fe, horas:60, bar:ms=>estBotBaroBase(ms)}), ot = estBotBaroEst(Lt, fe, {pron:estBotBaroP(30, 2, {ms:fe + 5 * H, cod:true, cape:900})});
+    chk(ot.est === "tormenta" && ot.aviso && ot.n === "am" && /tormenta; CAPE 900 J\/kg/.test(ot.txt) && /viene del pronóstico, no del barómetro/.test(ot.txt) && estBotBaroEst(Lt, fe).est === "estable", "Las tormentas no salen del pronóstico (" + ot.est + ")");
+    /* estPronTormenta con un pronóstico de verdad (CAPE 800 con 50 %, o código 95) */
+    const p0 = estDat.pron;
+    try{
+      const ah = Date.now(), hs = [1, 2, 3, 13].map(i=>({ts:Math.floor(ah / 1000) + i * 3600, ms:ah + i * H, prob:i === 2 ? 50 : 20, cape:i === 2 ? 800 : 100, code:i === 13 ? 95 : 61, ll:0}));
+      estDat.pron = {t:ah, horas:hs, dias:[]};
+      const a = estPronTormenta(12, 500), b = estPronTormenta(12, 900);
+      estDat.pron = {t:ah, horas:hs.map(x=>Object.assign({}, x, {prob:30})), dias:[]};
+      chk(a && a.cape === 800 && !a.cod && b === null && estPronTormenta(12, 500) === null && estPronTormenta(14, 500).cod === true, "estPronTormenta no usa CAPE ≥ umbral con 40 % o el código 95–99 en 12 h");
+    } finally { estDat.pron = p0; }
+  });
+  await paso("Barómetro · pocos datos: sin la lectura de ayer usa la de 12 h sin marea y lo dice; estación atrasada = pausa; saltos raros descartados; diciembre solo con pronóstico; sin corrimiento pide 3 hPa y claridad < 0,4; anemómetro en 0 sin hablar del viento", async ()=>{
+    /* sin la lectura de hace 24 h (hueco de 80 min) y −3 hPa en las últimas 12 h */
+    const f = Date.UTC(2026, 6, 15, 18), La = estBotBaroSerie({fin:f, horas:60, bar:ms=>estBotBaroBase(ms) - (ms > f - 12 * H ? 3 * (ms - (f - 12 * H)) / (12 * H) : 0), sin:ms=>Math.abs(ms - (f - 24 * H)) <= 40 * 60000});
+    const oa = estBotBaroEst(La, f);
+    chk(oa.est === "vigilar" && oa.x.d24 === null && oa.d12s === -3 && /Falta la lectura de ayer a esta hora: se usa el cambio de 12 horas sin la baja de la tarde \(−3,0 hPa\)/.test(oa.txt), "Sin la lectura de ayer no se usa ni se dice el cambio de 12 h sin marea: " + oa.est + " · " + oa.txt.slice(0, 200));
+    chk(estBotBaroEst(La, f + 30 * 60000).est === "vigilar" && estBotBaroEst(La, f + 50 * 60000).est === "pausa" && /se reanuda con la próxima lectura/.test(estBotBaroEst(La, f + 2 * H).txt), "La estación atrasada (más de 45 min) no deja el análisis en pausa");
+    /* pocas horas: menos de 24 h de historial → sin avisos y lo dice; 2 h → «Sin tendencia todavía» */
+    const Lp = estBotBaroSerie({fin:f, horas:10, bar:ms=>estBotBaroBase(ms)}), op = estBotBaroEst(Lp, f), L2 = estBotBaroSerie({fin:f + 30 * 60000, horas:0.25, bar:ms=>estBotBaroBase(ms)}), o2 = estBotBaroEst(L2, f + 35 * 60000);
+    chk(op.est === "estable" && /hacen falta 24 horas de lecturas guardadas \(hay 10 h\)/.test(op.txt) && o2.est === "pocos" && o2.tit === "Sin tendencia todavía", "Con pocas horas de historial no lo dice («" + op.txt.slice(-120) + "» / " + o2.est + ")");
+    /* saltos: +3 hPa en una lectura que vuelve y 1050 hPa: se descartan y el estado es el mismo; −3 en la última: se espera la siguiente */
+    const fj = Date.UTC(2026, 5, 18, 18), Lj = estBotBaroSerie({fin:fj, horas:72, bar:ms=>1016 + estBarMarea(ms)}), Ls = Lj.map(x=>Object.assign({}, x));
+    const iS = Ls.findIndex(x=>x.ms === fj - 5 * H), iR = Ls.findIndex(x=>x.ms === fj - 7 * H); Ls[iS].bar += 3; Ls[iR].bar = 1050;
+    const Bs = estBarPreparar(Ls), k = o=>[o.est, o.R.F.on, o.R.C.on, o.R.M.on, o.x && o.x.d24].join(), dif = [];
+    for(let t = fj - 30 * H; t <= fj; t += H) if(k(estBotBaroEst(Lj, t, {corr:{v:0, n:100, de:"archivo"}})) !== k(estBotBaroEst(Ls, t, {corr:{v:0, n:100, de:"archivo"}}))) dif.push((fj - t) / H);
+    const Lu = Lj.map(x=>Object.assign({}, x)); Lu[Lu.length - 1].bar -= 3; const ou = estBotBaroEst(Lu, fj, {corr:{v:0, n:100, de:"archivo"}});
+    chk(Bs[iS].bar === null && Bs[iS].mala === Ls[iS].bar && Bs[iR].bar === null && !dif.length && ou.est === "estable" && ou.ult.ms === fj - 15 * 60000, "Los saltos raros de presión no se descartan (salto " + Bs[iS].bar + ", 1050 → " + Bs[iR].bar + ", horas distintas " + dif.join(",") + ")");
+    /* diciembre: la condición de frente con los umbrales del resto del año */
+    const d0 = Date.UTC(2026, 11, 14, 5), Ld = estBotBaroFrente(d0, 36), fd = d0 + 36 * H, ed = p=>estBotBaroEst(Ld, fd, {pron:p});
+    const e10 = ed(estBotBaroP(10)), e60 = ed(estBotBaroP(60)), e55 = ed(estBotBaroP(55)), e0 = ed(null);
+    chk(e10.R.F.on && e10.est === "vigilar" && e10.vigF && e10.tit === "Vigilar: señal de sistema frontal" && /hace falta 50 %/.test(e10.txt) && e60.est === "lluvia" && e55.est === "frente" && /Entre noviembre y marzo esta señal casi no se da/.test(e55.txt) && e0.est === "vigilar",
+      "En diciembre el aviso se muestra sin pronóstico ≥ 50 % (10 % → " + e10.est + ", 60 % → " + e60.est + ", 55 % → " + e55.est + ", sin → " + e0.est + ")");
+    /* sin corrimiento: Δ24 ≤ −3 y claridad < 0,4 (enciende en la hora 15); con 0,45 no */
+    const ini = Lx=>{ for(let t = ts0b; t <= ts0b + 36 * H; t += H){ const R = estBotBaroMaq(Lx, t, {corr:null}); if(R.F.on) return (R.F.av.ini - ts0b) / H; } return null; }, ts0b = Date.UTC(2026, 6, 14, 6);
+    const n03 = ini(estBotBaroFrente(ts0b, 36)), n45 = ini(estBotBaroFrente(ts0b, 36, {kc:()=>0.45})), os = estBotBaroEst(estBotBaroFrente(ts0b, 36), ts0b + 20 * H, {corr:{v:null, n:30, de:null}});
+    chk(n03 === 15 && n45 === null && os.modo === "sinRef" && os.est === "frente" && os.x.anom === null && !/bajo lo normal de estos días/.test(os.txt), "Sin corrimiento el aviso no pide Δ24 ≤ −3 y claridad < 0,4 (enciende en " + n03 + "; con 0,45 en " + n45 + ")");
+    /* anemómetro en 0 las 24 h: el texto no habla del viento; con viento del norte de 12 km/h, sí */
+    const a0 = estBotBaroEst(estBotBaroFrente(ts0b, 36, {v:()=>0}), ts0b + 20 * H), a12 = estBotBaroEst(estBotBaroFrente(ts0b, 36, {v:()=>12, dv:0}), ts0b + 20 * H);
+    chk(a0.est === "frente" && !/viento/i.test(a0.txt + " " + a0.corto) && /Viento del norte a 12 km\/h/.test(a12.txt), "Con el anemómetro en 0 el texto habla del viento, o con viento no lo dice");
+  });
+  await paso("Barómetro · arreglos de la revisión (29-10): la lectura del momento sin historial no cuenta la lluvia del día como de 15 min; sin la lectura de ayer, sin radiación, «sigue» de noviembre a marzo y la presión bajo lo normal sin frente", async ()=>{
+    const U = Object.assign({}, EST_UMB_DEF), ts0b = Date.UTC(2026, 6, 14, 6);
+    /* 1) puente sin D1 o v2: la lectura del momento sale de estDerivar([fila]) y su «ll» es la lluvia de TODO el día; el barómetro usa la de 15 min */
+    const t10 = Date.UTC(2026, 6, 15, 14), iLd = EST_COLS.indexOf("lld"), iL15 = EST_COLS.indexOf("ll15");
+    const fila = (lld, l15)=>{ const f = estBotBaroFilas({fin:t10, horas:0, bar:ms=>estBotBaroBase(ms)})[0].slice(); f[iLd] = lld; f[iL15] = l15; return estDerivar([f], EST_BOT_BCFG)[0]; };
+    const v0 = fila(4.8, 0), v6 = fila(4.8, 0.6), l0 = estDat.lect, vv0 = estDat.vivo;
+    try{
+      chk(v0.ll === 4.8, "La lectura suelta derivada ya no trae la lluvia del día en «ll» (" + v0.ll + "): revisar esta prueba", "leve");
+      estDat.lect = []; estDat.vivo = v0;
+      const B = estBarLect(), o = estBarEstado(t10 + 2 * 60000, {B, corr:null, pron:null, cfg:EST_BOT_BCFG, U});
+      estDat.vivo = v6;
+      const B6 = estBarLect(), o6 = estBarEstado(t10 + 2 * 60000, {B:B6, corr:null, pron:null, cfg:EST_BOT_BCFG, U});
+      estDat.lect = estBotBaroSerie({fin:t10 - 15 * 60000, horas:30, bar:ms=>estBotBaroBase(ms), ll:ms=>ms === t10 - 15 * 60000 ? 0.4 : 0}); estDat.vivo = v0;
+      const Bh = estBarLect();
+      chk(B.length === 1 && B[0].ll === 0 && o.est !== "lloviendo" && B6[0].ll === 0.6 && o6.est === "lloviendo" && /Está lloviendo \(0,6 mm en las últimas 3 horas\)/.test(o6.txt) && Bh.length === estDat.lect.length + 1 && Bh[Bh.length - 2].ll === 0.4 && Bh[Bh.length - 1].ll === 0,
+        "La lectura del momento (sin historial) con 4,8 mm en el día y nada en 15 min da «" + o.est + "» (ll " + (B[0] && B[0].ll) + "); con 0,6 mm en 15 min «" + o6.est + "»", "media");
+    } finally { estDat.lect = l0; estDat.vivo = vv0; }
+    /* 2) aviso encendido sin la lectura de ayer a esta hora (hueco de 80 min hace 24 h): ni «bajó 0,0 hPa en 24 h» ni «— hPa» */
+    const os = estBotBaroEst(estBotBaroFrente(ts0b, 36, {sin:ms=>Math.abs(ms - (ts0b + 6 * H)) <= 40 * 60000}), ts0b + 30 * H);
+    chk(os.R.F.on && os.x.d24 === null && /\(falta la lectura de ayer a esta hora\)/.test(os.corto) && /en 12 h sin la baja de la tarde/.test(os.corto) && !/0,0 hPa|— hPa/.test(os.txt + " " + os.corto),
+      "Con el aviso encendido y sin la lectura de ayer, el texto dice «bajó 0,0 hPa en 24 h» o no dice que falta: " + os.est + " · " + os.corto.slice(0, 200), "leve");
+    const fC = Date.UTC(2026, 6, 15, 22), tc0 = fC - 30 * H, oc = estBotBaroEst(estBotBaroSerie({fin:fC, horas:80, bar:ms=>estBotBaroBase(ms) - (ms > tc0 ? 4.6 * (ms - tc0) / (24 * H) : 0), kc:()=>0.9, td:ms=>5 - (ms > tc0 ? 5 * (ms - tc0) / (24 * H) : 0), sin:ms=>Math.abs(ms - (fC - 24 * H)) <= 40 * 60000}), fC);
+    chk(oc.est === "costera" && oc.x.d24 === null && /^La presión está baja, pero el aire se secó y el cielo está despejado/.test(oc.txt) && !/0,0 hPa|— hPa|— puntos/.test(oc.txt), "La baja costera sin la lectura de ayer escribe «0,0 hPa» o «— hPa»: " + oc.est + " · " + oc.txt.slice(0, 160), "leve");
+    /* 3) sin radiación (sensor caído): de día y sin ninguna lectura de radiación en 24 h lo dice; de noche con la tarde medida, «de noche» */
+    const Lr = estBotBaroFrente(ts0b, 36).map(x=>Object.assign({}, x, {rs:null})), orr = estBotBaroEst(Lr, ts0b + 34 * H);
+    chk(!orr.R.F.on && orr.x.kc === null && orr.est === "vigilar" && /falta ver el cielo \(sin la radiación de la estación: sin ella no hay aviso de frente\)/.test(orr.txt) && /sin la radiación de la estación/.test(estBarCielo(orr.x, orr.U, orr)) &&
+      estBarSinCieloTx(estBarPreparar(estBotBaroFrente(ts0b, 36)), ts0b + 20 * H, EST_BOT_BCFG) === "de noche, sin la radiación de la tarde",
+      "Sin radiación de la estación la tarjeta lo atribuye a la noche: " + orr.est + " · " + orr.txt.slice(0, 200), "leve");
+    /* 4) «sigue el sistema» de noviembre a marzo: la cifra de verano (la de «sigue» se midió de abril a octubre) */
+    chk(/^Entre noviembre y marzo/.test(estBarCifra("sigue", {temporada:false, inv:false})) && /^En 26 años, 3 de cada 4/.test(estBarCifra("sigue", {temporada:true, inv:false})), "«Sigue el sistema» de noviembre a marzo usa la cifra de abril a octubre", "leve");
+    /* 5) la presión 4 hPa bajo lo normal sin bajar (Δ24 ≈ 0) y con el cielo cubierto: «estable», pero sin «no un sistema» y con lo que falta */
+    const fb = Date.UTC(2026, 6, 15, 18), ob = estBotBaroEst(estBotBaroSerie({fin:fb, horas:60, bar:ms=>estBotBaroBase(ms) - 4, kc:()=>0.3}), fb);
+    chk(ob.est === "estable" && ob.x.anom === -4 && !/no un sistema/.test(ob.txt) && /^Ahora [\d.,]+ hPa/.test(ob.txt) && /Está 4,0 hPa bajo lo normal de estos días, pero eso solo no anuncia lluvia: la presión casi no bajó respecto de ayer a esta hora/.test(ob.txt),
+      "Con la presión 4 hPa bajo lo normal (sin frente) la tarjeta dice «es el ciclo diario normal, no un sistema»: " + ob.est + " · " + ob.txt.slice(0, 200), "leve");
+    const om0 = estBotBaroEst(estBotBaroSerie({fin:fb, horas:60, bar:ms=>estBotBaroBase(ms)}), fb);
+    chk(om0.est === "estable" && /La baja de cada tarde \(unos 2 hPa entre media mañana y el final de la tarde\) es el ciclo diario normal, no un sistema/.test(om0.txt) && !/entre las 11 y las 15/.test(om0.txt), "«Estable» sigue diciendo «entre las 11 y las 15 h» (solo vale de mayo a agosto): " + om0.txt.slice(0, 200), "leve");
+  });
+  await paso("Barómetro · pronóstico y Open-Meteo: la URL lleva pressure_msl y cape (sin pedidos de más), el archivo trae pressure_msl, un día reciente guardado sin presión se pide una vez más y uno antiguo no", async ()=>{
+    const p0 = window.estPronFetch, om0 = window.estOMFetch;
+    try{
+      EST_BOT.baroUrls = []; window.estPronFetch = estBotBaroPron(80); const n0 = EST_BOT.baroUrls.length; await estPronCargar(true);
+      const u = EST_BOT.baroUrls[n0] || "", h = (estDat.pron && estDat.pron.horas || [])[2] || {};
+      chk(EST_BOT.baroUrls.length === n0 + 1 && /[&?]hourly=[^&]*\bpressure_msl\b/.test(u) && /[&?]hourly=[^&]*\bcape\b/.test(u) && /forecast_days=5/.test(u) && h.pm != null && h.cape === 50, "El pronóstico no pide pressure_msl y cape en el mismo pedido o no los guarda (" + u.slice(0, 160) + ")");
+      const c = wlCoords();
+      chk(/hourly=[^&]*pressure_msl/.test(estOMUrlArchivo(c, "2026-10-01", "2026-10-02")) && /hourly=[^&]*pressure_msl/.test(estOMUrlPron(c, 5)), "Los pedidos a Open-Meteo de los días pasados no traen pressure_msl");
+      const t0 = Date.UTC(2026, 9, 1, 3) / 1000, J = {hourly:{time:[], temperature_2m:[], relative_humidity_2m:[], precipitation:[], et0_fao_evapotranspiration:[], pressure_msl:[]}};
+      for(let i = 0; i < 24; i++){ J.hourly.time.push(t0 + i * 3600); J.hourly.temperature_2m.push(10); J.hourly.relative_humidity_2m.push(70); J.hourly.precipitation.push(0); J.hourly.et0_fao_evapotranspiration.push(0.1); J.hourly.pressure_msl.push(1015.04 + i * 0.1); }
+      const r = estOMDesdeJSON(J, "archivo").get("2026-10-01");
+      chk(r && r.pm.length === 24 && r.pm[0][0] === t0 && r.pm[0][1] === 1015 && r.pm[23][1] === 1017.3, "El archivo de Open-Meteo no guarda la presión de cada hora del día (" + (r && r.pm.length) + ")");
+      /* un día de hace 3 días guardado (firme) sin presión: se pide una vez más; después ya no; uno de hace 40 días no */
+      await estBotOMLimpio(); window.estOMFetch = estBotOM({modo:"ok"}); EST_BOT.omPedidos = [];
+      const ck = estOMCk(), f3 = estSumarDias(estHoyF(), -3), f40 = estSumarDias(estHoyF(), -40), viejo = {src:"om", fuente:"archivo", ok:true, horas:24, th:[], t:Date.now(), firme:true};
+      estDat.omCk = ck; for(const f of [f3, f40]){ const rr = Object.assign({f}, viejo); estDat.om.set(f, rr); await _estPutVarios("meta", [{k:"om|" + ck + "|" + f, v:rr}]); }
+      await estOMCargar(f3, f3); await estBotOMEspera(); const n1 = EST_BOT.omPedidos.length;
+      await estOMCargar(f3, f3); await estBotOMEspera(); const n2 = EST_BOT.omPedidos.length;
+      await estOMCargar(f40, f40); await estBotOMEspera(); const n3 = EST_BOT.omPedidos.length;
+      chk(n1 === 1 && Array.isArray(estDat.om.get(f3).pm) && n2 === 1 && n3 === 1, "Un día reciente guardado sin presión no se pidió una sola vez, o se pidió uno antiguo (" + [n1, n2, n3].join(", ") + ")");
+    } finally { window.estPronFetch = p0; window.estOMFetch = om0; await estBotOMLimpio(); }
+  });
+  await paso("Barómetro · en la app: aviso naranja arriba de «Ahora» y en Hoy, tarjeta «Presión» (Δ24, anomalía, cielo, rocío, curva de 72 h con pronóstico, textos corregidos), amarillo solo en Ahora, se guarda prob24 y mm24 del aviso y el cuaderno no cambia", async ()=>{
+    const p0 = window.estPronFetch, g0 = window.guardar, sec0 = estNav().sec, dSin = ()=>JSON.stringify(Object.assign({}, D, {wl:null, climaCache:null}));   // el clima en vivo (wl, climaCache) se refresca solo
+    let ng = 0;
+    try{
+      window.estPronFetch = estBotBaroPron(80);
+      /* frente desde hace 20 h hasta ahora, con el corrimiento de 1,0 hPa contra Open-Meteo y el pronóstico en 80 % (5 mm) */
+      const fin = Math.floor(Date.now() / 900000) * 900000, t1 = Math.floor(fin / H) * H, ts0 = t1 - 20 * H;
+      EST_BOT.modo = "v3"; EST_BOT.filas = estBotBaroFilas({fin, horas:96, bar:ms=>estBotBaroBase(ms) - (ms > ts0 ? 0.22 * (ms - ts0) / H : 0), kc:()=>0.3, td:ms=>5 + (ms > ts0 ? (ms - ts0) / (24 * H) : 0)});
+      await estBotLimpio(); await estBotSinc(); await estBotOMLimpio();
+      const nd = await estBotBaroCorr(1);
+      await estPronCargar(true);
+      const d0 = dSin(); window.guardar = function(){ ng++; return g0.apply(this, arguments); };
+      const o = estBarAhora();
+      chk(nd >= 4 && o && o.corr.v === 1 && o.corr.de === "archivo" && o.modo === "normal" && o.est === "lluvia" && o.R.F.on && o.P.prob24 === 80 && o.P.mm24 === 5, "Con un frente de 20 h, el corrimiento y el pronóstico en 80 % no sale «Lluvia probable» ahora: " + (o ? [o.est, o.corr.v, o.corr.de, o.P && o.P.prob24, o.P && o.P.mm24].join(" · ") : "sin estado"));
+      estNav().sec = "ahora"; await irA("estacion"); await esperarQue(()=>!estDat.sinc, 20000); estPintar(); await pausa(.4);
+      const vis = document.getElementById("estVista"), av = vis && vis.querySelector(".est-avisos .est-av.na"), card = document.getElementById("estKPres");
+      chk(av && /^Lluvia probable/.test(txtDe(av)) && /Pronóstico: 80 % y 5,0 mm en 24 h/.test(txtDe(av)) && av.querySelector("button"), "«Ahora» no muestra arriba el aviso naranja «Lluvia probable» con su botón (" + (av ? txtDe(av).slice(0, 120) : "sin aviso") + ")");
+      const tc = card ? txtDe(card) : "", sv = card && card.querySelector("svg.est-c-pres");
+      const faltaC = [[!!(card && card.querySelector(".est-sem.na")), "estado naranja"], [/Lluvia probable/.test(tc), "«Lluvia probable»"], [/En 24 horas −4,\d hPa/.test(tc), "Δ24"], [/sin la marea\) 4,\d hPa bajo/.test(tc), "anomalía"],
+        [/cubierto · 0,30/.test(tc), "cielo"], [/Rocío en 24 horas \+0,[89] °C/.test(tc), "rocío"], [/hPa en 3 h sin la marea/.test(tc), "tendencia sin marea"]].filter(z=>!z[0]).map(z=>z[1]);
+      chk(!faltaC.length, "La tarjeta «Presión» no muestra: " + faltaC.join(", ") + " («" + tc.slice(tc.indexOf("En 24 horas"), tc.indexOf("En 24 horas") + 220) + "»)");
+      /* revisión del 29-10: las filas son las de la hora del análisis (la misma cifra que el texto), con su hora; el párrafo no repite «Lluvia probable:» */
+      const pTc = txtDe(card && card.querySelector(".est-baro-tx")), aT = (pTc.match(/está (\d+,\d) hPa bajo lo normal/) || [])[1], aF = (tc.match(/sin la marea\) (\d+,\d) hPa bajo/) || [])[1];
+      chk(new RegExp("Hora del análisis " + estHoraMs(o.x.t)).test(tc) && aT && aT === aF && !/^Lluvia probable/.test(pTc) && /^La presión bajó/.test(pTc),
+        "La tarjeta «Presión» muestra dos cifras de la anomalía (texto " + aT + ", fila " + aF + "), no dice la hora del análisis, o el párrafo repite «Lluvia probable»: «" + pTc.slice(0, 120) + "»", "leve");
+      const linea = s=>{ const p = sv && sv.querySelector("path." + s); return !!p && (p.getAttribute("d").match(/L/g) || []).length >= 10; };   // con tramos dibujados, no solo puntos sueltos
+      chk(sv && linea("est-k-l") && linea("est-baro-sm") && linea("est-baro-pr") && /72 horas/.test(sv.getAttribute("aria-label") || "") && /pronóstico \(Open-Meteo\)/.test(tc), "La curva de 72 h no dibuja la línea medida, la sin marea y la pronosticada");
+      const como = card && card.querySelector("details.est-como"), tx = como ? como.textContent : "";
+      chk(/ficha técnica de WeatherLink Live/.test(tx) && !/por confirmar/.test(tx) && !/suele anunciar un frente/.test(tx) && /Unos 9 avisos por temporada/.test(tx) && /corrimiento de la estación \+1,0 hPa/.test(tx), "«Cómo se lee» de la presión sigue con «por confirmar» / «3 hPa en 3 h suele anunciar un frente» o no trae la calibración y el corrimiento");
+      chk(/hPa en 3 h sin marea/.test(txtDe(document.querySelector('.est-franja button[onclick*="estKPres"]'))), "La cifra «Presión» de la franja no da la tendencia sin marea");
+      /* lo guardado para calibrar (meta, nunca D) */
+      await esperarQue(()=>!estBarGuardarAviso._en, 4000); await pausa(.3);
+      const g = await estMetaGet(ST + "|baro|" + o.R.F.av.ini);
+      chk(g && g.prob24 === 80 && g.mm24 === 5 && g.naranja === true && g.tipo === "nuevo", "El aviso encendido no guardó prob24 y mm24 del pronóstico: " + JSON.stringify(g));
+      /* Hoy: franja naranja con «Ver la presión» */
+      await irA("panel"); await pausa(.5);
+      const hb = document.querySelector("#hoyBaro .hoy-baro");
+      chk(hb && /Lluvia probable en las próximas 24 horas/.test(txtDe(hb)) && hb.querySelector('button[onclick="estIrBaro()"]'), "Hoy no muestra la franja naranja del barómetro");
+      /* con «sigue el sistema», el título de la franja queda igual y «Sigue el sistema» va en el texto (antes «Lluvia probable · sigue el sistema en las próximas 24 horas») */
+      const ba0 = window.estBarAhora; let hs = "";
+      try{ window.estBarAhora = ()=>Object.assign({}, o, {tit:"Lluvia probable · sigue el sistema", R:Object.assign({}, o.R, {F:Object.assign({}, o.R.F, {av:Object.assign({}, o.R.F.av, {tipo:"sigue"})})})}); hs = hoyBaroHTML(); }
+      finally { window.estBarAhora = ba0; }
+      chk(/<b>Lluvia probable en las próximas 24 horas<\/b><span>Sigue el sistema\. /.test(hs) && !/sigue el sistema en las próximas/.test(hs), "La franja de Hoy con «sigue el sistema» no dice «Lluvia probable en las próximas 24 horas» + «Sigue el sistema.»: " + hs.slice(0, 200), "leve");
+      if(hb){ await tocar('#hoyBaro button[onclick="estIrBaro()"]', "Ver la presión"); await pausa(.5);
+        chk(nav.tab === "estacion" && estNav().sec === "ahora" && document.getElementById("estKPres"), "«Ver la presión» no abre Estación › Ahora en la tarjeta de presión"); }
+      window.guardar = g0;
+      chk(!ng && dSin() === d0, "Mostrar el aviso del barómetro guardó o cambió el cuaderno (" + ng + " guardar())");
+      /* pantallas: iPad, celular y sol */
+      const ui0 = JSON.stringify(D.ui || {});
+      try{
+        for(const [nom, u] of [["iPad", {movil:"no"}], ["celular", {movil:"si"}], ["sol", {movil:"no", sol:true}]]){
+          D.ui = Object.assign({}, JSON.parse(ui0), {sol:false, grande:false}, u); uiAplicar(); render(); await pausa(.6);
+          estNav().sec = "ahora"; await irA("estacion"); estPintar(); await pausa(.3); estBotZona(document.getElementById("estRaiz"), "Estación › Ahora con el aviso del barómetro (" + nom + ")");
+          await irA("panel"); await pausa(.4); estBotZona(document.getElementById("hoyBaro"), "Hoy, franja del barómetro (" + nom + ")");
+        }
+      } finally { D.ui = JSON.parse(ui0); uiAplicar(); render(); }
+      /* amarillo: pronóstico en 20 % y 1 mm → en abril–octubre «frente» arriba de Ahora y nada en Hoy; de noviembre a marzo «vigilar» */
+      window.estPronFetch = estBotBaroPron(20, {mmh:0.1}); await estPronCargar(true);
+      const o2 = estBarAhora(), temp = o2 && o2.x && o2.x.temporada;
+      chk(o2 && o2.est === (temp ? "frente" : "vigilar") && (temp ? /El pronóstico no da lluvia \(20 % en 24 h\)/.test(o2.txt) : o2.vigF), "Con el pronóstico en 20 % el frente no queda amarillo (o «vigilar» en verano): " + (o2 && o2.est));
+      estNav().sec = "ahora"; await irA("estacion"); estPintar(); await pausa(.3);
+      const av2 = document.querySelector("#estVista .est-avisos .est-av.am"), avN = document.querySelector("#estVista .est-avisos .est-av.na");
+      chk(!avN && (temp ? av2 && /Sistema frontal acercándose/.test(txtDe(av2)) : !/Sistema frontal acercándose/.test(txtDe(document.getElementById("estVista").querySelector(".est-avisos") || document.createElement("i")))), "El amarillo no sale arriba de «Ahora» (o quedó el naranja)");
+      await irA("panel"); await pausa(.4);
+      chk(!document.querySelector("#hoyBaro .hoy-baro"), "Hoy muestra la franja del barómetro sin «Lluvia probable»");
+      /* Ajustes: el corrimiento en uso */
+      await estBotCampo("campo");
+      const ku = document.getElementById("estKUmb");
+      chk(ku && /Corrimiento de la estación en uso: \+1,0 hPa \(mediana de \d+ horas de los últimos 14 días: estación menos ERA5 de Open-Meteo\)/.test(ku.textContent), "Ajustes de los umbrales no muestra el corrimiento en uso");
+    } finally { window.estPronFetch = p0; window.guardar = g0; estNav().sec = sec0 || "ahora"; }
+  });
+  await paso("Barómetro · mejora: la línea de contexto en la tarjeta de helada (abril a octubre) y sin aviso arriba de «Ahora» ni en Hoy", async ()=>{
+    const p0 = window.estPronFetch;
+    try{
+      const fin = Math.floor(Date.now() / 900000) * 900000, t1 = Math.floor(fin / H) * H, tl = t1 - 20 * H;
+      EST_BOT.filas = estBotBaroFilas({fin, horas:60, bar:ms=>estBotBaroBase(ms) + (ms > tl ? Math.min(4.4, 4.4 * (ms - tl) / (16 * H)) : 0), kc:ms=>ms > tl ? 0.9 : 0.3, ll:ms=>(ms > tl - 6 * H && ms <= tl) ? 0.25 : 0});
+      await estBotLimpio(); await estBotSinc(); await estBotOMLimpio(); await estBotBaroCorr(1);
+      window.estPronFetch = estBotBaroPron(10, {mmh:0}); await estPronCargar(true);
+      const o = estBarAhora(), temp = o && o.x && o.x.temporada;
+      chk(o && o.est === "mejora" && o.R.M.av.tras && !o.aviso, "Después de 6 mm y +4,4 hPa no sale «Mejora» (informativa): " + (o && o.est));
+      await estBotCampo("campo");
+      const hel = document.getElementById("estKHelada"), lin = hel && hel.querySelector(".est-baro-hel");
+      chk(temp ? (lin && /Barómetro: la presión sube y el aire se seca \(pasó el sistema\): noche probablemente despejada/.test(txtDe(lin))) : !lin, "La tarjeta de helada no trae la línea del barómetro con «Mejora» (o la trae fuera de abril a octubre)");
+      estNav().sec = "ahora"; await irA("estacion"); estPintar(); await pausa(.3);
+      chk(!document.querySelector("#estVista .est-avisos .est-av.na, #estVista .est-avisos .est-av.am") || !/barómetro|Sistema frontal|Lluvia probable|Mejora/i.test(txtDe(document.querySelector("#estVista .est-avisos"))), "La mejora salió como aviso arriba de «Ahora»");
+      chk(/Mejora: pasó el sistema/.test(txtDe(document.getElementById("estKPres"))), "La tarjeta «Presión» no muestra la mejora");
+    } finally { window.estPronFetch = p0; }
+  });
+  await paso("Barómetro · umbrales: las 20 claves nuevas en Ajustes, 0,45 con dos decimales, pares que pueden ser iguales (≤) y los valores de origen", async ()=>{
+    const e0 = JSON.stringify(D.est || null), claves = Object.keys(EST_UMB_DEF).filter(k=>/^bar/.test(k));
+    try{
+      await estBotCampo("campo");
+      chk(claves.length === 20 && claves.every(k=>document.getElementById("estU_" + k)) && EST_UMB_DEF.barKcNubInv === 0.5 && EST_UMB_DEF.barCaeFr === 1.5 && EST_UMB_DEF.barTdHum === -3 && EST_UMB_DEF.barAnomTra === 2,
+        "Ajustes no tiene las 20 claves del barómetro con sus valores de la calibración v2 (" + claves.length + ")");
+      const det = document.querySelector('#estKUmb details[data-k="estUmb"]'); if(det && !det.open) await tocar('#estKUmb details[data-k="estUmb"] summary', "Ver y cambiar los umbrales");
+      await escribir("estU_barKcNubInv", "0,45", "Frente, mayo a agosto: claridad"); await tocar({texto:/Guardar umbrales/}, "Guardar umbrales"); await pausa(.4);
+      chk(D.est && D.est.umb && D.est.umb.barKcNubInv === 0.45 && document.getElementById("estU_barKcNubInv").value === "0,45" && estUmb().barKcNubInv === 0.45, "0,45 no se guardó con dos decimales (" + JSON.stringify(D.est && D.est.umb) + ")");
+      await escribir("estU_barCaeFr", "3,5", "Frente: bajó en 24 h"); await tocar({texto:/Guardar umbrales/}, "Guardar umbrales"); await pausa(.3);
+      chk(document.getElementById("estU_barCaeFr").getAttribute("aria-invalid") === "true" && /«Frente: bajó en 24 h al menos» no puede ser mayor que «Baja costera y «vigilar»: bajó en 24 h al menos»/.test(txtDe(document.getElementById("estUmbMsg"))) && !("barCaeFr" in D.est.umb),
+        "Un par cruzado del barómetro (bajó 3,5 con la costera en 3) se guardó o no avisó junto al campo");
+      await escribir("estU_barCaeFr", "1,5", "Frente: bajó en 24 h"); await escribir("estU_barAnomInv", "6", "Frente, mayo a agosto: bajo lo normal"); await tocar({texto:/Guardar umbrales/}, "Guardar umbrales"); await pausa(.3);
+      chk(D.est.umb.barAnomInv === 6 && !document.getElementById("estU_barAnomInv").hasAttribute("aria-invalid"), "Un par que puede ser igual (anomalía 6 = la de lluvia probable 6) no se dejó guardar");
+      await tocar({texto:/Poner los valores de origen/}, "Poner los valores de origen"); await tocar({texto:/Guardar umbrales/}, "Guardar umbrales"); await pausa(.3);
+      chk(!Object.keys(D.est.umb || {}).some(k=>/^bar/.test(k)) && document.getElementById("estU_barKcNubInv").value === "0,5", "Los valores de origen no vuelven a las claves del barómetro");
+      revisarPantalla();
+    } finally { if(e0 === "null") delete D.est; else D.est = JSON.parse(e0); }
+  });
+}
+
+/* ===== estación: v163 (30-10-2026) — la lluvia del pluviómetro para el balance de riego (contrato_v163_lluvia.md §12.2) =====
+   Con las lecturas falsas de estBotFilas(40): 12,4 mm el día hoy − 2, de 06:00 a 13:30, 0,4 mm cada 15 min. D.wl.dias parte vacío (la estación repone D.wl al terminar) */
+async function estBotRiegoLl(){
+  const F = "Bot Lluvia E";
+  await paso("Riego v163 · la lluvia del pluviómetro para el balance: 12,4 mm del panel, sugerencia «¿se regó?», corte a las 20:00, día sin lecturas, lo medido manda sobre el modelo, ET₀ y el formato de la v162", async ()=>{
+    const w = wlCfg(), d0 = JSON.stringify(w.dias || {}), r0 = JSON.stringify(D.riego || null), h0 = RIEGO_LL_HOY;
+    try{
+      w.dias = {}; RIEGO_LL_HOY = null;
+      const hoyF = estHoyF(), fLl = estSumarDias(hoyF, -2), f4 = estSumarDias(hoyF, -4), f6 = estSumarDias(hoyF, -6), f45 = estSumarDias(hoyF, -45);
+      const F0 = estBotFilas(40); await estBotCargarF(F0);
+      /* E1: la lluvia del día sale del panel */
+      const e1 = riegoLluviaDia(fLl, F);
+      chk(e1 && e1.mm === 12.4 && e1.src === "est" && e1.hasta === null && e1.txt === "12,4 mm · estación", "E1: la lluvia del día de lluvia no salió del panel de la estación: " + JSON.stringify(e1), "media");
+      /* E2: la sugerencia con las lecturas cada 15 min dentro del horario del riego (cada lectura cubre los 15 min anteriores) */
+      const s1 = riegoSugerencia(fLl, F, "", hoyF, {ini:"08:00", durH:19/6}), s2 = riegoSugerencia(fLl, F, "", hoyF, {ini:"14:00", durH:19/6});
+      chk(s1.tipo === "no" && Math.abs(s1.mm - 5.2) < 1e-9 && s1.txt === "Sugerencia: probablemente no se regó (cayeron 5,2 mm entre 08:00 y 11:10).", "E2: la sugerencia de 08:00 a 11:10 no es «probablemente no se regó (cayeron 5,2 mm…)»: " + JSON.stringify(s1), "media");
+      chk(s2.tipo === "si" && s2.txt === "Sugerencia: probablemente sí se regó (no llovió entre 14:00 y 17:10).", "E2: la sugerencia de 14:00 a 17:10 no es «probablemente sí se regó (no llovió…)»: " + JSON.stringify(s2), "media");
+      const pd = estDat.porDia.get(fLl); estDat.porDia.delete(fLl); let s3;
+      try{ s3 = riegoSugerencia(fLl, F, "", hoyF, {ini:"08:00", durH:19/6}); } finally { estDat.porDia.set(fLl, pd); }
+      chk(s3.tipo === null && /^Sin lecturas cada 15 minutos en el horario del riego/.test(s3.txt), "E2: sin las lecturas de ese día igual dio una sugerencia: " + JSON.stringify(s3), "media");
+      /* E5: lo medido manda sobre el modelo; un día solo del puente con contador completo */
+      w.dias[fLl] = {src:"om", ll:3, et:2.5};
+      const e5 = riegoLluviaDia(fLl, F);
+      chk(e5 && e5.mm === 12.4 && e5.src === "est" && e5.om === 3, "E5: con Open-Meteo en 3 mm la lluvia del día dejó de ser la medida (12,4): " + JSON.stringify(e5), "media");
+      /* E6: la ET₀ del día es la del panel */
+      const e6 = riegoEt0Dia(fLl), r6 = estResDia(fLl);
+      chk(e6 && r6 && e6.et0 === r6.et0 && e6.src === "est", "E6: la ET₀ del día no es la del panel: " + JSON.stringify(e6) + " · " + (r6 ? r6.et0 : "—"), "media");
+      /* E8 (revisión v163): con el «hoy» del balance fijado (como en los bots) ese día es «hoy» también para la ET₀ («hasta las …»); la sugerencia no cuenta la lectura de término + 15 min */
+      RIEGO_LL_HOY = fLl; const e8 = riegoEt0Dia(fLl); RIEGO_LL_HOY = null;
+      chk(e8 && e8.src === "est" && /^\d\d:\d\d$/.test(e8.hasta || ""), "E8: con RIEGO_LL_HOY en el día de lluvia, la ET₀ de ese día no sale como la de hoy («hasta las …»): " + JSON.stringify(e8), "leve");
+      const l8 = estDat.porDia.get(fLl) || [], a8 = new Date(fLl + "T08:00:00").getTime(), b8 = a8 + 195 * 60000;   // 08:00 a 11:15
+      const s8 = riegoSugerencia(fLl, F, "", hoyF, {ini:"08:00", durH:3.25}), mm8 = Math.round(l8.filter(x=>x.ms > a8 && x.ms < b8 + 900000).reduce((s, x)=>s + (+x.ll || 0), 0) * 100) / 100;
+      chk(s8.hasta === "11:15" && s8.mm === mm8, "E8: la sugerencia de 08:00 a 11:15 no suma las lecturas que tocan el riego (sin la de las 11:30): " + JSON.stringify(s8) + " · esperado " + mm8, "leve");
+      /* E7: el formato de la v162 en D.wl.dias, en un día sin el panel (hoy − 45) */
+      const ts45 = Math.round(new Date(f45 + "T19:45:00").getTime() / 1000);
+      w.dias[f45] = {src:"om", parcial:false, ll:8.4, llSrc:"wl", llWl:8.4, llTs:ts45, llOM:2.0, et:1.9};
+      const e7 = riegoLluviaDia(f45, F);
+      chk(e7 && e7.mm === 8.4 && e7.src === "wl" && e7.hasta === "19:45" && e7.txt === "8,4 mm · estación, medida hasta las 19:45" && e7.om === 2, "E7: el día cortado a las 19:45 del puente no sale como medido hasta las 19:45: " + JSON.stringify(e7), "media");
+      w.dias[f45] = {src:"wl", parcial:false, ll:3.0, llSrc:"om", llOM:3.0};
+      const L45 = riegoLunesDe(f45), r = riegoCfg(); r.prog = r.prog || {};
+      r.prog[L45] = {[F]:[{desde:L45, creado:"2026-01-01T00:00:00.000Z", hora:"08:00", base:"ant", et0:4.5/0.7, eq:{"":{n:1, q:0, h:null, nom:""}}, sd:[],
+        cu:{"1":{n:"Bot E", mm:5, h:3.125, pp:1.6, ef:90, dias:[0,1,2,3,4,5,6], etc:4.5, kc:0.7, rep:100, eq:"", s:[["", "Único", 1]], ha:1}}}]};
+      const B45 = riegoBalanceSemana(F, L45, hoyF, {sinMemo:true}), dv = document.createElement("div"); dv.innerHTML = riegoSemFundoHTML(F, B45, null, hoyF);
+      const cel = dv.querySelector(`[data-rgs-dia="${f45}"]`);
+      chk(riegoLluviaDia(f45, F) === null && cel && /Sin lluvia medida/.test(txtDe(cel)), "E7: un día sin contador con la lluvia del modelo (3,0 mm) pasó por medido o la celda no dice «Sin lluvia medida»: «" + txtDe(cel) + "»", "media");
+      w.dias[f45] = {src:"wl", parcial:false, ll:5.0};
+      const e7c = riegoLluviaDia(f45, F);
+      chk(e7c && e7c.mm === 5 && e7c.src === "wl" && e7c.hasta === null, "E7: un día guardado antes de la v162 (5,0 mm del puente) no sale como medido: " + JSON.stringify(e7c), "media");
+      /* E3: la estación se cortó a las 20:00 del día hoy − 4 */
+      const lim = estLimitesDia(f4).a + 20 * 3600; await estBotCargarF(F0.filter(x=>!(x[1] === f4 && x[0] > lim)));
+      const e3 = riegoLluviaDia(f4, F);
+      chk(e3 && e3.src === "est" && e3.hasta === "20:00" && /medida hasta las 20:00/.test(e3.txt), "E3: el día cortado a las 20:00 no dice «medida hasta las 20:00»: " + JSON.stringify(e3), "media");
+      /* E4: un día sin ninguna lectura no tiene lluvia medida, aunque el modelo diga 5 mm (que queda de referencia) */
+      await estBotCargarF(F0.filter(x=>x[1] !== f6));
+      const e4a = riegoLluviaDia(f6, F); w.dias[f6] = {src:"om", ll:5};
+      chk(e4a === null && riegoLluviaDia(f6, F) === null && riegoLlOM(f6) === 5, "E4: un día sin lecturas tomó una lluvia como medida o perdió la referencia del modelo: " + JSON.stringify(e4a), "media");
+    } finally { RIEGO_LL_HOY = h0; w.dias = JSON.parse(d0); const r1 = JSON.parse(r0); if(r1 == null) delete D.riego; else D.riego = r1; guardar(); }
+  });
+}
+
+/* ===== estación: v162 (30-10-2026) — anemómetro (racha que vuelve a girar = calma), promedio del día y «Elegir período» ===== */
+function estBotAnioY(){ const h = estHoyF(); return h.slice(5) >= "07-10" ? +h.slice(0, 4) : +h.slice(0, 4) - 1; }   // el año del último 10-07 que ya pasó
+function estBotCeroF(r){ r[EST_I.v10] = 0; r[EST_I.vu] = 0; r[EST_I.vr] = 0; r[EST_I.dv] = null; r[EST_I.dr] = null; }
+async function estBotCargarF(F){ EST_BOT.modo = "v3"; EST_BOT.filas = F; await estBotLimpio(); await estBotSinc(); await estPronCargar(true); return F; }
+async function estBotV162(){
+  const ST = EST_BOT.st, M15 = 900, dv = h=>{ const d = document.createElement("div"); d.innerHTML = h; return d; };
+  await paso("Anemómetro (v162): con ráfagas el 0 es calma; solo se sospecha con todo en 0 por muchas horas (6 h de sol fuerte o un día entero)", async ()=>{
+    /* 1. la captura de Manuel: todo en 0 desde la tarde anterior hasta las 13:30 (78 lecturas, 650 W/m² desde las 09:30); después gira solo (1,7 y ráfagas de 3,7 y 10,3) */
+    const fX = estSumarDias(estHoyF(), -1), aX = estLimitesDia(fX).a, fin = aX + 15 * 3600, z1 = aX + 13.5 * 3600, z0 = z1 - 77 * M15, ms = fin * 1000 + 5 * 60000;
+    const F = estBotFilas(3, fin);
+    F.forEach(r=>{ const ts = r[0];
+      if(ts > fin - 86400 && ts < z0){ r[EST_I.v10] = 1; r[EST_I.vu] = 1; r[EST_I.vr] = 2; r[EST_I.dv] = null; r[EST_I.dr] = null; }   // el resto de las 24 h, brisa bajo 3 km/h
+      else if(ts >= z0 && ts <= z1){ estBotCeroF(r); if(ts >= aX + 9.5 * 3600) r[EST_I.rs] = 650; }
+      else if(ts > z1){ r[EST_I.v10] = 1.7; r[EST_I.vu] = 1.7; r[EST_I.vr] = ts === aX + 14.5 * 3600 ? 10.3 : 3.7; r[EST_I.dv] = null; r[EST_I.dr] = null; } });
+    await estBotCargarF(F);
+    const zr = estDat.lect.filter(x=>x.ts >= z0 && x.ts <= z1), Ro = estDatosRosa(estDat.lect.filter(x=>x.ts > fin - 86400)), AN = estBotEnHora(ms, ()=>estAnemo());
+    estNav().rosa = "dia"; const tR = txtDe(dv(estBotEnHora(ms, ()=>estRosaCuerpo()))), apt = zr.filter(x=>x.rs >= 650 && estBotAptaA(x));
+    chk(zr.length === 78 && !estDat.lect.some(x=>x.anemo) && AN.estado === "ok", "La captura de Manuel (78 lecturas en 0 y después ráfagas de 3,7 y 10,3 km/h) sigue marcando el anemómetro como dudoso (" + estDat.lect.filter(x=>x.anemo).length + " lecturas, estado " + AN.estado + ")", "grave");
+    chk(Ro.sinDato === 0 && Ro.vrmax === 10.3 && /Todo el período en calma \(viento bajo \d km\/h\)\. Ráfaga más fuerte: 10,3 km\/h\./.test(tR) && !/Sin dato fiable/.test(tR), "La rosa de la captura no dice «Todo el período en calma… Ráfaga más fuerte: 10,3 km/h» sin «Sin dato fiable»: «" + tR.slice(-160) + "»", "media");
+    chk(apt.length >= 4 && apt.every(x=>x.sem === "ok"), "Las lecturas en 0 de día con sol de la captura no quedan aptas (calma de día): " + apt.filter(x=>x.sem !== "ok").length + " de " + apt.length, "media");
+    /* 2. racha abierta de 7 h de sol (28 lecturas a 650 W/m² hasta la última): «duda», aviso y rosa «¿anemómetro trabado?» */
+    const s1 = estSol(fX), f2 = Math.floor((aX + (s1.mediodia - 120) * 60) / M15) * M15, ms2 = f2 * 1000 + 5 * 60000, F2 = estBotFilas(3, f2);
+    for(let k = F2.length - 28; k < F2.length; k++){ estBotCeroF(F2[k]); F2[k][EST_I.rs] = 650; }
+    await estBotCargarF(F2);
+    const A2 = estBotEnHora(ms2, ()=>estAnemo()), av2 = estBotEnHora(ms2, ()=>estAvisoAnemo()), R2 = estDatosRosa(estDat.lect.filter(x=>x.ts > f2 - 86400)), t2 = txtDe(dv(estBotEnHora(ms2, ()=>estRosaCuerpo())));
+    chk(A2.estado === "duda" && av2 && /^Anemómetro: marca 0 desde las/.test(av2[2]) && /^Seis horas de sol fuerte sin una sola ráfaga es muy raro\./.test(av2[3]) && R2.sinDato === 28 && /Sin dato fiable \(¿anemómetro trabado\?\): 28 lecturas, fuera de la rosa\./.test(t2),
+      "7 horas en 0 con sol fuerte hasta la última lectura no dan «duda» con el aviso y la rosa «(¿anemómetro trabado?)» (" + A2.estado + ", " + R2.sinDato + " sin dato)", "grave");
+    /* revisión v162: la rosa con lecturas dudosas no agrega «Ráfaga más fuerte» ni dice «todo el período» (8 lecturas en calma con ráfagas de 3,7 km/h y 88 en 0 con sol) */
+    const F2b = estBotFilas(3, f2);
+    for(let k = F2b.length - 96; k < F2b.length; k++){ if(k < F2b.length - 88){ F2b[k][EST_I.v10] = 1; F2b[k][EST_I.vu] = 1; F2b[k][EST_I.vr] = 3.7; F2b[k][EST_I.dv] = null; F2b[k][EST_I.dr] = null; } else { estBotCeroF(F2b[k]); F2b[k][EST_I.rs] = 650; } }
+    await estBotCargarF(F2b);
+    const R2b = estDatosRosa(estDat.lect.filter(x=>x.ts > f2 - 86400)), t2b = txtDe(dv(estBotEnHora(ms2, ()=>estRosaCuerpo())));
+    chk(R2b.sinDato > 0 && R2b.n > 1 && R2b.imax < 0 && /En las \d+ lecturas con dato, todo en calma \(viento bajo \d km\/h\)\./.test(t2b) && !/Todo el período en calma|Ráfaga más fuerte/.test(t2b) && /Sin dato fiable \(¿anemómetro trabado\?\)/.test(t2b),
+      "La rosa con " + R2b.sinDato + " lecturas dudosas y " + R2b.n + " con dato dice «todo el período» o agrega la ráfaga: «" + t2b.slice(-220) + "»", "leve");
+    /* 3. racha abierta de 4 h de sol: ya no se sospecha (antes sí) y Datos dice cuándo avisa */
+    const F3 = estBotFilas(3, f2); for(let k = F3.length - 16; k < F3.length; k++){ estBotCeroF(F3[k]); F3[k][EST_I.rs] = 650; }
+    await estBotCargarF(F3);
+    const A3 = estBotEnHora(ms2, ()=>estAnemo()), fila3 = estBotEnHora(ms2, ()=>estAnemoFila());
+    chk(A3.estado === "ok" && A3.n === 16 && !estDat.lect.some(x=>x.anemo) && /se avisa si sigue así 6 horas de sol fuerte o un día entero/.test(fila3), "4 horas en 0 con sol fuerte todavía se marcan como anemómetro dudoso, o Datos no dice «se avisa si sigue así 6 horas de sol fuerte o un día entero» («" + fila3 + "»)", "media");
+    /* 4 a 6. rachas armadas sobre lecturas derivadas (sin sincronizar): cerrada larga, cerrada corta, ráfagas sin promedio, 24 y 48 h nublado */
+    const der = (n, sol, gira)=>{ const G = estBotFilas(3), m = G.length - (gira ? 8 : 0);
+      for(let k = m - n; k < m; k++){ estBotCeroF(G[k]); G[k][EST_I.rs] = k < m - n + sol ? 650 : 100; }
+      if(gira) for(let k = m; k < G.length; k++){ G[k][EST_I.v10] = 2; G[k][EST_I.vu] = 2; G[k][EST_I.vr] = 4; }
+      return {L:estDerivar(G, wlEtCfg()), m:m}; };
+    const c26 = der(104, 20, true), c20 = der(80, 20, true);
+    chk(c26.L.slice(c26.m - 104, c26.m).every(x=>x.anemo === "duda") && c26.L.slice(c26.m).every(x=>!x.anemo) && c20.L.every(x=>!x.anemo),
+      "Una racha cerrada de 26 h con 5 h de sol no queda «duda», o una de 20 h con 5 h de sol (que después gira) se marca", "media");
+    const G5 = estBotFilas(3); for(let k = G5.length - 8; k < G5.length; k++){ estBotCeroF(G5[k]); G5[k][EST_I.vr] = 2.4; }
+    const L5 = estDerivar(G5, wlEtCfg()).slice(-8), R5 = estDatosRosa(L5);
+    chk(L5.every(x=>!estVientoCero(x) && !x.anemo) && R5.n === 8 && R5.calma === 8 && R5.sinDato === 0, "Lecturas con viento y promedio en 0 pero ráfaga de 2,4 km/h se toman como anemómetro en 0 (la rosa: " + R5.n + " con dato, " + R5.sinDato + " sin dato)", "media");
+    const a24 = der(96, 0, false), a48 = der(192, 0, false);
+    chk(a24.L.slice(-96).every(x=>x.anemo === "duda") && !a24.L[a24.L.length - 97].anemo && a48.L.slice(-192).every(x=>x.anemo === "malo") && estAnemoNivel(96, 0, false) === "duda" && estAnemoNivel(192, 0, false) === "malo" && estAnemoNivel(96, 20, true) === "duda" && estAnemoNivel(80, 24, true) === "ok",
+      "24 h en 0 nublado (abierta) no da «duda» o 48 h no da «malo»", "media");
+    /* 7. el resumen guardado dice lo mismo que cada lectura: racha de las 14:00 a las 09:00 del día siguiente con 6 h de sol, que termina girando */
+    const fB = estSumarDias(estHoyF(), -6), fA = estSumarDias(fB, -1), aA = estLimitesDia(fA).a, aB = estLimitesDia(fB).a, F7 = estBotFilas(10);
+    F7.forEach(r=>{ const ts = r[0]; if(ts >= aA + 14 * 3600 && ts < aB + 9 * 3600){ estBotCeroF(r); r[EST_I.rs] = ts < aA + 20 * 3600 ? 650 : 0; } });
+    await estBotCargarF(F7);
+    const rA = await _estGet("dias", ST + "|" + fA), lA = estDat.porDia.get(fA) || [];
+    chk(!estDat.lect.some(x=>x.anemo) && rA && rA.r.anN === 0 && Math.abs(rA.r.apt - 0.25 * lA.filter(x=>x.sem === "ok").length) < 1e-9 && EST_CALC_V === 5 && /\|c5$/.test(rA.cfg),
+      "La racha que cruza la medianoche y termina girando: el resumen guardado del " + fA + " no dice lo mismo que sus lecturas (anN " + (rA && rA.r.anN) + ", apt " + (rA && rA.r.apt) + ", versión " + (rA && rA.cfg) + ")", "media");
+    if(rA){ await _estPutVarios("dias", [Object.assign({}, rA, {r:Object.assign({}, rA.r, {anN:5, apt:0})})]); estDat.listo = false; await estCargarLocal();
+      const rA2 = await _estGet("dias", ST + "|" + fA);
+      chk(rA2 && rA2.r.anN === 0 && rA2.r.apt === rA.r.apt, "Un resumen guardado con otra marca del anemómetro (anN 5) no se rehízo con las lecturas de la memoria", "media"); }
+    /* 8. barómetro: el anemómetro gira (ráfagas de 2,4) pero hay calma: el aviso dice «Viento en calma.» */
+    const H = EST_BOT_BH, t0 = Date.UTC(2026, 6, 14, 6), LB = estBotBaroFrente(t0, 36);
+    LB.forEach(x=>{ x.v10 = 0; x.vu = 0; x.vr = 2.4; x.dv = null; delete x.anemo; });
+    const eB = estBotBaroEst(LB, t0 + 20 * H);
+    chk(eB.est === "frente" && / Viento en calma\./.test(eB.txt), "Con el anemómetro girando y calma, el texto del frente no dice «Viento en calma.» (" + eB.est + ": «" + String(eB.txt).slice(-120) + "»)", "leve");
+    /* revisión v162: el anemómetro gira y hay 12 km/h, pero no llega la dirección: no es «Viento en calma.» */
+    const LB2 = estBotBaroFrente(t0, 36); LB2.forEach(x=>{ x.v10 = 12; x.vu = 12; x.vr = 20; x.dv = null; delete x.anemo; });
+    const eB2 = estBotBaroEst(LB2, t0 + 20 * H);
+    chk(eB2.est === "frente" && / Viento de 12 km\/h \(promedio de 10 minutos\)\./.test(eB2.txt) && !/Viento en calma/.test(eB2.txt), "Con viento de 12 km/h sin dirección el texto del frente no dice «Viento de 12 km/h (promedio de 10 minutos).» (" + eB2.est + ": «" + String(eB2.txt).slice(-120) + "»)", "leve");
+  });
+  await paso("Ahora: promedio de hoy en la franja y las tarjetas (v162): media de las lecturas desde las 00:00, «prom. N h» con huecos, viento sin el anemómetro dudoso, radiación con la noche", async ()=>{
+    const fX = estSumarDias(estHoyF(), -1), aX = estLimitesDia(fX).a, fin = aX + 14 * 3600, ms = fin * 1000 + 5 * 60000;
+    const media = (rows, i)=>{ const v = rows.map(r=>r[i]).filter(x=>x != null && isFinite(x)); return v.length ? v.reduce((s, x)=>s + x, 0) / v.length : null; };
+    const ver = m=>estBotEnHora(m || ms, ()=>({d:dv(vEstAhora()), P:estPromHoy(), D0:estHoyResumen()}));
+    const fr = (V, id)=>txtDe(V.d.querySelector('.est-franja button[onclick*="' + id + '"] em.est-fr-p'));
+    const fila = (V, id)=>{ const c = V.d.querySelector("#" + id), dt = c && [...c.querySelectorAll("dt")].find(e=>/^Promedio de hoy/.test(txtDe(e))); return dt ? [txtDe(dt), txtDe(dt.nextElementSibling)] : ["", ""]; };
+    let F = estBotFilas(3, fin); await estBotCargarF(F);
+    let hoyR = F.filter(r=>estFechaLocal(r[0]) === fX), V = ver();
+    const mt = media(hoyR, EST_I.t), mh = media(hoyR, EST_I.hr), mv = media(hoyR, EST_I.v10), mb = media(hoyR, EST_I.bar), mr = media(hoyR, EST_I.rs);
+    const esF = ["prom. hoy " + estFu(mt, 1, "°C"), "prom. hoy " + estFu(mh, 0, "%"), "prom. hoy " + estFu(mv, 1, "km/h"), "total desde 00:00", "total desde 00:00", "prom. hoy " + estFu(mb, 1, "hPa")];
+    const daF = ["estKTemp", "estKHum", "estKViento", "estKLluvia", "estKET", "estKPres"].map(id=>fr(V, id));
+    chk(hoyR.length === 57 && daF.every((t, i)=>t === esF[i]), "La 2.ª línea de la franja no es el promedio de hoy calculado aparte: " + daF.map((t, i)=>t === esF[i] ? "" : "«" + t + "» (esperado «" + esF[i] + "»)").filter(Boolean).join(", "), "media");
+    const fh = fila(V, "estKHum"), fv = fila(V, "estKViento"), fp = fila(V, "estKPres"), frs = fila(V, "estKRad"), tp = txtDe(V.d.querySelector("#estKTemp .est-rango-p"));
+    chk(tp === "promedio de hoy " + estF1(mt) + "°" && fh[1] === estFu(mh, 0, "%") && fv[0] === "Promedio de hoy" && fv[1] === estFu(mv, 1, "km/h") && fp[1] === estFu(mb, 1, "hPa") && frs[0] === "Promedio de hoy (con la noche)" && frs[1] === estFu(mr, 0, "W/m²"),
+      "Las tarjetas no traen el promedio de hoy calculado aparte («" + tp + "», humedad «" + fh[1] + "», viento «" + fv.join(" ") + "», presión «" + fp[1] + "», radiación «" + frs.join(" ") + "»)", "media");
+    const P = V.P, D0 = V.D0, tolR = 0.5 + 0.05e6 / (Math.max(1, P.rs.n) * 900);
+    chk(D0 && Math.abs(P.t.v - D0.tmed) <= 0.05 && Math.abs(P.hr.v - D0.hrmed) <= 0.05 && Math.abs(P.bar.v - D0.barmed) <= 0.05 && Math.abs(P.rs.v - D0.rsmj * 1e6 / (P.rs.n * 900)) <= tolR,
+      "El promedio de hoy no cuadra con el resumen del día (temperatura " + estF2(P.t.v) + " / " + (D0 && D0.tmed) + ", radiación " + estF1(P.rs.v) + " / " + (D0 && estF1(D0.rsmj * 1e6 / (P.rs.n * 900))) + ")", "media");
+    /* con un hueco de 5 h (03:00 a 08:00): «prom. 9 h» (revisión v162; antes «prom. de 9 h») y «(9 de 14 h con lecturas)»; con 1,5 h, nada */
+    const sinHueco = (a, b)=>estBotFilas(3, fin).filter(r=>!(r[0] >= aX + a * 3600 && r[0] < aX + b * 3600));
+    F = sinHueco(3, 8); await estBotCargarF(F); hoyR = F.filter(r=>estFechaLocal(r[0]) === fX); V = ver();
+    const mt2 = media(hoyR, EST_I.t);
+    chk(hoyR.length === 37 && fr(V, "estKTemp") === "prom. 9 h: " + estFu(mt2, 1, "°C") && /\(9 de 14 h con lecturas\)/.test(txtDe(V.d.querySelector("#estKTemp .est-rango-p"))) && /\(9 de 14 h con lecturas\)/.test(fila(V, "estKHum")[0]),
+      "Con 5 h sin lecturas la franja no dice «prom. 9 h: …» o las tarjetas no dicen «(9 de 14 h con lecturas)» («" + fr(V, "estKTemp") + "»)", "media");
+    F = sinHueco(3, 4.5); await estBotCargarF(F); V = ver();
+    chk(/^prom\. hoy /.test(fr(V, "estKTemp")) && !/con lecturas/.test(txtDe(V.d)), "Con 1,5 h sin lecturas igual dice cuántas horas cubre el promedio", "leve");
+    /* viento con 7 h del anemómetro dudoso: el promedio no las cuenta */
+    F = estBotFilas(3, fin); for(let k = F.length - 28; k < F.length; k++){ estBotCeroF(F[k]); F[k][EST_I.rs] = 650; }
+    await estBotCargarF(F); hoyR = F.filter(r=>estFechaLocal(r[0]) === fX); V = ver();
+    const mv2 = media(hoyR.slice(0, hoyR.length - 28), EST_I.v10), fv2 = fila(V, "estKViento");
+    chk(estDat.lect.slice(-28).every(x=>x.anemo) && /sin las lecturas del anemómetro dudoso/.test(fv2[0]) && fv2[1] === estFu(mv2, 1, "km/h") && V.P.vAn === 28, "El promedio del viento cuenta las lecturas del anemómetro dudoso («" + fv2.join(" ") + "», esperado " + estFu(mv2, 1, "km/h") + ")", "media");
+    /* revisión v162: todas las lecturas de hoy del anemómetro dudoso: la fila no dice «1 de 14 h con lecturas» (son 0) */
+    F = estBotFilas(3, fin); F.forEach(r=>{ if(r[0] >= aX){ estBotCeroF(r); r[EST_I.rs] = 650; } });
+    await estBotCargarF(F); V = ver();
+    const fv3 = fila(V, "estKViento");
+    chk(V.P.v.n === 0 && fv3[0] === "Promedio de hoy (sin las lecturas del anemómetro dudoso)" && fv3[1] === "—" && fr(V, "estKViento") === "prom. hoy —", "Con todas las lecturas de hoy del anemómetro dudoso la fila del viento dice «" + fv3.join(" ") + "» (esperado «Promedio de hoy (sin las lecturas del anemómetro dudoso) —», " + V.P.v.n + " lecturas válidas)", "leve");
+    /* sin lecturas de hoy (la última es de ayer a las 23:45): «prom. hoy —» y nada raro */
+    F = estBotFilas(3, aX - M15); await estBotCargarF(F); V = ver(aX * 1000 + 5 * 60000);
+    const t5 = txtDe(V.d);
+    chk(["estKTemp", "estKHum", "estKViento", "estKPres"].every(id=>fr(V, id) === "prom. hoy —") && !/\b(NaN|undefined|null|Infinity)\b/.test(t5) && !V.d.querySelector(".est-rango-p"), "Sin lecturas de hoy la franja no dice «prom. hoy —» o aparece un valor raro", "media");
+    /* estación atrasada: la 1.ª línea «dato de las …» en rojo y la 2.ª (del historial) no */
+    F = estBotFilas(3, fin); await estBotCargarF(F); V = ver(fin * 1000 + 95 * 60000);
+    const caja = document.createElement("div"); caja.className = "est-vista est-viejo"; caja.style.cssText = "position:absolute;left:-9999px;top:0;width:1100px"; caja.appendChild(V.d); document.body.appendChild(caja);
+    try{ const b = V.d.querySelector('.est-franja button[onclick*="estKTemp"]'), e1 = b && b.querySelector("em:not(.est-fr-p)"), e2 = b && b.querySelector("em.est-fr-p"), c1 = e1 && getComputedStyle(e1), c2 = e2 && getComputedStyle(e2);
+      chk(e1 && e2 && /^dato de las/.test(txtDe(e1)) && /^prom\. hoy /.test(txtDe(e2)) && c1.color !== c2.color && +c2.fontWeight < 600, "Con la estación atrasada la 2.ª línea (promedio) sale en rojo como la 1.ª, o la 1.ª no dice «dato de las…»", "leve"); }
+    finally { caja.remove(); }
+    /* 1180 × 820 y 375 px: las 2.ª líneas sin cortar, las filas nuevas dentro de la tarjeta y la barra de la temperatura intacta */
+    await estBotCargarF(estBotFilas(3));
+    const ui0 = JSON.stringify(D.ui || {}), medir = (nom)=>{ const raiz = document.getElementById("estRaiz"), malos = [];
+      document.querySelectorAll("#estVista .est-franja em.est-fr-p").forEach(e=>{ if(e.scrollWidth > e.clientWidth + 1) malos.push("franja «" + txtDe(e) + "»"); });
+      document.querySelectorAll("#estVista dd[data-prom]").forEach(e=>{ const c = e.closest(".est-card") || raiz, R = c.getBoundingClientRect(), r = e.getBoundingClientRect(); if(r.right > R.right + 1 || r.left < R.left - 1) malos.push("fila «" + txtDe(e) + "»"); });
+      const rp = document.querySelector("#estKTemp .est-rango-p"), rb = document.querySelector("#estKTemp .est-rango-b");
+      if(!rp || !visible(rp)) malos.push("sin «promedio de hoy» en Temperatura"); if(!rb || rb.getBoundingClientRect().width <= 100) malos.push("barra de la temperatura de " + (rb ? Math.round(rb.getBoundingClientRect().width) : 0) + " px");
+      chk(!malos.length && document.querySelectorAll("#estVista .est-franja em.est-fr-p").length === 6, "Promedio de hoy en «Ahora» (" + nom + "): " + malos.slice(0, 4).join(", "), "media"); };
+    try{
+      estNav().sec = "ahora"; await irA("estacion"); estPintar(); await pausa(.4); medir("1180 px");
+      D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar(); render(); await pausa(.6);
+      await irA("estacion"); estPintar(); await pausa(.4);
+      const raiz = document.getElementById("estRaiz"), w0 = raiz ? raiz.style.width : ""; if(raiz){ raiz.style.width = "375px"; raiz.style.maxWidth = "375px"; } await pausa(.3);
+      medir("375 px"); if(raiz){ raiz.style.width = w0; raiz.style.maxWidth = ""; }
+      /* revisión v162: a 375 px con texto grande y un hueco de 5 h, «prom. 15 h: 1.017,9 hPa» de Presión tampoco se corta (antes «prom. de 12 h: …» sí) */
+      D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:true}); uiAplicar(); render(); await pausa(.6); await irA("estacion");
+      const fH = aX + 20 * 3600; await estBotCargarF(estBotFilas(3, fH).filter(r=>!(r[0] >= aX + 3 * 3600 && r[0] < aX + 8 * 3600)));
+      estBotEnHora(fH * 1000 + 5 * 60000, ()=>estPintar());
+      const raizG = document.getElementById("estRaiz"); if(raizG){ raizG.style.width = "375px"; raizG.style.maxWidth = "375px"; } await pausa(.3);
+      const ePr = document.querySelector('#estVista .est-franja button[onclick*="estKPres"] em.est-fr-p'), malG = [];
+      document.querySelectorAll("#estVista .est-franja em.est-fr-p").forEach(e=>{ if(e.scrollWidth > e.clientWidth + 1) malG.push("«" + txtDe(e) + "» (" + e.scrollWidth + " de " + e.clientWidth + " px)"); });
+      chk(ePr && /^prom\. \d\d h: /.test(txtDe(ePr)) && !malG.length, "A 375 px con texto grande y un hueco de 5 h, la 2.ª línea de la franja se corta: " + (malG.join(", ") || "«" + (ePr ? txtDe(ePr) : "sin Presión") + "»"), "leve");
+      if(raizG){ raizG.style.width = ""; raizG.style.maxWidth = ""; }
+      await estBotCargarF(estBotFilas(3));
+    } finally { D.ui = JSON.parse(ui0); uiAplicar(); render(); }
+  });
+}
+async function estBotGR(){
+  const OM0 = window.estOMFetch, med = EST_BOT.medidas = EST_BOT.medidas || {}, Y = estBotAnioY(), hoyF = estHoyF(), ayer = estSumarDias(hoyF, -1), M = (f, d)=>estSumarDias(f, d);
+  const R1 = [Y + "-03-05", Y + "-07-10"], R2 = [M(hoyF, -3), M(hoyF, -3)], R3 = [Y + "-03-05", Y + "-03-05"], R4 = [(Y - 1) + "-12-15", Y + "-01-15"], R5 = [M(hoyF, -60), M(hoyF, -20)], R6 = [M(hoyF, -730), hoyF], R7 = [M(hoyF, -7), hoyF];
+  const listo = ()=>esperarQue(()=>!document.getElementById("estGCarga") && !estGrafLargoCargar._en && !estGrafLargoCargar._enR && !estOMCargar._en && !estFrioCalcular._en && estDat.omEst.estado !== "cargando", 40000);
+  const ver = async (v, r)=>{ const N = estNav(); N.var = v; N.per = "rango"; N.rango = {desde:r[0], hasta:r[1]}; estGraf(v, "rango"); for(let i = 0; i < 2; i++){ await listo(); await pausa(.15); } estGrafPos(); await pausa(.1); return EST_GRAF.estGPrin || null; };
+  const tit = ()=>txtDe(document.getElementById("estGTit")), dmy = f=>dmyDe(f);
+  const pon = (id, txt)=>{ const t = document.getElementById(id); t.value = txt; t.dispatchEvent(new Event("input", {bubbles:true})); return t; };   // escribe sin el cursor del bot (para medir los 600 ms)
+  const salir = t=>{ t.dispatchEvent(new Event("blur")); t.dispatchEvent(new FocusEvent("focusout", {bubbles:true})); };   // salir de la casilla (con el panel del navegador de pruebas escondido, focus()/blur() no disparan eventos)
+  try{
+  window.estOMFetch = estBotOM({modo:"ok"});
+  await paso("Período: sin «9 meses», «1 año» se queda y «Elegir período» va al final (v162)", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); await estBotLimpio(); await estBotOMLimpio(); EST_BOT.omPedidos = []; await estBotSinc(); await estBotCampo("graf");
+    estGraf("temp", "24h"); await pausa(.2);
+    const chips = [...document.querySelectorAll('#estGCtrl .est-chips[aria-label="Período del gráfico"] .chip')];
+    chk(EST_GPERS.map(z=>z[0]).join() === "24h,7d,30d,3m,6m,1a" && !("9m" in EST_PER_DIAS) && chips.map(c=>c.dataset.v).join() === "24h,7d,30d,3m,6m,1a,rango" && txtDe(chips[chips.length - 1]) === "Elegir período",
+      "Los períodos no son 24 horas, 7 y 30 días, 3 y 6 meses, 1 año y «Elegir período» al final: " + chips.map(c=>txtDe(c)).join(", "), "media");
+    estGrafPer("9m"); await estBotGrafListo();
+    chk(estNav().per === "1a" && document.querySelector('#estGCtrl .chip.act[data-v="1a"]') && /· el último año$/.test(tit()), "«9 meses» (de la memoria o la demo) no pasa a «1 año» con su chip y su título («" + tit() + "»)", "media");
+  });
+  await paso("Elegir período: dibuja solo 600 ms después del último cambio, con las validaciones en la tarjeta (sin «Ver» ni alert)", async ()=>{
+    delete estNav().rango; estGraf("temp", "24h"); await estBotGrafListo();   // la primera vez que se toca «Elegir período» (el período elegido se queda mientras la app está abierta)
+    const nA0 = R.alerts.length, gp0 = window.estGrafPos; let dib = 0;
+    window.estGrafPos = function(){ dib++; return gp0.apply(this, arguments); };
+    try{
+      await tocar('#estGCtrl .chip[data-v="rango"]', "Elegir período"); await listo();
+      const d29 = M(hoyF, -29), rg = document.getElementById("estRango"), err = ()=>document.getElementById("estRangoErr"), nota = ()=>txtDe(document.getElementById("estRangoNota"));
+      chk(rg && v("estR_d") === d29 && v("estR_h") === hoyF && tit().endsWith("· " + estRangoTxt(d29, hoyF)) && /el gráfico se dibuja solo/.test(nota()) && !rg.querySelector("button") && err().hidden,
+        "«Elegir período» no abre con los últimos 30 días, su título, la nota de ayuda y sin botón «Ver» («" + tit() + "»)", "media");
+      /* una sola vez: «Desde» y, antes de 200 ms, «Hasta» → un solo dibujo */
+      dib = 0; pon("estR_d_t", dmy(M(hoyF, -20))); await esperar(120); pon("estR_h_t", dmy(M(hoyF, -10))); await esperar(800);
+      chk(dib === 1 && tit().endsWith("· " + estRangoTxt(M(hoyF, -20), M(hoyF, -10))), "Cambiar las dos fechas seguidas dibujó " + dib + " veces (se esperaba 1) o el título no es el del período («" + tit() + "»)", "media");
+      /* escribir «Desde» como una persona: a los 300 ms no cambió nada, a los 750 sí */
+      let tEv = 0; const marca = ()=>{ tEv = Date.now(); }; document.getElementById("estRango").addEventListener("input", marca, true);
+      const ti0 = tit(); await escribir("estR_d_t", dmy(R1[0]), "Desde"); const t0 = tEv || Date.now();
+      await esperar(Math.max(0, t0 + 300 - Date.now())); const a300 = tit();
+      await esperar(Math.max(0, t0 + 750 - Date.now())); const a750 = tit();
+      chk(a300 === ti0 && a750.endsWith("· del 05-03 al " + estFFecha(M(hoyF, -10))), "Al escribir «Desde» el gráfico no esperó los 600 ms (a los 300 ms «" + a300 + "», a los 750 ms «" + a750 + "»)", "media");
+      await listo(); await escribir("estR_h_t", dmy(R1[1]), "Hasta"); await esperar(750); await listo(); await pausa(.3);
+      const G1 = EST_GRAF.estGPrin;
+      chk(tit() === "Temperatura máxima y mínima · del 05-03 al 10-07-" + Y && G1 && G1.S.dias && G1.S.dias.length === 128, "Del 05-03 al 10-07-" + Y + " el gráfico no tiene el título y los 128 días («" + tit() + "», " + (G1 && G1.S.dias ? G1.S.dias.length : "—") + " días)", "media");
+      try{ document.activeElement && document.activeElement.blur(); }catch(e){}
+      /* año a medio escribir: «05/04/20» no dibuja ni da error; al completar «26» dibuja */
+      dib = 0; pon("estR_d_t", "05/04/20"); await esperar(750);
+      const y2 = String(Y).slice(2);
+      chk(dib === 0 && err().hidden && tit().indexOf("del 05-03") > 0, "Con el año a medio escribir («05/04/20») el gráfico se dibujó o salió un error", "media");
+      pon("estR_d_t", "05/04/20" + y2); await esperar(750);
+      chk(dib >= 1 && tit().indexOf("· del 05-04 al 10-07-" + Y) > 0, "Al completar el año el gráfico no se dibujó con el 05-04 («" + tit() + "»)", "media");
+      /* año de 2 cifras y salir de la casilla: dibuja 06-04-<año> */
+      let t = pon("estR_d_t", "06/04/" + y2); salir(t); await esperar(750);
+      chk(tit().indexOf("· del 06-04 al 10-07-" + Y) > 0 && v("estR_d_t") === "06/04/" + Y, "«06/04/" + y2 + "» al salir de la casilla no dibujó el 06-04-" + Y + " («" + tit() + "», casilla «" + v("estR_d_t") + "»)", "media");
+      /* Enter: al tiro */
+      t = pon("estR_h_t", "09/07/" + Y); t.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter", bubbles:true}));
+      chk(tit().indexOf("al 09-07-" + Y) > 0, "Enter en «Hasta» no dibujó al tiro («" + tit() + "»)", "leve");
+      /* al revés: nota, sin dibujo, las casillas como se escribieron */
+      await esperar(700); dib = 0; pon("estR_d_t", "10/07/" + Y); pon("estR_h_t", "05/03/" + Y); await esperar(750);
+      chk(dib === 0 && /«Desde» quedó después de «Hasta»: cambia una de las dos\./.test(nota()) && v("estR_d_t") === "10/07/" + Y && v("estR_h_t") === "05/03/" + Y, "Con las fechas al revés no sale la nota (o se dibujó, o se ordenaron solas): «" + nota() + "»", "media");
+      /* «Hasta» futura: llega hasta hoy (y la casilla lo dice) */
+      pon("estR_d_t", "05/03/" + Y); t = pon("estR_h_t", dmy(M(hoyF, 5))); await esperar(750);
+      chk(/La fecha «Hasta» era futura: el gráfico llega hasta hoy\./.test(nota()) && v("estR_h") === hoyF && v("estR_h_t") === dmy(hoyF) && tit().endsWith("· del 05-03 al " + estFFecha(hoyF)), "Con «Hasta» futura no sale la nota, o la casilla no queda en hoy («" + v("estR_h_t") + "»)", "media");
+      await listo();
+      /* «Desde» futura, antes del mínimo, más de 2 años y 731 días exactos */
+      const ti1 = tit(); dib = 0; pon("estR_d_t", dmy(M(hoyF, 3))); await esperar(750);
+      chk(!err().hidden && /La fecha «Desde» es futura: elige un día de hoy hacia atrás\./.test(txtDe(err())) && tit() === ti1 && dib === 0 && getComputedStyle(err()).display !== "none", "Con «Desde» futura no sale el error en rojo, o el gráfico cambió", "media");
+      const aH = +hoyF.slice(0, 4); pon("estR_d_t", "31/12/" + (aH - 4)); pon("estR_h_t", dmy(hoyF)); await esperar(750);
+      chk(txtDe(err()) === "Se puede mirar desde el 01-01-" + (aH - 3) + " (hasta 3 años atrás).", "Antes del mínimo no sale «Se puede mirar desde el 01-01-" + (aH - 3) + " (hasta 3 años atrás).» («" + txtDe(err()) + "»)", "media");
+      pon("estR_d_t", dmy(M(hoyF, -800))); await esperar(750);
+      chk(/El período puede ser de hasta 2 años \(731 días\); este tiene 801 días\. Acorta las fechas\./.test(txtDe(err())), "Con 801 días no sale el error de 2 años («" + txtDe(err()) + "»)", "media");
+      pon("estR_d_t", dmy(M(hoyF, -730))); await esperar(750); await listo();
+      chk(err().hidden && estNav().rango.desde === M(hoyF, -730) && tit().endsWith("· " + estRangoTxt(M(hoyF, -730), hoyF)), "731 días exactos no se dibujaron («" + tit() + "», «" + txtDe(err()) + "»)", "media");
+      /* solo «05/03» al salir de la casilla: la nota pide las dos fechas */
+      t = pon("estR_d_t", "05/03"); salir(t); await esperar(750);
+      chk(/Escribe las dos fechas \(dd\/mm\/aaaa\) o elígelas en el calendario: el gráfico cambia solo\./.test(nota()), "Con «05/03» la nota no pide las dos fechas («" + nota() + "»)", "leve");
+      /* repintado de fondo con la fecha a medio camino: la casilla se conserva y después dibuja */
+      await listo(); const raiz0 = document.getElementById("estRaiz");
+      pon("estR_d_t", "05/03/" + Y); estPintar(); await pausa(.1);
+      const sigue = v("estR_d_t"), mismaRaiz = document.getElementById("estRaiz") === raiz0; await esperar(800); await listo();
+      chk(sigue === "05/03/" + Y && tit().endsWith("· del 05-03 al " + estFFecha(hoyF)), "Un repintado antes de los 600 ms perdió la fecha escrita o no se dibujó después («" + sigue + "», «" + tit() + "»" + (mismaRaiz ? "" : ", la sección se armó de nuevo") + ")", "media");
+      chk(R.alerts.length === nA0, "«Elegir período» mostró " + (R.alerts.length - nA0) + " alert()", "media");
+    } finally { window.estGrafPos = gp0; }
+  });
+  await paso("Elegir período: escala según los días (cada lectura, por día o por semana) y fuente de cada día (estación u Open-Meteo)", async ()=>{
+    const op = {modo:"ok"}, PD = estBotPorDia(EST_BOT.filas);
+    let G = await ver("temp", R2);
+    chk(G && G.S.tk === "24h" && G.S.lst && G.S.lst.length >= 90 && !G.S.dias, "Un día de los últimos 35 no se dibuja con cada lectura (" + (G && G.S.tk) + ")", "media");
+    G = await ver("lluvia", R2);
+    chk(G && !G.S.porDia && G.S.pts.length <= 25 && txtDe(document.getElementById("estGKpi")).indexOf("Lluvia del " + estFFecha(R2[0])) >= 0, "La lluvia de un día con lecturas no va por hora o el KPI no dice «Lluvia del " + estFFecha(R2[0]) + "»", "media");
+    G = await ver("gd", R2);
+    chk(G && G.S.porDia && G.S.pts.length === 1, "Los grados día de un día no son 1 barra", "leve");
+    G = await ver("temp", R7);
+    const G7 = await ver("lluvia", R7);
+    chk(G && G.S.lst && !G.S.dias && G7 && G7.S.porDia && G7.S.pts.length === 8 && G7.S.pts[7].hoy, "8 días con lecturas: la temperatura no va con cada lectura o la lluvia no son 8 barras por día con hoy parcial", "media");
+    G = await ver("lluvia", R1);
+    const sumOM = estBotDias(R1[0], R1[1]).reduce((s, f)=>s + ((estBotOMDia(f, op) || {}).ll || 0), 0), sumG = G ? G.S.dias.reduce((s, p)=>s + (p.y || 0), 0) : -1;
+    const difD = G ? G.S.dias.filter(p=>Math.abs((p.y || 0) - ((estBotOMDia(p.f, op) || {}).ll || 0)) > 0.051).map(p=>p.f) : ["sin gráfico"];
+    chk(G && G.S.porDia && !G.S.semanal && G.S.pts.length === 128 && G.S.dias.every(p=>p.src === "om") && !difD.length && !/Hoy, parcial/.test(txtDe(document.getElementById("estGRes"))),
+      "Del 05-03 al 10-07: la lluvia no son 128 barras por día de Open-Meteo con lo del modelo (" + estF1(sumG) + " y " + estF1(sumOM) + " mm; distintos: " + difD.slice(0, 3).join(", ") + ") o la leyenda dice «Hoy, parcial»", "media");
+    await ver("viento", R1);
+    chk(new RegExp("Sin lecturas de viento promedio del 05-03 al 10-07-" + Y + "\\. La estación guarda desde el ").test(txtDe(document.getElementById("estGPrin"))), "El viento del 05-03 al 10-07 no dice «Sin lecturas de viento promedio del 05-03 al 10-07-" + Y + ". La estación guarda desde el …»: «" + txtDe(document.getElementById("estGPrin")).slice(0, 160) + "»", "media");
+    await ver("gd", R1);
+    const ac = document.querySelector("#estGPrin .est-g-acum"), tAc = [...(ac ? ac.querySelectorAll("text, span, .est-ml-lab") : [])].map(txtDe).join(" ") + " " + txtDe(ac);
+    chk(ac && /10-07/.test(tAc) && !/\bhoy\b/.test(tAc), "El acumulado de grados día del 05-03 al 10-07 no termina en «10-07» o dice «hoy»: «" + tAc.slice(0, 160) + "»", "leve");
+    G = await ver("temp", R5);
+    const malF = G ? G.S.dias.filter(p=>p.src !== estBotFuente(PD, p.f, op).src).map(p=>p.f + " " + p.src + "/" + estBotFuente(PD, p.f, op).src) : ["sin gráfico"];
+    chk(G && G.S.dias.length === 41 && !malF.length, "Del día −60 al −20 la fuente de cada día no es la regla escrita aparte: " + malF.slice(0, 4).join(", "), "media");
+    G = await ver("lluvia", R6);
+    const sd = G ? G.S.dias.reduce((s, p)=>s + (p.y || 0), 0) : 0, sp = G ? G.S.pts.reduce((s, w)=>s + (w.y || 0), 0) : -1, w0 = G && G.S.pts[0], wN = G && G.S.pts[G.S.pts.length - 1];
+    chk(G && G.S.semanal && G.S.dias.length === 731 && Math.abs(sd - sp) < 1e-6 && w0 && wN && !wN.comp && (w0.diasR === 7 || (!w0.comp && /la semana tiene solo \d días dentro del período/.test(estGrafTip(G.S, w0)))),
+      "731 días: las barras por semana no suman lo mismo que los días, o las semanas cortadas no lo dicen (" + estF1(sp) + " / " + estF1(sd) + " mm)", "media");
+    G = await ver("temp", R4);
+    const seg = G ? G.S.dias.every((p, i, a)=>!i || p.f === estSumarDias(a[i - 1].f, 1)) : false;
+    chk(G && G.S.dias.length === 32 && seg && G.S.dias.some(p=>p.f.slice(5) === "12-31") && G.S.dias.some(p=>p.f.slice(5) === "01-01"), "Del 15-12 al 15-01 los días no van seguidos entre el 31-12 y el 01-01", "media");
+    G = await ver("temp", R3);
+    chk(G && G.S.dias.length === 1 && G.S.pts.length === 1 && /Promedio/.test(txtDe(document.getElementById("estGKpi"))) && /Período elegido: 1 día \(el 05-03-\d{4}\)\. Cada lectura se ve solo en los días de los últimos 35/.test(txtDe(document.getElementById("estGAyuda"))),
+      "Un día sin lecturas (05-03): no es un punto con su valor o la ayuda no dice «Período elegido: 1 día…» («" + txtDe(document.getElementById("estGAyuda")).slice(-140) + "»)", "media");
+  });
+  await paso("Elegir período: caché de Open-Meteo sin pedidos de más (un tramo por período nuevo, nada que ya esté, nunca después de ayer ni sin señal) y recorte del historial largo en 3 años", async ()=>{
+    await estBotOMLimpio(); EST_BOT.omPedidos = [];
+    const nP = ()=>EST_BOT.omPedidos.length, inter = (q, a, b)=>{ const x = M(q.desde, 1), y = q.hasta >= M(q.desde, 2) ? M(q.hasta, -1) : q.desde; return !(y < a || x > b); };
+    let n0 = nP(); await ver("temp", R1); const p1 = nP() - n0;
+    n0 = nP(); await ver("temp", R1); const p2 = nP() - n0;
+    n0 = nP(); await ver("temp", R3); const p3 = nP() - n0;
+    n0 = nP(); await ver("lluvia", R1); const p4 = nP() - n0;
+    chk(p1 === 1 && p2 === 0 && p3 === 0 && p4 === 0, "Pedidos a Open-Meteo: el 05-03 al 10-07 la 1.ª vez " + p1 + " (1), la 2.ª " + p2 + " (0), el 05-03 solo " + p3 + " (0), con lluvia " + p4 + " (0)", "media");
+    n0 = nP(); await ver("gd", R1); await ver("frio", R1); const qGF = EST_BOT.omPedidos.slice(n0);
+    n0 = nP(); await ver("gd", R1); const qGF2 = EST_BOT.omPedidos.slice(n0);
+    chk(!qGF.some(q=>q.tipo === "archivo" && inter(q, R1[0], R1[1])) && qGF.length <= 1 && qGF2.length === 0, "Grados día y frío del 05-03 al 10-07 volvieron a pedir días ya bajados (" + JSON.stringify(qGF.slice(0, 3)) + ")", "media");
+    n0 = nP(); await ver("temp", R4); const p5 = nP() - n0;
+    chk(p5 === 1, "Del 15-12 al 15-01 se hicieron " + p5 + " pedidos (se esperaba 1)", "media");
+    const firmes = new Set([...estDat.om.values()].filter(r=>r.firme && r.ok).map(r=>r.f));
+    n0 = nP(); await ver("temp", R6); const q6 = EST_BOT.omPedidos.slice(n0).filter(q=>q.tipo === "archivo");
+    const largo = q=>_estDiasEntre(q.desde, q.hasta), repite = q6.filter(q=>{ for(let f = M(q.desde, 1); f < q.hasta; f = M(f, 1)) if(firmes.has(f)) return true; return false; });
+    chk(q6.length >= 1 && q6.every(q=>largo(q) <= 402) && !repite.length, "Del día −730 a hoy: tramos de más de 402 días o pedidos que repiten días firmes ya guardados (" + JSON.stringify(q6.map(q=>[q.desde, q.hasta])) + ")", "media");
+    /* período intermedio: desde 8 días, «Desde» al 05-03 (se dibuja hasta hoy) y después «Hasta» al 10-07 */
+    await ver("temp", R7); n0 = nP(); const N = estNav();
+    N.rango = {desde:R1[0], hasta:hoyF}; estGrafPos(); await listo(); await pausa(.2); N.rango = {desde:R1[0], hasta:R1[1]}; estGrafPos(); await listo(); await pausa(.2);
+    const qI = EST_BOT.omPedidos.slice(n0);
+    chk(qI.length <= 1 && !qI.some(q=>q.tipo === "archivo" && [...firmes].some(f=>inter(q, f, f))), "El período intermedio pidió " + qI.length + " tramos o repitió días ya guardados", "media");
+    const utcHoy = new Date().toISOString().slice(0, 10);
+    chk(EST_BOT.omPedidos.every(q=>q.tipo !== "archivo" || q.hasta <= utcHoy), "Hubo pedidos al archivo de Open-Meteo después de hoy (UTC)", "media");
+    /* el recorte de resLargo: lo de hace 500 días sigue; lo de antes del mínimo (3 años) se borra */
+    const f500 = M(hoyF, -500), fMin = M(estRangoMin(), -1); estDat.resLargo.set(f500, {f:f500, n:96}); estDat.resLargo.set(fMin, {f:fMin, n:96});
+    await estResLargoCargar(M(hoyF, -30), ayer);
+    chk(estDat.resLargo.has(f500) && !estDat.resLargo.has(fMin), "El recorte del historial largo borró un día de hace 500 días o dejó uno de antes del mínimo de 3 años", "media");
+    /* sin señal: ningún pedido y la nota */
+    const oD = Object.getOwnPropertyDescriptor(Navigator.prototype, "onLine");
+    try{
+      Object.defineProperty(navigator, "onLine", {configurable:true, get:()=>false});
+      n0 = nP(); await ver("temp", [M(hoyF, -760), M(hoyF, -740)]);
+      chk(nP() === n0 && /Sin señal/.test(txtDe(document.getElementById("estGPrin")) + " " + txtDe(document.getElementById("estGRes"))), "Sin señal se pidió a Open-Meteo o no se dice «Sin señal…»", "media");
+    } finally { try{ delete navigator.onLine; }catch(e){} if(oD && navigator.onLine === undefined) try{ Object.defineProperty(Navigator.prototype, "onLine", oD); }catch(e){} }
+  });
+  await paso("A 375 px: los 9 datos con períodos elegidos (marcas del eje sin encimarse ni salirse, fechas de 44 px y la barra de la temperatura intacta)", async ()=>{
+    const malos = [], fuera = [], P = [["R1", R1], ["R2", R2], ["R3", R3], ["R4", R4], ["R6", R6], ["R7", R7]];
+    const ancho = ()=>{ const w = document.getElementById("estGPrin"), card = document.getElementById("estKGraf"); if(w) w.style.width = "321px"; if(card) card.style.width = "343px"; return [w, card]; };
+    try{
+      for(const [nomR, r] of P) for(const [vv] of EST_GVARS){
+        ancho(); const G = await ver(vv, r); const [w, card] = ancho(); if(G) estGrafPos(); await pausa(.05);
+        const svg = w && w.querySelector("svg"), nom = vv + "·" + nomR;
+        if(!svg){ if(!/Sin lecturas|Todavía no hay/.test(txtDe(w))) malos.push(nom + " sin dibujo ni mensaje"); continue; }
+        const r0 = svg.getBoundingClientRect(), xt = [...svg.querySelectorAll("text.est-g-xt")].map(t=>t.getBoundingClientRect()).sort((a, b)=>a.left - b.left);
+        let solap = 0; for(let i = 1; i < xt.length; i++) if(xt[i].left < xt[i - 1].right + 2) solap++;
+        const fu = xt.filter(z=>z.left < r0.left - 1 || z.right > r0.right + 1).length, min = r[0] === r[1] ? 1 : 2;
+        if(xt.length < min || solap || fu) malos.push(nom + " (" + xt.length + " marcas, " + solap + " encimadas, " + fu + " afuera)");
+        const RC = card.getBoundingClientRect(); [...card.querySelectorAll("#estGCtrl .chip, #estRango label, #estRango input[type=text]")].forEach(c=>{ const q = c.getBoundingClientRect(); if(q.width && (q.left < RC.left - 1 || q.right > RC.right + 1)) fuera.push(nom + " «" + (txtDe(c) || c.id) + "»"); });
+      }
+      const ins = [...document.querySelectorAll("#estRango input[type=text]")];
+      chk(ins.length === 2 && ins.every(i=>i.getBoundingClientRect().height >= 44 && i.scrollWidth <= i.clientWidth + 1), "A 375 px las casillas de las fechas miden menos de 44 px o cortan la fecha", "media");
+    } finally { const w = document.getElementById("estGPrin"), card = document.getElementById("estKGraf"); if(w) w.style.width = ""; if(card) card.style.width = ""; }
+    chk(!malos.length, "Períodos elegidos a 375 px con marcas del eje que no se leen: " + malos.slice(0, 5).join(", "), "media");
+    chk(!fuera.length, "A 375 px hay chips o fechas que se salen de la tarjeta: " + fuera.slice(0, 4).join(", "), "media");
+    estSec("ahora"); await pausa(.4); const rb = document.querySelector("#estKTemp .est-rango-b");
+    chk(rb && rb.getBoundingClientRect().width > 100, "La barra de mínima y máxima de la tarjeta Temperatura quedó desarmada (" + (rb ? Math.round(rb.getBoundingClientRect().width) : 0) + " px): choque con la fila de fechas", "grave");
+    estNav().sec = "graf";
+  });
+  await paso("Elegir período: si se pide otro mientras carga uno, el primero no pisa el estado ni el % del nuevo (revisión v162)", async ()=>{
+    await estBotOMLimpio(); estDat.resLargo = new Map(); estDat._glR = null; await estBotCampo("graf"); await pausa(.2);
+    const rl0 = window.estResLargoCargar, esperas = [], rg = r=>estGrafRango(Object.assign({}, estNav(), {per:"rango", rango:{desde:r[0], hasta:r[1]}}));
+    const A = rg([M(hoyF, -300), M(hoyF, -200)]), B = rg([M(hoyF, -150), M(hoyF, -100)]);
+    try{
+      window.estResLargoCargar = (a, b, prog)=>new Promise(ok=>{ esperas.push({a, b, prog, ok}); });   // la lectura de los resúmenes queda en espera hasta que el bot la suelte
+      const pA = estGrafLargoCargar(A); await esperarQue(()=>esperas.length===1, 3000);
+      const pB = estGrafLargoCargar(B);
+      esperas[0].prog(60); const prA = estDat._glR ? estDat._glR.prog : null;   // avanza la carga de A con B ya pedido
+      esperas[0].ok(0); await pA; const gA = Object.assign({}, estDat._glR || {});   // A terminó; B sigue cargando
+      await esperarQue(()=>esperas.length===2, 3000); esperas[1].prog(40); const prB = estDat._glR ? estDat._glR.prog : null;
+      esperas[1].ok(0); await pB; const gB = estDat._glR || {};
+      chk(A.lect === false && B.lect === false && prA === 0 && gA.a === B.desde && gA.listo === false && prB === 40 && gB.listo === true && gB.a === B.desde && gB.prog === 100,
+        "Con un período nuevo pedido mientras cargaba otro, el primero pisó su estado o su % (al avanzar A: " + prA + " %; al terminar A: desde " + gA.a + ", listo " + gA.listo + "; B: " + prB + " % y al final desde " + gB.a + ", listo " + gB.listo + ")", "leve");
+    } finally { window.estResLargoCargar = rl0; esperas.forEach(e=>e.ok(0)); }
+    await listo();
+  });
+  await paso("Rendimiento de un período de 2 años (731 días): dibujo en menos de 150 ms, primera carga en 1,5 s o menos y ningún tramo sin respiro de más de 200 ms", async ()=>{
+    await estBotOMLimpio(); estDat.resLargo = new Map(); estDat._glR = null; await estBotCampo("graf"); estGraf("temp", "24h"); await pausa(.3);
+    const largas = []; let obs = null;
+    try{ obs = new PerformanceObserver(l=>l.getEntries().forEach(e=>largas.push(Math.round(e.duration)))); obs.observe({type:"longtask"}); }catch(e){ obs = null; }
+    const t1 = performance.now(); await ver("temp", R6); med.rangoCargaMs = Math.round(performance.now() - t1);
+    let mx = 0; for(const vv of ["temp", "lluvia", "gd"]){ await ver(vv, R6); const a = performance.now(); estGrafPos(); mx = Math.max(mx, performance.now() - a); }
+    await pausa(.3); if(obs) obs.disconnect();
+    med.rangoDibujoMs = Math.round(mx); med.rangoTareaMaxMs = largas.length ? Math.max(...largas) : 0;
+    log("Rendimiento 731 días: cargar " + med.rangoCargaMs + " ms · dibujo máx. " + med.rangoDibujoMs + " ms · tarea más larga " + med.rangoTareaMaxMs + " ms");
+    chk(mx < 150, "Dibujar 731 días tardó " + Math.round(mx) + " ms (meta 150 ms en el PC)", "leve");
+    chk(med.rangoCargaMs <= 1500, "Cargar 731 días la primera vez tardó " + med.rangoCargaMs + " ms (meta 1,5 s con Open-Meteo falso)", "leve");
+    chk(!largas.some(d=>d > 200), "Hubo tramos sin respiro de más de 200 ms: " + largas.filter(d=>d > 200).join(", ") + " ms", "media");
+  });
+  } finally { window.estOMFetch = OM0; const N = estNav(); N.var = "temp"; N.per = "24h"; delete N.rango; }
+}
+
 /* 🌡️ ESTACIÓN ---------------------------------------------------------------------------- */
-BOTS.push({id:"estacion", modulo:"Estación", nombre:"Valentina, encargada de la estación", ico:"🌡️", que:"Panel de la estación: descarga del historial, Ahora, Para el campo, gráficos, informes, Excel, PDF y avisos del puente", correr: async ()=>{
+BOTS.push({id:"estacion", modulo:"Estación", nombre:"Valentina, encargada de la estación", ico:"🌡️", que:"Panel de la estación: descarga del historial, Ahora, Para el campo, gráficos, informes, Excel, PDF, avisos del puente, el aviso del barómetro y la lluvia del pluviómetro para el balance de riego (v163)", correr: async ()=>{
   if(typeof estSincronizar !== "function" || typeof EST_COLS === "undefined"){ await paso("Panel de la estación", async ()=>{ throw new SinProbar("La app no tiene el panel de la estación"); }); return; }
   const wl0 = D.wl ? JSON.stringify(D.wl) : null, est0 = D.est ? JSON.stringify(D.est) : null, nav0 = nav.est ? JSON.stringify(nav.est) : null;
   const f0 = window.wlFetch, p0 = window.estPronFetch, om0 = window.estOMFetch, pag0 = EST_PAG; EST_BOT.est0 = est0;
@@ -3670,7 +5405,7 @@ BOTS.push({id:"estacion", modulo:"Estación", nombre:"Valentina, encargada de la
   EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); EST_BOT.pedidos = []; EST_BOT.omPedidos = [];
   try{
     await estBotLimpio(); await estBotOMLimpio();
-    await estBotA(); await estBotB(); await estBotC(); await estBotD(); await estBotG(); await estBotAplicar();
+    await estBotA(); await estBotB(); await estBotC(); await estBotD(); await estBotG(); await estBotGR(); await estBotAplicar(); await estBotV162(); await estBotBaro(); await estBotRiegoLl();
   } finally {
     try{ delete navigator.onLine; }catch(e){}
     try{ await estBotLimpio(); await estBotOMLimpio(); }catch(e){}
@@ -6159,7 +7894,7 @@ BOTS.push({id:"celular", modulo:"Bitácora: celular", nombre:"Pía, anota desde 
 }});
 
 /* 📱 PANTALLAS --------------------------------------------------------------------------- */
-BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ico:"📱", que:"Todas las pestañas en iPad, celular, sol y texto grande: cosas que se salen, textos raros, botones muy chicos para el dedo, botones sin nombre e imágenes rotas; la ficha de riego a 375 px con 2 líneas y «Aplicar a todos»; Noticias ya no está en el menú y nada pide indicadores ni RSS", correr: async ()=>{
+BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ico:"📱", que:"Todas las pestañas en iPad, celular, sol y texto grande: cosas que se salen, textos raros, botones muy chicos para el dedo, botones sin nombre e imágenes rotas; la ficha de riego a 375 px con 2 líneas y «Aplicar a todos»; Riego con «Esta semana en el campo» a 1180 y 375 px; Noticias ya no está en el menú y nada pide indicadores ni RSS", correr: async ()=>{
   const ui0 = JSON.stringify(D.ui||{});
   const modos = [["iPad",{movil:"no"}],["celular",{movil:"si"}],["sol",{movil:"no", sol:true}],["texto grande",{movil:"no", grande:true}]];
   /* la Bitácora con algo que mostrar (el bot «bitacora» borra lo suyo al terminar): un lote, una pendiente, fenología con 2 cuarteles, una nota y un día */
@@ -6273,6 +8008,56 @@ BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ic
       D.riego = JSON.parse(r0); D.ui = JSON.parse(u0); uiAplicar(); guardar(); render();
     }
   });
+  /* v163 (30-10-2026): Riego con «Esta semana en el campo» (una copia sintética de la hoja y un pendiente) a 1180 × 820 y a 375 px (celular) */
+  await paso("Riego con «Esta semana en el campo» a 1180 × 820 y a 375 px: nada se sale, celdas y botones de 44 px, sin textos raros", async ()=>{
+    const fu = fundosConCuarteles()[0]; if(!fu) throw new SinProbar("No hay fundos con cuarteles");
+    const r0 = JSON.stringify(riegoCfg()), w0 = JSON.stringify(D.wl||null), u0 = JSON.stringify(D.ui||{}), h0 = RIEGO_LL_HOY, f0 = nav.riegoFundo;
+    try{
+      const hk = HOY(), L = riegoLunesDe(hk), ay = sumarDiasISO(hk, -1), r = riegoCfg(), qs = plantados(fu).slice(0, 6);
+      r.prog = r.prog || {}; r.prog[L] = r.prog[L] || {};
+      const cu = {}; qs.forEach((q, i)=>{ cu[String(q.id)] = {n:q.nombre, mm:5, h:3.125, pp:1.6, ef:90, dias:[0,1,2,3,4,5,6], etc:4.5, kc:0.7, rep:100, eq:"", s:[["BOT-P"+i, "S1", 2], ["", "S2", 1]], ha:3}; });
+      r.prog[L][fu] = [{desde:L, creado:"2026-01-01T00:00:00.000Z", hora:"08:00", base:"ant", et0:4.5/0.7, cu, eq:{"":{n:2, q:0, h:null, nom:""}}, sd:[]}];
+      const w = wlCfg(); for(let f = L; f < hk; f = sumarDiasISO(f, 1)) w.dias[f] = {et:4.5/0.7, ll:0, src:"wl", parcial:false, horas:24, n:96};
+      if(ay >= L){ w.dias[ay] = {et:2, ll:9.4, src:"wl", parcial:false, horas:24, n:96}; }   // ayer: un pendiente «¿se regó?»
+      else { const v = r.prog[L][fu][0]; r.prog[sumarDiasISO(L, -7)] = {[fu]:[Object.assign({}, v, {desde:sumarDiasISO(L, -7)})]}; w.dias[ay] = {et:2, ll:9.4, src:"wl", parcial:false, horas:24, n:96};
+        for(let f = sumarDiasISO(L, -7); f < ay; f = sumarDiasISO(f, 1)) w.dias[f] = {et:4.5/0.7, ll:0, src:"wl", parcial:false, horas:24, n:96}; }
+      RIEGO_LL_HOY = null; guardar();
+      for(const [nom, ancho, gr] of [["iPad 1180 × 820", null], ["celular 375 px", 375], ["celular 375 px con texto grande", 354, true]]){   // revisión v163: con texto grande el celular deja ~354 px (375 ÷ 1,06)
+        D.ui = Object.assign({}, JSON.parse(u0), {movil: ancho? "si" : "no", sol:false, grande:!!gr}); uiAplicar();
+        await irA("riego"); nav.riegoFundo = fu; nav.riegoVista = "cu"; riegoPintar(); await pausa(.5);
+        const sc = necesito(document.getElementById("riegoScroll"), "Riego"), sem = necesito(document.getElementById("rgSem"), "la tarjeta «Esta semana en el campo»");
+        if(ancho){ sc.style.width = ancho + "px"; sc.style.maxWidth = ancho + "px"; await pausa(.4); }
+        const det = sem.querySelector(`details[data-f="${CSS.escape(fu)}"]`) || sem.querySelector("details.rgs-f"); if(det && !det.open){ det.open = true; await pausa(.3); }
+        const sr = sem.getBoundingClientRect();
+        const fuera = [...sem.querySelectorAll("*")].filter(e=>visible(e)).filter(e=>{ const x = e.getBoundingClientRect(); return x.width > 0 && (x.right > sr.right + 1 || x.left < sr.left - 1); });
+        const chicos = [...sem.querySelectorAll("button, .rgs-d, summary")].filter(visible).filter(b=>b.offsetHeight < 44);
+        const raros = MALOS.filter(([re])=>re.test(txtDe(sem))).map(([, n])=>n);
+        chk(sc.scrollWidth <= sc.clientWidth + 1 && !fuera.length, "Riego (" + nom + "): la tarjeta de la semana se sale por el costado" + (fuera.length ? ": «" + String(fuera[0].className || fuera[0].tagName).slice(0, 30) + "» " + txtDe(fuera[0]).slice(0, 30) : " (" + sc.scrollWidth + " de " + sc.clientWidth + " px)"), "media");
+        chk(!chicos.length, "Riego (" + nom + "): " + chicos.length + " botones o celdas de la semana miden menos de 44 px de alto: " + chicos.slice(0, 3).map(b=>"«" + txtDe(b).slice(0, 16) + "»").join(", "), "leve");
+        chk(!raros.length && sem.querySelector("[data-rgs-pend]"), "Riego (" + nom + "): la tarjeta de la semana muestra «" + raros.join(", ") + "» o no trae el pendiente de prueba", "media");
+        /* revisión v163: en la franja de 7 días ninguna palabra se parte ni se corta (antes, a 375 px: «Regad/o», «Meno/s», «Sin lluvia medid/a», «Mi/25»), con todos los estados
+           (una fila de prueba con los textos cortos, en el mismo ancho); y el ícono de los avisos de la tarjeta va al lado del texto */
+        const prueba = document.createElement("div"); prueba.className = "rgs-dias"; prueba.setAttribute("data-bot-prueba", "");
+        const cortos = ["Regó", "No regó", "Parte", "¿Regó?", "Contar", "Revisar", "Sin dato", "No toca", "Susp.", "Sin hoja", "Hoja", "Menos", "Más", "No riega", "Cambia", "—"], dnP = ["Lu 23", "Ma 24", "Mi 25", "Ju 26", "Vi 27", "Sá 28", "Do 29"];
+        prueba.innerHTML = cortos.map((t, i)=>`<div class="rgs-d${i === 2 ? " hoy" : ""}"><span class="rgs-dn">${dnP[i % 7]}</span><span class="rgs-dl">100,0 mm</span><span class="rgs-de"><span class="rgs-del">Sin lluvia medida</span><span class="rgs-dec">${t}</span></span><span class="rgs-det0">ET₀ 2,0 est.</span></div>`).join("");
+        const aviso1 = document.createElement("div"); aviso1.className = "rg-res"; aviso1.setAttribute("data-bot-prueba", ""); aviso1.innerHTML = `<div class="rg-res-f amb">${ic("alert")}<span>Sin lluvia medida el lunes 23-11 y el martes 24-11.</span></div>`;
+        const dest = (det && det.querySelector(".rgs-dias")) ? det : sem; dest.appendChild(prueba); sem.insertBefore(aviso1, sem.children[1] || null); await pausa(.2);
+        const partidas = [];
+        sem.querySelectorAll(".rgs-d").forEach(cel=>{ if(!visible(cel)) return; const cr = cel.getBoundingClientRect(), tw = document.createTreeWalker(cel, NodeFilter.SHOW_TEXT); let n;
+          while((n = tw.nextNode())){ const s = n.textContent, re = /\S+/g; let m; while((m = re.exec(s))){ const rg = document.createRange(); rg.setStart(n, m.index); rg.setEnd(n, m.index + m[0].length);
+            const rs = [...rg.getClientRects()].filter(x=>x.width > 0); if(rs.length && (rs.length > 1 || rs[0].right > cr.right + 0.5 || rs[0].left < cr.left - 0.5)) partidas.push(m[0]); } }
+          const dn = cel.querySelector(".rgs-dn"); if(ancho && dn){ const rr = document.createRange(); rr.selectNodeContents(dn); if(new Set([...rr.getClientRects()].filter(x=>x.width > 0).map(x=>Math.round(x.top))).size > 1) partidas.push(dn.textContent + " (2 líneas)"); } });
+        const icA = aviso1.querySelector(".i, svg"), txA = aviso1.querySelector(".rg-res-f > span"), ri = icA && icA.getBoundingClientRect(), rt = txA && txA.getBoundingClientRect();
+        prueba.remove(); aviso1.remove();
+        chk(!partidas.length, "Riego (" + nom + "): en la franja de 7 días hay palabras partidas o cortadas: «" + [...new Set(partidas)].slice(0, 6).join("», «") + "»", "leve");
+        chk(ri && rt && ri.right <= rt.left + 1 && Math.abs(ri.top - rt.top) < 10, "Riego (" + nom + "): el ícono de los avisos de la tarjeta de la semana no va al lado del texto (ícono " + (ri ? Math.round(ri.left) + "," + Math.round(ri.top) : "—") + ", texto " + (rt ? Math.round(rt.left) + "," + Math.round(rt.top) : "—") + ")", "leve");
+        if(ancho){ sc.style.width = ""; sc.style.maxWidth = ""; }
+      }
+    } finally {
+      D.riego = JSON.parse(r0); const w = JSON.parse(w0); if(w == null) delete D.wl; else D.wl = w;
+      RIEGO_LL_HOY = h0; nav.riegoFundo = f0; D.ui = JSON.parse(u0); uiAplicar(); guardar(); render();
+    }
+  });
   /* 28-10-2026: Noticias se quitó (rss2json, allorigins y corsproxy caídos). El menú no la tiene y nada pide indicadores (mindicador.cl) ni RSS:
      AB.pedNoti cuenta en la caja de arena cada pedido a esas direcciones desde que empezó la prueba (este bot ya recorrió todas las pestañas 4 veces) */
   await paso("Sin Noticias: el menú no la tiene y la app no pide indicadores ni RSS", async ()=>{
@@ -6289,7 +8074,7 @@ BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ic
 }});
 
 /* 🔍 AUDITOR DE DATOS -------------------------------------------------------------------- */
-BOTS.push({id:"auditor", modulo:"Datos guardados", nombre:"Auditor de datos", ico:"🔍", que:"Revisa que todo lo guardado esté sano: identificadores únicos, fechas válidas, números, referencias a fundos y cuarteles, que sobreviva a cerrar y abrir la app, que las noticias guardadas de antes se borren al abrir y que ningún texto se ejecute como código", correr: async ()=>{
+BOTS.push({id:"auditor", modulo:"Datos guardados", nombre:"Auditor de datos", ico:"🔍", que:"Revisa que todo lo guardado esté sano: identificadores únicos, fechas válidas, números, referencias a fundos y cuarteles, que sobreviva a cerrar y abrir la app, que las noticias guardadas de antes se borren al abrir y que ningún texto se ejecute como código; la copia de prueba se prepara una sola vez", correr: async ()=>{
   await paso("Identificadores únicos y contador al día", async ()=>{
     const arrs = ["notas","labores","registros","bitacora","fenologia","checklists","tablero","recordatorios","widgets","cuarteles","mapoly"];
     let maxId = 0;
@@ -6312,6 +8097,28 @@ BOTS.push({id:"auditor", modulo:"Datos guardados", nombre:"Auditor de datos", ic
   await paso("Números de los cuarteles", async ()=>{
     const m = (D.cuarteles||[]).filter(q=>!(isFinite(+q.ha) && +q.ha>=0) || (q.marco && !marcoDens(q.marco)));
     chk(!m.length, m.length+" cuartel(es) con superficie o marco que no se entiende: "+m.slice(0,5).map(q=>q.nombre+" ("+q.ha+" ha, «"+(q.marco||"")+"»)").join(", "), "media");
+  });
+  await paso("Riego v163: las copias de la hoja, lo confirmado y la suspensión están sanos (lunes, orden, números, estados y tamaño)", async ()=>{
+    const r = D.riego || {}, P = r.prog || {}, RE = r.real || {}, PA = r.pausa || [], malos = [];
+    const iso = s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||"")) && !isNaN(new Date(s+"T12:00:00")), fin = x=>x == null || (isFinite(+x) && +x >= 0);
+    Object.keys(P).forEach(L=>{
+      if(!iso(L) || new Date(L+"T12:00:00").getDay() !== 1) malos.push("copia con semana «"+L+"» que no es un lunes");
+      Object.keys(P[L] || {}).forEach(F=>{ const vs = P[L][F];
+        if(!Array.isArray(vs)) return malos.push("copia "+L+" · "+F+" sin versiones");
+        vs.forEach((v, i)=>{ if(!iso(v.desde) || v.desde < L || (i && vs[i-1].desde > v.desde)) malos.push("versión "+L+" · "+F+" con «desde» "+v.desde+" fuera de orden");
+          Object.keys(v.cu || {}).forEach(id=>{ const c = v.cu[id]; if(!["mm","h","pp","etc","kc"].every(k=>isFinite(+c[k]) && +c[k] >= 0) || !Array.isArray(c.dias)) malos.push("cuartel «"+(c.n||id)+"» de la copia "+L+" con números malos"); }); });
+      });
+    });
+    Object.keys(RE).forEach(f=>{
+      if(!iso(f)) malos.push("lo confirmado con fecha «"+f+"»");
+      const R = RE[f] || {}; if(!fin(R.llMan) || !fin(R.llManOk)) malos.push("lluvia anotada mala el "+f);   // llManOk (revisión v163): la medida que Manuel vio al «Dejar lo anotado»
+      Object.keys(R.f || {}).forEach(F=>{ const o = R.f[F] || {};
+        if(!fin(o.ll) || !fin(o.et0) || !fin(o.llF)) malos.push("lluvia o ET₀ mala el "+f+" en "+F);
+        Object.values(o.est || {}).forEach(s=>{ if(["si","no","parte"].indexOf(s) < 0) malos.push("estado «"+s+"» el "+f+" en "+F); }); });
+    });
+    PA.forEach(p=>{ if(!iso(p.desde) || !iso(p.hasta) || p.desde > p.hasta) malos.push("suspensión de "+p.f+" con fechas al revés"); });
+    const kb = JSON.stringify({P, RE, PA}).length / 1024;
+    chk(!malos.length && kb < 300, (malos.length? malos.length+" problema(s) en lo guardado del balance de riego: "+malos.slice(0, 4).join(" · ") : "")+(kb >= 300? " Lo guardado del balance pesa "+Math.round(kb)+" KB (meta 300 KB)" : ""), "media");
   });
   await paso("Referencias a fundos y cuarteles que no existen", async ()=>{
     const fs = new Set([...fundos(), (typeof GENERAL!=="undefined"? GENERAL : "General")]);
@@ -6382,10 +8189,20 @@ BOTS.push({id:"auditor", modulo:"Datos guardados", nombre:"Auditor de datos", ic
     chk(modalAbierto(), "Fuera del espejo el formulario de registro ya no se abre", "media");
     await cancelarModal();
   });
+  /* 29-10-2026: AgroBots.kit.entrarCaja() antes de comenzar() envolvía fetch y el almacenamiento dos veces (bucle en cada fetch). Ahora se prepara una sola vez */
+  await paso("La copia de prueba se prepara una sola vez: llamar otra vez a entrarCaja() no vuelve a envolver fetch ni el almacenamiento", async ()=>{
+    const S = Storage.prototype, g0 = S.getItem, s0 = S.setItem, f0 = window.fetch, o0 = ORIG.fetch, l0 = ORIG.ls;
+    await entrarCaja();
+    chk(S.getItem===g0 && S.setItem===s0 && window.fetch===f0 && ORIG.fetch===o0 && ORIG.ls===l0, "Llamar otra vez a entrarCaja() volvió a envolver fetch o el almacenamiento (cada fetch caería en un bucle)", "grave");
+    let ok = false; try{ localStorage.setItem("agronotasBotPrueba", "1"); ok = localStorage.getItem("agronotasBotPrueba")==="1"; localStorage.removeItem("agronotasBotPrueba"); }catch(e){ ok = false; }
+    chk(ok && ORIG.ls.get.call(localStorage, "agronotasBotPrueba")==null, "Después de llamar dos veces a entrarCaja() el almacenamiento de la copia no funciona o escribió en el real", "grave");
+  });
 }});
 
 /* 🎬 DEMOSTRACIÓN GUIADA (28-10-2026) ------------------------------------------------------
-   Corre los 4 guiones de demo.js en modo rápido, sin voz ni música, sobre esta misma copia de prueba (AgroDemo.probar). */
+   Corre los 4 guiones de demo.js en modo rápido, sin voz ni música, sobre esta misma copia de prueba (AgroDemo.probar).
+   29-10-2026: también la voz (troceo y texto hablado), los subtítulos aparte, el modo presentación (probar con pres, barra, teclas, salir,
+   Wake Lock falso) y la música (plan puro y medición con OfflineAudioContext, que renderiza en memoria: nada suena). */
 BOTS.push({id:"demostracion", modulo:"Demostración guiada", nombre:"Revisor de la demostración", ico:"🎬", que:"Demostración guiada: carga demo.js sin abrir nada, corre los 4 guiones (recorrido, jefe de campo, riego y estación, corta) en modo rápido y sin voz; cada toque encuentra su botón, cada frase su resaltado, sin errores ni textos raros, las 5 láminas se muestran y se esconden, la voz apagada no habla, la copia y el cuaderno real quedan iguales y el novato no puede abrirla", correr: async ()=>{
   await paso("Entradas y carga a pedido", async ()=>{
     chk(typeof window.demoAbrir === "function", "La app no tiene demoAbrir()", "grave");
@@ -6429,6 +8246,8 @@ BOTS.push({id:"demostracion", modulo:"Demostración guiada", nombre:"Revisor de 
         const malos = (r.textos || []).filter(t=>MALOS.some(([re])=>re.test(t)));
         chk(!malos.length, "Subtítulos con texto raro: " + malos.slice(0, 3).join(" | "), "media");
         chk(habla === h0, "Con la voz apagada se llamó a speechSynthesis.speak " + (habla - h0) + " vez/veces", "media");
+        chk(!!r.cap && r.cap.trozos > 0 && r.cap.maxCar <= 84 && r.cap.maxLineas <= 2, "Subtítulos de «" + g.id + "»: " + JSON.stringify(r.cap && {trozos:r.cap.trozos, maxCar:r.cap.maxCar, maxLineas:r.cap.maxLineas}) + " (trozos de 84 letras como máximo, en 2 líneas)", "leve");
+        chk(r.fs === 0 && r.wl === 0, "probar() pidió pantalla completa o Wake Lock (" + r.fs + " / " + r.wl + ")", "media");
         if(g.id === "corta") chk(r.laminas.mostradas === 5 && r.laminas.escondidas === 5 && !document.querySelector("#demoDiapo.on"), "Láminas de la presentación corta: " + r.laminas.mostradas + " mostradas, " + r.laminas.escondidas + " escondidas (deben ser 5 y 5)", "media");
         chk(!document.getElementById("demoSub") && !document.getElementById("demoAro") && !document.getElementById("demoDiapo"), "Quedó la interfaz de la demostración en pantalla", "leve");
         chk(JSON.stringify(D) === d0, "Después de la demostración la copia de prueba (D) no quedó como estaba", "media");
@@ -6446,6 +8265,11 @@ BOTS.push({id:"demostracion", modulo:"Demostración guiada", nombre:"Revisor de 
         const b = [...p.querySelectorAll("button")].find(x=>/Comenzar/.test(txtDe(x)));
         chk(!!(b && b.disabled) && /prueba de bots corriendo/i.test(txtDe(p)), "Con los bots corriendo, «Comenzar» de la demostración debía quedar deshabilitado y avisarlo", "media");
         [...p.querySelectorAll("button")].forEach(x=>{ const r = x.getBoundingClientRect(); if(r.height && r.height < 43) chk(false, "Botón del panel de la demostración bajo 44 px: «" + txtDe(x) + "»", "leve"); });
+        const pres = p.querySelector("#demoPres"), lab = pres && pres.closest("label");
+        chk(!!(pres && lab && lab.getBoundingClientRect().height >= 44), "El panel no tiene «Modo presentación» o mide menos de 44 px", "media");
+        chk(!/descarga una voz mejorada|Paulina o Mónica/i.test(txtDe(p)), "El panel sigue aconsejando descargar una voz mejorada (en el iPad esas voces no llegan a Safari)", "leve");
+        if(AgroDemo._estado().voz && (MUDO || AgroDemo._voces().length)) chk(/Voz de mujer/.test(txtDe(p)) && /Voz de hombre/.test(txtDe(p)), "El panel no deja elegir «Voz de mujer» o «Voz de hombre»", "leve");
+        if(MUDO) chk(!/Probar mezcla/.test(txtDe(p)), "En este PC (MUDO) el panel no debe ofrecer «Probar mezcla»", "leve");
       }
       AgroDemo.cerrarPanel();
       chk(!document.getElementById("demoPanel"), "✕ no cerró el panel de la demostración", "leve");
@@ -6482,6 +8306,119 @@ BOTS.push({id:"demostracion", modulo:"Demostración guiada", nombre:"Revisor de 
         Object.assign(E, est0, {pausa:false, pausaPor:""}); AgroDemo.limpiar();
       }
       chk(!document.getElementById("demoSub"), "Quedó el subtítulo de la demostración en pantalla", "leve");
+    });
+    /* 29-10-2026: voz (fase 0), subtítulos aparte, modo presentación y música nueva. Nada suena: MUDO, probar() y OfflineAudioContext (renderiza en memoria) */
+    await paso("Voz: troceo, texto hablado y velocidad", async ()=>{
+      const U = typeof AgroDemo._unidadesVoz === "function"? AgroDemo._unidadesVoz() : [];
+      chk(U.length > 90, "AgroDemo._unidadesVoz() no entregó las piezas habladas (" + U.length + ")", "media");
+      const SAL = /^(¡?hola|gracias)\b/i;
+      const malos = U.filter(x=>/\d/.test(x.texto) || (x.texto.split(/\s+/).length < 3 && !SAL.test(x.texto)));
+      chk(!malos.length, "Piezas de voz con números en cifras (cortan en «1.250») o de menos de 3 palabras: " + malos.slice(0, 4).map(x=>x.clave + " «" + x.texto + "»").join(" · "), "media");
+      const t = U.map(x=>x.texto).join(" ");
+      chk(/mil doscientas cincuenta plantas/.test(t) && /tres mil setecientas cincuenta plantas/.test(t) && /base del Sag/.test(t) && /con el lápiz/.test(t) && /este fundo/.test(t) && !/\bSAG\b|Pencil|[«»]/.test(t),
+        "El texto hablado no lleva los cambios aprobados (números con su género, «el Sag», «lápiz», «este fundo»)", "media");
+      const P = AgroDemo._vozParams();
+      chk(P.rate === 1 && P.pitch === 1, "La voz no va con velocidad 1 y tono 1: " + JSON.stringify(P), "leve");
+      const rec = AgroDemo.GUIONES.find(g=>g.id === "recorrido"), est = rec && rec.sec.find(x=>x[0] === "EST");
+      chk(AgroDemo.FRASES.EST.some(f=>/Presión/.test(f) && /frente/.test(f)) && !!(est && est[1] && est[1].indexOf(10) === 2), "Falta la frase del barómetro en el recorrido (EST·10 justo después de «Ahora»)", "leve");
+      const pl = AgroDemo._planFrase(AgroDemo.FRASES.CALC[0], "CALC·1");
+      chk(pl.u.length === 4 && pl.u.every(u=>u.caps.map(c=>c.txt).join(" ") === u.pant && u.caps.every(c=>c.txt.length <= 84)), "Los subtítulos de CALC·1 no reconstruyen su unidad o pasan de 84 letras", "media");
+      /* revisión del 29-10: con 1 la unidad va en singular («una hora», no «una horas») y «veintiún mil plantas» */
+      const pv1 = AgroDemo._paraVoz("Riega 1 h y 2 h; cayó 1 mm, a 1 mm/h."), pv2 = AgroDemo._paraVoz("21.000 plantas y 221.000 plantas");
+      chk(pv1 === "Riega una hora y dos horas; cayó un milímetro, a un milímetro por hora." && pv2 === "veintiún mil plantas y doscientas veintiún mil plantas.", "La voz dice la unidad en plural con 1 o «veintiuna mil»: «" + pv1 + "» · «" + pv2 + "»", "leve");
+    });
+    await paso("Modo presentación en la presentación corta (probar con pres)", async ()=>{
+      let nAC = 0; const AC0 = window.AudioContext, WAC0 = window.webkitAudioContext;
+      const espia = ()=>function(){ nAC++; throw new Error("AudioContext en MUDO"); };   // en MUDO no se crea ninguno; si alguien lo intenta, se cuenta y no se crea
+      try{
+        if(MUDO){ window.AudioContext = espia(); if(WAC0) window.webkitAudioContext = espia(); }
+        await cerrarTodo();
+        const h0 = habla, r = await AgroDemo.probar("corta", {pres:true, musica:true, sonidos:true});
+        chk(!r.error && r.pasos === r.total && !r.errores.length && !r.directos.length && !r.sinElemento.length,
+          "La presentación corta en modo presentación no corrió entera: " + (r.error || (r.pasos + "/" + r.total + " " + r.errores.concat(r.directos, r.sinElemento).join(" · "))), "media");
+        chk(!!(r.pres && r.cap && r.cap.escudo), "En modo presentación no estuvo el escudo que cubre la pantalla", "media");
+        chk(!!r.cap && r.cap.lamMedidas >= 5 && r.cap.lamSinEscudo === 0, "En " + (r.cap && r.cap.lamSinEscudo) + " de " + (r.cap && r.cap.lamMedidas) + " láminas el escudo quedó debajo: un toque del presentador no abre la barra de controles", "media");
+        chk(!!r.cap && r.cap.ctlMostrados === 0, "Los toques del bot abrieron la barra de controles (" + (r.cap && r.cap.ctlMostrados) + ")", "media");
+        chk(!!r.cap && !r.cap.visibles.length, "En modo presentación se vieron cosas que no son para el público: " + (r.cap? r.cap.visibles.join(", ") : "?"), "media");
+        chk(!!r.cap && r.cap.trozos > 0 && r.cap.maxCar <= 84 && r.cap.maxLineas <= 2 && (innerWidth < 1000 || r.cap.minPx >= 24),
+          "Subtítulos del modo presentación: " + JSON.stringify(r.cap && {trozos:r.cap.trozos, maxCar:r.cap.maxCar, maxLineas:r.cap.maxLineas, minPx:r.cap.minPx}), "leve");
+        chk(r.fs === 0 && r.wl === 0 && !document.fullscreenElement, "probar() pidió pantalla completa o Wake Lock (" + r.fs + " / " + r.wl + ")", "media");
+        chk(habla === h0 && nAC === 0, "En la prueba hubo voz o se intentó crear un AudioContext (" + (habla - h0) + " / " + nAC + ")", "grave");
+        chk(!document.getElementById("demoEscudo") && !document.getElementById("demoCtl") && !document.getElementById("demoCap") && !document.documentElement.classList.contains("demo-pres"), "Quedó el modo presentación en pantalla", "leve");
+        if(MUDO) chk(AgroDemo._probarMezcla() === false && nAC === 0, "«Probar mezcla» hizo algo en este PC (MUDO)", "grave");
+      } finally { if(MUDO){ window.AudioContext = AC0; if(WAC0) window.webkitAudioContext = WAC0; } }
+    });
+    await paso("Modo presentación: barra, teclas, salir y pantalla encendida", async ()=>{
+      if(!MUDO){ sinProbar("La barra y las teclas del modo presentación se prueban en este PC (MUDO): fuera de él la tecla M podría encender la música"); return; }
+      const E = AgroDemo._estado(), est0 = {corriendo:E.corriendo, probando:E.probando, titulo:E.titulo, total:E.total, n:E.n, musica:E.musica, musNivel:E.musNivel, subs:E.subs};
+      const pref0 = ORIG.ls.get.call(localStorage, "agronotasDemoPref"), wl0 = Object.getOwnPropertyDescriptor(navigator, "wakeLock"), hid0 = Object.getOwnPropertyDescriptor(document, "hidden");
+      let pedidos = 0, saltos = 0, lock = null;
+      const ctl = ()=>document.getElementById("demoCtl");
+      try{
+        Object.defineProperty(navigator, "wakeLock", {configurable:true, value:{request:()=>{ pedidos++; lock = {released:false, release(){ this.released = true; return Promise.resolve(); }}; return Promise.resolve(lock); }}});
+        Object.assign(E, {corriendo:true, probando:false, titulo:"Prueba", total:10, n:3, pausa:false, pausaPor:""}); E.salto = ()=>{ saltos++; };
+        AgroDemo.presentacion(true);
+        chk(document.documentElement.classList.contains("demo-pres") && !!document.getElementById("demoEscudo") && !!ctl() && !ctl().classList.contains("on"), "Al entrar al modo presentación faltan el escudo o la barra, o la barra quedó a la vista", "media");
+        /* con una lámina o la portada a la vista, el toque llega al escudo (que abre la barra), no a la lámina */
+        const dp = document.getElementById("demoDiapo"), HH = document.documentElement, alCentro = ()=>{ const y = document.elementFromPoint((HH.clientWidth || innerWidth) / 2, (HH.clientHeight || innerHeight) / 2); return y ? y.id || y.tagName : "nada"; };
+        let enLam = "sin lámina", enPort = "sin portada";
+        if(dp){ dp.classList.add("on"); enLam = alCentro(); dp.classList.add("portada"); enPort = alCentro(); dp.classList.remove("on", "portada"); }
+        chk(enLam === "demoEscudo" && enPort === "demoEscudo", "En el modo presentación, sobre una lámina o la portada el toque llega a «" + enLam + "» / «" + enPort + "» y no al escudo: no se pueden abrir los controles", "media");
+        AgroDemo._controles(true);
+        chk(ctl().classList.contains("on") && AgroDemo.estado().ctl, "_controles(true) no mostró la barra", "leve");
+        [...ctl().querySelectorAll("button")].forEach(b=>{ const q = b.getBoundingClientRect(); if(q.height && (q.height < 44 || q.width < 44)) chk(false, "Botón de la barra del modo presentación bajo 44 px: «" + txtDe(b) + "»", "leve"); });
+        const q = ctl().getBoundingClientRect(); chk(q.left >= -1 && q.right <= innerWidth + 1, "La barra del modo presentación se sale de la pantalla", "leve");
+        const m0 = AgroDemo.estado().musica; AgroDemo.tecla("m");
+        chk(AgroDemo.estado().musica !== m0, "La tecla M no cambió la música", "leve");
+        AgroDemo.tecla("s"); const s1 = AgroDemo.estado().subs; AgroDemo.tecla("s");
+        chk(s1 === "no" && AgroDemo.estado().subs !== "no", "La tecla S no apagó y encendió los subtítulos", "leve");
+        AgroDemo.tecla(" ");
+        chk(AgroDemo.estado().pausa && ctl().classList.contains("on") && /Seguir/.test(txtDe(ctl())), "Espacio no puso pausa con la barra a la vista y «Seguir»", "leve");
+        AgroDemo.tecla(" "); AgroDemo.tecla("ArrowRight");
+        chk(!AgroDemo.estado().pausa && saltos === 1, "Espacio no siguió o → no pasó a la frase siguiente", "leve");
+        /* página escondida en el modo presentación: pausa y aviso en la barra; al volver se pide de nuevo la pantalla encendida */
+        Object.defineProperty(document, "hidden", {configurable:true, get:()=>true}); document.dispatchEvent(new Event("visibilitychange"));
+        if(hid0) Object.defineProperty(document, "hidden", hid0); else delete document.hidden;
+        chk(AgroDemo.estado().pausa && AgroDemo.estado().pausaPor === "oculta" && /se escondió/.test(txtDe(ctl())) && ctl().classList.contains("on"), "Página escondida en el modo presentación: sin pausa o sin el aviso en la barra", "media");
+        document.dispatchEvent(new Event("visibilitychange")); await esperar(30);
+        chk(pedidos >= 1 && AgroDemo.estado().wakeLock.pedidos >= 1, "Al volver a la vista no se pidió mantener la pantalla encendida (Wake Lock)", "leve");
+        /* Wake Lock que existe pero el equipo niega (como el navegador de este PC): la demostración sigue y la pausa siguiente dice cómo evitarla */
+        if(lock) lock.released = true;   // el navegador la suelta al esconderse la página
+        Object.defineProperty(navigator, "wakeLock", {configurable:true, value:{request:()=>{ pedidos++; return Promise.reject(new DOMException("negado", "NotAllowedError")); }}});
+        document.dispatchEvent(new Event("visibilitychange")); await esperar(30);
+        AgroDemo.pausa();   // Seguir
+        Object.defineProperty(document, "hidden", {configurable:true, get:()=>true}); document.dispatchEvent(new Event("visibilitychange"));
+        if(hid0) Object.defineProperty(document, "hidden", hid0); else delete document.hidden;
+        chk(AgroDemo.estado().wakeLock.falta && AgroDemo.estado().corriendo && AgroDemo.estado().pausaPor === "oculta" && /Bloqueo automático/.test(txtDe(ctl())),
+          "Con la pantalla encendida negada (Wake Lock rechazado), la pausa por pantalla escondida no dice cómo evitarla (Bloqueo automático → Nunca)", "leve");
+        AgroDemo.pausa();
+        /* el primer «Salir» pide otro toque sin mover el botón (el aviso va arriba de la barra), así el segundo toque cae en el mismo lugar */
+        AgroDemo._controles(true); await esperar(250);
+        const bSal = ()=>ctl().querySelector('button[data-k="salir"]'), cen = b=>{ const q = b.getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]; }, c1 = cen(bSal());
+        chk(AgroDemo.salir() === false && AgroDemo.estado().corriendo && /otra vez/i.test(txtDe(ctl())), "En el modo presentación, el primer «Salir» debe pedir un segundo toque", "media");
+        const c2 = cen(bSal()), mov = Math.round(Math.hypot(c2[0] - c1[0], c2[1] - c1[1]));
+        chk(mov <= 10 && /Toca Salir otra vez/.test(txtDe(ctl().querySelector(".cp"))), "Al primer «Salir» el botón se movió " + mov + " px (el segundo toque no cae en él) o el aviso no se ve arriba de la barra: «" + txtDe(ctl().querySelector(".cp")) + "»", "media");
+        AgroDemo.tecla("Escape");
+        chk(!document.documentElement.classList.contains("demo-pres") && !document.getElementById("demoEscudo") && !ctl(), "Esc no sacó del modo presentación", "leve");
+      } finally {
+        if(Object.getOwnPropertyDescriptor(document, "hidden")){ if(hid0) Object.defineProperty(document, "hidden", hid0); else delete document.hidden; }
+        if(wl0) Object.defineProperty(navigator, "wakeLock", wl0); else delete navigator.wakeLock;
+        Object.assign(E, est0, {pausa:false, pausaPor:"", salto:null}); if(E.wl) E.wl.falta = false; AgroDemo.limpiar();
+        if(pref0 == null) ORIG.ls.rem.call(localStorage, "agronotasDemoPref"); else ORIG.ls.set.call(localStorage, "agronotasDemoPref", pref0);
+      }
+      chk(!document.getElementById("demoSub") && !document.getElementById("demoCtl") && !document.getElementById("demoEscudo") && !AgroDemo.estado().wakeLock.activo, "Quedó la interfaz del modo presentación o la pantalla encendida pedida", "leve");
+    });
+    await paso("Música sin sonar: plan y medición en memoria", async ()=>{
+      const PM = AgroDemo._planMusica(0, 16), PV = AgroDemo._planMusica(0, 16, {voz:true});
+      chk(PM.length === 16 && PM.every(p=>isFinite(p.bajo) && p.pad.length === 4 && p.pad.every(f=>isFinite(f) && f > 150 && f < 760) && (p.i === 7? p.arp.length === 1 : p.arp.length >= 2 && p.arp.length <= 4)) && PV.every(p=>!p.arp.length),
+        "El plan de la música no sigue la receta (8 acordes, arpegio de 2 a 4 notas, sin arpegio mientras habla)", "leve");
+      if(!(window.OfflineAudioContext || window.webkitOfflineAudioContext)){ sinProbar("Este navegador no tiene OfflineAudioContext para medir la música"); return; }
+      const m = await AgroDemo._medirMusica(30);   // OfflineAudioContext: se renderiza en memoria, no sale por los parlantes
+      log("🎵 música 30 s en memoria: pico " + m.pico + " (" + m.picoDb + " dBFS), RMS " + m.rmsDb + " dBFS, con voz " + m.bajaDb + " dB, salto máximo " + m.saltoMax + ", clics " + m.clics + ", " + m.ms + " ms", "bien");
+      chk(!m.error && m.pico > 0.005 && m.pico < 0.9, "Música: pico fuera de rango (" + (m.error || m.pico) + ")", "media");
+      chk(m.clics === 0, "Música: " + m.clics + " saltos bruscos entre muestras (clics); el mayor " + m.saltoMax, "media");
+      chk(m.rmsDb != null && m.rmsDb > -45 && m.rmsDb < -18, "Música: nivel RMS raro (" + m.rmsDb + " dBFS; en «Baja» se espera cerca de −29)", "leve");
+      chk(m.bajaDb != null && m.bajaDb <= -7 && m.bajaDb >= -14, "Música: mientras habla debía bajar unos 10 dB y bajó " + m.bajaDb + " dB", "leve");
     });
   } finally {
     if(ss && sp0){ try{ delete ss.speak; if(ss.speak !== sp0) ss.speak = sp0; }catch(e){} }
