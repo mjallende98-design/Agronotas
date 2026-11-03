@@ -1311,7 +1311,7 @@ async function sembrarDemo(){
 function asisRespuesta(){
   const F = DEMO.fundo, q0 = DEMO.q[0], q1 = DEMO.q[1] || q0;
   const base = {hora:"", cuarteles:[], titulo:"", texto:"", categoria:"", urgente:false, labor_tipo:"", fecha_fin:"", cantidad:null, unidad:"", personas:null, estado_labor:"", producto:"", dosis:"", objetivo:"",
-    mojamiento:null, carencia:null, aplicado:false, registro_tipo:"", registro_valor:null, bbch:"", faltante:"", confianza:"alta", importante:false};
+    mojamiento:null, carencia:null, aplicado:false, registro_tipo:"", registro_valor:null, bbch:"", bbch_sec:[], faltante:"", confianza:"alta", importante:false};   // bbch_sec (v164): opcional en lo armado a mano
   return {ok:true, modelo:"claude-opus-5-5", usage:{input_tokens:3800, output_tokens:900}, datos:{resumen:"Poda terminada, arañita roja y un recordatorio para mañana.", preguntas:[], items:[
     Object.assign({}, base, {tipo:"avance", fecha:hoy(), fundo:F, cuarteles:[q0.nombre], labor_tipo:"poda", cantidad:420, unidad:"plantas", personas:6, estado_labor:"hecha", texto:"Poda terminada"}),
     Object.assign({}, base, {tipo:"nota", fecha:hoy(), fundo:F, cuarteles:[q1.nombre], titulo:"Arañita roja", texto:"Se vio arañita roja.", categoria:"plaga / enfermedad"}),
@@ -1406,7 +1406,7 @@ const FRASES = {
        "Un toque y se abre la <b>ficha del cuartel</b>: la carencia, lo último que se aplicó, la fenología y su libro completo.",
        "Con <b>Anotar aquí</b> registras con el lugar ya puesto: una aplicación, la labor del día, un estado fenológico o una nota.",
        "Y en <b>Día a día</b> está todo por fecha, con un buscador en toda la historia."],
-  FENO:["En <b>Fenología</b> anotas el estado de cada cuartel con la escala BBCH: brotación, flor, cuaja, pinta y cosecha.",
+  FENO:["En <b>Fenología</b> anotas el estado de cada cuartel con la escala BBCH: brotación, flor, cuaja, pinta y cosecha; en cerezo, los 10 estados del boletín.",
         "Ese dato trabaja solo: ajusta el <b>Kc del riego</b> y avisa en la estación cuando hay cerezos entre pinta y cosecha."],
   LISTAS:["<b>Listas</b> para lo de todos los días: bodega, compras, revisar maquinaria. Marcas y listo."],
   GANTT:["La <b>Carta Gantt</b> es el plan de labores: cada barra es una labor con su cuartel y sus días.",

@@ -367,7 +367,8 @@ label.f input:focus, label.f select:focus, label.f textarea:focus{outline:none; 
 .fenci{min-width:0; flex:1;}
 .fencn{font-size:14px; font-weight:800; color:var(--txt); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .fencs{font-size:12px; color:var(--txt2);}
-.fencu{display:flex; align-items:center; gap:8px; margin:12px 4px 6px; font-size:14px;}
+.fencu{display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; margin:12px 4px 6px; font-size:14px;}   /* v164 (revisión): en el celular los botones bajan a otra línea (antes «Bitácora» se salía de la pantalla) */
+.fencu > b{min-width:0; overflow-wrap:anywhere;}
 .fenth{width:96px; height:96px; border-radius:9px; background:#eef1ec center/cover no-repeat; cursor:pointer; border:1px solid var(--borde);}
 .fenth:hover{border-color:var(--p);}
 .fentl{display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; margin:0 0 14px;}
@@ -1080,6 +1081,14 @@ function cargarDe(raw){
     (D.notas||[]).forEach(n=>{ if(!Array.isArray(n.fotos)) n.fotos=[]; });   // notas importadas o sincronizadas sin fotos no deben romper la vista
     D.bitacora = D.bitacora || []; D.bitCfg = D.bitCfg || {unidades:{}, integrar:false};
     D.fenologia = D.fenologia || [];
+    /* v164: solo se arregla un bbchSec mal formado (lo que no es código o repite el principal; vacío = sin la clave). Lo demás no se migra.
+       Escrito aquí mismo, sin fenSecDe: al entrar directo, cargar() corre antes de que se lea el último bloque de la app */
+    D.fenologia.forEach(e=>{ if(!e || typeof e!=="object" || !("bbchSec" in e)) return;
+      const s=[]; (Array.isArray(e.bbchSec)? e.bbchSec : []).forEach(x=>{ const c=String(x==null? "" : x); if(/^\d{2}$/.test(c) && c!==String(e.bbch||"") && s.indexOf(c)<0) s.push(c); });
+      if(!s.length) delete e.bbchSec; else if(JSON.stringify(s)!==JSON.stringify(e.bbchSec)) e.bbchSec=s; });
+    /* v164 (F1): acuse de recibo de la bandeja: lo que el iPad leyó de lo enviado por el celular ({id, ts, eq}). Viaja en el cuaderno: así el
+       celular sabe qué llegó, sin gastar operaciones del puente. Al abrir solo se asegura la lista (no se guarda nada) */
+    if(!Array.isArray(D.buzonAcuse)) D.buzonAcuse = [];
     D.ui = D.ui || {sol:false, grande:false};
     D.wl = D.wl || null; D.riego = D.riego || null; // estación WeatherLink y programación de riego (se inicializan al usarse)
     D.checklists = D.checklists || [];
@@ -1178,6 +1187,11 @@ function fotoGet(id){ return new Promise((res)=>{
   const r = idb.transaction("fotos").objectStore("fotos").get(id);
   r.onsuccess=()=>res(r.result? r.result.data : null); r.onerror=()=>res(null);
 });}
+/* revisión 2 de la v164: una foto, un audio o un documento guardado es un dataURL ENTERO en base64 (sin comillas, <, >, paréntesis ni espacios).
+   Lo que baja del puente se revisa entero antes de guardarlo (el celular espejo: fotoGet de la sincronización; el iPad: lo que llega de la bandeja,
+   asisAdjDeBandeja) y al mostrarlo va con esc(): una «foto» que empieza bien y trae otra cosa adentro no se guarda ni puede cambiar la página */
+const FOTO_DU_RE = /^data:[a-z]+\/[a-z0-9.+-]+(;[a-z0-9=._+%!~*-]+)*;base64,[A-Za-z0-9+\/]+={0,2}$/i;
+function duSano(d){ return typeof d==="string" && FOTO_DU_RE.test(d); }
 function fotoDel(id){ return new Promise((res)=>{
   const t = idb.transaction("fotos","readwrite");
   t.objectStore("fotos").delete(id);
@@ -1359,6 +1373,7 @@ function abrirModal(titulo, html, onGuardar, txtBtn){
   if(vis && vis.innerHTML.trim()){ const f=document.querySelector("#capaModal .modal-fondo"); if(f) f.style.zIndex="260"; }
 }
 function cerrarModal(){ document.getElementById("capaModal").innerHTML=""; modalGuardar=null; _lcAnV=null;   // _lcAnV: a dónde volver si se guarda lo abierto desde la hoja «+ Anotar» (al cerrar sin guardar se olvida)
+  if(typeof lcCeCerrado==="function") lcCeCerrado();   // v164: el formulario corto del celular cerrado sin enviar: sus fotos «fc…» no quedan sueltas en el equipo
   const avc=document.getElementById("avisoCapa"); if(avc) avc.style.bottom="";   // el aviso que subió sobre el pie de la ventana (aviso()) vuelve a su lugar: ya no hay pie que esquivar
   if(window._rfDias){ const x=window._rfDias; window._rfDias=null;   // ficha de riego cerrada sin guardar: los días vuelven a como estaban
     try{ const rc=riegoCfg(); if(x.dias0){ rc.cu[x.id]=rc.cu[x.id]||{}; rc.cu[x.id].dias=x.dias0; } else if(rc.cu[x.id]) delete rc.cu[x.id].dias;   /* 29-10: sin dejar un {} vacío */ guardar(); setTimeout(()=>{ if(typeof riegoPintar==="function" && nav.tab==="riego") riegoPintar(); },0); }catch(e){} }
@@ -1493,7 +1508,7 @@ async function posNotas(){
     let h = "";
     for(const id of ids){
       const d = await fotoGet(id);
-      if(d) h += `<img src="${d}" loading="lazy" onclick="event.stopPropagation();abrirVisor('${id}')">`;
+      if(d) h += `<img src="${esc(d)}" loading="lazy" onclick="event.stopPropagation();abrirVisor('${id}')">`;
     }
     div.innerHTML = h; div.removeAttribute("data-fotos");
   }
@@ -1502,7 +1517,7 @@ async function posNotas(){
     let h = "";
     for(const id of ids){
       const d = await fotoGet(id);
-      if(d) h += `<div class="aud-fila">${ic("mic")}<audio controls preload="metadata" src="${d}"></audio></div>`;
+      if(d) h += `<div class="aud-fila">${ic("mic")}<audio controls preload="metadata" src="${esc(d)}"></audio></div>`;
     }
     div.innerHTML = h; div.removeAttribute("data-audios");
   }
@@ -1623,7 +1638,7 @@ async function pintarFotosTmp(){
   let h = "";
   for(const fid of fotosTmp){
     const d = await fotoGet(fid);
-    if(d) h += `<div class="thumbwrap"><img src="${d}" onclick="abrirEditor('${fid}')">
+    if(d) h += `<div class="thumbwrap"><img src="${esc(d)}" onclick="abrirEditor('${fid}')">
       <button class="del" onclick="quitarFotoTmp('${fid}')">✕</button></div>`;
   }
   cont.innerHTML = h + (fotosTmp.length? `<div class="muted" style="width:100%">Toca una foto para dibujar sobre ella ✏️</div>`:"");
@@ -1706,7 +1721,7 @@ async function pintarAudiosTmp(){
   let h = "";
   for(const aid of audiosTmp){
     const d = await fotoGet(aid);
-    if(d) h += `<div class="aud-fila">${ic("mic")}<audio controls preload="metadata" src="${d}"></audio><button class="btn sec chico" style="min-height:32px;padding:4px 9px" onclick="iaTranscribir('${aid}')">${ic("note")} Transcribir</button><button class="qx-cat" onclick="quitarAudioTmp('${aid}')">✕</button></div>`;
+    if(d) h += `<div class="aud-fila">${ic("mic")}<audio controls preload="metadata" src="${esc(d)}"></audio><button class="btn sec chico" style="min-height:32px;padding:4px 9px" onclick="iaTranscribir('${aid}')">${ic("note")} Transcribir</button><button class="qx-cat" onclick="quitarAudioTmp('${aid}')">✕</button></div>`;
   }
   cont.innerHTML = h;
 }
@@ -3021,7 +3036,7 @@ async function abrirVisor(fid){
       <button class="btn chico" style="background:var(--acc);color:#222" onclick="abrirEditor('${fid}')">${ic("edit")} Dibujar</button>
       <button class="btn sec chico" onclick="descargarFoto('${fid}')">${ic("download")}</button>
     </div>
-    <div class="lienzo"><img class="full" src="${d}"></div>
+    <div class="lienzo"><img class="full" src="${esc(d)}"></div>
   </div>`;
   visorGestos();
 }
@@ -3664,7 +3679,7 @@ function formReg(id){
        (agrupación de aplicaciones y de labores, rango de fechas, estado, producto del catálogo,
        destacado y sellos del asistente) */
     if(r) ["aplId","estado","fechaReal","fechaPlan","mezcla","laborId","fini","ffin","unidad","resp","rend","pago","cant",
-      "prodId","carOrigen","dest","origen","asisId","asisLote","dictado","dictadoFh","equipo","mano"].forEach(k=>{ if((k in r) && !(k in o)) o[k]=r[k]; });   // mano: anotado a mano en el celular
+      "prodId","carOrigen","dest","origen","asisId","asisLote","dictado","dictadoFh","equipo","mano","equipoId","autor"].forEach(k=>{ if((k in r) && !(k in o)) o[k]=r[k]; });   // mano: anotado a mano en el celular; equipoId y autor (v164): desde qué celular y quién
     if(dk && !dk.checked) delete o.dest;
     if(tipo==="Aplicación"){   // producto o carencia escritos a mano: el sello del catálogo se recalcula
       const otroProd = !r || String(o.producto||"").trim()!==String(r.producto||"").trim();
@@ -4147,10 +4162,11 @@ function vDatosTodo(){
       <button class="btn sec chico" onclick="csvExport('labores')">${ic("calendar")} Labores (CSV)</button>
       <button class="btn sec chico" onclick="csvExport('registros')">${ic("clipboard")} Registros (CSV)</button>
       <button class="btn sec chico" onclick="csvExport('notas')">${ic("note")} Notas (CSV)</button>
+      <button class="btn sec chico" onclick="csvExport('fenologia')">${ic("flower")} Fenología (CSV)</button>
       <button class="btn chico" onclick="abrirInforme()">${ic("print")} Informe semanal (PDF)</button>
       <button class="btn sec chico" onclick="kmlExportar()">${ic("globe")} Mapa para Google Earth (KML)</button>
     </div>
-    <div class="muted" style="margin-top:6px">El CSV de Labores respeta el rango de fechas (vacío = todo) e incluye una fila de <b>TOTALES</b>. Los CSV se abren directo en Excel.</div></div>`;
+    <div class="muted" style="margin-top:6px">El CSV de Labores respeta el rango de fechas (vacío = todo) e incluye una fila de <b>TOTALES</b>. El de Fenología trae el estado principal y los «también hay»; al abrirlo en Excel los códigos se ven como números (05 → 5): es el mismo estado. Los CSV se abren directo en Excel.</div></div>`;
 
   h += `<div class="card"><h2>${ic("device")} Usar la app en otro dispositivo</h2>
     <div class="muted">Para tener la misma información en tu teléfono (o en el PC): en este aparato toca <b>Exportar</b> (crea un archivo con una copia; <b>no borra ni cambia nada aquí</b>) y mándalo al otro (AirDrop, WhatsApp, correo o iCloud). En el otro aparato, abre la app desde su ícono, entra a Datos y toca <b>Importar</b>: ese aparato queda con la copia, fotos incluidas (lo que tuviera antes se reemplaza).</div>
@@ -4397,6 +4413,11 @@ function csvExport(que){
     filas = [...D.registros].sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""))
       .map(r=>[fmtF(r.fecha),r.tipo,r.fundo,r.cuartel,...extras.map(k=>(k==="estado" && r.tipo!=="Fenología")? "" : (r[k]!=null?r[k]:"")),
         (r.tipo==="Aplicación"? (r.estado==="aplicado"? "Aplicado"+(r.fechaReal? " "+fmtF(r.fechaReal):"") : "Pendiente") : ""),r.obs]);
+  }else if(que==="fenologia"){   // v164 (H9): la pestaña Fenología, con el principal, los «también hay» y el n.º del boletín en cerezo
+    head = ["Fecha","Fundo","Cuartel","Especie","BBCH principal","Estado principal","Estados secundarios","N.º del boletín","Nota","Fotos","Origen","Quién"];
+    filas = (D.fenologia||[]).filter(e=>e && typeof e==="object").slice().sort(fenCmp).map(e=>{ const esp=fenEspDe(e), i=fenInfo(esp, e.bbch, e.estado);
+      return [fmtF(e.fecha), e.fundo, e.cuartel, esp, e.bbch, (i.nom||"")+(i.fuera? FEN_FUERA : ""), fenSecDe(e).map(c=>c+" "+fenInfo(esp, c).nom).join(", "), i.nb,
+        e.nota, (e.fotos||[]).length || "", e.equipo==="celular"? "celular" : "iPad", e.autor||""]; });
   }else{
     head = ["Fecha y hora","Fundo","Cuartel","Categoría","Nota","Fijada","Resuelta","GPS"];
     filas = [...D.notas].sort((a,b)=>(a.fh||"").localeCompare(b.fh||""))
@@ -6431,6 +6452,83 @@ html.movil .prog-op{grid-template-columns:1fr;}
 .fen-sug-c{margin-left:6px; font-size:12.5px; color:var(--txt2);}
 .fen-sug-c[data-c="baja"]{color:var(--urg); font-weight:600;}
 .fen-sug-obs{margin-top:8px; min-height:36px;}
+/* v164: varios estados («también hay»), el cerezo con los 10 estados del boletín y sus fotos de referencia propias */
+.fen-nb{display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:20px; padding:0 4px; border-radius:5px; background:var(--p2); color:#fff;
+  font-family:ui-monospace,Menlo,monospace; font-size:11.5px; font-weight:800; line-height:1; vertical-align:middle;}   /* el n.º del boletín: burbuja cuadrada */
+.fenbadge .fen-nb, .fcb.on .fen-nb, .fensc.on .fen-nb{background:rgba(255,255,255,.3); color:#fff;}
+.fenbadge.fen-cer{padding-left:4px;}
+.fen-bbch{font-size:11px; font-weight:600; color:var(--txt2); white-space:nowrap;}
+.fenbadge + .fen-bbch{margin-left:6px;}
+.fen-fuera{font-weight:600; opacity:.92;}
+.fen-tb{display:inline-flex; flex-wrap:wrap; gap:4px; margin:4px 0 0 4px; vertical-align:middle;}
+.fen-t{border:1.5px solid var(--borde); border-radius:20px; padding:1px 8px; font-size:11px; font-weight:600; color:var(--txt2); background:var(--card); white-space:nowrap;}
+.fen-sec{margin-top:8px;}
+.fen-sec-b{min-height:40px;}
+.fen-sec-t{font-size:12.5px; font-weight:700; margin:2px 0 6px;}
+.fen-sec-ch{display:flex; flex-wrap:wrap; gap:5px;}
+.fensc{border:1.5px solid var(--borde); background:#fff; color:var(--txt); border-radius:9px; padding:4px 8px; font-size:12px; font-weight:600; cursor:pointer;
+  display:inline-flex; align-items:center; gap:5px; min-height:36px; min-width:36px;}
+.fensc .fenbb{background:#eef1ec; color:var(--txt2);}
+.fensc.on{border-color:var(--p); background:var(--p); color:#fff;}
+.fensc.on .fenbb{background:rgba(255,255,255,.28); color:#fff;}
+.fensc.on .fen-bbch{color:rgba(255,255,255,.88);}   /* cerezo: Postcosecha y Caída de hojas llevan «BBCH 91» chico, sin burbuja (revisión v164) */
+.fensc:disabled{opacity:.42; cursor:default;}
+.fen-sec-ay{font-size:12px; margin-top:6px;}
+.fen-ref-usar, .fen-ref-b{min-height:38px;}
+#fenRefUsar:not(:empty){margin-top:8px;}
+.fcb-g{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px;}
+.fcb-pt{margin:10px 0 4px; color:var(--txt2);}
+.fcb-post{grid-template-columns:repeat(5,minmax(0,1fr));}
+.fcb{position:relative; display:flex; flex-direction:column; gap:4px; min-width:0;}
+.fcb-b{display:flex; flex-direction:column; align-items:stretch; gap:5px; width:100%; min-height:44px; padding:5px; border:1.5px solid var(--borde); border-radius:10px;
+  background:#fff; color:var(--txt); cursor:pointer; text-align:left; font:inherit;}
+.fcb.on .fcb-b{border-color:var(--fc); background:var(--fc); color:#fff;}
+.fcb-ph{display:flex; align-items:center; justify-content:center; aspect-ratio:4/3; border-radius:7px; background:#eef1ec center/cover no-repeat;
+  font-size:10.5px; line-height:1.2; color:var(--txt2); text-align:center; padding:2px;}
+.fcb-ph.sin{border:1.5px dashed var(--borde); background:transparent;}
+.fcb.on .fcb-ph.sin{border-color:rgba(255,255,255,.65); color:#fff;}
+.fcb-n{font-size:12px; font-weight:700; line-height:1.25; overflow-wrap:anywhere;}
+.fcb-l{position:absolute; top:2px; right:2px; width:34px; height:34px; display:flex; align-items:center; justify-content:center; border:none; border-radius:8px;
+  background:rgba(255,255,255,.9); color:var(--txt); cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.18);}
+.fcb-l .i{width:17px; height:17px;}
+.fcb-s{min-height:34px; border:1.5px solid var(--borde); border-radius:8px; background:#fff; color:var(--txt2); font-size:11.5px; font-weight:600; padding:3px 6px; cursor:pointer; line-height:1.2;}
+.fcb-s.on{border-color:var(--fc); background:var(--fc); color:#fff;}
+.fen-mas{margin-top:10px;}
+.fen-mas > summary{cursor:pointer; font-size:13px; font-weight:700; color:var(--p2); min-height:36px; display:flex; align-items:center; gap:6px; list-style:none;}
+.fen-mas > summary::-webkit-details-marker{display:none;}
+.fen-mas > summary::before{content:"▸"; font-size:12px;}
+.fen-mas[open] > summary::before{content:"▾";}
+.fen-mas[open] > summary{margin-bottom:8px;}
+.lc-fi-fn{font-size:.82em;}
+.est-secp{border-left:3px solid var(--urg); padding-left:8px;}
+/* Referencias del cerezo (pantalla y lupa) */
+.fenref-ay{font-size:12.5px; margin-bottom:10px;}
+.fenref-g{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:12px;}
+.fenref-c{display:flex; flex-direction:column; gap:6px; min-width:0; border:1px solid var(--borde); border-left:4px solid var(--fc); border-radius:10px; padding:8px; background:var(--card);}
+.fenref-f{display:flex; gap:10px; min-width:0;}
+.fenref-ph{flex:none; width:92px; height:92px; border-radius:8px; border:1px solid var(--borde); background:#eef1ec center/cover no-repeat; cursor:pointer;
+  font-size:10.5px; color:var(--txt2); padding:4px; line-height:1.2;}
+.fenref-ph.sin{border-style:dashed; background:transparent;}
+.fenref-tx{min-width:0; flex:1; font-size:12.5px;}
+.fenref-t{font-size:13px;}
+.fenref-d{color:var(--txt2); line-height:1.35;}
+.fenref-de{margin-top:3px; font-size:11.5px;}
+.fenref-acc{display:flex; flex-wrap:wrap; gap:6px;}
+.fenref-acc .btn, .fenref-fb{min-height:36px;}
+.fenref-el{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
+.fenref-th{width:84px; height:84px; border-radius:8px; border:1px solid var(--borde); background:#eef1ec center/cover no-repeat; cursor:pointer; position:relative; padding:0;}
+.fenref-th span{position:absolute; left:0; right:0; bottom:0; background:rgba(0,0,0,.55); color:#fff; font-size:10px; padding:2px 3px; border-radius:0 0 7px 7px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;}
+.fenref-a{min-height:40px; text-decoration:none;}
+.fenref-av{font-size:12.5px; color:var(--urg);}
+.fenref-v .lienzo{min-height:0;}
+.fenref-sin{color:#ddd; font-size:15px; padding:24px; text-align:center; max-width:460px;}
+.fenref-cap{background:#000; color:#fff; padding:10px 14px calc(12px + env(safe-area-inset-bottom)); font-size:14px; line-height:1.4;}
+.fenref-cap .fen-bbch{color:#ccc;}
+.fenref-cap .fenref-de{color:#bbb;}
+@media (max-width:560px){ .fcb-g, .fcb-post{grid-template-columns:repeat(2,minmax(0,1fr));} .fenref-g{grid-template-columns:minmax(0,1fr);} }
+html.movil .fcb-g, html.movil .fcb-post{grid-template-columns:repeat(2,minmax(0,1fr));}
+html.movil .fenref-g{grid-template-columns:minmax(0,1fr);}
+html.sol .fcb-b, html.sol .fensc, html.sol .fcb-s, html.sol .fenref-c{border-color:#7c858e;}
 /* Calc Fito: campo de carencia por frutal (como los de al lado) */
 .cf-ce{flex:1; min-width:96px;}
 /* celular espejo (html.espejo, uiAplicar): sin botones que escriben, porque la próxima sincronización lo borraría.
@@ -7095,6 +7193,27 @@ html.movil .lc-ce-g2{grid-template-columns:repeat(2,minmax(0,1fr));}
 html.movil .lc-cam{padding:4px 10px;}
 html.sol .lc-cam{border-width:1.5px; border-color:var(--borde);}
 html.sol .lc-cam-it, html.sol .lc-cam-tx b{color:var(--txt);}
+/* v164 (F1): miniatura de la foto (la copia de este celular), «Quitar de la cola» y «No llegó al iPad: Reenviar / Quitar» */
+.lc-cam-ph{width:40px; height:40px; flex:0 0 auto; border-radius:9px; background:var(--card) center/cover no-repeat; border:1px solid var(--borde);}
+.lc-cam-ph.sin{background:var(--card);}
+.lc-cam-acc{display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;}
+.lc-cam-tx > .lc-cam-acc{font-size:inherit;}
+.lc-cam-b{min-height:40px;}
+.lc-cam-it.no{color:var(--txt);}
+.lc-b.no{background:var(--card); border:1px solid var(--rojo); color:var(--rojo);}
+html.sol .lc-b.no{border-width:1.5px;}
+/* v164 (F1): Fenología y fotos en el formulario corto del celular */
+.lc-ce-pv{margin:0 0 12px; padding:8px 10px; border:1px solid var(--rojo); border-radius:10px; background:var(--card);}
+.lc-ce-fen .fcb-g{margin-top:2px;}
+.lc-ce-fen #lcCeEst .fengrp:first-child{margin-top:0;}
+.lc-ce-n{font-size:12.5px;}
+.lc-ce-fb{min-height:44px; display:inline-flex; align-items:center; gap:6px; cursor:pointer;}
+.lc-ce-ths{display:flex; flex-wrap:wrap; gap:10px; margin-top:8px;}
+.lc-ce-th img{width:76px; height:76px; object-fit:cover; border-radius:10px; display:block; border:1px solid var(--borde); cursor:pointer;}
+.lc-ce-th .lc-ce-fx{position:absolute; top:-8px; right:-8px; width:34px; height:34px; border-radius:50%; border:none; background:var(--rojo); color:#fff; font-size:15px; cursor:pointer;}
+.lc-ce-fprep, .lc-ce-f0{font-size:12.5px; align-self:center;}
+.lc-ce .fen-sug{margin:-2px 0 12px;}
+.fent-or{font-size:11px; margin-top:3px;}
 /* «Pedir al iPad» (celular espejo) */
 .lc-ped{margin-top:12px; padding-top:10px; border-top:1px solid var(--borde);}
 .lc-ped-t{display:block; margin:0 0 6px; font-size:13px; font-weight:650; color:var(--txt2);}
@@ -7855,7 +7974,7 @@ function renderInterno(){
 /* Bots de prueba (01-10-2026): bots.js se carga solo cuando se pide (Datos → Respaldo, o abrir la app con ?bots) */
 /* Versión de los archivos aparte (bots.js, demo.js): una URL fija por versión para que el service worker los guarde una sola vez
    y sirvan sin señal (antes ?v=<hora> dejaba una copia nueva en la caché en cada carga). En el servidor local de pruebas se piden siempre frescos. */
-const AGRO_JS_V = "163";
+const AGRO_JS_V = "164";
 function agroJsUrl(src){ return src+"?v="+(/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)? Date.now() : AGRO_JS_V); }
 function agroJsCargar(src, ok){
   const s=document.createElement("script"); s.src=agroJsUrl(src); if(ok) s.onload=ok;
@@ -11396,8 +11515,8 @@ function mapaTemaDe(q, tema){
   if(tema==="fenologia"){
     const f=riegoFenDe(q); if(!f) return {col:"#bdbdbd", ley:"Sin registro", det:"sin registro", orden:99};
     const est=(FEN_ESTADOS[fenGrupoDe(q.especie)]||[]).find(x=>x.c===String(f.bbch).padStart(2,"0")) || {};
-    const g=est.g||"Otro";
-    return {col:FEN_COL[g]||"#7e57c2", ley:g, det:"BBCH "+f.bbch+(f.dias!=null? " · hace "+f.dias+" d":""), orden:FEN_ORD.indexOf(g)+1||50};
+    const g=est.g||"Otro", fi=fenInfo(q.especie, f.bbch, f.estado), sec=f.sec||[];   // color del principal; el detalle nombra los «también hay» (v164)
+    return {col:FEN_COL[g]||"#7e57c2", ley:g, det:(fi.cer && !fi.fuera? (fi.nb? fi.nb+" " : "")+fi.nom+" · " : "")+"BBCH "+f.bbch+(sec.length? " (+"+sec.join(", ")+")" : "")+(f.dias!=null? " · hace "+f.dias+" d":""), orden:FEN_ORD.indexOf(g)+1||50};
   }
   if(tema==="carencia"){
     const c=carenciaDe(q);
@@ -12203,7 +12322,7 @@ async function cargarFotosRec(){
     let h = "";
     for(const s of sel){
       const d = await fotoGet(s.f);
-      if(d) h += `<div class="ph" onclick="abrirVisor('${s.f}')"><img src="${d}"><span>${esc(s.lab)}</span></div>`;
+      if(d) h += `<div class="ph" onclick="abrirVisor('${s.f}')"><img src="${esc(d)}"><span>${esc(s.lab)}</span></div>`;
     }
     h += `<div class="ph" style="display:flex;align-items:center;justify-content:center;border:2px dashed #d4d4d2;background:none;color:#a8aaa6;font-size:11.5px;font-weight:600" onclick="ir('notas')">Ver notas →</div>`;
     el.innerHTML = h;
@@ -13345,7 +13464,7 @@ async function cfPDFArmar(pf, r, incl, uP, esIOS){
 
 /* ================== SINCRONIZACIÓN ENTRE DISPOSITIVOS ==================
    Un equipo "manda" (el iPad): cada vez que guardas, deja una copia del cuaderno
-   en el puente de Cloudflare. El otro "mira" (el celular): la baja solo cada 10 s.
+   en el puente de Cloudflare. El otro "mira" (el celular): pregunta si hay algo nuevo cada SYNC_SONDEO (45 s) y lo baja solo.
    Instrucciones para armar el puente: Sincronizacion_instrucciones.md            */
 const SYNC_ESPERA = 8000;      // espera tras el último guardado antes de subir
 const SYNC_MINIMO = 45000;     // no sube más seguido que esto (plan gratis: 1.000 al día)
@@ -13382,7 +13501,7 @@ function syncFirma(o){   // lo que cuenta para decidir si subir: el cuaderno sin
 
 async function syncFetch(ruta, opt){
   const s=syncCfg();
-  if(!s.url) throw new Error("Falta la dirección del puente (Datos → Sincronización).");
+  if(!s.url) throw new Error("Falta la dirección del puente (Datos → Conexiones → Sincronización).");
   if(!s.clave) throw new Error("Falta la clave.");
   const sep = ruta.indexOf("?")>=0? "&" : "?";
   const o = Object.assign({cache:"no-store"}, opt||{}), crudo=!!o.crudo; delete o.crudo;
@@ -13488,18 +13607,19 @@ async function syncMirar(){
   if(document.hidden || !navigator.onLine) return;
   try{
     const m=await syncFetch("meta");
-    if(m.hay && (m.ts||0) > (s.ultTs||0)) await syncBajar(false);
+    if(m && +m.v>=4 && s.puenteV!=="v4"){ s.puenteV="v4"; s.puenteFh=ahora(); guardar(); syncPintar(); }   // revisión v164: un celular que quedó en «sin» se destraba solo cuando se pega el v4 (no gasta nada: es la misma lectura)
+    if(m.hay && (m.ts||0) > (s.ultTs||0)) await syncBajar(false, m);   // el /meta que ya llegó: no se vuelve a pedir (con el puente de antes, cada /meta gasta una de las 1.000 list() del día)
     else if(s.estado && s.estado.indexOf("No se pudo")===0){ s.estado=""; syncPintar(); }
   }catch(e){ /* silencioso: puede ser señal mala */ }
 }
-async function syncBajar(manual){
+async function syncBajar(manual, m0){   // m0: el /meta que acaba de traer syncMirar (opcional)
   const s=syncCfg();
   if(s.rol!=="receptor"){ if(manual) alert("⚠️ Este equipo está en modo “Manda”: no baja datos para no pisar lo tuyo."); return false; }
   if(!syncListo()){ if(manual) alert("⚠️ Falta la dirección del puente o la clave."); return false; }
   if(_syncBajando) return false;
   _syncBajando=true; s.estado="Bajando…"; syncPintar();
   try{
-    const m=await syncFetch("meta");
+    const m=(m0 && typeof m0==="object")? m0 : await syncFetch("meta");
     if(!m.hay) throw new Error("el iPad todavía no ha subido nada");
     const datos=await syncFetch("datos");
     if(!datos || !datos.cuarteles) throw new Error("lo que llegó no parece el cuaderno");
@@ -13540,6 +13660,7 @@ function syncAplicar(datos, ts){
   localStorage.setItem(CLAVE, JSON.stringify(nuevo));
   cargar();
   _syncFotoNo={};
+  if(syncEspejo() && typeof asisAcuseRevisar==="function") try{ asisAcuseRevisar(); }catch(e){}   // v164: lo que el iPad ya recibió (D.buzonAcuse) pasa a «recibido en el iPad»
   try{ render(); if(lcPos0) lcScrollReponer(lcPos0); }catch(e){}
 }
 
@@ -13555,7 +13676,7 @@ fotoGet = async function(id){
     const r=await fetch(s.url.replace(/\/+$/,"")+"/foto/"+encodeURIComponent(id)+"?clave="+encodeURIComponent(s.clave), {cache:"no-store"});
     if(!r.ok){ _syncFotoNo[id]=1; return null; }
     const t=await r.text();
-    if(!t || t.charAt(0)==="{"){ _syncFotoNo[id]=1; return null; }
+    if(!duSano(t)){ _syncFotoNo[id]=1; return null; }   // revisión 2 de la v164: solo un dataURL entero (un error del puente es JSON; una «foto» con otra cosa adentro tampoco se guarda)
     try{ await fotoPut(id, t); }catch(e){}
     return t;
   }catch(e){ _syncFotoNo[id]=1; return null; }
@@ -13584,11 +13705,42 @@ async function syncProbar(){
   s.estado="Probando…"; syncPintar();
   try{
     const m=await syncFetch("meta");
+    const pv=await syncPuenteDetectar(m);   // v164: qué puente está pegado (la bandeja hace falta para enviar del celular al iPad)
     s.estado=""; guardar();
-    aviso(m.hay? ("✅ Puente OK · última copia "+fmtFH(new Date(m.ts).toISOString())+(m.equipo? " desde "+m.equipo:"")+" · "+num(m.n/1024,0)+" KB")
-               : "✅ Puente OK · el buzón está vacío todavía");
+    const cop=m.hay? "última copia "+fmtFH(new Date(m.ts).toISOString())+(m.equipo? " desde "+m.equipo:"")+" · "+num(m.n/1024,0)+" KB" : "el buzón está vacío todavía";
+    /* revisión v164: sin bandeja no se dice «Puente OK» (la conexión anda, pero lo del celular no llega al iPad) */
+    if(pv==="sin") aviso("⚠️ Conexión OK, pero e"+SYNC_PUENTE_TXT.sin.slice(1)+"\n("+cop+")", {dur:12000});
+    else aviso("✅ Puente OK · "+cop+(pv? "\n"+SYNC_PUENTE_TXT[pv] : ""));
   }catch(e){ s.estado="Falló la prueba: "+e.message; alert("⚠️ "+s.estado); }
   syncPintar();
+}
+/* v164 (§2.10): qué puente hay. /meta con v:4 → el v4 (no gasta nada más); si no, 1 lectura de la bandeja: responde → puente con bandeja (del
+   22-10 o del 23-10); 400 «ruta no permitida» → un puente sin bandeja (lo del celular no llega al iPad). Otro error (señal): no cambia lo sabido.
+   Queda en D.sync.puenteV (de este equipo: no viaja) */
+const SYNC_PUENTE_TXT = {
+  v4: "Puente v4: el celular puede enviar fenología con fotos y sugerir con Claude.",
+  bandeja: "Puente con bandeja: el celular puede enviar al iPad. Para sugerir con Claude desde el celular, pega el puente nuevo (Puente_v4_como_pegarlo.md).",
+  sin: "Este puente no tiene la bandeja: lo anotado en el celular no puede llegar al iPad. Pega el puente nuevo."
+};
+async function syncPuenteDetectar(m){
+  const s=syncCfg(); let pv="";
+  if(m && +m.v>=4) pv="v4";
+  else{
+    try{ await syncFetch("bandeja"); pv="bandeja"; }
+    catch(e){ if(e && e.status===400 && /ruta no permitida/i.test(e.message||"")) pv="sin"; }
+  }
+  if(pv){ s.puenteV=pv; s.puenteFh=ahora(); }
+  return pv;
+}
+function syncPuenteSin(){ return !!(D && D.sync && D.sync.puenteV==="sin"); }   // el formulario corto del celular avisa y no deja enviar a una cola que nunca saldría
+/* revisión v164: la clave de la estación (D.wl.clave) viaja en el cuaderno y la clave de celular puede leer el cuaderno: si es la misma palabra que
+   CLAVE_SYNC, quien tenga la de celular tendría la llave completa. Solo compara lo que ya está en este equipo (no escribe ni manda nada) */
+function syncClaveIgualEst(){ const s=(D && D.sync) || {}, w=(D && D.wl) || {}; return !!(s.clave && w.clave && String(s.clave).trim()===String(w.clave).trim()); }
+/* «¿Quién usa este equipo?» (v164): un nombre por celular; va en lo que este equipo envía al iPad («anotado a mano en el celular por Pía») */
+function syncAutorSet(val){
+  const s=syncCfg(), t=String(val||"").replace(/\s+/g," ").trim().slice(0,40);
+  if(t) s.autor=t; else delete s.autor;
+  guardar(); syncPintar();
 }
 /* ¿este equipo es el espejo (mira, no anota)? El respaldo es tarea del que manda */
 function syncEspejo(){ return !!(D && D.sync && D.sync.rol==="receptor"); }
@@ -13607,9 +13759,11 @@ function syncEstadoHTML(){
   const s=syncCfg();
   if(!syncListo()) return `<span class="muted">Sin configurar: pega la dirección del puente, la clave y elige qué hace este equipo.</span>`;
   const rol = s.rol==="emisor"? "Manda (sube lo que anotas)" : "Mira (se actualiza solo)";
-  return `<div style="font-size:13.5px"><b>${esc(rol)}</b> · ${esc(syncEquipo())}</div>
-    <div class="muted" style="margin-top:3px">${s.ult? (s.rol==="emisor"? "Última subida ":"Al día ")+fmtFH(s.ult)+(s.n? " · "+num(s.n/1024,0)+" KB":"") : "Todavía no sincroniza"}${s.rol==="receptor"? " · revisa cada 10 s":""}</div>
+  return `<div style="font-size:13.5px"><b>${esc(rol)}</b> · ${esc(syncEquipo())}${s.rol==="receptor" && s.autor? " · "+esc(s.autor) : ""}</div>
+    <div class="muted" style="margin-top:3px">${s.ult? (s.rol==="emisor"? "Última subida ":"Al día ")+fmtFH(s.ult)+(s.n? " · "+num(s.n/1024,0)+" KB":"") : "Todavía no sincroniza"}${s.rol==="receptor"? " · revisa cada "+Math.round(SYNC_SONDEO/1000)+" s":""}</div>
     ${s.donde? `<div class="muted" style="margin-top:3px">Fotos: ${s.donde==="r2"? "en R2 (10 GB)":"en el mismo buzón KV (1 GB, unas 2.000 fotos)"}</div>`:""}
+    ${SYNC_PUENTE_TXT[s.puenteV]? `<div class="sync-pv" data-pv="${esc(s.puenteV)}" style="margin-top:3px;font-size:13px;color:${s.puenteV==="sin"? "var(--rojo)" : "var(--txt2)"}">${esc(SYNC_PUENTE_TXT[s.puenteV])}${s.puenteFh? ` <span class="muted">(Probar, ${esc(fmtFH(s.puenteFh))})</span>` : ""}</div>` : ""}
+    ${syncClaveIgualEst()? `<div class="sync-cl" style="margin-top:4px;font-size:13px;color:var(--urg)">Ojo: esta clave es la misma de la estación, y la de la estación va dentro del cuaderno. Antes de darle a alguien una clave de celular, usa claves distintas (Puente_v4_como_pegarlo.md, paso 3).</div>` : ""}
     ${s.estado? `<div style="margin-top:4px;color:${s.estado.indexOf("No se pudo")===0||s.estado.indexOf("Falló")===0||s.estado.indexOf("El cuaderno pesa")===0||s.estado.indexOf("Fotos en pausa")===0? "var(--rojo)":"var(--txt2)"}">${esc(s.estado)}</div>`:""}`;
 }
 function syncPintar(){ const el=document.getElementById("syncEstado"); if(el) el.innerHTML=syncEstadoHTML(); }
@@ -13619,10 +13773,10 @@ function syncCardHTML(){
   const s=syncCfg();
   const roles=[["emisor","Manda (escribe)"],["receptor","Mira (solo lectura)"],["off","Apagada"]];
   return `<div class="card"><h2>${ic("refresh")} Sincronización entre dispositivos</h2>
-    <div class="muted">El iPad sube una copia del cuaderno al puente y el celular la baja sola cada 10 segundos. Los dos siguen funcionando sin señal. Cómo armar el puente: <b>Sincronizacion_instrucciones.md</b> en la carpeta de la app.</div>
+    <div class="muted">El iPad sube una copia del cuaderno al puente y el celular la baja sola: pregunta si hay algo nuevo cada ${Math.round(SYNC_SONDEO/1000)} segundos. Los dos siguen funcionando sin señal. Cómo armar el puente: <b>Sincronizacion_instrucciones.md</b> en la carpeta de la app.</div>
     <div class="grid2" style="margin-top:8px">
       ${campoF("sync_url","Dirección del puente","text",s.url,EX_URL)}
-      ${campoF("sync_clave","Clave (CLAVE_SYNC)","text",s.clave,EX_CLAVE)}
+      ${campoF("sync_clave", s.rol==="emisor"? "Clave (CLAVE_SYNC)" : "Clave (CLAVE_SYNC, o la de celular)","text",s.clave,EX_CLAVE)}
     </div>
     <div style="margin-top:4px"><div class="muted" style="font-size:12.5px;margin-bottom:4px">¿Qué hace <b>este</b> equipo?</div>
       <div class="chips" style="padding-bottom:2px">${roles.map(([v,l])=>`<button class="chip ${s.rol===v?'act':''}" onclick="syncRol('${v}')">${l}</button>`).join("")}</div></div>
@@ -13632,8 +13786,10 @@ function syncCardHTML(){
       ${s.rol==="emisor"? `<button class="btn chico" onclick="syncSubir(true)">${ic("upload")} Subir ahora</button>`:""}
       ${s.rol==="receptor"? `<button class="btn chico" onclick="syncBajar(true)">${ic("download")} Actualizar ahora</button>`:""}
     </div>
+    ${s.rol==="receptor"? `<div class="sync-autor" style="margin-top:10px">${campoF("sync_autor","¿Quién usa este equipo?","text",s.autor||"",'placeholder="Ej: Pía" maxlength="40" autocomplete="off" autocapitalize="words" onchange="syncAutorSet(this.value)"')}
+      <div class="muted" style="font-size:12.5px;margin-top:-4px">Va en lo que este celular envía al iPad: «anotado a mano en el celular por Pía». Vacío, dice solo «celular».</div></div>`:""}
     <div id="syncEstado" style="margin-top:10px">${syncEstadoHTML()}</div>
-    ${s.rol==="receptor"? `<div class="muted" style="margin-top:8px;font-size:12.5px">${ic("info")} Anota siempre en el iPad: lo que escribas en este equipo se pierde al actualizar.</div>`:""}
+    ${s.rol==="receptor"? `<div class="muted" style="margin-top:8px;font-size:12.5px">${ic("info")} Anota siempre en el iPad: lo que escribas en este equipo se pierde al actualizar. Lo que dictes, anotes con + Anotar o registres en Fenología sí llega al iPad: se envía por la bandeja.</div>`:""}
   </div>`;
 }
 
@@ -13677,7 +13833,8 @@ function asisSchema(){
     producto:S, dosis:S, objetivo:S, mojamiento:N, carencia:N, aplicado:B,
     mezcla:{type:"array", items:{type:"object", additionalProperties:false, properties:{producto:S, dosis:S}, required:["producto","dosis"]}},   // todos los productos aplicados juntos
     registro_tipo:S, registro_valor:N,
-    bbch:S, faltante:S, confianza:{type:"string", enum:["alta","media","baja"]}, importante:B,
+    bbch:S, bbch_sec:{type:"array", items:S},   // v164: bbch = el estado que predomina; bbch_sec = los otros que también se ven (la app pone el tope de 3)
+    faltante:S, confianza:{type:"string", enum:["alta","media","baja"]}, importante:B,
     adjuntos:{type:"array", items:{type:"integer"}}   // números de los archivos adjuntos de los que sale el ítem (1 = el primero)
   };
   const item = {type:"object", additionalProperties:false, properties:props, required:Object.keys(props)};
@@ -13688,7 +13845,8 @@ function asisSystem(){
   const h=hoy(), dia=DIAS[new Date(h+"T12:00:00").getDay()].toLowerCase();
   const fu = fundosSel().map(f=>{ const cs=cuartelesDe(f).map(q=>q.nombre+(q.especie? " ("+q.especie+")" : "")); return "- "+f+(cs.length? ": "+cs.join("; ") : ""); }).join("\n");
   const grupos={}; D.cuarteles.forEach(q=>{ grupos[fenGrupoDe(q.especie)]=1; });
-  const fen = Object.keys(grupos).map(g=>{ const l=FEN_ESTADOS[g]; return l? "· "+(RIEGO_GRUPO_N[g]||g)+": "+l.map(e=>e.c+" "+e.n).join(", ") : ""; }).filter(Boolean).join("\n");
+  const fen = Object.keys(grupos).map(g=>{ const l=FEN_ESTADOS[g]; return l? "· "+(RIEGO_GRUPO_N[g]||g)+": "+l.map(e=>e.c+" "+e.n).join(", ") : ""; }).filter(Boolean).join("\n")
+    +(D.cuarteles.some(q=>fenEsCerezo(q.especie))? "\n· "+fenCerezoLineaIA() : "");   // v164: el cerezo con los nombres del boletín (los mismos códigos de carozo)
   const labs = D.labores.filter(l=>l.estado!=="hecha" && l.estado!=="finalizada").slice(-60)
     .map(l=>"- "+l.tipo+" · "+l.fundo+(l.cuartel? " · "+l.cuartel : "")+" · "+l.fecha+(l.fecha2 && l.fecha2!==l.fecha? " al "+l.fecha2 : "")+" · "+((GT_EST[l.estado]||{}).n||l.estado)).join("\n");
   const prods = cfCatProd().map(p=>String(p.n||"").trim()).filter(Boolean).join(", ");   // solo los nombres (unos cientos de tokens)
@@ -13700,7 +13858,7 @@ TIPOS DE ÍTEM
 - "labor": trabajo de campo PLANIFICADO hacia adelante (va a la Carta Gantt). fecha = inicio; fecha_fin = término si se dice. cantidad/unidad = meta si se dice.
 - "aplicacion": aplicación fitosanitaria o foliar: producto, dosis (tal como se dijo, ej. "50 cc/100 L"), objetivo (plaga o enfermedad), mojamiento (L/ha) y carencia (días) si se dicen. aplicado = true si ya se aplicó; false si está programada. mezcla = TODOS los productos que van juntos en el estanque, cada uno con su dosis (el primero es el principal y es el mismo de producto y dosis); con un solo producto, mezcla = [ese producto].
 - "registro": dato puntual: registro_tipo "Riego" (registro_valor = horas de riego), "Lluvia" (registro_valor = mm caídos), "Fertilización" (producto y dosis) u "Otro".
-- "fenologia": estado fenológico observado en uno o más cuarteles; bbch = el código de la lista de su especie que mejor calce.
+- "fenologia": estado fenológico observado en uno o más cuarteles; bbch = el código de la lista de su especie que mejor calce. Si conviven estados, bbch = el que predomina (más de la mitad de lo que se ve) y bbch_sec = los otros que se ven claramente (hasta 3); si no, bbch_sec = [].
 - "recordatorio": algo por hacer que NO es labor de campo (llamar, comprar, pagar, cotizar, renovar, reunión, trámite). titulo = qué hay que hacer; fecha (y hora si se dice) = cuándo.
 - "nota": observación, problema o idea (plaga vista, gotero roto, comentario de un trabajador, daño, idea de mejora). titulo corto + texto con el detalle; categoria de la lista; urgente = true si hay que actuar pronto.
 
@@ -13767,11 +13925,26 @@ function asisNorm(it){
   it.urgente = !!it.urgente; it.aplicado = !!it.aplicado;
   it.importante = !!it.importante;   // los ítems de la bandeja o editados a mano pueden no traerlo
   it.mezcla = (Array.isArray(it.mezcla)? it.mezcla : []).map(m=>Object.assign({producto:String((m && m.producto)||"").trim(), dosis:String((m && m.dosis)||"").trim()}, m && m.prodId!=null? {prodId:m.prodId} : {})).filter(m=>m.producto);
+  /* v164: los «también hay» (bbch_sec): un ítem armado a mano sin el campo queda con []; en fenología, sin repetir ni el principal y de la escala */
+  it.bbch_sec = Array.isArray(it.bbch_sec)? it.bbch_sec.map(x=>String(x==null? "" : x).trim()).filter(Boolean) : [];
+  if(it.tipo==="fenologia") asisNormSec(it); else it.bbch_sec = [];
   if(it.tipo==="aplicacion") asisNormApl(it);
   else { if(it.carOrigen==="catalogo" || it.carOrigen==="sindato") it.carencia=null; delete it.prodId; delete it.carOrigen; }   // la del catálogo no pasa como «dicha» si vuelve a ser aplicación
   if(!it.id) it.id = "as"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
   if(it.incl==null) it.incl = true;
   return it;
+}
+/* «también hay» de una fenología (v164): un secundario que no existe para la especie NO pasa el registro a nota: se quita y se dice en faltante */
+function asisNormSec(it){
+  const qs=it.cuarteles.map(cu=>D.cuarteles.find(x=>x.fundo===it.fundo && x.nombre===cu)).filter(Boolean);
+  const r=fenSecLimpiar(qs.length? (qs[0].especie||"") : "", it.bbch, it.bbch_sec);
+  let sec=r.sec, fuera=r.fuera.slice();
+  if(qs.length>1){ const ok=sec.filter(c=>qs.every(q=>fenEstado(q.especie||"", c))); sec.forEach(c=>{ if(ok.indexOf(c)<0) fuera.push(c); }); sec=ok; }   // varios cuarteles: tiene que existir en todos
+  it.bbch_sec=sec;
+  if(fuera.length){
+    const t=(fuera.length>1? "los estados «también hay» "+fuera.join(", ")+" no existen" : "el estado «también hay» "+fuera[0]+" no existe")+" para "+(qs.length? qs.map(q=>q.nombre).join(", ") : "esta especie")+": se quitó";
+    if(String(it.faltante||"").indexOf(t)<0) it.faltante=[it.faltante, t].filter(Boolean).join("; ");
+  }
 }
 /* aplicación: producto del catálogo solo si el nombre calza EXACTO; carencia dicha → "registro"; si no, la del catálogo
    para la especie de los cuarteles (la mayor si son distintas, solo para la revisión: al guardar, asisAplicarTodos pone la de
@@ -13851,16 +14024,42 @@ function asisComoNota(it, faltan){   // lo que no se puede guardar en su módulo
   if(it.objetivo) det.push("objetivo: "+it.objetivo);
   if(it.cantidad!=null) det.push(num(it.cantidad)+" "+(it.unidad||"")); if(it.personas!=null) det.push(it.personas+" personas");
   if(it.registro_tipo) det.push(it.registro_tipo+(it.registro_valor!=null? ": "+num(it.registro_valor) : "")); if(it._cuNo && it._cuNo.length) det.push("cuarteles: "+it._cuNo.join(", "));
+  if(it.tipo==="fenologia" && it.bbch){   // H7 (v164): el estado no se pierde en la nota «(revisar)»
+    const q=(it.cuarteles||[]).map(cu=>D.cuarteles.find(x=>x.fundo===it.fundo && x.nombre===cu)).find(Boolean), esp=q? (q.especie||"") : "", nm=esp? fenNombre(esp, it.bbch) : "", sec=it.bbch_sec||[];
+    det.push("BBCH "+it.bbch+(nm? " · "+nm : "")+(sec.length? " · también "+sec.join(", ") : ""));
+  }
   return Object.assign({}, it, {tipo:"nota", titulo:(it.titulo||tit)+" (revisar)", fundo:it.fundo||GENERAL, categoria:"",
     texto:[it.texto, det.join(" · "), faltan.length? "Del asistente — "+faltan.join("; ") : ""].filter(Boolean).join("\n"), _fundoNo:"", _cuNo:[]});
+}
+/* revisión v164 (§2.7, «el iPad solo vuelve a revisar que no pase de mañana»): una fenología que llega del celular con fecha después de mañana (el reloj
+   de ese celular mal puesto) se guarda con la de hoy y lo dice. Si no, Riego, el mapa y la ventana de cerezos la tomarían como «la última» y la portada
+   y la ficha no (miran hasta hoy). Devuelve el texto del aviso ("" si la fecha estaba bien) */
+function asisFechaCel(it){
+  const H=hoy(); if(!it || it.tipo!=="fenologia" || !/^\d{4}-\d{2}-\d{2}$/.test(it.fecha||"") || it.fecha<=sumarDiasISO(H, 1)) return "";
+  const t="la fecha venía en el futuro ("+fmtF(it.fecha)+"): se guardó con la de hoy";
+  it.fecha=H; if(String(it.faltante||"").indexOf(t)<0) it.faltante=[it.faltante, t].filter(Boolean).join("; ");
+  return t;
+}
+/* revisión 2 de la v164: la hora que trae el celular (dictadoFh) vale solo si es una fecha y hora ISO y no está en el futuro (10 min de margen por la
+   diferencia de relojes). Si no (el reloj del celular adelantado o un texto raro), queda la del iPad: si no, esa hora salía en la Bitácora y, como
+   fenCmp desempata por la hora, ese registro seguía siendo «el último» del día aunque después se anotara otro en el iPad */
+const ASIS_FH_MARGEN = 10*60000;
+function asisFhCel(fh){
+  const s=String(fh||"");
+  if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?$/.test(s)) return "";
+  const t=Date.parse(s); return (isNaN(t) || t>Date.now()+ASIS_FH_MARGEN)? "" : s;
 }
 /* de dónde viene lo guardado (campos opcionales: lo anterior no los trae). equipo: "ipad" o "celular" (llegó por la bandeja) */
 function asisSello(it, equipo){
   const o={origen:"asis", asisId:it.id||"", equipo:equipo||"ipad"};
   if(it.asisLote) o.asisLote=it.asisLote;
   if(it.dictado) o.dictado=String(it.dictado).slice(0,600);
-  if(it.dictadoFh) o.dictadoFh=it.dictadoFh;
+  if(it.dictadoFh) o.dictadoFh = equipo==="celular"? (asisFhCel(it.dictadoFh) || ahora()) : it.dictadoFh;   // revisión 2 de la v164: del celular, solo una hora válida y no del futuro
   if(it.mano) o.mano=true;   // anotado a mano en el formulario corto del celular (no dictado)
+  /* v164: desde qué celular («Celular-ab12», syncEquipo de ese equipo) y quién lo usa («¿Quién usa este equipo?»); texto que llega de la bandeja: se recorta */
+  const eqId=String(it.equipoId||"").replace(/[^\w .-]/g,"").slice(0,40), au=String(it.autor||"").replace(/\s+/g," ").trim().slice(0,40);
+  if(eqId) o.equipoId=eqId;
+  if(au) o.autor=au;
   return o;
 }
 /* adjuntos ya guardados en IndexedDB que trae el ítem en it._adj = {fotos:[id], docs:[{id, nombre}]} (no viaja a D: solo los ids).
@@ -13878,6 +14077,7 @@ function asisAplicarTodos(lista, equipo, out){
   equipo = equipo || "ipad";
   lista.forEach((it0,i)=>{
     let it = asisNorm(it0);
+    const fut = equipo==="celular"? asisFechaCel(it) : "";   // revisión v164: con el reloj del celular mal puesto no queda una fenología «del futuro»
     const fl = asisFaltan(it);
     if(fl.length) it = asisComoNota(it, fl);
     cuenta[it.tipo] = (cuenta[it.tipo]||0)+1;
@@ -13923,8 +14123,9 @@ function asisAplicarTodos(lista, equipo, out){
     }else if(it.tipo==="recordatorio"){
       push(recs(), Object.assign({id:nid(), ok:false, t:it.titulo||it.texto, fecha:it.fecha, hora:it.hora||"", fundo:it.fundo||""}, sello, dest), "rec:");
     }else if(it.tipo==="fenologia"){
-      it.cuarteles.forEach(cu=>{ const q=D.cuarteles.find(x=>x.fundo===it.fundo && x.nombre===cu), esp=q? q.especie : "", est=fenEstado(esp, it.bbch), dc=ad.docs();
-        push(fenAll(), Object.assign({id:nid(), fecha:it.fecha, fundo:it.fundo, cuartel:cu, especie:esp, bbch:it.bbch, estado:est? est.n : "", fotos:ad.fotos(), nota:it.texto}, dc.length? {docs:dc} : {}, sello, dest), "f:"); });
+      it.cuarteles.forEach(cu=>{ const q=D.cuarteles.find(x=>x.fundo===it.fundo && x.nombre===cu), esp=q? q.especie : "", dc=ad.docs(), sec=fenSecLimpiar(esp, it.bbch, it.bbch_sec).sec;
+        /* v164: bbchSec (los «también hay»), fh (= la hora del dictado o de lo anotado en el celular) y, en cerezo, el nombre del boletín */
+        push(fenAll(), Object.assign({id:nid(), fecha:it.fecha, fundo:it.fundo, cuartel:cu, especie:esp, bbch:it.bbch, estado:fenEstadoTxt(esp, it.bbch), fotos:ad.fotos(), nota:fut? [it.texto, "Ojo: "+fut+"."].filter(Boolean).join("\n") : it.texto}, sec.length? {bbchSec:sec} : {}, {fh:sello.dictadoFh||ahora()}, dc.length? {docs:dc} : {}, sello, dest), "f:"); });
     }
   });
   if(avances.length) asisAvances(avances, equipo, refs);
@@ -14195,7 +14396,7 @@ function asisAdjHTML(){
   const A=asisCfg(), esp=syncEspejo();
   let h="";
   if(_asisAdj.length) h+=`<div class="asis-adjs" role="list" aria-label="Archivos adjuntos">${_asisAdj.map((a,i)=>`<div class="asis-adj" role="listitem" data-tipo="${a.tipo}">
-      <span class="asis-adj-mini" aria-hidden="true">${a.tipo==="imagen" && a.mini? `<img src="${a.mini}" alt="">` : ic("doc")}</span>
+      <span class="asis-adj-mini" aria-hidden="true">${a.tipo==="imagen" && a.mini? `<img src="${esc(a.mini)}" alt="">` : ic("doc")}</span>
       <span class="asis-adj-tx"><b>${esc(a.nombre)}</b><span class="muted">${a.tipo==="pdf"? "PDF" : "Foto "+a.w+" × "+a.h+" px"} · ${asisMB(a.bytes)}${A.items && !a.visto? " · agregado después de ordenar" : ""}</span></span>
       <button type="button" class="asis-x" onclick="asisAdjQuitar(${i})" aria-label="Quitar ${esc(a.nombre)}" ${A.cargando?"disabled":""}>${ic("x")}</button></div>`).join("")}</div>`;
   else if(A.items && (A.adjInfo||[]).length) h+=`<div class="asis-adj-aviso">${ic("alert")}<span>Esta revisión se ordenó con ${A.adjInfo.length===1? "un archivo" : A.adjInfo.length+" archivos"} (${esc(A.adjInfo.map(x=>x.nombre).join(", "))}) que se borraron al recargar la app. Si quieres guardarlos junto con lo ordenado, adjúntalos de nuevo antes de ${esp? "enviar" : "guardar"}.</span></div>`;
@@ -14222,6 +14423,7 @@ function asisAdjIdsLista(a){ return a? (a.fotos||[]).concat((a.docs||[]).map(d=>
 /* iPad, al importar la bandeja: los archivos que subió el celular (it.adjIds) se bajan del puente a IndexedDB con el MISMO id
    (si ya están, no se bajan otra vez: un pedido enviado en dos partes no duplica nada) y quedan enlazados a su ítem.
    Sin señal se lanza el error: no se importa nada y la bandeja queda para la próxima revisión. El base64 nunca queda en D */
+const ASIS_ADJ_RE = /^data:(image\/(jpeg|png|webp|gif)|application\/pdf);base64,[A-Za-z0-9+\/]+={0,2}$/;   // revisión 2 de la v164: la foto o el PDF ENTERO (antes solo cómo empezaba)
 async function asisAdjDeBandeja(items){
   const ok={};
   const traer=async id=>{
@@ -14229,7 +14431,7 @@ async function asisAdjDeBandeja(items){
     if(ok[id]!=null) return ok[id];
     if(await fotoGetLocal(id)) return ok[id]=true;
     const du=await syncFetch("foto/"+encodeURIComponent(id), {crudo:true});   // null si no está en el puente
-    if(!du || !/^data:(image\/(jpeg|png|webp|gif)|application\/pdf);base64,/.test(du)) return ok[id]=false;
+    if(!du || !ASIS_ADJ_RE.test(du)) return ok[id]=false;   // lo que trae otra cosa adentro no se guarda: el ítem dice «No llegó desde el celular: una foto»
     await fotoPut(id, du);
     if(syncFotosTanda._arriba) syncFotosTanda._arriba[id]=1;   // ya está en el puente: la sincronización no la vuelve a subir
     return ok[id]=true;
@@ -14257,7 +14459,8 @@ function asisDetalle(it){
   if(it.tipo==="avance"||it.tipo==="labor"){ d.push(it.labor_tipo||"¿labor?"); if(it.cantidad!=null) d.push(num(it.cantidad)+" "+(it.unidad||"")); if(it.personas!=null) d.push(it.personas+" persona"+(it.personas===1?"":"s")); if(it.estado_labor==="hecha") d.push("terminada"); if(it.tipo==="labor" && it.fecha_fin) d.push("hasta "+fmtF(it.fecha_fin)); }
   else if(it.tipo==="aplicacion"){ const mz=it.mezcla||[]; if(mz.length>1) d.push("mezcla: "+mz.map(m=>m.producto+(m.dosis? " "+m.dosis : "")).join(" + ")); else { d.push(it.producto||"¿producto?"); if(it.dosis) d.push(it.dosis); } if(it.objetivo) d.push(it.objetivo); if(it.mojamiento!=null) d.push(num(it.mojamiento)+" L/ha"); if(it.carencia!=null) d.push("carencia "+it.carencia+" d"+(it.carOrigen==="catalogo"? " según catálogo" : "")); else if(it.carOrigen==="sindato") d.push("sin dato de carencia"); d.push(it.aplicado? "ya aplicada" : "programada"); }
   else if(it.tipo==="registro"){ d.push(it.registro_tipo||"¿qué?"); if(it.registro_valor!=null) d.push(num(it.registro_valor)+(it.registro_tipo==="Riego"? " h" : it.registro_tipo==="Lluvia"? " mm" : "")); if(it.producto) d.push(it.producto+(it.dosis? " "+it.dosis : "")); }
-  else if(it.tipo==="fenologia"){ const q=D.cuarteles.find(x=>x.fundo===it.fundo && x.nombre===it.cuarteles[0]); const e=fenEstado(q? q.especie : "", it.bbch); d.push(it.bbch? "BBCH "+it.bbch+(e? " · "+e.n : "") : "¿estado?"); }
+  else if(it.tipo==="fenologia"){ const q=D.cuarteles.find(x=>x.fundo===it.fundo && x.nombre===it.cuarteles[0]), esp=q? q.especie : "", e=fenEstado(esp, it.bbch), sec=it.bbch_sec||[];
+    d.push(it.bbch? "BBCH "+it.bbch+(e? " · "+fenNombre(esp, it.bbch) : "")+(sec.length? " (+"+sec.join(", ")+")" : "") : "¿estado?"); }   // «BBCH 65 · Plena flor (+57)»
   else if(it.tipo==="nota"){ if(it.categoria) d.push(it.categoria); if(it.urgente) d.push("urgente"); }
   else if(it.tipo==="recordatorio"){ if(it.hora) d.push(it.hora); }
   return d.filter(Boolean).join(" · ");
@@ -14368,7 +14571,13 @@ function asisEditar(i, tmp){
     h+=`<label class="chk-fila"><input type="checkbox" id="ai_aplicado" ${it.aplicado?"checked":""}> Ya se aplicó</label>`;
   }
   if(t==="registro") h+=`<div class="grid2">${selF("ai_registro_tipo","¿Qué se registra? *",ASIS_REG,it.registro_tipo,"— Elegir —")}${f("registro_valor","Valor (horas o mm)",it.registro_valor,'inputmode="decimal"')}</div><div class="grid2">${f("producto","Producto (fertilización)",it.producto)}${f("dosis","Dosis",it.dosis)}</div>`;
-  if(t==="fenologia"){ const q=D.cuarteles.find(x=>x.fundo===it.fundo && x.nombre===it.cuarteles[0]); h+=`<label class="f">Estado fenológico *<select id="ai_bbch"><option value="">— Elegir —</option>${fenLista(q? q.especie : "").map(e=>`<option value="${e.c}" ${e.c===it.bbch?"selected":""}>${e.c} · ${esc(e.n)}</option>`).join("")}</select></label>`; }
+  if(t==="fenologia"){ const q=D.cuarteles.find(x=>x.fundo===it.fundo && x.nombre===it.cuarteles[0]), esp=q? (q.especie||"") : "";
+    it.bbch_sec=(Array.isArray(it.bbch_sec)? it.bbch_sec : []).slice(); _asisEd.esp=esp;
+    let ya=false; const so=c=>{ if(!ya && c===it.bbch){ ya=true; return " selected"; } return ""; }, op=(c, tx)=>`<option value="${c}"${so(c)}>${esc(tx)}</option>`;
+    const ops=fenEsCerezo(esp)? `<optgroup label="Los 10 del boletín y después de la cosecha">${FEN_CEREZO_TODOS.map(b=>op(b.c, (b.n? b.n+" " : "")+b.nom+" (BBCH "+b.c+")")+(b.sub||[]).map(s=>op(s.c, b.nom+" ("+s.nom+") (BBCH "+s.c+")")).join("")).join("")}</optgroup><optgroup label="Escala BBCH completa">${fenLista(esp).map(e=>op(e.c, e.c+" · "+e.n)).join("")}</optgroup>`
+      : fenLista(esp).map(e=>op(e.c, e.c+" · "+e.n)).join("");
+    h+=`<label class="f">Estado principal *<select id="ai_bbch" onchange="asisEdBbch(this.value)"><option value="">— Elegir —</option>${ops}</select></label>
+      <div id="ai_sec" class="fen-sec">${fenSecHTML(esp, it.bbch, it.bbch_sec, "asisEdSec")}</div>`; }   // v164: «también hay» con los mismos chips del formulario de Fenología
   if(t==="nota"||t==="recordatorio") h+=f("titulo", t==="recordatorio"? "¿Qué hay que recordar? *" : "Título", it.titulo);
   if(t==="nota") h+=`<div class="grid2">${selF("ai_categoria","Categoría",catsNota(),it.categoria,"— Automática —")}<label class="chk-fila" style="align-self:end"><input type="checkbox" id="ai_urgente" ${it.urgente?"checked":""}> Urgente</label></div>`;
   if(t!=="recordatorio") h+=areaF("ai_texto", t==="nota"? "Detalle" : "Observación", it.texto, "");
@@ -14387,6 +14596,10 @@ function asisEdCus(){
   c.innerHTML = lst.length? lst.map(q=>`<label class="asis-cu"><input type="checkbox" value="${esc(q.nombre)}" ${sel.indexOf(q.nombre)>=0?"checked":""}> ${esc(q.nombre)}</label>`).join("")
     : `<span class="muted">${fu? "Este fundo no tiene cuarteles" : "Elige el fundo"}</span>`;
 }
+/* v164: «también hay» en la revisión del asistente (los mismos chips y la misma regla del formulario de Fenología) */
+function asisEdSecPintar(){ const c=document.getElementById("ai_sec"); if(c && _asisEd) c.innerHTML=fenSecHTML(_asisEd.esp||"", v("ai_bbch"), _asisEd.it.bbch_sec, "asisEdSec"); }
+function asisEdSec(c){ if(!_asisEd) return; const st={bbch:v("ai_bbch"), sec:_asisEd.it.bbch_sec||[]}, av=fenSecTgl(st, c); _asisEd.it.bbch_sec=st.sec; fAvisoMb(av? esc(av) : ""); asisEdSecPintar(); }
+function asisEdBbch(c){ if(!_asisEd) return; _asisEd.it.bbch_sec=(_asisEd.it.bbch_sec||[]).filter(x=>x!==c); asisEdSecPintar(); }   // el que pasa a principal sale de «también hay»
 function asisLeerEd(){
   if(!_asisEd) return null;
   const it=_asisEd.it, g=id=>{ const e=document.getElementById("ai_"+id); return e? e.value.trim() : null; }, ck=id=>{ const e=document.getElementById("ai_"+id); return e? e.checked : null; };
@@ -14396,6 +14609,7 @@ function asisLeerEd(){
   ["fecha_fin","hora","labor_tipo","unidad","producto","dosis","objetivo","registro_tipo","bbch","titulo","categoria","texto","estado_labor"].forEach(k=>{ const x=g(k); if(x!==null) r[k]=x; });
   ["cantidad","personas","mojamiento","carencia","registro_valor"].forEach(k=>{ const x=g(k); if(x!==null){ const n=numES(x); r[k]= x===""||isNaN(n)? null : n; } });
   ["aplicado","urgente","importante"].forEach(k=>{ const x=ck(k); if(x!==null) r[k]=x; });
+  if(document.getElementById("ai_sec")) r.bbch_sec=(it.bbch_sec||[]).slice();   // v164: los «también hay» marcados (asisNorm los limpia)
   if(g("carencia")!==null && r.carencia!==it.carencia) r.carOrigen = r.carencia==null? "" : "registro";   // escrita a mano manda; si la borra, se vuelve a buscar en el catálogo
   if(g("mz_p_0")!==null){   // mezcla: un renglón por producto; el primero es el principal
     const mz=[]; for(let k=0; g("mz_p_"+k)!==null; k++){ const p=g("mz_p_"+k); if(p) mz.push({producto:p, dosis:g("mz_d_"+k)||""}); }
@@ -14480,8 +14694,12 @@ function asisConDictado(lista){
    los archivos de la revisión y no la toca. A.hist[].its = lo mínimo de cada ítem para las filas «En camino al iPad» (asisCaminoDe) */
 async function asisEnviar(lista, suelto){
   const A=asisCfg(); if(!suelto) asisConDictado(lista);
+  const eqId=syncEquipo(), au=String(syncCfg().autor||"").trim();   // v164: desde qué celular y quién lo usa (asisSello los guarda en el iPad)
+  lista.forEach(x=>{ if(!x.equipoId) x.equipoId=eqId; if(au && !x.autor) x.autor=au; });
+  if(asisMuyLargo(lista)){ aviso("⚠️ Es demasiado largo para enviarlo al iPad (hasta unas 60.000 letras por registro): acórtalo y vuelve a enviar.", {dur:9000}); return; }   // revisión v164: el puente v4 lo rechazaría y quedaría reintentando
   let subir=[];
-  if(!suelto && _asisAdj.length) subir=await asisAdjEspejo(lista, asisAdjReparto(lista));   // cada archivo queda en este celular y se sube al puente antes de enviar
+  if(suelto) subir=[].concat(...lista.map(x=>asisAdjIdsLista(x.adjIds)));   // H4 (v164): el formulario corto trae sus fotos ya guardadas en este celular («fc…»): se suben todas antes de enviar
+  else if(_asisAdj.length) subir=await asisAdjEspejo(lista, asisAdjReparto(lista));   // cada archivo queda en este celular y se sube al puente antes de enviar
   A.cola = A.cola.concat(lista.map(x=>{ const s=asisAdjIdsLista(x.adjIds).filter(id=>subir.indexOf(id)>=0); return Object.assign({id:x.id, item:x}, s.length? {subir:s} : {}); }));
   A.hist.unshift({fh:ahora(), origen:"aquí", n:lista.length, txt:asisCuentaTxt(asisContar(lista)), resumen:suelto? lista.map(x=>x.dictado||"").filter(Boolean).join(" · ").slice(0,300) : (A.resumen||""), enviado:false, ids:lista.map(x=>x.id), its:lista.map(asisCaminoDe)}); asisHistRecortar(A);
   if(!suelto && A.items){ A.items=A.items.filter(x=>!x.incl); if(!A.items.length){ A.items=null; A.resumen=""; A.preguntas=[]; A.borrador=""; asisAdjFin(); } }
@@ -14496,18 +14714,103 @@ function asisHistRecortar(A){
   const lim=sumarDiasISO(hoy(),-30), ya=(syncEspejo() && typeof lcAsisIds==="function")? lcAsisIds() : null;
   A.hist=A.hist.filter((h,i)=>i<30 || (!!ya && !!h && h.origen!=="celular" && fhDia(h.fhEnv||h.fh)>=lim && (h.its||[]).some(x=>x && x.id && !ya.has(String(x.id))))).slice(0,120);
 }
-/* celular: lo enviado que ya no está en la bandeja lo tomó el iPad (x.rec). Su fila sigue hasta que vuelve sincronizado; si no vuelve en 2 días
-   (el iPad lo deshizo o lo borró) se va, en vez de quedarse 30. Una lectura de la bandeja solo si hay filas enviadas sin marcar */
+/* ---------- acuse de recibo y reenvío (v164, §2.6: arregla la pérdida silenciosa H3 sin tocar el puente) ----------
+   La bandeja es una sola clave que escriben dos equipos (el celular agrega y el iPad vacía) y Cloudflare puede entregar una copia de hasta ~1 min:
+   algo enviado justo cuando el iPad vacía puede perderse. Por eso «recibido en el iPad» ya no sale de «no está en la bandeja», sino del ACUSE:
+   - iPad: al leer la bandeja anota en D.buzonAcuse {id, ts, eq} de TODO lo leído (también lo repetido): viaja en la subida normal del cuaderno.
+   - celular: guarda una copia de lo enviado en A.enviados {id, item, fhEnv, msEnv, reenvios, msUlt?, fallo?} (solo textos e ids, sin fotos).
+     Lo que llega en D.buzonAcuse, o cuyo asisId ya vuelve sincronizado, pasa a «recibido en el iPad hh:mm» y sale de A.enviados.
+     Sin acuse, a los 20 min y SOLO si el iPad subió el cuaderno después del envío (+5 min por la diferencia de relojes), 1 lectura de la bandeja:
+     si no está, se reenvía con el mismo id (el iPad descarta lo repetido). 3 veces como máximo; después (o a los 7 días) «No llegó al iPad»,
+     con Reenviar y Quitar. Si el iPad está cerrado o sin señal no se gasta nada */
+const ASIS_REENV = {espera:20*60000, reloj:5*60000, max:3, dias:7};
+const ASIS_ITEM_MAX = 60000;   // revisión v164: el puente v4 no deja entrar a la bandeja un ítem de más de 64 KB (texto e ids; las fotos van aparte): se avisa antes de enviar
+const ASIS_LOTE_TXT = 1500000;   // revisión 2 de la v164: un envío a la bandeja no pasa de ~1,5 MB (la bandeja entera del puente v4 tiene tope de 2 MB)
+function asisMuyLargo(lista){ return (lista||[]).some(x=>{ try{ return JSON.stringify(x).length>ASIS_ITEM_MAX; }catch(e){ return false; } }); }
+const ASIS_ACUSE = {max:300, dias:60};   // el iPad guarda los 300 acuses más nuevos de los últimos 60 días
+function asisEnv(A, crear){ if(!Array.isArray(A.enviados)){ if(!crear) return []; A.enviados=[]; } return A.enviados; }   // A.enviados se crea recién al enviar algo
+function asisEnvRecortar(A){ if(!Array.isArray(A.enviados)) return; const lim=Date.now()-30*864e5; A.enviados=A.enviados.filter(e=>e && e.id && (+e.msEnv||0)>=lim).slice(-200); }
+function asisAcuseDe(id){ if(!id || !Array.isArray(D.buzonAcuse)) return ""; const x=D.buzonAcuse.find(a=>a && String(a.id)===String(id)); return x && !isNaN(Date.parse(x.ts))? x.ts : ""; }   // «llegó al iPad hh:mm»
+function asisAcuseRecortar(){
+  const lim=sumarDiasISO(hoy(), -ASIS_ACUSE.dias);
+  D.buzonAcuse=(Array.isArray(D.buzonAcuse)? D.buzonAcuse : []).filter(x=>x && x.id && fhDia(x.ts)>=lim).sort((a,b)=>String(a.ts).localeCompare(String(b.ts))).slice(-ASIS_ACUSE.max);
+}
+/* iPad: el acuse de lo leído de la bandeja (lo ya acusado conserva su hora). Devuelve lo nuevo, para reponerlo si se hace Deshacer */
+function asisAcusar(lista){
+  if(!Array.isArray(D.buzonAcuse)) D.buzonAcuse=[];
+  const L=D.buzonAcuse, ya=new Set(L.map(x=>x && String(x.id))), t=ahora(), nuevos=[];
+  (lista||[]).forEach(x=>{ const id=(x && x.id!=null)? String(x.id).slice(0,60) : ""; if(!id || ya.has(id)) return;
+    ya.add(id); const o={id, ts:t, eq:String((x && x.origen)||"").replace(/[^\w .-]/g,"").slice(0,40)}; L.push(o); nuevos.push(o); });
+  if(nuevos.length) asisAcuseRecortar();
+  return nuevos;
+}
+/* Deshacer «Llegó desde el celular»: los registros se van, pero el acuse y «ya importado» se quedan (si no, el celular lo reenviaría y volvería) */
+function asisAcuseReponer(acu, ids){
+  const A=asisCfg(); if(!Array.isArray(D.buzonAcuse)) D.buzonAcuse=[];
+  (acu||[]).forEach(o=>{ if(o && !D.buzonAcuse.some(x=>x && x.id===o.id)) D.buzonAcuse.push(Object.assign({}, o)); });
+  A.importados=A.importados.concat((ids||[]).filter(id=>A.importados.indexOf(id)<0)).slice(-500);
+  asisAcuseRecortar(); guardar();
+}
+/* celular: lo que el iPad ya recibió (solo mira lo que ya está en este equipo: 0 operaciones del puente). Lo llaman syncAplicar y la vuelta de 2 min */
+function asisAcuseRevisar(){
+  if(!syncEspejo()) return 0;
+  const A=asisCfg(), ac=new Map(), ya=(typeof lcAsisIds==="function")? lcAsisIds() : new Set();
+  (Array.isArray(D.buzonAcuse)? D.buzonAcuse : []).forEach(x=>{ if(x && x.id!=null) ac.set(String(x.id), String(x.ts||"")); });
+  const llego=id=>ac.has(id) || ya.has(id), hora=id=>{ const t=ac.get(id); return t && !isNaN(Date.parse(t))? t : ahora(); };
+  let n=0;
+  A.hist.forEach(h=>{ if(h && h.origen!=="celular") (h.its||[]).forEach(x=>{ const id=x && x.id? String(x.id) : ""; if(id && !x.rec && llego(id) && !A.cola.some(c=>c.id===id)){ x.rec=hora(id); n++; } }); });
+  const E=asisEnv(A); if(E.length){ const q=E.filter(e=>!(e && llego(String(e.id)))); if(q.length!==E.length){ A.enviados=q; n++; } }
+  if(n){ guardar(); lcCaminoPintar(); }
+  return n;
+}
+/* celular, en la vuelta de 2 min (después de la cola): el acuse y, si hace falta, el reenvío. Una lectura de la bandeja solo si algo cumple las
+   condiciones de arriba */
 async function asisCaminoRevisar(){
-  const A=asisCfg(); if(_asisCamOcup || !syncEspejo() || !asisListo() || !navigator.onLine) return;
-  const hs=A.hist.filter(h=>h && h.enviado && h.origen!=="celular" && (h.its||[]).some(x=>x && x.id && !x.rec)); if(!hs.length) return;
+  const A=asisCfg(); if(_asisCamOcup || !syncEspejo()) return;
+  asisAcuseRevisar();
+  const E=asisEnv(A); if(!E.length) return;
+  const ms=Date.now(), ult=+syncCfg().ultTs||0; let marcados=0;
+  const listos=E.filter(e=>{
+    if(!e || !e.id || e.fallo || A.cola.some(c=>c.id===e.id)) return false;
+    const base=+e.msUlt||+e.msEnv||0;
+    if(ms-(+e.msEnv||ms)>=ASIS_REENV.dias*864e5){ e.fallo=ahora(); marcados++; return false; }   // 7 días sin acuse
+    if(+e.msInt && ms-(+e.msInt)<ASIS_REENV.espera) return false;   // revisión 2 de la v164: un intento sin respuesta (sin señal) espera 20 min, sin mover la referencia de «el iPad subió después»
+    if(ms-base<ASIS_REENV.espera || ult<=base+ASIS_REENV.reloj) return false;   // muy reciente, o el iPad no ha subido el cuaderno después del envío: no se gasta nada
+    if((e.reenvios||0)>=ASIS_REENV.max){ e.fallo=ahora(); marcados++; return false; }   // ya se reenvió 3 veces y el iPad sigue sin acusarlo
+    return true;
+  });
+  if(marcados){ guardar(); lcCaminoPintar(); }
+  if(!listos.length || !asisListo() || !navigator.onLine) return;
   _asisCamOcup=true;
+  let re=[];
   try{
-    const j=await syncFetch("bandeja"), en=new Set(((j && j.items)||[]).map(x=>String(x && x.id))), t=ahora(); let n=0;
-    hs.forEach(h=>h.its.forEach(x=>{ if(x && x.id && !x.rec && !en.has(String(x.id)) && !A.cola.some(c=>c.id===x.id)){ x.rec=t; n++; } }));
-    if(n){ guardar(); lcCaminoPintar(); }
-  }catch(e){}   // sin respuesta: se revisa en la próxima vuelta
+    const j=await syncFetch("bandeja"), en=new Set(((j && j.items)||[]).map(x=>String(x && x.id))), t=Date.now();
+    re=listos.filter(e=>!en.has(String(e.id)));
+    if(re.length){
+      await syncFetch("bandeja", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({items:re.map(e=>({id:e.id, item:e.item})), origen:syncEquipo()})});   // el mismo id: el iPad lo guarda una sola vez
+      re.forEach(e=>{ e.reenvios=(e.reenvios||0)+1; });
+    }
+    listos.forEach(e=>{ e.msUlt=t; delete e.msInt; });   // los que siguen en la bandeja (el iPad todavía no la lee) se miran de nuevo en 20 min y después de otra subida
+    guardar(); lcCaminoPintar();
+  }catch(e){
+    /* revisión v164: sin respuesta (señal, cuota del día) se vuelve a mirar en 20 min, no en la próxima vuelta de 2 min. Si el puente respondió que no
+       (4xx) el intento cuenta; un 400 al reenviar es un ítem que el puente v4 rechaza (id o tamaño): no sirve repetirlo, pasa a «No llegó al iPad» */
+    const t=Date.now(), st=(e && +e.status) || 0, resp=(st>=400 && st<500) || st===507;   // el puente respondió que no (4xx, o 507 «la bandeja está llena»)
+    /* revisión 2 de la v164: sin respuesta (sin señal, o un 5xx de paso) solo queda la hora del intento (msInt): con la señal de vuelta se reenvía en la
+       vuelta siguiente pasados los 20 min, sin esperar otra subida del iPad (antes msUlt pasaba a ser la hora del intento y pedía una subida nueva) */
+    listos.forEach(x=>{ if(resp) x.msUlt=t; else x.msInt=t; });
+    if(re.length && st===400) re.forEach(x=>{ x.fallo=ahora(); });
+    else if(re.length && st>=400 && st<500) re.forEach(x=>{ x.reenvios=(x.reenvios||0)+1; });
+    guardar(); lcCaminoPintar();
+  }
   finally{ _asisCamOcup=false; }
+}
+/* «BBCH 65 · Plena floración (50%+) (+1)» · cerezo: «05 Plena flor (+1)» (v164) */
+function asisCaminoFen(it){
+  if(!it.bbch) return "BBCH —";
+  const cu=(Array.isArray(it.cuarteles)? it.cuarteles : [])[0], q=(D.cuarteles||[]).find(x=>x.fundo===it.fundo && x.nombre===cu), esp=q? (q.especie||"") : "", i=fenInfo(esp, it.bbch);
+  const n=(Array.isArray(it.bbch_sec)? it.bbch_sec : []).filter(c=>/^\d{2}$/.test(String(c)) && String(c)!==String(it.bbch)).length, mas=n? " (+"+n+")" : "";
+  return (i.cer && !i.fuera? (i.nb? i.nb+" " : "")+i.nom : "BBCH "+it.bbch+(i.nom? " · "+i.nom : ""))+mas;
 }
 /* lo mínimo de un ítem enviado para su fila gris «En camino al iPad» (vive en A.hist de este equipo: sin archivos ni base64) */
 function asisCaminoDe(it){
@@ -14518,10 +14821,11 @@ function asisCaminoDe(it){
     : t==="aplicacion"? (it.producto || "Aplicación")+(it.dosis? " · "+it.dosis : "")
     : t==="avance" || t==="labor"? [it.labor_tipo || "Labor", it.cantidad!=null? val(it.cantidad)+(it.unidad? " "+it.unidad : "") : ""].filter(Boolean).join(" · ")
     : t==="registro"? (it.registro_tipo || "Registro")+(it.registro_valor!=null? " · "+val(it.registro_valor)+(it.registro_tipo==="Riego"? " h" : it.registro_tipo==="Lluvia"? " mm" : "") : "")
-    : t==="fenologia"? "BBCH "+(it.bbch || "—")
+    : t==="fenologia"? asisCaminoFen(it)
     : (it.titulo || lcLinea(it.texto, 80) || "Nota");
   const c= t==="pedido"? String(it.cat||"otro") : t==="aplicacion"? "apl" : (t==="avance" || t==="labor")? "lab" : t==="fenologia"? "fen" : t==="registro"? (LC_CAT_REG[it.registro_tipo]||"otro") : t==="nota"? "nota" : "otro";
-  return Object.assign({id:String(it.id||""), t, tit:String(tit).slice(0,140), fu:String(it.fundo||""), cus, f:/^\d{4}-\d{2}-\d{2}$/.test(it.fecha||"")? it.fecha : "", c, d:it.importante? 1 : 0},
+  const ft=(it.adjIds && Array.isArray(it.adjIds.fotos))? it.adjIds.fotos.find(x=>typeof x==="string" && /^fc[A-Za-z0-9_-]{1,58}$/.test(x)) : "";   // v164: la 1.ª foto (de este celular) para la miniatura de la fila
+  return Object.assign({id:String(it.id||""), t, tit:String(tit).slice(0,140), fu:String(it.fundo||""), cus, f:/^\d{4}-\d{2}-\d{2}$/.test(it.fecha||"")? it.fecha : "", c, d:it.importante? 1 : 0}, ft? {ft} : {},
     t==="pedido"? {acc:it.accion==="destacar"? "destacar" : "corregir", ref:it.ref||null, refs:Array.isArray(it.refs)? it.refs.slice(0,40) : []} : {});
 }
 /* pedidos del celular («Pedir al iPad» en el detalle de la Bitácora): ★ Destacar → dest en la fuente (en notas, fijada; en la bitácora, la línea);
@@ -14572,17 +14876,27 @@ async function asisColaEnviar(){
         guardar();
       }
     }
-    while(A.cola.length){   // de a 50 por envío
-      const env=A.cola.slice(0,50).map(x=>({id:x.id, item:x.item}));
+    while(A.cola.length){   // de a 50 por envío y hasta ASIS_LOTE_TXT letras (revisión 2 de la v164: 50 ítems grandes pasaban los 2 MB de la bandeja v4 y el 507 «abre el iPad» no se iba nunca)
+      const env=[]; let tam=0;
+      for(const x of A.cola){ const o={id:x.id, item:x.item}, n=JSON.stringify(o).length; if(env.length && (env.length>=50 || tam+n>ASIS_LOTE_TXT)) break; env.push(o); tam+=n; }
       await syncFetch("bandeja", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({items:env, origen:syncEquipo()})});
+      { const s=syncCfg(); if(s.puenteV==="sin"){ s.puenteV="bandeja"; s.puenteFh=ahora(); } }   // revisión v164: la bandeja respondió: ya no es un puente sin bandeja (el formulario corto deja enviar otra vez)
       const ids={}; env.forEach(x=>ids[x.id]=1);
       A.cola=A.cola.filter(x=>!ids[x.id]);
+      /* v164: la copia de lo enviado (textos e ids, sin fotos) hasta que el iPad acuse recibo; un «Reenviar» cuenta como envío nuevo */
+      const E=asisEnv(A, true), t=ahora(), ms=Date.now();
+      env.forEach(x=>{ let e=E.find(y=>y && y.id===x.id); if(!e){ e={id:x.id}; E.push(e); } Object.assign(e, {item:x.item, fhEnv:t, msEnv:ms, reenvios:0}); delete e.msUlt; delete e.msInt; delete e.fallo; });
+      asisEnvRecortar(A);
     }
     A.colaErr="";
     A.hist.forEach(h=>{ if(h.ids && h.ids.every(id=>!A.cola.some(x=>x.id===id))){ if(!h.enviado) h.fhEnv=ahora(); h.enviado=true; } });   // fhEnv: «enviado HH:MM» de las filas «En camino al iPad»
     guardar(); asisPintar(); lcCaminoPintar();
     return true;
-  }catch(e){ A.colaErr=e.message; guardar(); asisPintar(); return false; }
+  }catch(e){
+    A.colaErr=e.message;
+    if(e && e.status===400 && /ruta no permitida/i.test(e.message||"")){ const s=syncCfg(); s.puenteV="sin"; s.puenteFh=ahora(); }   // v164: el puente no tiene la bandeja (el formulario corto lo avisa)
+    guardar(); asisPintar(); return false;
+  }
   finally{ _asisColaOcup=false; }
 }
 async function asisBandejaMirar(manual){
@@ -14592,20 +14906,23 @@ async function asisBandejaMirar(manual){
   _asisBandOcup=true;
   try{
     const j=await syncFetch("bandeja"); A.bandUlt=ahora(); A.bandErr="";
-    const lista=j.items||[];
+    const lista=(j.items||[]).filter(x=>x && typeof x==="object" && x.id!=null);
     if(!lista.length){ if(manual) aviso("La bandeja está vacía: no hay nada nuevo desde el celular."); return; }
-    const nuevos=lista.filter(x=>A.importados.indexOf(x.id)<0);
-    let c={};
+    /* v164: lo ya importado (A.importados) o cuyo asisId ya está guardado no se vuelve a guardar: un reintento o un reenvío del celular no duplica */
+    const ya=(typeof lcAsisIds==="function")? lcAsisIds() : new Set();
+    const nuevos=lista.filter(x=>A.importados.indexOf(x.id)<0 && !ya.has(String(x.id)));
+    let c={}, acu=[];
     if(nuevos.length){
       const its=nuevos.map(x=>x.item||{});
       await asisAdjDeBandeja(its);   // los archivos del celular, del puente a IndexedDB (sin señal: no se importa nada y queda para la próxima vuelta)
       const peds=its.filter(x=>x && x.tipo==="pedido"), regs=its.filter(x=>!(x && x.tipo==="pedido"));   // «Pedir al iPad» (★ o Corregir…) no es un registro
-      undoIni("📥 Llegó desde el celular: "+asisCuentaTxt(asisContar(regs.map(asisNorm).concat(peds))));
+      undoIni("📥 Llegó desde el celular: "+asisCuentaTxt(asisContar(regs.map(asisNorm).concat(peds))), ()=>asisAcuseReponer(acu, nuevos.map(x=>x.id)));
       c=regs.length? asisAplicarTodos(regs, "celular") : {};
       if(peds.length) c.pedido=asisPedidos(peds);
       A.importados=A.importados.concat(nuevos.map(x=>x.id)).slice(-500);
       A.hist.unshift({fh:ahora(), origen:"celular", n:nuevos.length, txt:asisCuentaTxt(c), resumen:""}); A.hist=A.hist.slice(0,30);
     }
+    acu=asisAcusar(lista);   // v164: acuse de TODO lo leído (también lo repetido): va al celular en la subida normal del cuaderno (0 operaciones extra)
     guardar();   // primero queda guardado aquí; recién después se vacía la bandeja
     await syncFetch("bandeja/borrar", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ids:lista.map(x=>x.id)})});
     if(nuevos.length){
@@ -15154,12 +15471,13 @@ const RIEGO_KC_FEN_DEF = {
 function riegoKcFenTabla(g){ const r=riegoCfg(); const def=RIEGO_KC_FEN_DEF[g]||RIEGO_KC_FEN_DEF.general; const o=(r.kcFen||{})[g];   /* solo lee: kcFen lo crea riegoKcFenSet (29-10-2026) */ return def.map((x,i)=>Object.assign({}, x, (o && o[i]!=null)? {kc:+o[i]} : {})); }
 function riegoKcFenSet(g,i,val){ const r=riegoCfg(); r.kcFen=r.kcFen||{}; r.kcFen[g]=r.kcFen[g]||{}; const x=parseFloat(String(val).replace(",",".")); if(!isNaN(x)&&x>=0&&x<=1.5) r.kcFen[g][i]=x; else delete r.kcFen[g][i]; guardar(); }
 function riegoKcFenReset(g){ const r=riegoCfg(); if(r.kcFen) delete r.kcFen[g]; guardar(); riegoPintar(); }
-function riegoFenDe(q){ // último registro fenológico del cuartel
-  const l=(D.fenologia||[]).filter(e=>e.fundo===q.fundo && e.cuartel===q.nombre && e.bbch).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
-  if(!l.length) return null; const e=l[0];
+function riegoFenDe(q){ // último registro fenológico del cuartel (fenUltimo: fecha, hora de la observación e id; v164). Solo el PRINCIPAL entra al Kc
+  const e=fenUltimo(q.fundo, q.nombre);
+  if(!e) return null;
   const dias=Math.round((new Date(hoy()+"T12:00:00") - new Date(e.fecha+"T12:00:00"))/86400000);
-  return {bbch:e.bbch, estado:e.estado||"", fecha:e.fecha, dias};
+  return {bbch:e.bbch, estado:e.estado||"", fecha:e.fecha, dias, sec:fenSecDe(e)};
 }
+function riegoFenTxt(q, ki){ const b=String((ki && ki.bbch)||""); return fenEsCerezo(q && q.especie) && fenCerezoDe(b)? fenNombre(q.especie, b)+" (BBCH "+b+")" : "BBCH "+b; }   // v164: en cerezo «Plena flor (BBCH 65)»
 function riegoKcFen(g, bbch){ const n=parseInt(bbch,10); if(isNaN(n)) return null; return riegoKcFenTabla(g).find(x=>{ const p=x.d.split("-"); return n>=+p[0] && n<=+p[1]; })||null; }
 /* Kc efectivo = Kc de la tabla de la especie (mes o fenología) × factor de cobertura × ajuste % (27-10-2026). El Kc manual no se toca.
    Solo con el ajuste % se redondea a 2 decimales como antes; con cobertura no se redondea (un 0,02 de cobertura perdería un 30 %). */
@@ -15848,7 +16166,7 @@ function riegoFicha(id, foco){
         : `<div class="rf-fao rf-fao-no muted" data-fao="no">No hay tabla de referencia cargada para ${esc((RIEGO_GRUPO_N[riegoGrupo(q)]||"esta especie").toLowerCase())} (la de FAO-56 es de cítricos). Fija el factor con el % de cobertura medido.</div>`}
     </div>
     ${riegoGrupo(q)==="citricos"? `<div class="muted" style="font-size:11.5px;margin:6px 0 10px">La tabla es solo de referencia: no se aplica sola.</div>` : `<div style="height:10px"></div>`}
-    <div class="muted" style="font-size:11.5px">Ahora está usando <b>${riegoKcCadena(ki,f)}</b>${ki.src==="fen"? " ("+esc(ki.lab)+" · BBCH "+esc(String(ki.bbch||""))+")" : ""}.${ki.sinFen? ` <span style="color:var(--urg)">Sin registro fenológico: está cayendo al mes.</span>`:""}</div>
+    <div class="muted" style="font-size:11.5px">Ahora está usando <b>${riegoKcCadena(ki,f)}</b>${ki.src==="fen"? " ("+esc(ki.lab)+" · "+esc(riegoFenTxt(q, ki))+")" : ""}.${ki.sinFen? ` <span style="color:var(--urg)">Sin registro fenológico: está cayendo al mes.</span>`:""}</div>
   `, ()=>{
     const set=(k,el)=>{ const x=parseFloat(String(v(el)).replace(",",".")); r.cu[id]=r.cu[id]||{}; if(isNaN(x)||x<=0) delete r.cu[id][k]; else r.cu[id][k]=x; };
     /* 27-10-2026: se valida todo antes de guardar nada; los avisos van dentro de la ficha (sin alert) y la ficha queda abierta */
@@ -16245,7 +16563,7 @@ function riegoArmarHTML(){   // arma la vista completa (el área #riegoScroll es
           ${vista!=="tabla"? "" : `<div style="overflow-x:auto"><table class="ctt rg"><thead><tr><th>Cuartel</th><th style="text-align:right">Kc</th><th style="text-align:right">Pp mm/h<br><span style="font-weight:500">fuente · got./pl · L/h/pl</span></th><th style="text-align:left">Línea de riego</th><th style="text-align:right">ef %</th><th style="text-align:right">ETc<br><span style="font-weight:500">mm/día</span></th><th style="text-align:right">Repos.<br><span style="font-weight:500">%</span></th><th style="text-align:center">Días de riego</th><th style="text-align:right">mm<br><span style="font-weight:500">por riego</span></th><th style="text-align:right"><b>h por<br>riego</b></th><th style="text-align:right">m³/ha<br><span style="font-weight:500">por riego</span></th><th style="text-align:right">m³<br><span style="font-weight:500">semana</span></th></tr></thead>
           <tbody>${filas.map(({q,c})=>{ const o=r.cu[q.id]||{}, pi=c.ppInfo||riegoPp(q), al=riegoAlertasCu(q,c); return `<tr data-rgcu="${q.id}"><td style="min-width:150px"><div class="fila" style="gap:6px;align-items:flex-start;flex-wrap:nowrap;margin:0"><span style="flex:1;min-width:0"><b>${esc(q.nombre)}</b><div class="muted" style="font-size:10.5px;line-height:1.3">${esc(q.especie||"")}${q.variedad?" "+esc(q.variedad):""} · ${fmt(+q.ha||0,2)} ha · ${c.area? fmt(c.area,1)+" m²/pl" : "<span style='color:var(--urg)'>"+(pi.marco && pi.marco.motivo==="no se entiende"? "el marco no se entiende" : "sin marco")+"</span>"}</div>${al.joven? `<span class="badge b-ambar rg-jov">Kc de adulto en huerto joven</span>` : ""}${riegoCobBadge(q)}</span><button class="btn sec chico" onclick="riegoFicha(${q.id})" title="Ficha de riego: línea de riego, Pp medida, cobertura" aria-label="Ficha de riego de ${esc(q.nombre)}">${ic("gear")}</button></div></td>
             <td style="text-align:right;white-space:normal;min-width:150px">${(function(){ const ki=riegoKcInfo(q,new Date().getMonth()); const modo=o.modo||((!o.modo&&o.kc>0)?"manual":"global");
-              const et = (ki.src==="fen"? `${esc(ki.lab)} · ${ki.bbch} (${fmtF(ki.fecha).slice(0,5)}${ki.dias>45?`, <span style="color:var(--urg)">hace ${ki.dias} d</span>`:""})` : ki.src==="manual"? "manual" : (ki.sinFen? `<span style="color:var(--urg)">sin registro fenológico → mes</span>` : "según mes"))
+              const et = (ki.src==="fen"? `${esc(ki.lab)} · ${fenEsCerezo(q.especie)? esc(riegoFenTxt(q, ki)) : ki.bbch} (${fmtF(ki.fecha).slice(0,5)}${ki.dias>45?`, <span style="color:var(--urg)">hace ${ki.dias} d</span>`:""})` : ki.src==="manual"? "manual" : (ki.sinFen? `<span style="color:var(--urg)">sin registro fenológico → mes</span>` : "según mes"))
                 + ((ki.cob||ki.aj)? `<br>${fmt(ki.kcBase,2)}${ki.cob? " × "+riegoFmtCob(ki.cob)+" cobertura" : ""}${ki.aj? " × "+String(ki.aj).replace(".",",")+" %" : ""}` : "");
               return `<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px"><b style="font-size:14px;color:var(--p2)">${fmt(ki.kc,2)}</b>
                 <select class="rgsel" onchange="riegoSetModo(${q.id},this.value)" title="Cómo se elige el Kc de este cuartel"><option value="global"${modo==="global"?" selected":""}>Global</option><option value="mes"${modo==="mes"?" selected":""}>Mes</option><option value="fen"${modo==="fen"?" selected":""}>Fenología</option><option value="manual"${modo==="manual"?" selected":""}>Manual</option></select>
@@ -19356,6 +19674,20 @@ function estCerezosVentana(){
   const nom = en.slice(0, 3).map(function(z){ return z.q.nombre + " (" + z.q.fundo + ")"; }).join(", ") + (en.length > 3 ? " y " + (en.length - 3) + " más" : "");
   return {n:en.length, total:qs.length, lista:en, txt:en.length ? (en.length === 1 ? "1 cuartel de cerezo entre pinta y cosecha: " : en.length + " cuarteles de cerezo entre pinta y cosecha: ") + nom : ""};
 }
+/* v164 (solo lee): los cerezos cuyo último registro (fenUltimo, de los últimos 30 días) tiene el principal fuera de 81–87 (antes, o después: una
+   variedad tardía a medio cosechar anotada como 91 Postcosecha) y un «también hay» entre 81 y 87.
+   No encienden la ventana ni el aviso de Ahora (Manuel: los cálculos usan el principal); la tarjeta de cosecha lo dice en una línea */
+function estCerezosSecPinta(){
+  const qs = ((typeof D !== "undefined" && D && D.cuarteles) || []).filter(function(q){ return /^cerez/.test(gtNorm(q.especie || "")); }), en = [];
+  qs.forEach(function(q){ const e = fenUltimo(q.fundo, q.nombre); if(!e) return;
+    const dias = gtDif(e.fecha, hoy()), b = parseInt(e.bbch, 10); if(!(dias >= 0 && dias <= 30) || (b >= 81 && b <= 87)) return;   // revisión 2 de la v164: antes solo con el principal bajo 81
+    const s = fenSecDe(e).filter(function(c){ return +c >= 81 && +c <= 87; }); if(!s.length) return;
+    const c = fenMasAvanzado({bbch:"", bbchSec:s});   // el más avanzado de los que están en pinta
+    en.push({q:q, e:e, c:c}); });
+  const grupos = {}; en.forEach(function(z){ const k = fenCerezoDe(z.c), t = k ? k.n + " " + k.nom : "BBCH " + z.c; (grupos[t] = grupos[t] || []).push(z.q.nombre + " (" + z.q.fundo + ")"); });
+  const txt = en.length ? "También hay fruta en " + Object.keys(grupos).map(function(t){ const l = grupos[t]; return t + " en " + (l.length > 1 ? l.slice(0, -1).join(", ") + " y " + l[l.length - 1] : l[0]); }).join("; y en ") + ", anotada como «también hay»: si llueve, revísala." : "";
+  return {n:en.length, lista:en, txt:txt};
+}
 
 /* --- B5. frío invernal: horas frío (Weinberger), unidades Utah (Richardson) y porciones (modelo dinámico de Fishman–Erez, como chillR) --- */
 function estFrioHoras(temps, estado){   // temperatura media de cada hora (°C), en orden → {horas, hf, utah, pf, estado}; estado = el del modelo dinámico al final (para seguir el día siguiente)
@@ -19511,20 +19843,22 @@ function estCampoHelada(){
 function estCampoCosecha(){
   const U = estUmb(), CZ = estCerezosVentana(), P = estPronVigente(), lc = P ? estLluviaProx(72) : null, mm = lc ? lc.mm : 0;
   let n, t;
+  const SP = estCerezosSecPinta(), sp = SP.n ? '<p class="est-regla est-secp" data-secp="' + SP.n + '">' + esc(SP.txt) + '</p>' : "";   // v164: un «también hay» en pinta lo dice, sin encender el aviso
   if(!P){ n = "gr"; t = "Sin pronóstico"; }
-  else if(!CZ.n){ n = "in"; t = CZ.total ? "Ningún cerezo entre pinta y cosecha" : "Sin cuarteles de cerezo"; }
+  else if(!CZ.n){ n = "in"; t = !CZ.total ? "Sin cuarteles de cerezo" : SP.n ? "Ningún cerezo con la pinta como estado principal" : "Ningún cerezo entre pinta y cosecha"; }   // revisión v164: con un «también hay» en pinta no dice «ninguno» a secas
   else { n = mm >= U.cosAlerta ? "ro" : mm >= U.cosAviso ? "am" : "ok"; t = mm >= U.cosCrit ? "Crítico" : mm >= U.cosAlerta ? "Alerta" : mm >= U.cosAviso ? "Aviso" : "Sin aviso"; }
   let cz;
+  const VEN = 'entre 09 Color pajizo y pinta (BBCH 81) y 10 Maduración de fruto (BBCH 87)';   // los nombres del boletín (el código BBCH no cambió: 81 a 87)
   if(CZ.n){
     const L = estDat.ult, l72 = L ? estLectDesde(L.ms - 3 * EST_DIA_MS) : [], moj = l72.filter(function(x){ return x.hr >= U.mojHR || x.ll > 0; }).length * 0.25;
-    cz = '<p class="est-regla">Cuarteles en ventana: <b>' + esc(CZ.txt) + '</b> (según Fenología).</p>' +
+    cz = '<p class="est-regla">Cuarteles en ventana: <b>' + esc(CZ.txt) + '</b> (según Fenología).</p>' + sp +
       (l72.length ? '<dl class="est-filas"><dt>Fruta mojada en las últimas 72 horas</dt><dd>' + estHm(moj) + '</dd></dl>' : "");
-  } else cz = '<p class="est-regla">' + (CZ.total ? 'Ningún cuartel de cerezo tiene en Fenología un estado entre pinta (BBCH 81) y madurez de cosecha (BBCH 87) anotado en los últimos 30 días. <b>Anota la pinta en Fenología</b> para que esta tarjeta avise.' : 'No hay cuarteles de cerezo en Datos. Si los agregas, <b>anota la pinta en Fenología</b> para que esta tarjeta avise.') + '</p>' +
+  } else cz = '<p class="est-regla">' + (CZ.total ? 'Ningún cuartel de cerezo tiene en Fenología un estado principal ' + VEN + ' anotado en los últimos 30 días. <b>' + (SP.n ? 'Anota la pinta como estado principal en Fenología' : 'Anota la pinta en Fenología') + '</b> para que esta tarjeta avise.' :'No hay cuarteles de cerezo en Datos. Si los agregas, <b>anota la pinta en Fenología</b> para que esta tarjeta avise.') + '</p>' + sp +
     '<div><button type="button" class="btn sec" onclick="ir(\'fenologia\')">' + ic("sprout") + 'Ir a Fenología</button></div>';
   const cuerpo = estSem(n, t) +
     '<div><div class="est-grande">' + estF1(mm) + '<small>mm en 72 h</small></div><div class="est-subv">' + (lc ? estCap(estCuandoLl(lc)) + (lc.prob != null ? " · " + estF0(lc.prob) + " % de probabilidad" : "") : P ? "Sin lluvia pronosticada" : "Sin pronóstico al día") + '</div></div>' + cz +
     '<p class="est-pie">Si llueve, la app suma las horas de fruta mojada. Qué hacer: adelantar cosecha, cerrar techos, calcio, secar.</p>' +
-    estComoK("cosecha", "Regla y de dónde sale", '<ul><li>Cuarteles en ventana: los cerezos cuyo último registro de Fenología (de los últimos 30 días) está entre pinta (BBCH 81) y madurez de cosecha (BBCH 87).</li>' +
+    estComoK("cosecha", "Regla y de dónde sale", '<ul><li>Cuarteles en ventana: los cerezos cuyo último registro de Fenología (de los últimos 30 días) tiene como estado principal uno ' + VEN + '. Un estado anotado como «también hay» no enciende el aviso: la tarjeta lo dice aparte.</li>' +
       '<li>' + estUv("cosAviso") + ' mm o más en 72 horas, aviso; ' + estUv("cosAlerta") + ' mm, alerta' + estCp() + '.</li>' +
       '<li>' + estUv("cosCrit") + ' mm, crítico: en 2014, lluvias de más de 20 mm causaron 30 a 50 % de pérdida por partidura' + estFte("nota de prensa Asoex, un solo evento") + '.</li>' +
       '<li>Lo que más pesa es cuánto tiempo pasa mojada la fruta, no solo los milímetros.</li></ul>');
@@ -22525,6 +22859,162 @@ function fenGrupoDe(especie){ const k=gtNorm(especie).replace(/\s.*$/,""); for(c
 function fenLista(especie){ return FEN_ESTADOS[fenGrupoDe(especie)] || FEN_ESTADOS.general; }
 function fenEstado(especie, c){ return fenLista(especie).find(x=>x.c===c) || null; }
 function fenColor(especie, c){ const e=fenEstado(especie,c); return e? (FEN_GCOL[e.g]||"#94A3B8") : "#94A3B8"; }
+/* ---------- v164 (30-10-2026): varios estados en un registro (F2) y el cerezo con los 10 estados del boletín (F3) ----------
+   bbch y estado = el estado PRINCIPAL, el que predomina (6 a 8 de cada 10 yemas, flores o frutos: norma de Pomanova 2020). bbchSec (opcional)
+   = hasta 3 estados «también hay»: códigos de la misma escala, sin repetir ni el principal, ordenados. TODOS los cálculos (Kc del riego, color
+   del mapa, secuencia de la temporada y ventana de lluvia en cosecha) usan solo el principal; fh (opcional) = hora de la observación (desempate).
+   Cerezo: una CAPA DE NOMBRES sobre los mismos códigos BBCH de carozo (fenGrupoDe sigue en "carozo": los Kc y los Kc editados no cambian).
+   Cada estado del boletín Smart Cherry / Avium 2026-2027 guarda un código interno (c) y abarca un rango (r), con el que se muestran bien los
+   registros antiguos. Las descripciones son propias (escala BBCH y norma de Pomanova); las fotos de la lámina NO se copian: cada estado lleva
+   una foto de referencia propia (D.fenRef) y, si Manuel lo pega, un enlace de texto al boletín. */
+const FEN_SEC_MAX = 3;
+const FEN_CEREZO = [
+  {n:"01", nom:"Yema dormida",         c:"00", r:[[0,0]],         d:"Yemas cerradas y cubiertas por escamas pardas; no se ve crecimiento."},
+  {n:"02", nom:"Yema hinchada",        c:"51", r:[[1,8],[51,52]], d:"Las yemas engordan y las escamas empiezan a separarse; asoma tejido claro o verde en la punta."},
+  {n:"03", nom:"Ramillete expuesto",   c:"55", r:[[53,56]],       d:"La yema floral se abrió: se ve el grupito de botones verdes, todavía cerrados."},
+  {n:"04", nom:"Botón blanco",         c:"57", r:[[57,59]],       d:"Asoman las puntas blancas de los pétalos por sobre los sépalos verdes; las flores siguen cerradas."},
+  {n:"05", nom:"Plena flor",           c:"65", r:[[60,65]],       d:"La mayoría de las flores abiertas (subestado «inicio»: cerca de 1 de cada 10 abierta).", sub:[{c:"61", nom:"inicio de floración", chip:"Inicio de floración (10 %)"}]},
+  {n:"06", nom:"Caída de pétalos",     c:"67", r:[[66,69]],       d:"Flores que se marchitan; la mayoría de los pétalos ya cayó."},
+  {n:"07", nom:"Caída de chaqueta",    c:"72", r:[[70,72]],       d:"Se seca y se suelta la «chaqueta» (la base de la flor con sépalos y estambres) y queda a la vista el frutito verde."},
+  {n:"08", nom:"Fruto en desarrollo",  c:"75", r:[[73,79]],       d:"Fruto verde que crece; incluye el endurecimiento del carozo (subestado «fase I»: recién cuajado).", sub:[{c:"73", nom:"fase I", chip:"Fase I · recién cuajado"}]},
+  {n:"09", nom:"Color pajizo y pinta", c:"81", r:[[80,84]],       d:"El fruto pasa de verde a amarillo pajizo y después a rosado: empieza a colorear. Desde aquí la lluvia lo parte con facilidad."},
+  {n:"10", nom:"Maduración de fruto",  c:"87", r:[[85,89]],       d:"El color de la variedad avanza hasta la madurez de cosecha."}
+];
+const FEN_CEREZO_POST = [   // no están en la lámina, pero el riego los necesita: sin ellos el Kc queda en 0,85 desde la cosecha hasta el invierno
+  {n:"", nom:"Postcosecha",    c:"91", r:[[90,91]], d:"Después de cosechar: follaje verde y completo; el árbol sigue transpirando."},
+  {n:"", nom:"Caída de hojas", c:"93", r:[[92,95]], d:"Las hojas amarillean y empiezan a caer."}
+];
+const FEN_CEREZO_TODOS = FEN_CEREZO.concat(FEN_CEREZO_POST);
+const FEN_FUERA = " (fuera de los 10 del boletín)";
+function fenEsCerezo(esp){ return /^cerez/.test(gtNorm(esp||"")); }   // la misma regla de estCerezosVentana
+function fenCerezoDe(c){ c=String(c==null? "" : c); if(!/^\d{2}$/.test(c)) return null; const n=+c; return FEN_CEREZO_TODOS.find(b=>b.r.some(x=>n>=x[0] && n<=x[1])) || null; }   // el estado del boletín que contiene ese código (o null)
+function fenEspDe(e){ if(!e) return ""; if(e.especie) return e.especie; const q=(D.cuarteles||[]).find(x=>x.fundo===e.fundo && x.nombre===e.cuartel); return q? (q.especie||"") : ""; }
+/* los «también hay» guardados de un registro, sanos (solo códigos, sin repetir ni el principal): lo que llegue raro de la sincronización no se pinta */
+function fenSecDe(e){ const o=[]; if(e && Array.isArray(e.bbchSec)) e.bbchSec.forEach(x=>{ const c=String(x==null? "" : x); if(/^\d{2}$/.test(c) && c!==String(e.bbch||"") && o.indexOf(c)<0) o.push(c); }); return o; }
+function fenCodigos(e){ return e? [String(e.bbch||"")].concat(fenSecDe(e)).filter(Boolean) : []; }
+function fenMasAvanzado(e){ const l=fenCodigos(e); return l.length? l.reduce((a,b)=>(+b>+a? b : a)) : ""; }   // solo para la línea informativa de la tarjeta de cosecha: ningún cálculo lo usa
+/* revisión 2 de la v164: ¿dos códigos son el mismo estado? Iguales o, en cerezo, del mismo estado del boletín (85 y 87 son «10 Maduración de fruto»;
+   75 y 79, «08 Fruto en desarrollo»). Solo para no repetir un «también hay»: ningún cálculo lo usa */
+function fenMismoEstado(esp, a, b){
+  a=String(a==null? "" : a); b=String(b==null? "" : b); if(!a || !b) return false; if(a===b) return true;
+  if(!fenEsCerezo(esp)) return false; const x=fenCerezoDe(a); return !!x && x===fenCerezoDe(b);
+}
+/* los «también hay» para mostrar: [{c, nom}], cada estado una vez y sin el del principal (lo guardado no cambia) */
+function fenSecNoms(esp, bbch, sec){
+  const o=[]; (sec||[]).forEach(c=>{ if(fenMismoEstado(esp, c, bbch) || o.some(z=>fenMismoEstado(esp, c, z.c))) return; o.push({c, nom:fenInfo(esp, c).nom}); }); return o;
+}
+/* limpia una lista de «también hay» para un principal: en el orden recibido, sin repetir, sin el principal, de la escala de la especie
+   (con especie) y como mucho FEN_SEC_MAX; devuelve {sec (ordenados), fuera (los que no existen)} */
+function fenSecLimpiar(esp, bbch, lista){
+  const sec=[], fuera=[], val=esp? new Set(fenLista(esp).map(x=>x.c)) : null; bbch=String(bbch==null? "" : bbch);
+  (Array.isArray(lista)? lista : []).forEach(x=>{ const c=String(x==null? "" : x).trim(); if(!c || c===bbch || sec.indexOf(c)>=0) return;
+    if(!/^\d{2}$/.test(c) || (val && !val.has(c))){ if(fuera.indexOf(c)<0) fuera.push(c); return; }
+    if(fenMismoEstado(esp, c, bbch) || sec.some(s=>fenMismoEstado(esp, c, s))) return;   // revisión 2 de la v164: en cerezo, otro código del mismo estado del boletín no agrega nada (no ocupa lugar)
+    if(sec.length<FEN_SEC_MAX) sec.push(c); });
+  return {sec:sec.sort(), fuera};
+}
+/* el nombre para mostrar: en cerezo el del boletín (con el subestado); en las demás especies el guardado o el de la escala */
+function fenNombre(esp, c, guardado){
+  c=String(c==null? "" : c);
+  if(fenEsCerezo(esp)){ const b=fenCerezoDe(c); if(b){ const s=(b.sub||[]).find(x=>x.c===c); return b.nom+(s? " ("+s.nom+")" : ""); } }
+  const e=fenEstado(esp, c);
+  return String(guardado||"").trim() || (e? e.n : "");
+}
+function fenEstadoTxt(esp, c){ return fenEsCerezo(esp) && fenCerezoDe(c)? fenNombre(esp, c) : ((fenEstado(esp, c)||{}).n || ""); }   // lo que se guarda en «estado»
+/* {c, nom, nb (n.º del boletín o ""), cer, fuera (cerezo con un código fuera de los 10 y de postcosecha), b} */
+function fenInfo(esp, c, guardado){
+  c=String(c==null? "" : c);
+  const cer=fenEsCerezo(esp), b=cer? fenCerezoDe(c) : null;
+  return {c, nom:fenNombre(esp, c, guardado), nb:b? b.n : "", cer, fuera:cer && !b, b};
+}
+function fenNbHTML(nb){ return nb? `<span class="fen-nb">${esc(nb)}</span> ` : ""; }   // la burbuja cuadrada del n.º del boletín (el BBCH va aparte, con la palabra «BBCH»)
+/* «Plena floración (50%+) · BBCH 65 · también Botón blanco / rosado, Fin de floración» · cerezo: «05 Plena flor · BBCH 65 · también Botón blanco» */
+function fenEtiqueta(e){
+  if(!e) return "";
+  const esp=fenEspDe(e), i=fenInfo(esp, e.bbch, e.estado), sec=fenSecNoms(esp, e.bbch, fenSecDe(e));   // revisión 2 de la v164: sin nombres repetidos
+  return [(i.nb? i.nb+" " : "")+(i.nom||"Estado sin nombre")+(i.fuera? FEN_FUERA : ""), e.bbch? "BBCH "+e.bbch : "", sec.length? "también "+sec.map(z=>z.nom).join(", ") : ""].filter(Boolean).join(" · ");
+}
+/* título en una línea (Bitácora, «En camino al iPad»): «BBCH 65 · Plena floración (50%+) · también 57, 69»; cerezo: «Plena flor · también Botón blanco»
+   (la burbuja «05» y «BBCH 65» van aparte) */
+function fenTitulo(esp, bbch, guardado, sec){
+  sec=sec||[]; const i=fenInfo(esp, bbch, guardado);
+  if(!bbch) return "BBCH —"+(guardado? " · "+guardado : "");
+  if(i.cer && !i.fuera){ const sn=fenSecNoms(esp, bbch, sec); return i.nom+(sn.length? " · también "+sn.map(z=>z.nom).join(", ") : ""); }   // revisión 2 de la v164: cada estado del boletín una vez
+  return "BBCH "+bbch+(i.nom? " · "+i.nom : "")+(i.fuera? FEN_FUERA : "")+(sec.length? " · también "+sec.join(", ") : "");
+}
+/* orden de los registros de un cuartel: fecha, después la hora de la observación (fh) y después el id (el orden en que se guardó) */
+function fenFhMs(e){ const t=e && e.fh? Date.parse(e.fh) : NaN; return isNaN(t)? 0 : t; }
+function fenCmp(a, b){
+  const fa=String(a.fecha||""), fb=String(b.fecha||"");
+  if(fa!==fb) return fa<fb? -1 : 1;
+  const ha=fenFhMs(a), hb=fenFhMs(b); if(ha!==hb) return ha-hb;
+  return (+a.id||0)-(+b.id||0);
+}
+/* el último registro (con estado) de un cuartel: el mismo para Riego, el mapa, la ventana de cerezos, la pestaña Fenología y la Bitácora (H5) */
+function fenUltimo(fundo, cu){
+  let u=null;
+  for(const e of (D.fenologia||[])){ if(!e || e.fundo!==fundo || e.cuartel!==cu || !e.bbch) continue; if(!u || fenCmp(e, u)>0) u=e; }
+  return u;
+}
+/* ---- piezas de pantalla que se reusan (formulario del iPad y, después, el formulario corto del celular): fn = la función que elige ---- */
+function fenChipsHTML(esp, sel, fn){   // los chips de la escala completa, por grupo (lo de siempre)
+  const lista=fenLista(esp);
+  return FEN_GRUPOS.map(g=>{
+    const its=lista.filter(x=>x.g===g); if(!its.length) return "";
+    return `<div class="fengrp"><div class="fengt" style="color:${FEN_GCOL[g]}">${esc(g)}</div>
+      <div class="fenchips">${its.map(x=>`<button type="button" class="fenchip${sel===x.c?" on":""}" style="--fc:${FEN_GCOL[g]}"
+        onclick="${fn}('${x.c}')" title="${esc(x.d||"")}"><span class="fenbb">${x.c}</span>${esc(x.n)}</button>`).join("")}</div></div>`;
+  }).join("");
+}
+/* cerezo: la grilla de los 10 del boletín (5×2 en el iPad, 2 columnas en el celular) con la foto de referencia propia, la burbuja y el nombre;
+   la lupa abre la referencia con su descripción; los subestados de 05 y 08 como chips chicos; «Después de la cosecha»; y, plegada, la escala completa */
+function fenCerezoHTML(sel, fn, ref){
+  ref=ref||{}; sel=String(sel||"");
+  const bSel=fenCerezoDe(sel), card=b=>{
+    const on=!!bSel && bSel.c===b.c, r=ref[b.c], fid=r && typeof r.fid==="string"? r.fid : "";
+    return `<div class="fcb${on? " on" : ""}" ${b.n? `data-fenb="${b.n}"` : `data-fenc="${b.c}"`} style="--fc:${fenColor("Cerezo", b.c)}">`+
+      `<button type="button" class="fcb-b" onclick="${fn}('${b.c}')" aria-pressed="${on}" title="${esc(b.d)}"><span class="fcb-ph${fid? "" : " sin"}" data-fid="${esc(fid)}">${fid? "" : "sin foto de referencia"}</span>`+
+      `<span class="fcb-n">${fenNbHTML(b.n)}${esc(b.nom)}</span></button>`+
+      `<button type="button" class="fcb-l" onclick="fenRefVer('${b.c}')" aria-label="Ver la referencia de ${esc(b.nom)}">${ic("search")}</button>`+
+      (b.sub||[]).map(s=>`<button type="button" class="fcb-s${sel===s.c? " on" : ""}" onclick="${fn}('${s.c}')" aria-pressed="${sel===s.c}">${esc(s.chip)}</button>`).join("")+`</div>`;
+  };
+  const exacto=!sel || FEN_CEREZO_TODOS.some(b=>b.c===sel || (b.sub||[]).some(s=>s.c===sel));
+  return `<div class="fcb-g">${FEN_CEREZO.map(card).join("")}</div>
+    <div class="fengt fcb-pt">Después de la cosecha</div><div class="fcb-g fcb-post">${FEN_CEREZO_POST.map(card).join("")}</div>
+    <details class="fen-mas" data-sin-memoria${exacto? "" : " open"}><summary>Más detalle (escala BBCH completa)</summary>${fenChipsHTML("Cerezo", sel, fn)}</details>`;
+}
+/* «También hay»: los mismos estados en chico; marca o desmarca (✓), el principal deshabilitado. En cerezo, las 12 opciones del boletín */
+function fenSecHTML(esp, bbch, sec, fn){
+  sec=(sec||[]).filter(c=>/^\d{2}$/.test(String(c)));
+  const ops=fenEsCerezo(esp)? FEN_CEREZO_TODOS.map(b=>b.c) : fenLista(esp).map(x=>x.c);
+  sec.forEach(c=>{ if(ops.indexOf(c)<0) ops.push(c); });   // uno guardado que no está entre las opciones (cerezo antiguo con otro código): se ve y se puede quitar
+  return `<div class="fen-sec-t">También hay <span class="muted">(opcional, hasta ${FEN_SEC_MAX})</span></div>
+    <div class="fen-sec-ch" role="group" aria-label="Otros estados que también se ven">${ops.map(c=>{ const i=fenInfo(esp, c), on=sec.indexOf(c)>=0, pr=c===String(bbch||"") || (!on && fenMismoEstado(esp, c, bbch));
+      return `<button type="button" class="fensc${on? " on" : ""}" data-sec="${c}" onclick="${fn}('${c}')" aria-pressed="${on}"${pr? ` disabled title="Es el estado principal"` : ""}>${on? "✓ " : ""}${i.nb? fenNbHTML(i.nb) : i.cer? "" : `<span class="fenbb">${c}</span>`}${esc(i.nom)}${i.cer && !i.nb? ` <span class="fen-bbch">BBCH ${c}</span>` : ""}</button>`; }).join("")}</div>
+    <div class="muted fen-sec-ay">El principal es el que predomina (6 a 8 de cada 10 yemas, flores o frutos). Marca los otros solo si se ven claramente.</div>`;
+}
+/* marca o desmarca un «también hay» en st = {bbch, sec}; devuelve el aviso ("" si se pudo) */
+function fenSecTgl(st, c){
+  c=String(c); st.sec=(st.sec||[]).slice();
+  if(c===String(st.bbch||"")) return "";
+  const i=st.sec.indexOf(c);
+  if(i>=0){ st.sec.splice(i,1); return ""; }
+  if(st.sec.length>=FEN_SEC_MAX) return "Máximo "+FEN_SEC_MAX+" estados «también hay»: desmarca uno para marcar otro.";
+  st.sec.push(c); st.sec.sort(); return "";
+}
+/* ---- fotos de referencia propias del cerezo: D.fenRef = {cerezo:{"<código interno>": {fid, fecha, fundo, cuartel, nota}}, enlace} ----
+   Van dentro del cuaderno (viajan al celular y entran al respaldo); las fotos con id propio «fr…» se guardan como las demás (IndexedDB,
+   y el iPad las sube al puente). Leer no escribe nada: D.fenRef se crea recién al poner la primera foto o el enlace */
+const FEN_REF_VACIO = Object.freeze({cerezo:Object.freeze({}), enlace:""});
+function fenRefDe(){ const R=D && D.fenRef; return (R && typeof R==="object" && R.cerezo && typeof R.cerezo==="object")? R : FEN_REF_VACIO; }
+function fenRefCfg(){ if(!D.fenRef || typeof D.fenRef!=="object") D.fenRef={}; if(!D.fenRef.cerezo || typeof D.fenRef.cerezo!=="object") D.fenRef.cerezo={}; if(typeof D.fenRef.enlace!=="string") D.fenRef.enlace=""; return D.fenRef; }
+function fenRefEnlOk(u){ return /^https?:\/\/[^\s"'<>`]+$/i.test(String(u||"").trim()); }   // solo una dirección web (nada de javascript: ni imágenes incrustadas)
+/* lo que se le dice a Claude del cerezo (el asistente y «Sugerir estado con Claude»): los nombres del boletín con su código interno */
+function fenCerezoLineaIA(){
+  const sub={"61":"61 si recién empieza", "73":"73 si recién cuajó"};
+  return "Cerezo (usa estos nombres): "+FEN_CEREZO.map(b=>b.c+" "+b.nom+((b.sub||[]).length? " ("+b.sub.map(s=>sub[s.c]||s.c).join(", ")+")" : "")).join(", ")
+    +"; después de la cosecha "+FEN_CEREZO_POST.map(b=>b.c+" "+b.nom).join(" y ")+".";
+}
 /* --- datos --- */
 function fenAll(){ D.fenologia = D.fenologia || []; return D.fenologia; }
 let FEN = null, fenFotosTmp = [];
@@ -22532,18 +23022,25 @@ function fenNav(){ nav.fen = nav.fen || {fundo:"", cuartel:"", vista:"actual"}; 
 function fenSetF(k,v){ fenNav()[k]=v; if(k==="fundo") fenNav().cuartel=""; render(); }
 /* --- formulario --- */
 function fenNuevo(fundo, cuartel, fecha){   // fecha (opcional): la del día elegido en la hoja «+ Anotar»
-  if(espejoNo()) return;
+  if(syncEspejo()){ fenCel(fundo, cuartel); return; }   // v164: en el celular espejo, el formulario corto que se envía al iPad (no escribe aquí)
   fenFotosTmp = []; _fenSug = null;
-  FEN = {id:null, fecha:/^\d{4}-\d{2}-\d{2}$/.test(fecha||"")? fecha : hoy(), fundo:fundo||fenNav().fundo||(fundos()[0]||""), cuartel:cuartel||"", bbch:"", nota:""};
+  FEN = {id:null, fecha:/^\d{4}-\d{2}-\d{2}$/.test(fecha||"")? fecha : hoy(), fundo:fundo||fenNav().fundo||(fundos()[0]||""), cuartel:cuartel||"", bbch:"", sec:[], secAb:false, nota:""};
   fenForm("Registrar estado fenológico");
 }
 function fenEditar(id){
-  if(espejoNo()) return;
+  if(syncEspejo()){   // v164: el celular no edita (se perdería al sincronizar): abre la foto o lleva a la Bitácora, donde se pide «Corregir…» al iPad
+    const e0=fenAll().find(x=>x.id===id), foto=e0 && (e0.fotos||[])[0]; if(foto){ abrirVisor(foto); return; }
+    const q=e0 && D.cuarteles.find(x=>x.fundo===e0.fundo && x.nombre===e0.cuartel);
+    aviso("En el celular no se edita: para corregirlo, ábrelo en la Bitácora y toca «Pedir al iPad · Corregir…».", {tipo:"info", accion: q && q.id!=null? {txt:"Ver en la Bitácora", fn:()=>lcAbrirCuQ(+q.id)} : null});
+    return;
+  }
   const e=fenAll().find(x=>x.id===id); if(!e) return;
   fenFotosTmp = (e.fotos||[]).slice(); _fenSug = null;
-  FEN = {id:e.id, fecha:e.fecha, fundo:e.fundo, cuartel:e.cuartel, bbch:e.bbch, nota:e.nota||""};
+  const sec=fenSecDe(e);
+  FEN = {id:e.id, fecha:e.fecha, fundo:e.fundo, cuartel:e.cuartel, bbch:e.bbch, sec, secAb:sec.length>0, nota:e.nota||""};
   fenForm("Editar registro fenológico");
 }
+function fenEspForm(){ if(!FEN) return ""; const q=D.cuarteles.find(x=>x.fundo===FEN.fundo && x.nombre===FEN.cuartel); return q? (q.especie||"") : ""; }   // la especie del cuartel elegido en el formulario
 function fenForm(titulo){
   abrirModal(ic("flower")+" "+titulo, `
     <div class="fila" style="gap:10px;flex-wrap:wrap">
@@ -22552,8 +23049,9 @@ function fenForm(titulo){
     </div>
     <label class="f">Cuartel *<select id="fen_cuartel" onchange="fenCuartelCambio()"></select></label>
     <div id="fenEspecie" class="muted" style="font-size:12px;margin:-4px 0 8px"></div>
-    <label class="f" style="margin-bottom:6px">Estado fenológico *</label>
+    <label class="f" style="margin-bottom:6px">Estado principal *</label>
     <div id="fenEstados"></div>
+    <div id="fenSec" class="fen-sec"></div>
     <label class="f" style="margin-top:10px">Fotos
       <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:6px">
         <label class="btn sec chico" style="cursor:pointer">${ic("camera")} Cámara
@@ -22563,6 +23061,7 @@ function fenForm(titulo){
       </div>
       <div id="fenFotos" class="thumbs" style="margin-top:8px"></div>
     </label>
+    <div id="fenRefUsar"></div>
     <div id="fenSug" class="fen-sug" aria-live="polite"></div>
     ${areaF("fen_nota","Observación (opcional)",FEN.nota,"Ej: floración pareja, mejor en la cara norte…")}
     ${FEN.id?`<button class="btn peligro chico" style="margin-top:8px" onclick="fenBorrar(${FEN.id})">${ic("trash")} Eliminar registro</button>`:""}
@@ -22581,22 +23080,40 @@ function fenCuartelCambio(){
   const q=D.cuarteles.find(x=>x.fundo===FEN.fundo && x.nombre===FEN.cuartel);
   const esp=q? q.especie : "";
   const info=document.getElementById("fenEspecie");
-  if(info) info.innerHTML = q? `${esc(esp)}${q.variedad?" · "+esc(q.variedad):""}${q.anio?" · "+esc(q.anio):""} · escala BBCH de ${fenGrupoDe(esp)==="citricos"?"cítricos":fenGrupoDe(esp)==="carozo"?"frutales de carozo":"uso general"}` : "Elige el cuartel para ver los estados de su especie.";
+  if(info) info.innerHTML = q? `${esc(esp)}${q.variedad?" · "+esc(q.variedad):""}${q.anio?" · "+esc(q.anio):""} · ${fenEsCerezo(esp)? "los 10 estados del boletín Smart Cherry / Avium (sobre la escala BBCH de frutales de carozo)" : "escala BBCH de "+(fenGrupoDe(esp)==="citricos"?"cítricos":fenGrupoDe(esp)==="carozo"?"frutales de carozo":"uso general")}` : "Elige el cuartel para ver los estados de su especie.";
+  if(FEN && esp) FEN.sec=fenSecLimpiar(esp, FEN.bbch, FEN.sec).sec;   // otra especie: los «también hay» que no existen en su escala se quitan
   fenPintaEstados(esp);
   fenSugPintar();
 }
 function fenPintaEstados(esp){
   const c=document.getElementById("fenEstados"); if(!c) return;
-  if(!esp){ c.innerHTML=`<div class="muted" style="font-size:12.5px">Primero elige el cuartel.</div>`; return; }
-  const lista=fenLista(esp);
-  c.innerHTML = FEN_GRUPOS.map(g=>{
-    const its=lista.filter(x=>x.g===g); if(!its.length) return "";
-    return `<div class="fengrp"><div class="fengt" style="color:${FEN_GCOL[g]}">${esc(g)}</div>
-      <div class="fenchips">${its.map(x=>`<button type="button" class="fenchip${FEN.bbch===x.c?" on":""}" style="--fc:${FEN_GCOL[g]}"
-        onclick="fenSel('${x.c}')" title="${esc(x.d||"")}"><span class="fenbb">${x.c}</span>${esc(x.n)}</button>`).join("")}</div></div>`;
-  }).join("");
+  if(!esp){ c.innerHTML=`<div class="muted" style="font-size:12.5px">Primero elige el cuartel.</div>`; fenPintaSec(""); fenRefBtnPintar(); return; }
+  c.innerHTML = fenEsCerezo(esp)? fenCerezoHTML(FEN.bbch, "fenSel", fenRefDe().cerezo) : fenChipsHTML(esp, FEN.bbch, "fenSel");
+  fenPintaSec(esp); fenRefBtnPintar();
+  if(fenEsCerezo(esp)) setTimeout(fenCargarThumbs, 0);   // las fotos de referencia de la grilla
 }
-function fenSel(c){ FEN.bbch=c; const q=D.cuarteles.find(x=>x.fundo===FEN.fundo && x.nombre===FEN.cuartel); fenPintaEstados(q?q.especie:""); fenSugPintar(); }   // la sugerencia de Claude dice si se eligió otro
+function fenSel(c){ FEN.bbch=c; const fe=fenEspForm(); FEN.sec=(FEN.sec||[]).filter(x=>!fenMismoEstado(fe, x, c)); fAviso("mAviso", ""); fenPintaEstados(fenEspForm()); fenSugPintar(); }   // el que pasa a principal sale de «también hay» (y el aviso de arriba se va, como en el celular); la sugerencia de Claude dice si se eligió otro
+/* «También hay» del formulario: primero un botón; abierto (o con alguno marcado), los chips chicos */
+function fenPintaSec(esp){
+  const c=document.getElementById("fenSec"); if(!c || !FEN) return;
+  if(!esp){ c.innerHTML=""; return; }
+  c.innerHTML = (!FEN.secAb && !(FEN.sec||[]).length)? `<button type="button" class="btn sec chico fen-sec-b" onclick="fenSecAbrir()">${ic("plus")} ¿Hay otros estados a la vez?</button>`
+    : fenSecHTML(esp, FEN.bbch, FEN.sec, "fenSecTglF");
+}
+function fenSecAbrir(){ if(!FEN) return; FEN.secAb=true; fenPintaSec(fenEspForm()); }
+function fenSecTglF(c){ if(!FEN) return; const av=fenSecTgl(FEN, c); fAvisoMb(av? esc(av) : ""); fenPintaSec(fenEspForm()); }
+/* desde un registro de cerezo con fotos (iPad): la primera foto pasa a ser la referencia propia de su estado (se copia con id nuevo) */
+function fenRefBtnPintar(){
+  const c=document.getElementById("fenRefUsar"); if(!c || !FEN) return;
+  const b=fenEsCerezo(fenEspForm())? fenCerezoDe(FEN.bbch) : null;
+  c.innerHTML = (b && fenFotosTmp.length && !syncEspejo())? `<button type="button" class="btn sec chico fen-ref-usar" onclick="fenRefDesdeForm()">${ic("star")} Usar como foto de referencia de «${esc(b.nom)}»</button>` : "";
+}
+async function fenRefDesdeForm(){
+  if(!FEN || espejoNo()) return;
+  const b=fenCerezoDe(FEN.bbch), fid=fenFotosTmp[0]; if(!b || !fid) return;
+  const q=D.cuarteles.find(x=>x.fundo===FEN.fundo && x.nombre===FEN.cuartel);
+  if(await fenRefPoner(b.c, fid, {fecha:v("fen_fecha")||FEN.fecha||hoy(), fundo:FEN.fundo, cuartel:q? q.nombre : FEN.cuartel})) aviso("✅ Quedó como foto de referencia de «"+b.nom+"»");
+}
 async function fenAgregarFotos(inp){
   for(const file of inp.files){
     try{ const data=await comprimirImagen(file); const fid="f"+nid(); await fotoPut(fid,data); fenFotosTmp.push(fid); }catch(_){ }
@@ -22606,22 +23123,23 @@ async function fenAgregarFotos(inp){
 async function fenPintarFotos(){
   const c=document.getElementById("fenFotos"); if(!c) return;
   let h="";
-  for(const fid of fenFotosTmp){ const d=await fotoGet(fid); if(d) h+=`<div class="thumbwrap"><img src="${d}" onclick="abrirVisor('${fid}')"><button class="del" onclick="fenQuitarFoto('${fid}')">✕</button></div>`; }
+  for(const fid of fenFotosTmp){ const d=await fotoGet(fid); if(d) h+=`<div class="thumbwrap"><img src="${esc(d)}" onclick="abrirVisor('${fid}')"><button class="del" onclick="fenQuitarFoto('${fid}')">✕</button></div>`; }
   c.innerHTML = h || `<div class="muted" style="font-size:12px">Saca una foto del estado del cuartel: sirve para comparar temporada a temporada.</div>`;
-  fenSugPintar();
+  fenRefBtnPintar(); fenSugPintar();
 }
 function fenQuitarFoto(fid){ fenFotosTmp=fenFotosTmp.filter(x=>x!==fid); fenPintarFotos(); }
 /* ---------- fenología por foto: Claude propone el estado BBCH (23-10-2026) ----------
    Manda la(s) foto(s) del formulario + la especie del cuartel + su lista BBCH (fenLista) por el puente (ruta asistente,
    adjuntos) con un formato pequeño; marca el estado sugerido como fenSel y muestra la explicación. Se confirma al Guardar. */
-let _fenSug=null, _fenSugOcup=false;   // {cuartel, bbch, n, confianza, explicacion}
+let _fenSug=null, _fenSugOcup=false;   // {cuartel, bbch, n, sec (los «también hay» limpios), confianza, explicacion}
 function fenSugPintar(){
   const c=document.getElementById("fenSug"); if(!c) return;
   if(!FEN || !asisListo() || !fenFotosTmp.length || !FEN.cuartel){ c.innerHTML=""; return; }
-  const s=_fenSug && _fenSug.cuartel===FEN.cuartel? _fenSug : null;
+  const s=_fenSug && _fenSug.cuartel===FEN.cuartel? _fenSug : null, esp=fenEspForm();
+  const sn=s? fenInfo(esp, s.bbch, s.n) : null, sSec=s? (s.sec||[]) : [];
   c.innerHTML=`<button type="button" class="btn sec chico fen-sug-b" id="fenSugBtn" onclick="fenSugerir()" ${_fenSugOcup?"disabled":""}>${ic("ai")} ${_fenSugOcup? "Claude está mirando las fotos…" : s? "Volver a sugerir con Claude" : "Sugerir estado con Claude"}</button>`+
-    (s? `<div class="fen-sug-r" role="status"><b>Claude sugiere BBCH ${esc(s.bbch)} · ${esc(s.n)}</b><span class="fen-sug-c" data-c="${esc(s.confianza)}">confianza ${esc(s.confianza)}</span>${s.explicacion? `<div>${esc(s.explicacion)}</div>` : ""}
-      <div class="muted">${FEN.bbch===s.bbch? "Quedó marcado en «Estado fenológico». Revísalo y toca Guardar para confirmarlo." : FEN.bbch? "Marcaste otro estado (BBCH "+esc(FEN.bbch)+"): se guarda el que marcaste." : "Marca un estado en «Estado fenológico»."}</div>
+    (s? `<div class="fen-sug-r" role="status"><b>Claude sugiere: ${esc((sn.nb? sn.nb+" " : "")+sn.nom)}${sSec.length? "; también "+esc(sSec.map(x=>fenInfo(esp, x).nom).join(", ")) : ""}</b> <span class="fen-bbch">BBCH ${esc(s.bbch)}${sSec.length? " · también "+esc(sSec.join(", ")) : ""}</span><span class="fen-sug-c" data-c="${esc(s.confianza)}">confianza ${esc(s.confianza)}</span>${s.explicacion? `<div>${esc(s.explicacion)}</div>` : ""}
+      <div class="muted">${FEN.bbch===s.bbch? "Quedó marcado en «Estado principal»"+(sSec.length? " y en «También hay»" : "")+". Revísalo y toca Guardar para confirmarlo." : FEN.bbch? "Marcaste otro estado (BBCH "+esc(FEN.bbch)+"): se guarda el que marcaste." : "Marca un estado en «Estado principal»."}</div>
       ${s.explicacion && String(v("fen_nota")).indexOf(s.explicacion)<0? `<button type="button" class="btn sec chico fen-sug-obs" onclick="fenSugObs()">${ic("note")} Usar como observación</button>` : ""}</div>` : "");
 }
 function fenSugObs(){   // la explicación de Claude pasa a la Observación (si no, se perdía al guardar)
@@ -22636,54 +23154,67 @@ async function fenSugerir(){
   if(!asisListo()){ alert("⚠️ Para pedirle a Claude, conecta primero el puente de sincronización (Datos → Conexiones → Sincronización)."); return; }
   if(!navigator.onLine){ fAvisoMb("Sin señal: Claude necesita internet. Marca el estado a mano, o pídeselo cuando vuelva la señal."); return; }
   fAviso("mAviso", "");
-  const esp=q.especie||"", lista=fenLista(esp), A=asisCfg(), modelo=A.modelo;
   _fenSugOcup=true; fenSugPintar();
   try{
-    const adj=[];
-    for(const fid of fenFotosTmp.slice(0,3)){   // las del formulario ya vienen en JPEG de 1.600 px (comprimirImagen); otra cosa se achica
-      const du=await fotoGet(fid); if(!du || !/^data:image\//.test(du)) continue;
-      const j0=/^data:image\/jpeg;base64,/.test(du)? du : (await asisImgJpeg(du, 1600, 0.85)).du;
-      adj.push({tipo:"imagen", media_type:"image/jpeg", data:j0.slice(j0.indexOf(",")+1), nombre:"foto "+(adj.length+1)});
-    }
-    if(!adj.length) throw new Error("no se pudieron leer las fotos de este equipo");
-    const schema={type:"object", additionalProperties:false, required:["bbch","confianza","explicacion","foto_recibida"], properties:{
-      bbch:{type:"string", enum:lista.map(e=>e.c)}, confianza:{type:"string", enum:["alta","media","baja"]}, explicacion:{type:"string"}, foto_recibida:{type:"boolean"}}};
-    const system=`Eres agrónomo frutícola en Curacaví, Chile, experto en fenología (escala BBCH). Miras fotos de plantas de un cuartel y eliges el estado fenológico que mejor calza de la lista de su especie. Responde solo con el JSON pedido.
-- bbch: un código de la lista.
+    const r=await fenSugPedir(q, fenFotosTmp, v("fen_fecha")||hoy());
+    if(!FEN || FEN.cuartel!==cu || FEN.fundo!==fu) return;   // se cerró el formulario o cambió el cuartel mientras esperaba
+    _fenSug=Object.assign({cuartel:cu}, r);
+    FEN.sec=r.sec.slice(); if(r.sec.length) FEN.secAb=true;   // marca los dos: el principal y los «también hay»
+    fenSel(r.bbch);
+  }catch(e){
+    alert("⚠️ No se pudo sugerir el estado: "+fenSugErrTxt(e));
+  }finally{ _fenSugOcup=false; fenSugPintar(); }
+}
+function fenSugErrTxt(e){ const m=(e && e.message)||String(e); return e && e.status===404 || /ruta no permitida/i.test(m)? "el puente todavía no tiene el asistente (ver Asistente_Claude_instrucciones.md)." : m; }
+/* la consulta a Claude con las fotos de un cuartel (el formulario del iPad y el formulario corto del celular, v164): devuelve
+   {bbch, n, sec (los «también hay» limpios), confianza, explicacion} o lanza el error en palabras simples */
+async function fenSugPedir(q, fids, fecha){
+  const cu=q.nombre, fu=q.fundo, esp=q.especie||"", lista=fenLista(esp), A=asisCfg(), modelo=A.modelo;
+  const adj=[];
+  for(const fid of (fids||[]).slice(0,3)){   // las del formulario ya vienen en JPEG de 1.600 px (comprimirImagen); otra cosa se achica
+    const du=await fotoGet(fid); if(!du || !/^data:image\//.test(du)) continue;
+    const j0=/^data:image\/jpeg;base64,/.test(du)? du : (await asisImgJpeg(du, 1600, 0.85)).du;
+    adj.push({tipo:"imagen", media_type:"image/jpeg", data:j0.slice(j0.indexOf(",")+1), nombre:"foto "+(adj.length+1)});
+  }
+  if(!adj.length) throw new Error("no se pudieron leer las fotos de este equipo");
+  /* v164: secundarios = los «también hay» (el tope de 3, sin repetir y sin el principal lo pone la app: las salidas estructuradas no aseguran maxItems) */
+  const cods=lista.map(e=>e.c), schema={type:"object", additionalProperties:false, required:["bbch","secundarios","confianza","explicacion","foto_recibida"], properties:{
+    bbch:{type:"string", enum:cods}, secundarios:{type:"array", items:{type:"string", enum:cods}}, confianza:{type:"string", enum:["alta","media","baja"]}, explicacion:{type:"string"}, foto_recibida:{type:"boolean"}}};
+  const system=`Eres agrónomo frutícola en Curacaví, Chile, experto en fenología (escala BBCH). Miras fotos de plantas de un cuartel y eliges el estado fenológico que mejor calza de la lista de su especie. Responde solo con el JSON pedido.
+- bbch: un código de la lista: el estado que predomina (más de la mitad de lo que se ve).
+- secundarios: otros estados de la lista que se ven claramente (al menos 1 de cada 10), si no hay, [].
 - explicacion: 1 o 2 frases en español simple con lo que se ve (yemas, brotes, flores abiertas, pétalos caídos, frutos y su tamaño o color) y por qué ese estado.
 - confianza: "alta" si se ve nítido y típico; "media" si hay estados mezclados o la foto no es muy clara; "baja" si está borrosa, lejos, no muestra la planta o no se distingue el estado (dilo en la explicación).
 - foto_recibida: false si no recibiste ninguna foto (entonces confianza "baja" y explícalo).
 ESPECIE: ${esp}${q.variedad? " ("+q.variedad+")" : ""}
 ESTADOS DE LA LISTA (código BBCH · nombre · descripción)
-${lista.map(e=>e.c+" · "+e.n+(e.d? " · "+e.d : "")).join("\n")}`;
-    const texto=`Cuartel ${cu} (${esp}${q.variedad? " "+q.variedad : ""}), fundo ${fu}, fecha ${fmtF(v("fen_fecha")||hoy())}. Van ${adj.length===1? "1 foto adjunta" : adj.length+" fotos adjuntas"}. ¿En qué estado fenológico está?`;
-    let j;
-    try{ j=await syncFetch("asistente", asisCuerpo({system, schema, texto, modelo, esfuerzo:"low", adjuntos:adj})); }
-    catch(e2){ const er=new Error(asisPuenteViejo(e2, adj.length)? "el puente todavía no acepta fotos (pega el código nuevo de puente_sync.js en Cloudflare)" : asisErrPeso(e2, adj.length) || e2.message); er.status=e2.status; throw er; }
-    asisCosto(j, modelo); guardar();
-    const d=j.datos||{}, e=fenEstado(esp, String(d.bbch||""));
-    if(d.foto_recibida===false || asisAdjNoLlegaron(j, adj.length)) throw new Error("Claude no recibió la foto: el puente todavía no acepta fotos (pega el código nuevo de puente_sync.js en Cloudflare)");
-    if(!e) throw new Error("Claude respondió un estado que no está en la lista de "+(esp||"esta especie"));
-    if(!FEN || FEN.cuartel!==cu || FEN.fundo!==fu) return;   // se cerró el formulario o cambió el cuartel mientras esperaba
-    _fenSug={cuartel:cu, bbch:e.c, n:e.n, confianza:["alta","media","baja"].indexOf(d.confianza)>=0? d.confianza : "baja", explicacion:String(d.explicacion||"").slice(0,400)};
-    fenSel(e.c);
-  }catch(e){
-    const m=(e && e.message)||String(e);
-    alert("⚠️ No se pudo sugerir el estado: "+(e && e.status===404 || /ruta no permitida/i.test(m)? "el puente todavía no tiene el asistente (ver Asistente_Claude_instrucciones.md)." : m));
-  }finally{ _fenSugOcup=false; fenSugPintar(); }
+${fenEsCerezo(esp)? fenCerezoLineaIA()+"\n" : ""}${lista.map(e=>e.c+" · "+e.n+(e.d? " · "+e.d : "")).join("\n")}`;
+  const texto=`Cuartel ${cu} (${esp}${q.variedad? " "+q.variedad : ""}), fundo ${fu}, fecha ${fmtF(fecha||hoy())}. Van ${adj.length===1? "1 foto adjunta" : adj.length+" fotos adjuntas"}. ¿En qué estado fenológico está?`;
+  let j;
+  try{ j=await syncFetch("asistente", asisCuerpo({system, schema, texto, modelo, esfuerzo:"low", adjuntos:adj})); }
+  catch(e2){ const er=new Error(asisPuenteViejo(e2, adj.length)? "el puente todavía no acepta fotos (pega el código nuevo de puente_sync.js en Cloudflare)" : asisErrPeso(e2, adj.length) || e2.message); er.status=e2.status; throw er; }
+  asisCosto(j, modelo); guardar();
+  const d=j.datos||{}, e=fenEstado(esp, String(d.bbch||""));
+  if(d.foto_recibida===false || asisAdjNoLlegaron(j, adj.length)) throw new Error("Claude no recibió la foto: el puente todavía no acepta fotos (pega el código nuevo de puente_sync.js en Cloudflare)");
+  if(!e) throw new Error("Claude respondió un estado que no está en la lista de "+(esp||"esta especie"));
+  const sec=fenSecLimpiar(esp, e.c, d.secundarios).sec;   // los 3 primeros válidos en el orden de Claude, sin repetir ni el principal, ordenados
+  return {bbch:e.c, n:e.n, sec, confianza:["alta","media","baja"].indexOf(d.confianza)>=0? d.confianza : "baja", explicacion:String(d.explicacion||"").slice(0,400)};
 }
 async function fenGuardar(){
   const fecha=v("fen_fecha"), fundo=v("fen_fundo"), cu=v("fen_cuartel");
   if(!fecha){ fAvisoMb("Falta la fecha.", "fen_fecha"); return false; }   // avisos dentro del formulario (no alert)
+  if(fecha>sumarDiasISO(hoy(), 1)){ fAvisoMb("La fecha "+fmtF(fecha)+" está en el futuro: el estado fenológico se anota con el día en que lo viste. Corrige la fecha.", "fen_fecha"); return false; }   // revisión 2 de la v164: como lo del celular (mañana todavía vale); si no, Riego y el mapa la tomaban como la última y la ficha no
   if(!fundo||!cu){ fAvisoMb("Elige el fundo y el cuartel.", fundo? "fen_cuartel" : "fen_fundo"); return false; }
-  if(!FEN.bbch){ fAvisoMb("Marca el estado fenológico."); return false; }
+  if(!FEN.bbch){ fAvisoMb("Marca el estado principal."); return false; }
   const q=D.cuarteles.find(x=>x.fundo===fundo && x.nombre===cu);
   const esp=q? q.especie : "";
-  const est=fenEstado(esp, FEN.bbch);
+  const sec=fenSecLimpiar(esp, FEN.bbch, FEN.sec).sec;   // v164: los «también hay» (ordenados)
   const ent=FEN.id? fenAll().find(x=>x.id===FEN.id) : null;
   if(ent){ for(const fid of (ent.fotos||[])) if(!fenFotosTmp.includes(fid) && !adjCompartido(fid, ent.id)) { try{ await fotoDel(fid); }catch(_){ } } }
-  const o={fecha, fundo, cuartel:cu, especie:esp, bbch:FEN.bbch, estado:est?est.n:"", fotos:fenFotosTmp.slice(), nota:v("fen_nota")};
-  if(ent) Object.assign(ent,o); else fenAll().push(Object.assign({id:nid()},o));
+  const o={fecha, fundo, cuartel:cu, especie:esp, bbch:FEN.bbch, estado:fenEstadoTxt(esp, FEN.bbch), fotos:fenFotosTmp.slice(), nota:v("fen_nota")};   // en cerezo, el nombre del boletín
+  if(sec.length) o.bbchSec=sec;
+  if(ent){ Object.assign(ent,o); if(!sec.length) delete ent.bbchSec; }   // se desmarcaron todos: sin la clave (una versión vieja que edita la conserva, por Object.assign)
+  else fenAll().push(Object.assign({id:nid()}, o, {fh:ahora()}));   // fh: la hora de la observación (desempata dos del mismo día, fenUltimo)
   FEN=null; fenFotosTmp=[];
 }
 async function fenBorrar(id){
@@ -22699,19 +23230,26 @@ function fenFiltrados(){
   return fenAll().filter(e=>(!f.fundo||e.fundo===f.fundo)&&(!f.cuartel||e.cuartel===f.cuartel))
     .sort((a,b)=>b.fecha.localeCompare(a.fecha)||b.id-a.id);
 }
+/* insignia del principal (como siempre) y, en chico con borde, «+ Botón blanco» por cada «también hay». Cerezo: «[05] Plena flor» y aparte «BBCH 65» */
 function fenBadge(e){
-  const col=fenColor(e.especie,e.bbch);
-  return `<span class="fenbadge" style="--fc:${col}"><span class="fenbb">${esc(e.bbch)}</span>${esc(e.estado||"")}</span>`;
+  const esp=fenEspDe(e), col=fenColor(esp, e.bbch), i=fenInfo(esp, e.bbch, e.estado), sec=fenSecDe(e);
+  const pr= i.cer? `<span class="fenbadge fen-cer" style="--fc:${col}">${fenNbHTML(i.nb)}${esc(i.nom)}${i.fuera? `<small class="fen-fuera">${esc(FEN_FUERA)}</small>` : ""}</span><span class="fen-bbch">BBCH ${esc(e.bbch)}</span>`   // revisión v164: en cerezo el código siempre va aparte y con la palabra «BBCH» (un 09 fuera del boletín no se confunde con «09 Color pajizo y pinta»)
+    : `<span class="fenbadge" style="--fc:${col}"><span class="fenbb">${esc(e.bbch)}</span>${esc(i.nom)}${i.fuera? `<small class="fen-fuera">${esc(FEN_FUERA)}</small>` : ""}</span>`;
+  const sn=fenSecNoms(esp, e.bbch, sec);   // revisión 2 de la v164: en cerezo cada estado del boletín una vez (85 y 87: una sola «+ Maduración de fruto»)
+  return pr+(sn.length? `<span class="fen-tb">${sn.map(z=>`<span class="fen-t">+ ${esc(z.nom)}</span>`).join("")}</span>` : "");
 }
 function vFenologia(){
   const f=fenNav(), es=fenFiltrados(), hoyISO=hoy();
   const cus=D.cuarteles.filter(q=>(!f.fundo||q.fundo===f.fundo));
-  /* estado actual: el último registro de cada cuartel */
+  /* estado actual: el último registro de cada cuartel (fenUltimo: fecha, hora de la observación e id, igual que Riego y el mapa) */
   const ult={};
-  fenAll().slice().sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.id-b.id).forEach(e=>{ ult[e.fundo+"|"+e.cuartel]=e; });
+  D.cuarteles.forEach(q=>{ const e=fenUltimo(q.fundo, q.nombre); if(e) ult[q.fundo+"|"+q.nombre]=e; });
+  const hayCer=D.cuarteles.some(q=>fenEsCerezo(q.especie)), cel=syncEspejo();   // cel: el celular espejo (abajo «esp» es la especie de cada cuartel)
+  /* v164 (F1): en el celular espejo se registra con el formulario corto, que se envía al iPad por la bandeja (fenCel: el CSS html.espejo no lo oculta) */
   let h=`
   <div class="card">
-    <button class="btn" style="width:100%;padding:15px;font-size:16px" onclick="fenNuevo()">${ic("camera")} Registrar estado fenológico</button>
+    ${cel? `<button type="button" class="btn fen-cel-b" style="width:100%;padding:15px;font-size:16px" onclick="fenCel()">${ic("camera")} Registrar estado fenológico · se envía al iPad</button>`
+      : `<button class="btn" style="width:100%;padding:15px;font-size:16px" onclick="fenNuevo()">${ic("camera")} Registrar estado fenológico</button>`}
     <div class="chips" style="margin-top:10px">
       <div class="chip ${!f.fundo?"act":""}" onclick="fenSetF('fundo','')">Todos los fundos</div>
       ${fundos().map(x=>`<div class="chip ${f.fundo===x?"act":""}" onclick="fenSetF('fundo','${jsq(x)}')">${esc(x)}</div>`).join("")}
@@ -22722,10 +23260,12 @@ function vFenologia(){
     </div>`:""}
     <div class="fila" style="gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center">
       ${[["actual","Estado actual"],["hist","Historial"]].map(([k,t])=>`<button class="btn ${f.vista===k?"":"sec"} chico" onclick="fenSetF('vista','${k}')">${t}</button>`).join("")}
+      ${hayCer? `<button type="button" class="btn sec chico fen-ref-b" onclick="fenRefPantalla()">${ic("image")} Referencias del cerezo</button>` : ""}
       <div style="flex:1"></div>
       <span class="muted" style="font-size:12px">${fenAll().length} registro${fenAll().length===1?"":"s"}</span>
     </div>
   </div>`;
+  if(cel) h+=`<div id="fenCam">${fenCamHTML()}</div>`;   // v164: lo registrado en este celular que todavía no vuelve del iPad
   if(!fenAll().length){
     return h+`<div class="vacio"><span class="ico">🌸</span>Aún no hay registros fenológicos.<br>
       Toca <b>Registrar estado fenológico</b>, elige el cuartel, marca el estado y saca una foto.</div>`;
@@ -22742,7 +23282,7 @@ function vFenologia(){
       qs.forEach(q=>{
         const e=ult[fu+"|"+q.nombre], dias=gtDif(e.fecha,hoyISO);
         const foto=(e.fotos||[])[0];
-        h+=`<div class="fencard" onclick="fenSetF('cuartel','${jsq(q.nombre)}');fenNav().vista='hist';render()">
+        h+=`<div class="fencard" title="${esc(fenEtiqueta(e))}" onclick="fenSetF('cuartel','${jsq(q.nombre)}');fenNav().vista='hist';render()">
           <div class="fenph" data-fid="${foto||""}">${foto?"":`<span class="muted" style="font-size:11px">sin foto</span>`}</div>
           <div class="fenci">
             <div class="fencn">${esc(q.nombre)}</div>
@@ -22770,11 +23310,12 @@ function vFenologia(){
       const lst=deFu.filter(e=>e.cuartel===cu); const q=D.cuarteles.find(x=>x.fundo===fu&&x.nombre===cu); const esp=(q&&q.especie)||lst[0].especie||"";
       h+=`<div class="fencu"><span class="gpt" style="background:${gtColEsp(esp)}"></span><b>${esc(cu)}</b>
         <span class="muted">${esc(esp)}${q&&q.variedad?" · "+esc(q.variedad):""} · ${lst.length} registro${lst.length===1?"":"s"}</span>
-        <button class="btn sec chico" style="margin-left:auto" onclick="fenNuevo('${jsq(fu)}','${jsq(cu)}')">${ic("plus")} Registrar</button>${q && q.id!=null? `<button type="button" class="btn sec chico lc-fenh" onclick="lcAbrirCuQ(${+q.id})" aria-label="Bitácora de ${esc(cu)}">${ic("note")} Bitácora</button>` : ""}</div>
-        <div class="fentl">${lst.map(e=>{ const fs=e.fotos||[]; const foto=fs[0]; return `<div class="fentile" onclick="fenEditar(${e.id})">
+        <button class="btn sec chico" style="margin-left:auto" onclick="${cel? "fenCel" : "fenNuevo"}('${jsq(fu)}','${jsq(cu)}')">${ic("plus")} Registrar</button>${q && q.id!=null? `<button type="button" class="btn sec chico lc-fenh" onclick="lcAbrirCuQ(${+q.id})" aria-label="Bitácora de ${esc(cu)}">${ic("note")} Bitácora</button>` : ""}</div>
+        <div class="fentl">${lst.map(e=>{ const fs=e.fotos||[]; const foto=fs[0]; return `<div class="fentile" title="${esc(fenEtiqueta(e))}" onclick="${cel && foto? `abrirVisor('${foto}')` : `fenEditar(${e.id})`}">
           <div class="fentph" data-fid="${foto||""}" ${foto?`onclick="event.stopPropagation();abrirVisor('${foto}')"`:""}>${foto? (fs.length>1?`<span class="fentn">+${fs.length-1}</span>`:"") : `<span>sin foto</span>`}</div>
           <div class="fentd">${fmtF(e.fecha)}<span class="muted" style="font-weight:500;margin-left:6px">hace ${gtDif(e.fecha,hoyISO)===0?"hoy":gtDif(e.fecha,hoyISO)+" d"}</span></div>
           <div>${fenBadge(e)}</div>
+          ${e.equipo==="celular"? `<div class="muted fent-or">anotado en el celular${e.autor? " por "+esc(e.autor) : ""}</div>` : ""}
           ${e.nota?`<div class="fentnota">${esc(e.nota)}</div>`:""}
         </div>`; }).join("")}</div>`;
     });
@@ -22783,11 +23324,122 @@ function vFenologia(){
   return h;
 }
 async function fenCargarThumbs(){
-  const els=Array.prototype.slice.call(document.querySelectorAll(".fenph[data-fid], .fenth[data-fid], .fentph[data-fid]"));
+  const els=Array.prototype.slice.call(document.querySelectorAll(".fenph[data-fid], .fenth[data-fid], .fentph[data-fid], .fcb-ph[data-fid], .fenref-ph[data-fid], .fenref-th[data-fid]"));   // v164: también las fotos de referencia del cerezo
   for(const el of els){
     const fid=el.getAttribute("data-fid"); if(!fid) continue;
-    try{ const d=await fotoGet(fid); if(d) el.style.backgroundImage=`url(${d})`; el.classList.add("ok"); }catch(_){ el.classList.add("ok"); }
+    try{ const d=await fotoGet(fid); if(duSano(d)) el.style.backgroundImage=`url("${d}")`; el.classList.add("ok"); }catch(_){ el.classList.add("ok"); }   // revisión 2 de la v164: solo un dataURL entero (una comilla o un paréntesis no puede agregar otra imagen de fuera)
   }
+}
+/* v164 (F1): «En camino al iPad» arriba de la pestaña Fenología del celular: solo lo de fenología (las mismas filas de la Bitácora, con sus botones) */
+function fenCamHTML(){
+  if(!syncEspejo() || typeof lcCamino!=="function") return "";
+  const f=fenNav();
+  return lcCaminoHTML(lcCamino().filter(x=>x.t==="fenologia" && (!f.fundo || x.fu===f.fundo) && (!f.cuartel || x.cus.indexOf(f.cuartel)>=0)));
+}
+function fenCamPintar(){ const c=document.getElementById("fenCam"); if(c) c.innerHTML=fenCamHTML(); }
+/* ---------- Referencias del cerezo (v164): una foto PROPIA por estado del boletín, con su descripción, y un enlace de texto al boletín ----------
+   Las fotos de la lámina Smart Cherry / Avium no se copian ni se enlazan como imagen (derechos de autor): solo fotos de tu campo. Se copian con
+   id nuevo «fr…» (borrar el registro no borra la referencia). En el celular (espejo) solo se miran: lo que se escribiera ahí se perdería */
+let _fenRefCam="", _fenRefEl="";   // el estado cuya foto se está cambiando (Cámara, Galería, Elegir de un registro) y el que está eligiendo de un registro
+function fenRefTxt(r){ return r? (r.cuartel? "Foto de "+r.cuartel : "Foto propia")+(r.fecha? " · "+fmtF(r.fecha) : "") : ""; }
+function fenRefPantalla(){
+  _fenRefCam=""; _fenRefEl="";
+  abrirModal(ic("image")+" Referencias del cerezo", `<div id="fenRefLista"></div>`, ()=>{ if(!syncEspejo()) fenRefEnlSet(v("fenRefEnl")); }, syncEspejo()? "Cerrar" : ic("save")+" Listo");
+  /* revisión v164: las fotos y el enlace se guardan apenas cambian, así que un «Cancelar» no deshacía nada: un solo botón («Listo» en el iPad, «Cerrar» en el celular) */
+  if(syncEspejo()) riegoModalSoloCerrar();
+  else{ const cb=document.querySelector("#capaModal .mf .btn.sec"); if(cb) cb.remove(); }
+  fenRefPintar();
+}
+function fenRefPintar(){
+  const c=document.getElementById("fenRefLista"); if(!c) return;
+  const R=fenRefDe(), esp=syncEspejo(), enl=R.enlace||"";
+  c.innerHTML=`<div class="muted fenref-ay">Una foto de tu propio campo para cada estado del boletín Smart Cherry / Avium 2026-2027 (la agrupación en 10 estados es del boletín; las descripciones son propias). Las fotos de la lámina no se copian: tienen derechos de autor.${esp? " En el celular solo se miran: se ponen y se cambian en el iPad." : ""}</div>
+    <div class="fenref-g">${FEN_CEREZO_TODOS.map(b=>fenRefCardHTML(b, R.cerezo[b.c], esp)).join("")}</div>
+    ${campoF("fenRefEnl", "Enlace al boletín (opcional)", "url", enl, `inputmode="url" placeholder="https://…" autocapitalize="off" autocorrect="off" spellcheck="false"`+(esp? " readonly" : ` oninput="fenRefEnlPintar(this.value)" onchange="fenRefEnlSet(this.value)"`))}
+    <div id="fenRefAbrir">${fenRefAbrirHTML(enl)}</div>`;
+  setTimeout(fenCargarThumbs, 0);
+}
+function fenRefCardHTML(b, r, esp){
+  const fid=r && typeof r.fid==="string"? r.fid : "", cam=!esp && (!fid || _fenRefCam===b.c), el=!esp && _fenRefEl===b.c;
+  const arch=cap=>`<label class="btn sec chico fenref-fb">${ic(cap? "camera" : "image")} ${cap? "Cámara" : "Galería"}<input type="file" accept="image/*"${cap? ` capture="environment"` : ""} style="display:none" onchange="fenRefFoto('${b.c}', this)"></label>`;
+  return `<div class="fenref-c" data-fenr="${b.c}" style="--fc:${fenColor("Cerezo", b.c)}">`+
+    `<div class="fenref-t">${fenNbHTML(b.n)}<b>${esc(b.nom)}</b> <span class="fen-bbch">BBCH ${b.c}</span>${b.n? "" : ` <span class="muted">(no está en la lámina)</span>`}</div>`+
+    `<div class="fenref-f"><button type="button" class="fenref-ph${fid? "" : " sin"}" data-fid="${esc(fid)}" onclick="fenRefVer('${b.c}')" aria-label="Ver la referencia de ${esc(b.nom)} en grande">${fid? "" : "sin foto de referencia"}</button>`+
+    `<div class="fenref-tx"><div class="fenref-d">${esc(b.d)}</div>`+(fid? `<div class="muted fenref-de">${esc(fenRefTxt(r))}</div>` : "")+`</div></div>`+
+    (esp? "" : `<div class="fenref-acc">`+(cam? arch(true)+arch(false)+`<button type="button" class="btn sec chico" onclick="fenRefElegir('${b.c}')" aria-expanded="${el}">${ic("search")} Elegir de un registro</button>`+(fid? `<button type="button" class="btn sec chico" onclick="fenRefCambiar('')">Cancelar</button>` : "")
+      : `<button type="button" class="btn sec chico" onclick="fenRefCambiar('${b.c}')">${ic("refresh")} Cambiar</button><button type="button" class="btn sec chico" onclick="fenRefQuitar('${b.c}')">${ic("trash")} Quitar</button>`)+`</div>`+(el? fenRefElegirHTML(b) : ""))+
+    `</div>`;
+}
+/* las fotos de los registros de cerezo cuyo estado cae en el rango de b (lo más nuevo primero, hasta 24) */
+function fenRefFotosDe(b){
+  const out=[];
+  fenAll().filter(e=>e && (e.fotos||[]).length && fenEsCerezo(fenEspDe(e)) && fenCerezoDe(e.bbch)===b).sort((x,y)=>fenCmp(y,x))
+    .forEach(e=>(e.fotos||[]).forEach((fid,i)=>{ if(out.length<24 && typeof fid==="string" && fid) out.push({e, i, fid}); }));
+  return out;
+}
+function fenRefElegirHTML(b){
+  const l=fenRefFotosDe(b);
+  return `<div class="fenref-el" role="group" aria-label="Fotos de los registros en ${esc(b.nom)}">${l.length? l.map(x=>`<button type="button" class="fenref-th" data-fid="${esc(x.fid)}" onclick="fenRefUsar('${b.c}', ${+x.e.id||0}, ${x.i})" aria-label="Usar la foto de ${esc(x.e.cuartel||"")} del ${esc(fmtF(x.e.fecha))}"><span>${esc(x.e.cuartel||"")} · ${esc(fmtF(x.e.fecha).slice(0,5))}</span></button>`).join("")
+    : `<div class="muted">No hay fotos de registros de cerezo en «${esc(b.nom)}». Registra ese estado con una foto en Fenología, o usa Cámara o Galería.</div>`}</div>`;
+}
+function fenRefCambiar(c){ if(espejoNo()) return; _fenRefCam=c||""; _fenRefEl=""; fenRefPintar(); }
+function fenRefElegir(c){ if(espejoNo()) return; _fenRefEl=_fenRefEl===c? "" : c; fenRefPintar(); }
+async function fenRefFoto(c, inp){
+  if(espejoNo()) return;
+  const file=inp && inp.files && inp.files[0]; if(inp) inp.value=""; if(!file) return;
+  let data=null; try{ data=await comprimirImagen(file); }catch(_){ }   // como las demás fotos: 1.600 px, JPEG
+  if(!data){ aviso("⚠️ No se pudo leer esa foto."); return; }
+  const fid="fr"+nid(); await fotoPut(fid, data);
+  fenRefGuardar(c, {fid, fecha:hoy(), fundo:"", cuartel:"", nota:""});
+}
+/* copia la foto con id nuevo «fr…» (borrar el registro no borra la referencia) y la deja como la de ese estado */
+async function fenRefPoner(c, fid, meta){
+  const d=await fotoGet(fid); if(!d || !/^data:image\//.test(d)){ aviso("⚠️ No se pudo leer esa foto en este equipo."); return false; }
+  const nf="fr"+nid(); await fotoPut(nf, d);
+  fenRefGuardar(c, Object.assign({fecha:hoy(), fundo:"", cuartel:"", nota:""}, meta||{}, {fid:nf}));
+  return true;
+}
+function fenRefGuardar(c, o){
+  const R=fenRefCfg(), ant=R.cerezo[c];
+  R.cerezo[c]=o;
+  if(ant && typeof ant.fid==="string" && ant.fid && ant.fid!==o.fid) fotoDel(ant.fid);   // la de antes (borrado diferido de 9 s)
+  _fenRefCam=""; _fenRefEl=""; guardar(); fenRefPintar();
+  if(FEN && document.getElementById("fenEstados")) fenPintaEstados(fenEspForm());   // la grilla del formulario abierto muestra la foto nueva
+}
+async function fenRefUsar(c, id, i){
+  if(espejoNo()) return;
+  const e=fenAll().find(x=>x.id===id), fid=e && (e.fotos||[])[i]; if(!fid) return;
+  await fenRefPoner(c, fid, {fecha:e.fecha, fundo:e.fundo, cuartel:e.cuartel});
+}
+function fenRefQuitar(c){
+  if(espejoNo()) return;
+  const r=fenRefDe().cerezo[c]; if(!r) return;
+  const b=FEN_CEREZO_TODOS.find(x=>x.c===c);
+  undoIni("Foto de referencia de «"+(b? b.nom : c)+"» quitada", ()=>fenRefPantalla());   // Deshacer la devuelve (la foto se borra recién a los 9 s) y vuelve a abrir la ventana (revisión v164: antes la cerraba)
+  delete fenRefCfg().cerezo[c]; if(typeof r.fid==="string" && r.fid) fotoDel(r.fid);
+  _fenRefCam=""; _fenRefEl=""; guardar(); fenRefPintar();
+}
+function fenRefEnlSet(u){
+  if(syncEspejo()) return;
+  u=String(u||"").trim();
+  if((fenRefDe().enlace||"")===u){ fenRefEnlPintar(u); return; }   // sin cambios no se escribe nada
+  if(u && !fenRefEnlOk(u)){ fenRefEnlPintar(u); return; }   // una dirección que no es web no se guarda (lo dice abajo)
+  fenRefCfg().enlace=u; guardar(); fenRefEnlPintar(u);
+}
+function fenRefEnlPintar(u){ const c=document.getElementById("fenRefAbrir"); if(c) c.innerHTML=fenRefAbrirHTML(u); }
+function fenRefAbrirHTML(u){
+  u=String(u||"").trim(); if(!u) return "";
+  return fenRefEnlOk(u)? `<a class="btn sec chico fenref-a" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${ic("link")} Abrir boletín</a>` : `<div class="fenref-av">La dirección tiene que empezar con https:// (por ejemplo, la del boletín en la página de Smart Cherry).</div>`;
+}
+/* la lupa: la referencia en grande con su descripción (si no hay foto, la descripción sola) */
+async function fenRefVer(c){
+  const b=FEN_CEREZO_TODOS.find(x=>x.c===c); if(!b) return;
+  const r=fenRefDe().cerezo[c], d=(r && typeof r.fid==="string" && r.fid)? await fotoGet(r.fid) : null;
+  const cv=document.getElementById("capaVisor"); if(!cv) return;
+  cv.innerHTML=`<div class="visor fenref-v"><div class="vh"><button class="btn sec chico" onclick="cerrarVisor()">← Volver</button><div style="flex:1"></div></div>
+    <div class="lienzo">${d? `<img class="full" src="${esc(d)}" alt="Foto de referencia de ${esc(b.nom)}">` : `<div class="fenref-sin">Todavía no hay una foto de referencia propia de este estado.${syncEspejo()? "" : " Ponla en Fenología → Referencias del cerezo, o desde un registro de cerezo con fotos."}</div>`}</div>
+    <div class="fenref-cap"><div>${fenNbHTML(b.n)}<b>${esc(b.nom)}</b> <span class="fen-bbch">BBCH ${b.c}</span></div><div>${esc(b.d)}</div>${r && d? `<div class="fenref-de">${esc(fenRefTxt(r))}</div>` : ""}</div></div>`;
+  if(d) visorGestos();
 }
 
 /* ================== BITÁCORA DE CAMPO: ÍNDICE ÚNICO DE EVENTOS (Etapa 1) ==================
@@ -22898,11 +23550,15 @@ function lcIdx(){
   }
   /* --- fenología --- */
   for(const f of (D.fenologia||[])){
-    const b=lcEvNuevo("fenologia", "f:"+f.id, f.id, f.fecha, f.fundo, "fen", "BBCH "+(f.bbch||"—")+(f.estado? " · "+f.estado : ""), "fenEditar("+f.id+")");
+    /* v164: título con el principal y los «también hay» (en cerezo, el nombre del boletín; la burbuja y «BBCH xx» los pone la fila) */
+    const fesp=fenEspDe(f), sec=fenSecDe(f), fi=fenInfo(fesp, f.bbch, f.estado);
+    const b=lcEvNuevo("fenologia", "f:"+f.id, f.id, f.fecha, f.fundo, "fen", fenTitulo(fesp, f.bbch||"", f.estado||"", sec), "fenEditar("+f.id+")");
     b.det=lcLinea(f.nota, 140); if(f.fotos) b.fotos=f.fotos; b.dest=f.dest===true; b.origen=f.origen==="asis"? "asis" : "manual"; b.dictado=f.dictado? String(f.dictado) : "";
+    if(f.mano) b.mano=1; if(f.dictadoFh && fhDia(f.dictadoFh)===b.fecha) b.hora=fhHora(f.dictadoFh);   // revisión 2 de la v164: lo anotado a mano en el celular dice «celular» (no «dictado»), como Riego y las notas
     const ck=(f.especie||"")+"|"+(f.bbch||""); let col=fenCol.get(ck); if(col===undefined){ col=fenColor(f.especie, f.bbch); fenCol.set(ck,col); }
-    b.bbch=f.bbch||""; b.col=col; b.grupo="fen:"+(f.bbch||"");   // el mismo estado el mismo día en varios cuarteles: una fila con chips
-    b.txt=txt([b.tit, f.nota, f.fundo, b.dictado]);
+    b.bbch=f.bbch||""; b.col=col; b.grupo="fen:"+(f.bbch||"")+(sec.length? "+"+sec.join(",") : "");   // el mismo estado (y los mismos «también hay») el mismo día en varios cuarteles: una fila con chips
+    b.sec=sec; b.fh=f.fh||""; b.fenCorto=sec.length? fenTitulo(fesp, f.bbch||"", f.estado||"", []) : b.tit; if(fi.cer && !fi.fuera && f.bbch){ b.fenNb=fi.nb; b.fenCer=true; }
+    b.txt=txt([b.tit, f.estado, fi.nom, sec.map(c=>fenInfo(fesp, c).nom).join(" "), f.nota, f.fundo, b.dictado]);   // se busca por el nombre guardado, el del boletín y los «también hay»
     porCuartel(b, f.cuartel, ev);
   }
   /* --- notas: fecha y hora LOCALES (fhDia/fhHora); 'General' va aparte; la oculta sin texto y fuera de la búsqueda --- */
@@ -23774,12 +24430,13 @@ function lcFilaHTML(g){
     else if(c && c.d==null && c.fin>=H) m.push(`<span class="lc-b sd">sin dato de carencia</span>`);
   }
   if(e.urg) m.push(`<span class="lc-b urg">urgente</span>`);
+  if(e.fenCer) m.push(`<span class="lc-b fen-bbch">BBCH ${esc(e.bbch)}</span>`);   // cerezo: el n.º del boletín va en la burbuja del título y el BBCH aparte
   if(lcCorrDe(g).length) m.push(`<span class="lc-b corr">por corregir</span>`);   // nota «Por corregir» pedida desde el celular
   const det=[g.det, g.fin? lcDelAl(g.fecha, g.fin) : ""].filter(Boolean).join(" · ");
   const ths=g.fotos.length? `<span class="lc-ths" aria-hidden="true">${g.fotos.slice(0,2).map(id=>`<span class="lc-th" data-fid="${esc(id)}"></span>`).join("")}</span>` : "";
   return `<div class="lc-it c-${g.cat}${ab? " abierta" : ""}${nueva? " nueva" : ""}${g.cls? " "+g.cls : ""}" id="${g.id}"><button type="button" class="lc-it-b" data-acc="fila" data-f="${g.id}" ${mov? `aria-haspopup="dialog"` : `aria-expanded="${ab}"`+(ab? ` aria-controls="${g.id}d"` : "")}>`+
     `<span class="lc-it-i">${ic(LC_ICO[g.cat]||"doc")}</span>`+
-    `<span class="lc-it-tx"><span class="lc-it-t"><b>${esc(g.tit)}</b>${g.dest? `<span class="lc-star" aria-hidden="true">★</span><span class="lc-sr">(destacado)</span>` : ""}${chips? `<span class="lc-cus">${chips}</span>` : ""}</span>${det? `<span class="lc-it-d">${esc(det)}</span>` : ""}</span>`+
+    `<span class="lc-it-tx"><span class="lc-it-t"><b>${e.fenNb? fenNbHTML(e.fenNb) : ""}${esc(g.tit)}</b>${g.dest? `<span class="lc-star" aria-hidden="true">★</span><span class="lc-sr">(destacado)</span>` : ""}${chips? `<span class="lc-cus">${chips}</span>` : ""}</span>${det? `<span class="lc-it-d">${esc(det)}</span>` : ""}</span>`+
     (m.length? `<span class="lc-it-m">${m.join("")}</span>` : "")+ths+`<span class="lc-it-ch">${ic("chevronDown")}</span></button>`+
     (ab? `<div class="lc-det" id="${g.id}d">${lcDetHTML(g)}</div>` : "")+`</div>`;
 }
@@ -23880,7 +24537,9 @@ function lcDetHTML(g){
     }
   }else if(e.st==="fenologia"){
     const rs=[...new Set(g.evs.map(x=>x.id))].map(id=>(D.fenologia||[]).find(f=>f.id===id)).filter(Boolean);
-    h+=dd("Estado", esc(e.tit)+(o.especie? " · "+esc(o.especie) : ""));
+    const oe=fenEspDe(o), oi=fenInfo(oe, o.bbch, o.estado), osec=fenSecDe(o);   // v164: el principal y los «también hay» (en cerezo, con el n.º del boletín)
+    h+=dd("Estado principal", (o.bbch? fenNbHTML(oi.nb)+esc(oi.nom||"—")+(oi.fuera? esc(FEN_FUERA) : "")+` <span class="lc-no">BBCH ${esc(o.bbch)}</span>` : esc(e.tit))+(o.especie? " · "+esc(o.especie) : ""));
+    if(osec.length) h+=dd("También hay", osec.map(c=>{ const si=fenInfo(oe, c); return fenNbHTML(si.nb)+esc(si.nom)+` <span class="lc-no">(BBCH ${c})</span>`; }).join(" · "));
     if(rs.length>1) h+=lcCadaHTML(g, esp, x=>{ const f=rs.find(z=>z.id===x.id); return f && f.nota? lcLinea(f.nota, 90) : ""; });
     else if(o.nota) h+=dd("Nota", pre(o.nota));
     h+=lcFotosHTML([].concat(...rs.map(f=>f.fotos||[])));
@@ -23930,13 +24589,16 @@ function lcDocsHTML(ds){   // «Documento adjunto»: lo abre el visor de documen
 function lcOrigenHTML(e, o, g){   // siempre el origen; si vino del asistente, desde dónde, cuándo y el texto dictado entre comillas (y dónde quedó lo demás del dictado, con enlace a su ficha)
   let t;
   if(e.origen==="asis"){
-    t=(o.mano? "anotado a mano en el celular (llegó por la bandeja)" : "dictado al asistente desde el "+(o.equipo==="celular"? "celular" : "iPad"))+(o.dictadoFh? " · "+fmtFH(o.dictadoFh) : "");   // mano: formulario corto «+ Anotar» del celular
+    /* v164: quién y desde qué celular («por Pía (Celular-ab12)») y, con el acuse, cuándo llegó al iPad */
+    const cel=o.equipo==="celular", quien=cel? (o.autor? " por "+esc(o.autor) : "")+(o.equipoId? " ("+esc(o.equipoId)+")" : "") : "", lleg=cel? asisAcuseDe(o.asisId) : "";
+    t=(o.mano? "anotado a mano en el celular"+quien : "dictado al asistente desde el "+(cel? "celular"+quien : "iPad"))+(o.dictadoFh? " · "+esc(fmtFH(o.dictadoFh)) : "")   // mano: formulario corto «+ Anotar» del celular
+      +(lleg? " · llegó al iPad "+lcCamHora(lleg) : o.mano? " (llegó por la bandeja)" : "");
     const d=e.dictado || o.dictado; if(d) t+=`<span class="lc-dict">«${esc(d)}»</span>`;
     if(o.asisLote){ const n=lcMismoDictado(o); if(n){
       const cs=g? lcDictCus(o, g) : []; if(g) g.dict=cs;
       t+=` <span class="lc-no">Del mismo dictado: ${n} ${n===1? "ítem más" : "ítems más"}${cs.length? ", en" : "."}</span>`+cs.map((x,k)=>` <button type="button" class="lc-cul" data-acc="dict" data-f="${g.id}" data-i="${k}">${esc(x.cu||"todo el fundo")}${x.fundo!==g.fundo? " ("+esc(x.fundo)+")" : ""}</button>`).join("");
     } }
-  }else t={calcfito:"guardada desde Calc Fito", calc:"guardada desde la Calculadora de labores", gantt:"anotada en la Carta Gantt"}[e.origen] || ("anotado a mano"+(e.st==="notas" && o.fh? " · "+fmtFH(o.fh) : ""));
+  }else t={calcfito:"guardada desde Calc Fito", calc:"guardada desde la Calculadora de labores", gantt:"anotada en la Carta Gantt"}[e.origen] || ("anotado a mano"+(e.st==="notas" && o.fh? " · "+esc(fmtFH(o.fh)) : ""));
   return `<div class="lc-dl"><span class="lc-dt">Origen</span><span class="lc-dd">${t}</span></div>`;
 }
 function lcAccHTML(g, e, o, esp){   // botones de 44 px; nada de Eliminar aquí (queda en cada formulario, con Deshacer)
@@ -24099,7 +24761,7 @@ function lcHojaDet(fid){
   lcFotosObservar(); lcAudios(document.querySelector("#capaModal .lc-hdet"));
 }
 function lcHojaDetHTML(g){
-  return `<div class="lc-hdet" data-f="${g.id}" data-gk="${esc(g.gk)}" onclick="lcClic(event)"><div class="lc-hdet-t"><b>${esc(g.tit)}</b>${g.dest? `<span class="lc-star" aria-hidden="true">★</span><span class="lc-sr">(destacado)</span>` : ""}</div>${lcDetHTML(g)}</div>`;
+  return `<div class="lc-hdet" data-f="${g.id}" data-gk="${esc(g.gk)}" onclick="lcClic(event)"><div class="lc-hdet-t"><b>${g.evs[0] && g.evs[0].fenNb? fenNbHTML(g.evs[0].fenNb) : ""}${esc(g.tit)}</b>${g.dest? `<span class="lc-star" aria-hidden="true">★</span><span class="lc-sr">(destacado)</span>` : ""}</div>${lcDetHTML(g)}</div>`;
 }
 function lcAudios(raiz){   // audios de una nota: se leen recién al abrir el detalle (fotoGet: del equipo o, en el espejo, del puente)
   if(!raiz) return;
@@ -24200,36 +24862,77 @@ function lcPedListo(x){   // un ★ pedido ya está hecho en lo sincronizado (o 
    (su asisId no está en lo guardado). Duran hasta que llega el registro, no hasta que sale de la cola. Solo en el espejo; 30 días como máximo */
 function lcCamino(){
   if(!syncEspejo()) return [];
-  const A=asisCfg(), ya=lcAsisIds(), cola=new Map(A.cola.map(x=>[String(x.id), x])), vistos=new Set(), out=[], lim=sumarDiasISO(hoy(),-30), limRec=sumarDiasISO(hoy(),-2);
+  const A=asisCfg(), ya=lcAsisIds(), cola=new Map(A.cola.map(x=>[String(x.id), x])), env=new Map(asisEnv(A).map(e=>[String(e && e.id), e])), vistos=new Set(), out=[], lim=sumarDiasISO(hoy(),-30), limRec=sumarDiasISO(hoy(),-2);
   const mete=(x, fh)=>{
     if(!x || !x.id || vistos.has(x.id)) return; vistos.add(x.id);
     const enCola=cola.has(x.id);
     if(ya.has(x.id) || (!enCola && fhDia(fh)<lim)) return;
-    if(!enCola && x.rec && fhDia(x.rec)<limRec) return;   // el iPad lo tomó de la bandeja hace más de 2 días y no volvió (lo deshizo o lo borró): asisCaminoRevisar
+    if(!enCola && x.rec && fhDia(x.rec)<limRec) return;   // el iPad acusó recibo hace más de 2 días y no volvió (allá lo deshicieron o lo borraron)
     if(x.t==="pedido" && x.acc==="destacar" && lcPedListo(x)) return;
-    out.push(Object.assign({}, x, {cus:x.cus||[], cola:enCola, fh}));
+    const e=env.get(String(x.id));
+    out.push(Object.assign({}, x, {cus:x.cus||[], cola:enCola, fh, no:!enCola && !x.rec && !!(e && e.fallo)}));   // no: «No llegó al iPad» (3 reenvíos o 7 días sin acuse)
   };
   A.hist.forEach(h=>{ if(h && h.origen!=="celular") (h.its||[]).forEach(x=>mete(x, h.fhEnv||h.fh)); });
   cola.forEach((c, id)=>{ if(!vistos.has(id) && c && c.item) mete(asisCaminoDe(c.item), ahora()); });   // lo que quedó en la cola de antes (sin its)
   return out;
 }
 function lcCamHora(fh){ const d=fhDia(fh); return (d && d!==hoy()? lcDM(d)+" " : "")+fhHora(fh); }
+function lcCamEst(x){ return x.cola? "en cola (sin señal)" : x.no? "No llegó al iPad" : x.rec? "recibido en el iPad "+lcCamHora(x.rec) : "enviado "+lcCamHora(x.fh); }
 function lcCaminoHTML(lst){
   if(!lst || !lst.length) return "";
+  if(lst.some(x=>x.ft)) setTimeout(lcCamThumbs, 0);
   return `<section class="lc-cam" aria-label="En camino al iPad"><h3 class="lc-cam-t">${ic("upload")} En camino al iPad (${lst.length})</h3><div class="lc-cam-l" role="list">${lst.map(x=>{
     const lug=[x.fu, x.cus.length? (x.cus.length>3? x.cus.length+" cuarteles" : x.cus.join(", ")) : (x.fu && x.fu!==GENERAL && x.t!=="pedido"? "todo el fundo" : "")].filter(Boolean).join(" › ");
-    const est=x.cola? "en cola (sin señal)" : x.rec? "recibido en el iPad "+lcCamHora(x.rec) : "enviado "+lcCamHora(x.fh);
-    return `<div class="lc-cam-it" role="listitem"><span class="lc-it-i" aria-hidden="true">${ic(x.t==="pedido"? "upload" : (LC_ICO[x.c]||"doc"))}</span><span class="lc-cam-tx"><b>${esc(x.tit)}${x.d? ` <span class="lc-star" aria-hidden="true">★</span><span class="lc-sr">(destacado)</span>` : ""}</b>`+
-      `<span>${esc([lug, x.f && x.f!==hoy()? lcDM(x.f) : ""].filter(Boolean).join(" · "))}</span></span><span class="lc-b${x.cola? " cola" : ""}">${esc(est)}</span></div>`;
+    const est=lcCamEst(x), idOk=/^[A-Za-z0-9_-]{1,60}$/.test(String(x.id)), ft=x.ft && /^fc[A-Za-z0-9_-]{1,58}$/.test(x.ft)? x.ft : "";
+    /* v164: en cola → «Quitar de la cola»; sin acuse después de 3 reenvíos o 7 días → «No llegó al iPad» con Reenviar y Quitar (con Deshacer) */
+    const acc=!idOk? "" : x.cola? `<button type="button" class="btn sec chico lc-cam-b" onclick="lcCamQuitar('${x.id}')">${ic("trash")} Quitar de la cola</button>`
+      : x.no? `<button type="button" class="btn sec chico lc-cam-b" onclick="lcCamReenviar('${x.id}')">${ic("upload")} Reenviar</button><button type="button" class="btn sec chico lc-cam-b" onclick="lcCamQuitar('${x.id}')">${ic("trash")} Quitar</button>` : "";
+    return `<div class="lc-cam-it${x.no? " no" : ""}" role="listitem" data-cam="${esc(x.id)}">${ft? `<span class="lc-cam-ph" data-fid="${ft}" aria-hidden="true"></span>` : `<span class="lc-it-i" aria-hidden="true">${ic(x.t==="pedido"? "upload" : (LC_ICO[x.c]||"doc"))}</span>`}<span class="lc-cam-tx"><b>${esc(x.tit)}${x.d? ` <span class="lc-star" aria-hidden="true">★</span><span class="lc-sr">(destacado)</span>` : ""}</b>`+
+      `<span>${esc([lug, x.f && x.f!==hoy()? lcDM(x.f) : ""].filter(Boolean).join(" · "))}</span>${acc? `<span class="lc-cam-acc">${acc}</span>` : ""}</span><span class="lc-b${x.cola? " cola" : x.no? " no" : ""}">${esc(est)}</span></div>`;
   }).join("")}</div></section>`;
+}
+/* la miniatura de las filas con fotos: solo la copia de ESTE celular (fotoGetLocal: nunca se pide al puente) */
+async function lcCamThumbs(){
+  for(const el of [...document.querySelectorAll(".lc-cam-ph[data-fid]:not(.ok)")]){
+    el.classList.add("ok");
+    try{ const d=await fotoGetLocal(el.getAttribute("data-fid")); if(duSano(d) && /^data:image\//.test(d)) el.style.backgroundImage=`url("${d}")`; else el.classList.add("sin"); }catch(e){ el.classList.add("sin"); }
+  }
 }
 function lcCaminoPintar(){   // salió de la cola: «enviado HH:MM» (sin tocar una ventana abierta: la hoja usa los id de las filas)
   if(nav.tab==="bitacora" && syncEspejo() && document.getElementById("lcVista") && !document.querySelector("#capaModal .modal")) lcPintarLista();
+  if(nav.tab==="fenologia" && syncEspejo()) fenCamPintar();   // v164: la franja de la pestaña Fenología del celular
+}
+function lcCamRepintar(){   // después de Quitar o Reenviar: la vista donde está la fila
+  if(nav.tab==="fenologia"){ fenCamPintar(); return; }
+  const p=(nav.tab==="bitacora" && typeof lcScrollGuardar==="function")? lcScrollGuardar() : null;
+  render(); if(p) try{ lcScrollReponer(p); }catch(e){}
+}
+/* «Quitar de la cola» (sin señal) y «Quitar» (no llegó al iPad): sale de este celular con sus fotos «fc…» (se borran a los 9 s, con Deshacer) */
+function lcCamQuitar(id){
+  if(!syncEspejo()) return;
+  const A=asisCfg(), c=A.cola.find(x=>x && x.id===id), e=asisEnv(A).find(x=>x && x.id===id);
+  if(!c && !e) return;
+  undoIni(c? "Quitado de la cola: no se envía al iPad" : "Quitado: ya no se reenvía al iPad");
+  const item=(c && c.item) || (e && e.item) || {};
+  A.cola=A.cola.filter(x=>!(x && x.id===id));
+  if(e) A.enviados=A.enviados.filter(x=>!(x && x.id===id));
+  A.hist=A.hist.filter(h=>{ if(!h || !(h.its||[]).some(x=>x && x.id===id)) return true; h.its=h.its.filter(x=>!(x && x.id===id)); if(h.ids) h.ids=h.ids.filter(z=>z!==id); return h.its.length>0; });
+  asisAdjIdsLista(item.adjIds).filter(f=>/^(fc|dc)/.test(f)).forEach(f=>{ try{ fotoDel(f); }catch(x){} });
+  guardar(); lcCamRepintar();
+}
+/* «Reenviar» (no llegó al iPad): vuelve a la cola con el mismo id (las fotos ya están en el puente) y cuenta como un envío nuevo */
+function lcCamReenviar(id){
+  if(!syncEspejo()) return;
+  const A=asisCfg(), e=asisEnv(A).find(x=>x && x.id===id); if(!e || !e.item) return;
+  if(!A.cola.some(c=>c && c.id===id)) A.cola.push({id, item:e.item});
+  delete e.fallo; e.reenvios=0;
+  guardar(); lcCamRepintar();
+  asisColaEnviar().then(ok=>{ aviso(ok? "✅ Reenviado al iPad. Se guarda allá apenas el iPad esté abierto." : "Quedó en la cola de este equipo: se envía solo cuando haya señal."); lcCamRepintar(); });
 }
 /* «Pedir al iPad» al pie del detalle en el espejo: ★ Destacar y Corregir… (un texto corto) */
 function lcPedirHTML(g){
   const ks=new Set(g.evs.map(lcRefK)), mio=x=>x.t==="pedido" && [x.ref].concat(x.refs||[]).some(r=>ks.has(lcRefKr(r)));
-  const ps=lcCamino().filter(mio), pd=ps.find(x=>x.acc==="destacar"), pc=ps.find(x=>x.acc==="corregir"), est=x=>x.cola? "en cola (sin señal)" : x.rec? "recibido en el iPad "+lcCamHora(x.rec) : "enviado "+lcCamHora(x.fh);
+  const ps=lcCamino().filter(mio), pd=ps.find(x=>x.acc==="destacar"), pc=ps.find(x=>x.acc==="corregir"), est=lcCamEst;
   return `<div class="lc-ped" role="group" aria-label="Pedir al iPad"><span class="lc-ped-t">Pedir al iPad</span><div class="lc-ped-bs">`+
     (g.dest? "" : pd? `<span class="lc-ped-ya">★ Destacar: ${esc(est(pd))}</span>` : `<button type="button" class="btn sec" data-acc="pdest" data-f="${g.id}">${ic("star")} Destacar</button>`)+
     `<button type="button" class="btn sec" data-acc="pcorr" data-f="${g.id}" aria-expanded="false" aria-controls="${g.id}pc">${ic("edit")} Corregir…</button></div>`+
@@ -24365,27 +25068,48 @@ function lcAnVolver(){
    NO escribe en D: arma un ítem del asistente (la misma forma de lo que ordena Claude, con origen 'asis', asisId, equipo 'celular' y como
    «dictado» un resumen de lo anotado) y lo manda con asisEnviar(lista, true): sin señal queda en A.cola y sale solo. El iPad lo guarda por la
    misma tubería (asisNorm, catálogo, fundo deducido). La revisión pendiente del asistente no se toca. Lo elegido vive en _lcCe (memoria) */
-const LC_CE_QUE=[["apl","flask","Aplicación hecha"],["lab","users","Labor hecha"],["riego","drop","Riego"],["nota","note","Nota"]];
-let _lcCe=null;   // {que, dia ('hoy'|'ayer'|'otro'), fecha, fOtro, fu, cus, lab, dest, val:{prod, dosis, obj, cant, uni, pers, horas, tx}}
+const LC_CE_QUE=[["apl","flask","Aplicación hecha"],["lab","users","Labor hecha"],["riego","drop","Riego"],["fen","flower","Fenología"],["nota","note","Nota"]];   // v164: Fenología
+const LC_CE_FOTOS=4, LC_CE_FOTO_KB=600;   // v164: hasta 4 fotos por registro (1.600 px, unos 350 KB como en el iPad); si una pasa de 600 KB se rehace a 1.280 px
+let _lcCe=null;   // {que, dia ('hoy'|'ayer'|'otro'), fecha, fOtro, fu, cus, lab, dest, val:{prod, dosis, obj, cant, uni, pers, horas, tx}, bbch, sec, secAb, fotos:[{id, mini}], fotoOcup, sug, sugOcup}
 function lcCel(lugar){
   const o=(lugar && typeof lugar==="object")? lugar : {}, fs=hoyFundos(), ult=(D.bitCfg||{}).ultFundo;   // sin bitCfg(): aquí no se escribe en D
   const fu=fs.indexOf(o.fundo)>=0? o.fundo : (fs.indexOf(ult)>=0? ult : "");
-  _lcCe={que:"apl", dia:"hoy", fecha:hoy(), fOtro:"", fu, cus:fu? (o.cuarteles||[]).filter(c=>cuartelesDe(fu).some(q=>q.nombre===c)) : [], lab:"", dest:false, val:{}};
+  lcCeCerrado();   // una ventana anterior que no se envió: sus fotos se borran
+  const que=LC_CE_QUE.some(x=>x[0]===o.que)? o.que : "apl";   // fenCel abre directo en Fenología
+  _lcCe={que, dia:"hoy", fecha:hoy(), fOtro:"", fu, cus:fu? (o.cuarteles||[]).filter(c=>cuartelesDe(fu).some(q=>q.nombre===c)) : [], lab:"", dest:false, val:{}, bbch:"", sec:[], secAb:false, fotos:[], fotoOcup:0, sug:null, sugOcup:false};
   abrirModal(ic("upload")+" Anotar · se envía al iPad", `<div class="lc-ce" id="lcCe" onclick="lcCeClic(event)">${lcCeHTML()}</div>`, lcCeEnviar, ic("upload")+" Enviar al iPad");
   const m=document.querySelector("#capaModal .modal"); if(m) m.classList.add("lc-ce-m");
   lcCeFp();
+  if(que==="fen") setTimeout(fenCargarThumbs, 0);   // las fotos de referencia de la grilla del cerezo
 }
+/* la pestaña Fenología del celular espejo: el mismo formulario corto, con Fenología y el cuartel ya elegidos (no escribe en D: se envía al iPad) */
+function fenCel(fundo, cuartel){
+  if(!syncEspejo()){ fenNuevo(fundo, cuartel); return; }
+  const fu=fundo || fenNav().fundo || "";
+  lcCel({fundo:fu, cuarteles:cuartel? [cuartel] : [], que:"fen"});
+}
+/* cerrar sin enviar: las fotos «fc…» que se sacaron en esta ventana no quedan sueltas en el equipo (lo enviado deja _lcCe en null antes) */
+function lcCeCerrado(){
+  const C=_lcCe; if(!C) return; _lcCe=null;
+  (C.fotos||[]).forEach(f=>{ try{ fotoDelAhora(f.id); }catch(e){} });
+}
+/* Fenología: la escala (cerezo = los 10 del boletín; las demás, su grupo BBCH). Dos cuarteles van juntos solo si son de la misma escala */
+function lcCeEscala(esp){ return fenEsCerezo(esp)? "cerezo" : fenGrupoDe(esp); }
+function lcCeFenQs(){ const C=_lcCe; return (C && C.fu && C.fu!==GENERAL)? C.cus.map(c=>D.cuarteles.find(x=>x.fundo===C.fu && x.nombre===c)).filter(Boolean) : []; }
+function lcCeFenEsp(){ const qs=lcCeFenQs(); return {qs, esp:qs.length? (qs[0].especie||"") : "", mezcla:new Set(qs.map(q=>lcCeEscala(q.especie||""))).size>1}; }
 function lcCeHTML(){
   const C=_lcCe, H=hoy(), q=C.que, V=C.val;
   const chip=(acc, v, on, t)=>`<button type="button" class="chip lc-chip${on? " act" : ""}" data-ce="${acc}" data-v="${esc(v)}" aria-pressed="${on}">${t}</button>`;
   const grupo=(et, cls, hint, cuerpo)=>`<div class="lc-ce-g${cls}" role="group" aria-label="${esc(et)}"><span class="lc-ce-et" aria-hidden="true">${esc(et)}${hint? ` <span class="lc-ce-sin">· ${esc(hint)}</span>` : ""}</span><div class="lc-ce-ch">${cuerpo}</div></div>`;
-  let h=grupo("Qué", " lc-ce-que", "", LC_CE_QUE.map(([k,i,t])=>chip("que", k, q===k, ic(i)+" "+t)).join(""));
+  /* v164: con un puente sin bandeja (Datos → Conexiones → Sincronización → Probar) nada de esto llega al iPad: se avisa arriba y no se deja enviar */
+  let h=syncPuenteSin()? `<div class="cf-fp-av alto lc-ce-pv" role="alert">${ic("alert")}<span>${esc(SYNC_PUENTE_TXT.sin)}</span></div>` : "";
+  h+=grupo("Qué", " lc-ce-que", "", LC_CE_QUE.map(([k,i,t])=>chip("que", k, q===k, ic(i)+" "+t)).join(""));
   h+=grupo("Fecha", "", "", chip("dia","hoy",C.dia==="hoy","Hoy "+lcDM(H))+chip("dia","ayer",C.dia==="ayer","Ayer "+lcDM(sumarDiasISO(H,-1)))+chip("dia","otro",C.dia==="otro","Otro día…"));
   if(C.dia==="otro") h+=`<label class="f lc-ce-otro">¿Qué día?${fechaHTML("lcCeF", C.fOtro)}</label>`;
   h+=grupo("Fundo", "", q==="nota"? "opcional" : "", (q==="nota"? [GENERAL] : []).concat(hoyFundos()).map(f=>chip("fu", f, C.fu===f, esc(f))).join(""));
   if(C.fu && C.fu!==GENERAL){
-    const cs=cuartelesDe(C.fu).filter(x=>gtNorm(x.especie||"")!=="por plantar" || C.cus.indexOf(x.nombre)>=0);
-    h+=grupo("Cuarteles", "", C.cus.length? (C.cus.length===1? "1 elegido" : C.cus.length+" elegidos") : "ninguno = todo el fundo", cs.map(x=>chip("cu", x.nombre, C.cus.indexOf(x.nombre)>=0, esc(x.nombre))).join(""));
+    const fen=q==="fen", cs=cuartelesDe(C.fu).filter(x=>(fen? !!x.especie && gtNorm(x.especie)!=="por plantar" : gtNorm(x.especie||"")!=="por plantar") || C.cus.indexOf(x.nombre)>=0);   // fenología: solo cuarteles plantados con especie
+    h+=grupo("Cuarteles", "", C.cus.length? (C.cus.length===1? "1 elegido" : C.cus.length+" elegidos") : fen? "elige uno o más, de la misma especie" : "ninguno = todo el fundo", cs.map(x=>chip("cu", x.nombre, C.cus.indexOf(x.nombre)>=0, esc(x.nombre))).join(""));
   }
   if(q==="apl") h+=`<label class="f">Producto<input id="lcCeProd" type="text" list="regProdL" autocomplete="off" value="${esc(V.prod||"")}" placeholder="Nombre del catálogo" oninput="lcCeFp()"></label>${regProdListaHTML()}<div id="lcCeFp" class="reg-fp" aria-live="polite"></div>`+
     `<div class="lc-ce-g2">${campoF("lcCeDosis","Dosis","text",V.dosis||"",'placeholder="Ej: 2 L/ha"')}${campoF("lcCeObj","Objetivo","text",V.obj||"",'placeholder="Ej: malezas"')}</div>`;
@@ -24397,10 +25121,102 @@ function lcCeHTML(){
       `<datalist id="lcCeUniL">${["plantas","hileras","kg","ha","bins","metros","árboles","bandejas"].map(u=>`<option value="${u}">`).join("")}</datalist>`;
   }
   else if(q==="riego") h+=`<div class="lc-ce-g2">${campoF("lcCeHoras","Horas de riego","text",V.horas||"",'inputmode="decimal" placeholder="Ej: 3,5"')}</div>`;
-  h+=q==="nota"? areaF("lcCeTx","Nota",V.tx||"","Lo que viste: plagas, problemas, ideas…") : areaF("lcCeTx","Nota (opcional)",V.tx||"","Algo más que el iPad deba saber");
+  else if(q==="fen") h+=`<div class="lc-ce-g lc-ce-fen" role="group" aria-label="Estado principal"><span class="lc-ce-et" aria-hidden="true">Estado principal</span><div id="lcCeEst">${lcCeEstHTML()}</div>`+
+    `<div id="lcCeSec" class="fen-sec">${lcCeSecHTML()}</div><div class="f-aviso" id="lcCeFenAv" role="alert" hidden></div></div>`+lcCeFotosGrupo()+`<div id="lcCeSug" class="fen-sug" aria-live="polite">${lcCeSugHTML()}</div>`;
+  h+=q==="nota"? areaF("lcCeTx","Nota",V.tx||"","Lo que viste: plagas, problemas, ideas…")+lcCeFotosGrupo()
+    : q==="fen"? areaF("lcCeTx","Observación (opcional)",V.tx||"","Ej: floración pareja, mejor en la cara norte…") : areaF("lcCeTx","Nota (opcional)",V.tx||"","Algo más que el iPad deba saber");
   h+=`<label class="chk-fila reg-dest lc-ce-dest"><input type="checkbox" id="lcCeDest"${C.dest? " checked" : ""}> <span>${ic("star")} Destacar en la bitácora</span></label>`;
   h+=`<div class="f-aviso" id="lcCeAv" role="alert" hidden></div>`;
-  return h+`<div class="lc-ce-pie">${ic("info")}<span>Sin señal queda en la cola de este celular y sale solo. El iPad lo guarda con el catálogo, igual que lo dictado; mientras tanto se ve «En camino al iPad».</span></div>`;
+  return h+`<div class="lc-ce-pie">${ic("info")}<span>Sin señal queda en la cola de este celular${q==="fen" || q==="nota"? ", con sus fotos," : ""} y sale solo. El iPad lo guarda ${q==="fen" || q==="nota"? "" : "con el catálogo, "}igual que lo dictado; mientras tanto se ve «En camino al iPad».</span></div>`;
+}
+/* --- Fenología en el formulario corto (v164, F1): las mismas piezas del iPad (la grilla del cerezo, los chips de la escala y «También hay») --- */
+function lcCeEstHTML(){
+  const C=_lcCe, F=lcCeFenEsp();
+  if(!F.qs.length) return `<div class="muted lc-ce-n">Primero elige el cuartel.</div>`;
+  if(F.mezcla) return `<div class="cf-fp-av medio">${ic("alert")}<span>Los cuarteles elegidos no son de la misma especie (${esc([...new Set(F.qs.map(q=>q.especie||"—"))].join(", "))}): los estados no son los mismos. Deja solo los de una especie y envía los otros aparte.</span></div>`;
+  return fenEsCerezo(F.esp)? fenCerezoHTML(C.bbch, "lcCeFen", fenRefDe().cerezo) : fenChipsHTML(F.esp, C.bbch, "lcCeFen");
+}
+function lcCeSecHTML(){
+  const C=_lcCe, F=lcCeFenEsp();
+  if(!F.qs.length || F.mezcla) return "";
+  return (!C.secAb && !(C.sec||[]).length)? `<button type="button" class="btn sec chico fen-sec-b" onclick="lcCeSecAbrir()">${ic("plus")} ¿Hay otros estados a la vez?</button>` : fenSecHTML(F.esp, C.bbch, C.sec, "lcCeSecTgl");
+}
+function lcCeFenPintar(foco){   // solo el estado, «También hay» y la sugerencia (lo escrito y las fotos no se tocan)
+  const C=_lcCe; if(!C) return;
+  const e=document.getElementById("lcCeEst"), s=document.getElementById("lcCeSec"), g=document.getElementById("lcCeSug");
+  if(e) e.innerHTML=lcCeEstHTML(); if(s) s.innerHTML=lcCeSecHTML(); if(g) g.innerHTML=lcCeSugHTML();
+  if(e && fenEsCerezo(lcCeFenEsp().esp)) setTimeout(fenCargarThumbs, 0);
+  const b=foco? document.querySelector("#lcCe "+foco) : null; if(b) try{ b.focus({preventScroll:true}); }catch(x){}
+}
+function lcCeFen(c){ const C=_lcCe; if(!C) return; C.bbch=String(c); C.sec=(C.sec||[]).filter(x=>!fenMismoEstado(lcCeFenEsp().esp, x, C.bbch)); fAviso("lcCeFenAv", ""); lcCeFenPintar(`[onclick="lcCeFen('${C.bbch}')"]`); }   // el que pasa a principal sale de «También hay»
+function lcCeSecAbrir(){ const C=_lcCe; if(!C) return; C.secAb=true; lcCeFenPintar(".fensc:not([disabled])"); }
+function lcCeSecTgl(c){ const C=_lcCe; if(!C) return; const av=fenSecTgl(C, c); fAviso("lcCeFenAv", av? esc(av) : ""); lcCeFenPintar(`[data-sec="${String(c).replace(/\D/g,"")}"]`); }
+/* los cuarteles cambiaron: el estado y los «también hay» que no existen en la escala nueva se quitan */
+function lcCeFenRevisar(){
+  const C=_lcCe, F=lcCeFenEsp(); if(!C || !F.qs.length || F.mezcla) return;
+  if(C.bbch && !fenEstado(F.esp, C.bbch)) C.bbch="";
+  C.sec=fenSecLimpiar(F.esp, C.bbch, C.sec).sec;
+  if(C.sug && F.qs[0].nombre!==C.sug.cu) C.sug=null;
+}
+/* --- fotos (Fenología y Nota): se achican como en el iPad (comprimirImagen: 1.600 px, JPEG 0,72) y quedan en ESTE celular con id «fc…»
+   (no choca con los «f…» del iPad); se suben al puente antes de enviar (asisColaEnviar) y el iPad las baja con el mismo id --- */
+function lcCeFotosGrupo(){
+  const arch=cap=>`<label class="btn sec lc-ce-fb">${ic(cap? "camera" : "image")} ${cap? "Cámara" : "Galería"}<input type="file" accept="image/*"${cap? ` capture="environment"` : ""} multiple style="display:none" onchange="lcCeFotos(this)"></label>`;
+  return `<div class="lc-ce-g lc-ce-fot" role="group" aria-label="Fotos"><span class="lc-ce-et" aria-hidden="true">Fotos <span class="lc-ce-sin">· opcional, hasta ${LC_CE_FOTOS}</span></span>`+
+    `<div class="lc-ce-ch">${arch(true)}${arch(false)}</div><div id="lcCeFotos" class="lc-ce-ths" aria-live="polite">${lcCeFotosHTML()}</div></div>`;
+}
+function lcCeFotosHTML(){
+  const C=_lcCe; if(!C) return "";
+  return C.fotos.map((f,i)=>`<div class="thumbwrap lc-ce-th"><img src="${esc(f.mini)}" alt="Foto ${i+1}" onclick="abrirVisor('${f.id}')"><button type="button" class="del lc-ce-fx" onclick="lcCeFotoQuitar('${f.id}')" aria-label="Quitar la foto ${i+1}">✕</button></div>`).join("")
+    +(C.fotoOcup? `<div class="muted lc-ce-fprep">Preparando ${C.fotoOcup===1? "la foto" : C.fotoOcup+" fotos"}…</div>` : "")
+    +(!C.fotos.length && !C.fotoOcup? `<div class="muted lc-ce-f0">${C.que==="fen"? "Una foto del estado del cuartel sirve para comparar temporada a temporada." : "Si sirve, agrega una foto de lo que viste."}</div>` : "");
+}
+function lcCeFotosPintar(){ const c=document.getElementById("lcCeFotos"); if(c) c.innerHTML=lcCeFotosHTML(); const g=document.getElementById("lcCeSug"); if(g) g.innerHTML=lcCeSugHTML(); }
+async function lcCeFotos(inp){
+  const C=_lcCe, files=[...((inp && inp.files)||[])]; try{ inp.value=""; }catch(e){}
+  if(!C || !files.length) return;
+  const libres=Math.max(0, LC_CE_FOTOS-C.fotos.length-C.fotoOcup), toma=files.slice(0, libres), avId=C.que==="fen"? "lcCeFenAv" : "lcCeAv";
+  fAviso(avId, files.length>toma.length? esc("Hasta "+LC_CE_FOTOS+" fotos por registro: "+(toma.length? "se agregaron "+toma.length+"." : "quita una para agregar otra.")) : "");
+  C.fotoOcup+=toma.length; lcCeFotosPintar();
+  for(const f of toma){
+    try{
+      let du=await comprimirImagen(f);   // 1.600 px, JPEG 0,72 (igual que en el iPad)
+      if(asisB64Bytes(du.slice(du.indexOf(",")+1))>LC_CE_FOTO_KB*1024) du=(await asisImgJpeg(f, 1280, 0.6)).du;   // más de 600 KB: más chica (comprimirImagen tiene el tamaño fijo)
+      const id="fc"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), mini=(await asisImgJpeg(du, 160, 0.7)).du;
+      await fotoPut(id, du);
+      if(_lcCe!==C){ fotoDelAhora(id); continue; }   // la ventana se cerró mientras se preparaba
+      C.fotos.push({id, mini});
+    }catch(e){ if(_lcCe===C) fAviso(avId, esc("Una foto no se pudo preparar ("+(((e && e.message) || "este equipo no abre ese formato"))+"): prueba con otra.")); }
+    finally{ C.fotoOcup=Math.max(0, C.fotoOcup-1); if(_lcCe===C) lcCeFotosPintar(); }
+  }
+}
+function lcCeFotoQuitar(fid){
+  const C=_lcCe; if(!C) return; const i=C.fotos.findIndex(f=>f.id===fid); if(i<0) return;
+  C.fotos.splice(i,1); try{ fotoDelAhora(fid); }catch(e){}
+  if(!C.fotos.length) C.sug=null;
+  lcCeFotosPintar();
+}
+/* «Sugerir estado con Claude» desde el celular (necesita señal, el puente del 23-10 o el v4, y gasta créditos): la misma consulta del iPad (fenSugPedir) */
+function lcCeSugHTML(){
+  const C=_lcCe; if(!C || C.que!=="fen") return "";
+  const F=lcCeFenEsp(); if(!asisListo() || !C.fotos.length || !F.qs.length || F.mezcla) return "";
+  const s=C.sug && C.sug.cu===F.qs[0].nombre? C.sug : null, nm=x=>{ const i=fenInfo(F.esp, x); return (i.nb? i.nb+" " : "")+i.nom; };
+  return `<button type="button" class="btn sec chico fen-sug-b" onclick="lcCeSugerir()" ${C.sugOcup? "disabled" : ""}>${ic("ai")} ${C.sugOcup? "Claude está mirando las fotos…" : s? "Volver a sugerir con Claude" : "Sugerir estado con Claude"}</button>`+
+    (s? `<div class="fen-sug-r" role="status"><b>Claude sugiere: ${esc(nm(s.bbch))}${s.sec.length? "; también "+esc(s.sec.map(x=>fenInfo(F.esp, x).nom).join(", ")) : ""}</b> <span class="fen-bbch">BBCH ${esc(s.bbch)}</span><span class="fen-sug-c" data-c="${esc(s.confianza)}">confianza ${esc(s.confianza)}</span>${s.explicacion? `<div>${esc(s.explicacion)}</div>` : ""}`+
+      `<div class="muted">${C.bbch===s.bbch? "Quedó marcado en «Estado principal». Revísalo y toca «Enviar al iPad»." : C.bbch? "Marcaste otro estado (BBCH "+esc(C.bbch)+"): se envía el que marcaste." : "Marca un estado en «Estado principal»."}</div></div>` : "");
+}
+async function lcCeSugerir(){
+  const C=_lcCe; if(!C || C.sugOcup) return;
+  const F=lcCeFenEsp(), q=F.qs[0];
+  if(!q || !C.fotos.length){ fAviso("lcCeFenAv", "Elige el cuartel y agrega al menos una foto."); return; }
+  if(!navigator.onLine){ fAviso("lcCeFenAv", "Sin señal: Claude necesita internet. Marca el estado a mano, o pídeselo cuando vuelva la señal."); return; }
+  lcCeLeer(); C.sugOcup=true; fAviso("lcCeFenAv", ""); lcCeFenPintar();
+  try{
+    const r=await fenSugPedir(q, C.fotos.map(f=>f.id), C.dia==="otro"? (C.fOtro||hoy()) : C.fecha);
+    if(_lcCe!==C) return;
+    C.sug=Object.assign({cu:q.nombre}, r); C.bbch=r.bbch; C.sec=r.sec.slice(); if(r.sec.length) C.secAb=true;
+  }catch(e){ if(_lcCe===C) fAviso("lcCeFenAv", esc("No se pudo sugerir el estado: "+fenSugErrTxt(e))); }
+  finally{ C.sugOcup=false; if(_lcCe===C) lcCeFenPintar(); }
 }
 function lcCeLeer(){   // lo escrito → _lcCe.val (tocar un chip repinta la ventana sin perderlo)
   const C=_lcCe; if(!C) return;
@@ -24411,6 +25227,7 @@ function lcCeLeer(){   // lo escrito → _lcCe.val (tocar un chip repinta la ven
 function lcCePintar(sel){
   const c=document.getElementById("lcCe"); if(!c || !_lcCe) return;
   c.innerHTML=lcCeHTML(); lcCeFp();
+  if(_lcCe.que==="fen") setTimeout(fenCargarThumbs, 0);   // v164: las fotos de referencia del cerezo
   const b=sel? c.querySelector(sel) : null; if(b) try{ b.focus({preventScroll:true}); }catch(e){}
 }
 function lcCeClic(ev){
@@ -24418,13 +25235,25 @@ function lcCeClic(ev){
   const a=b.getAttribute("data-ce"), val=b.getAttribute("data-v")||"";
   if(a==="cand"){ const p=cfProdCandidatos(v("lcCeProd"))[+val], e=document.getElementById("lcCeProd"); if(p && e){ e.value=p.n; lcCeFp(); try{ e.focus(); }catch(x){} } return; }   // «¿Cuál es?» el nombre del catálogo
   lcCeLeer();
+  let msg="";
   if(a==="que"){ C.que=val; if(val!=="nota" && C.fu===GENERAL){ C.fu=""; C.cus=[]; } }
   else if(a==="dia"){ C.dia=val; if(val==="hoy") C.fecha=hoy(); else if(val==="ayer") C.fecha=sumarDiasISO(hoy(),-1); }
   else if(a==="fu"){ if(C.fu!==val){ C.fu=val; C.cus=[]; } }
-  else if(a==="cu"){ const i=C.cus.indexOf(val); if(i<0) C.cus.push(val); else C.cus.splice(i,1); }
+  else if(a==="cu"){
+    const i=C.cus.indexOf(val);
+    if(i>=0) C.cus.splice(i,1);
+    else{
+      /* v164: en Fenología, dos cuarteles van juntos solo si son de la misma escala (cerezo con cerezo, carozo con carozo…): si no, avisa y no lo agrega */
+      const q0=C.que==="fen" && C.cus.length? D.cuarteles.find(x=>x.fundo===C.fu && x.nombre===C.cus[0]) : null, q1=q0? D.cuarteles.find(x=>x.fundo===C.fu && x.nombre===val) : null;
+      if(q0 && q1 && lcCeEscala(q0.especie||"")!==lcCeEscala(q1.especie||"")) msg="«"+val+"» es "+(q1.especie||"otra especie")+" y ya elegiste "+q0.nombre+" ("+(q0.especie||"—")+"): los estados no son los mismos. Envía cada especie por separado.";
+      else C.cus.push(val);
+    }
+  }
   else if(a==="lab") lcCeLab(C.lab===val? "" : val);
   else return;
+  if(C.que==="fen") lcCeFenRevisar();
   lcCePintar(a==="dia" && val==="otro"? "#lcCeF_t" : `[data-ce="${a}"][data-v="${val.replace(/["\\]/g,"\\$&")}"]`);
+  if(msg) fAviso("lcCeFenAv", esc(msg));
 }
 function lcCeLab(t){ const C=_lcCe; C.lab=t; const u=((D.bitCfg||{}).unidades||{})[t]; if(t && u && !String(C.val.uni||"").trim()) C.val.uni=u; }   // la unidad de siempre de esa labor (la del iPad)
 function lcCeLabOtra(t){ if(!_lcCe) return; lcCeLeer(); lcCeLab(t); lcCePintar("#lcCeLabO"); }
@@ -24448,13 +25277,16 @@ function lcCeEnviar(){
   lcCeLeer();
   const V=C.val, q=C.que, H=hoy(), f=C.dia==="otro"? C.fOtro : C.fecha, tx=String(V.tx||"").trim();
   const av=t=>{ fAviso("lcCeAv", esc(t)); return false; }, nume=s=>{ const t=String(s||"").trim(), x=numES(t); return (!t || isNaN(x))? null : x; };
+  if(syncPuenteSin()) return av(SYNC_PUENTE_TXT.sin+" Después de pegarlo, toca Probar en Datos → Conexiones → Sincronización.");   // v164: no se deja en una cola que nunca saldría
   if(!/^\d{4}-\d{2}-\d{2}$/.test(f||"")) return av("Elige el día: toca Hoy o Ayer, o escribe la fecha en «¿Qué día?».");
   if(f>H) return av("Esa fecha todavía no llega: aquí se anota lo que ya se hizo.");
   if(q!=="nota" && (!C.fu || C.fu===GENERAL)) return av("Elige el fundo.");
+  const conFotos=q==="fen" || q==="nota";
+  if(conFotos && C.fotoOcup) return av("Espera un momento: se están preparando las fotos.");
   const id="as"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
   const it={id, tipo:"nota", fecha:f, hora:"", fundo:C.fu||(q==="nota"? GENERAL : ""), cuarteles:(C.fu && C.fu!==GENERAL)? C.cus.slice() : [], titulo:"", texto:tx, categoria:"", urgente:false,
     labor_tipo:"", fecha_fin:"", cantidad:null, unidad:"", personas:null, estado_labor:"", producto:"", dosis:"", objetivo:"", mojamiento:null, carencia:null, aplicado:false, mezcla:[],
-    registro_tipo:"", registro_valor:null, bbch:"", faltante:"", confianza:"alta", importante:!!C.dest,
+    registro_tipo:"", registro_valor:null, bbch:"", bbch_sec:[], faltante:"", confianza:"alta", importante:!!C.dest,
     origen:"asis", asisId:id, equipo:"celular", mano:true, asisLote:"al"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), dictadoFh:ahora()};
   let que="";
   if(q==="apl"){
@@ -24473,14 +25305,27 @@ function lcCeEnviar(){
     const hs=nume(V.horas); if(hs==null || !(hs>0)) return av("Escribe las horas de riego (ej. 3,5).");
     Object.assign(it, {tipo:"registro", registro_tipo:"Riego", registro_valor:hs});
     que="Riego · "+num(hs)+" h";
+  }else if(q==="fen"){   // v164 (F1): un registro fenológico por cuartel en el iPad (asisAplicarTodos), con las mismas fotos
+    const F=lcCeFenEsp();
+    if(!C.cus.length || !F.qs.length) return av("Elige al menos un cuartel.");
+    if(F.mezcla) return av("Los cuarteles elegidos no son de la misma especie: deja solo los de una y envía los otros aparte.");
+    if(!C.bbch) return av("Elige el estado principal (el que predomina).");
+    if(!fenEstado(F.esp, C.bbch)) return av("Ese estado no es de la escala de "+(F.esp||"esta especie")+": elige otro.");
+    const sec=fenSecLimpiar(F.esp, C.bbch, C.sec).sec;
+    Object.assign(it, {tipo:"fenologia", bbch:C.bbch, bbch_sec:sec});
+    que="Fenología · "+fenNombre(F.esp, C.bbch)+" (BBCH "+C.bbch+")"+(sec.length? ", también "+sec.map(c=>fenNombre(F.esp, c)).join(", ") : "");
   }else{
     if(!tx) return av("Escribe la nota.");
     que="Nota";
   }
+  const fids=conFotos? C.fotos.map(x=>x.id) : [];
+  if(fids.length) it.adjIds={fotos:fids, docs:[]};   // solo los ids: las fotos están en este celular y suben al puente antes del envío (asisEnviar con suelto)
+  else (C.fotos||[]).forEach(x=>{ try{ fotoDelAhora(x.id); }catch(e){} });   // fotos de cuando era Fenología o Nota: no van en una aplicación, labor o riego
   const lug=[it.fundo, it.cuarteles.length? it.cuarteles.join(", ") : (it.fundo && it.fundo!==GENERAL? "todo el fundo" : "")].filter(Boolean).join(" › ");
-  it.dictado=("Anotado a mano en el celular: "+[que, lug, f===H? "hoy" : fmtF(f), tx? "«"+tx+"»" : "", it.importante? "★" : ""].filter(Boolean).join(" · ")).slice(0,600);   // el «texto dictado» que guarda el iPad
+  it.dictado=("Anotado a mano en el celular: "+[que, lug, f===H? "hoy" : fmtF(f), tx? "«"+tx+"»" : "", it.importante? "★" : "", fids.length? (fids.length===1? "1 foto" : fids.length+" fotos") : ""].filter(Boolean).join(" · ")).slice(0,600);   // el «texto dictado» que guarda el iPad
+  if(asisMuyLargo([it])) return av("El texto es demasiado largo para enviarlo al iPad: acórtalo (hasta unas 60.000 letras).");   // revisión v164: el puente v4 no lo dejaría entrar a la bandeja
+  _lcCe=null;   // antes de enviar: al cerrarse la ventana (lcCeCerrado) las fotos ya no son de la ventana, son del envío
   asisEnviar([it], true).catch(e=>aviso("⚠️ No se pudo dejar en la cola: "+((e && e.message)||e)));   // sin esperar la red: la ventana se cierra y la fila «En camino al iPad» aparece al tiro
-  _lcCe=null;
   return true;
 }
 function lcFiLugar(){ const F=lcNav().ficha||{}, fu=String(F.fundo||""), cu=String(F.cu||""); return {fundo:fu, cuarteles:cu && cuartelesDe(fu).some(q=>q.nombre===cu)? [cu] : [], ficha:{fundo:fu, cu}}; }
@@ -24562,7 +25407,7 @@ function lcCuFila(f, q, cu, idx, W, L, ts, tr){
   let u=null, uf="", fen=null, nd=0, nq=0;
   for(const e of evs){   // vienen ordenados: lo más nuevo primero (los días de la Gantt, por su último día: lcEfF)
     if(!e.fecha) continue;
-    if(e.fecha<=H){ const ef=lcEfF(e, H); if(!u || ef>uf){ u=e; uf=ef; } if(!fen && e.cat==="fen" && e.bbch) fen=e; }
+    if(e.fecha<=H){ const ef=lcEfF(e, H); if(!u || ef>uf){ u=e; uf=ef; } if(e.cat==="fen" && e.bbch && (!fen || fenCmp(e, fen)>0)) fen=e; }   // v164: el último BBCH como fenUltimo (fecha, hora de la observación, id)
     if(e.dest && tr && e.fecha>=tr.desde && e.fecha<=tr.hasta) nd++;
     if(ts.length && e.txt && ts.every(t=>e.txt.indexOf(t)>=0)) nq++;
   }
@@ -24585,7 +25430,10 @@ function lcCuEst(r, H){
   else if(c && c.tipo==="pendiente"){ cls="pen"; t1="Por confirmar"+(c.fecha? " "+lcDM(c.fecha) : ""); m=t1+(prod? " · "+prod : ""); }
   else if(c && c.tipo==="sindato"){ cls="sd"; t1="Sin dato de carencia"; m=t1+(f? " · BBCH "+f.bbch : prod? " · "+prod : ""); }
   else m="Libre"+(f? " · BBCH "+f.bbch+" · "+(fd===0? "hoy" : fd===1? "ayer" : fd+" d") : r.dim? " · sin movimiento" : "");
-  const fenH=f? `<span class="lc-fp" data-fc="${LC_FENC.indexOf(String(f.col||"").toLowerCase())}"></span>`+esc((prod? "BBCH "+f.bbch : f.tit)+" · "+lcHace(fd)) : "";
+  const fsN=f && f.sec && f.sec.length? " +"+f.sec.length : "";   // v164: «BBCH 65 +1» (los «también hay» se cuentan; el detalle está en la ficha)
+  const fenH=f? `<span class="lc-fp" data-fc="${LC_FENC.indexOf(String(f.col||"").toLowerCase())}"></span>`+(prod? esc("BBCH "+f.bbch+fsN+" · "+lcHace(fd))
+    : f.fenCer? fenNbHTML(f.fenNb)+esc((f.fenCorto||f.tit)+" · BBCH "+f.bbch+fsN+" · "+lcHace(fd))   // cerezo: el nombre del boletín y aparte el BBCH
+    : esc((f.fenCorto||f.tit)+fsN+" · "+lcHace(fd))) : "";
   return {cls, t1, m, t2:[prod? esc(prod) : "", fenH].filter(Boolean).join(" · ") || `<span class="lc-no">sin fenología</span>`};
 }
 function lcCuOrden(o){   // catálogo (el orden de Datos, como la Gantt) · última actividad · sin movimiento (lo descuidado arriba) · carencia primero
@@ -24920,8 +25768,12 @@ function lcFiAcsHTML(L, idx, cu, q, own, fuA, H){
     : c.tipo==="pendiente"? ac("apl", "pen", "clock", "Carencia", "Por confirmar", (prod? prod+" · " : "")+(c.fecha? "plan "+lcDM(c.fecha) : "sin fecha"), "se sabrá al confirmar la aplicación", "", "car")
     : ac("apl", "sd", "info", "Carencia", "Sin dato", (prod? prod+" · " : "")+"aplicado "+lcDM(c.fecha), "consulta el LMR con la exportadora", "", "car");
   /* fenología: el último BBCH (del índice: también los registros «C1, C2», igual que la portada) */
-  const fe=own.find(e=>e.cat==="fen" && e.bbch && e.fecha && e.fecha<=H);
-  if(fe){ const fo=lcFuente(fe)||{}; h+=ac("fen", "fen", "flower", "Fenología", "BBCH "+esc(fe.bbch), esc([fo.estado, hace(fe)].filter(Boolean).join(" · ")), fmtF(fe.fecha), ` data-fc="${LC_FENC.indexOf(String(fe.col||"").toLowerCase())}"`); }
+  const fe=own.filter(e=>e.cat==="fen" && e.bbch && e.fecha && e.fecha<=H).reduce((a,e)=>(!a || fenCmp(e, a)>0)? e : a, null);   // v164: el mismo «último» de fenUltimo (fecha, hora de la observación, id)
+  if(fe){ const fo=lcFuente(fe)||{}, fs=fe.sec||[], dc=` data-fc="${LC_FENC.indexOf(String(fe.col||"").toLowerCase())}"`, tb=fs.length? " · también "+esc(fs.join(", ")) : "";   // v164: el principal y, en la 2.ª línea, «también 57»
+    const ft=fo.bbch? dc+` title="${esc(fenEtiqueta(fo))}"` : dc;   // revisión 2 de la v164: el estado completo, con todos los «también hay», en el title
+    if(fe.fenCer){ const fesp=fenEspDe(fo), fi=fenInfo(fesp, fe.bbch, fo.estado), sn=fenSecNoms(fesp, fe.bbch, fs), tbc=sn.length? " · también "+esc(sn[0].nom)+(sn.length>1? " +"+(sn.length-1) : "") : "";   // cerezo: «también Color pajizo y pinta» (un número suelto se leería como del boletín); con 2 o 3, el primero y «+2» (revisión 2: no cabían en 2 líneas)
+      h+=ac("fen", "fen tx", "flower", "Fenología", fenNbHTML(fi.nb)+`<span class="lc-fi-fn">${esc(fi.nom)}</span>`, esc(["BBCH "+fe.bbch, hace(fe)].join(" · ")), fmtF(fe.fecha)+tbc, ft); }   // cerezo: el nombre del boletín en hasta 2 líneas («10 Maduración de fruto» se cortaba a 375 px), el BBCH aparte
+    else h+=ac("fen", "fen", "flower", "Fenología", "BBCH "+esc(fe.bbch), esc([fo.estado, hace(fe)].filter(Boolean).join(" · ")), fmtF(fe.fecha)+tb, ft); }
   else h+=ac("fen", "fen cero", "flower", "Fenología", "Sin registro", "sin estado fenológico", "");
   /* última aplicación (también las hechas a todo el fundo): n.ª de ese producto en la temporada y el texto de maxApl del catálogo, tal cual */
   const aps=own.concat(fuA).filter(e=>e.cat==="apl" && e.fecha && e.fecha<=H).sort((a,b)=> a.fecha<b.fecha? 1 : a.fecha>b.fecha? -1 : (+b.id||0)-(+a.id||0)), ap=aps[0];
@@ -24999,8 +25851,9 @@ function lcFiLibroHTML(L, gs, cu, t, H){
   return ms.map(m=>{
     const a=M.get(m), k="fm:"+m, ab=L.abiertos[k]!==undefined? !!L.abiertos[k] : def.has(m);
     const nO=a.filter(g=>!g.fu).length, nF=a.length-nO, nA=a.filter(g=>g.cat==="apl").length;
-    const bs=a.filter(g=>g.cat==="fen" && !g.fu && g.evs[0].bbch).map(g=>g.evs[0].bbch).reverse();   // de la más antigua a la más nueva
-    const bb=bs.length? "BBCH "+bs[0]+(bs[bs.length-1]!==bs[0]? "→"+bs[bs.length-1] : "") : "";
+    const bs=a.filter(g=>g.cat==="fen" && !g.fu && g.evs[0].bbch).map(g=>g.evs[0]).reverse();   // de la más antigua a la más nueva (solo el principal)
+    const bT=x=>x.fenCer? (x.fenNb? x.fenNb+" " : "")+(x.fenCorto||x.tit) : x.bbch;   // cerezo: con el nombre del boletín
+    const b0=bs[0], b1=bs[bs.length-1], bb=bs.length? (b0.fenCer? bT(b0) : "BBCH "+b0.bbch)+(b1.bbch!==b0.bbch? "→"+bT(b1) : "") : "";
     const res=[(nO? nO+(nO===1? " registro" : " registros") : "")+(nF? (nO? " + " : "")+nF+" del fundo" : ""), nA? nA+(nA===1? " aplicación" : " aplicaciones") : "", bb].filter(Boolean).join(" · ");
     return `<section class="lc-blq lc-fm" data-m="${m}"><h3 class="lc-cf-t"><button type="button" class="lc-blq-b" data-acc="fimes" data-b="${m}" aria-expanded="${ab}"${ab? ` aria-controls="lcFm${m}"` : ""}>${ic("chevronRight")}<span><b>${MESES_L[+m.slice(5,7)-1]} ${m.slice(0,4)}</b> · ${esc(res)}</span></button></h3>`+
       (ab? `<div class="lc-fm-c" id="lcFm${m}">${lcFiDiasHTML(a, cu)}</div>` : "")+`</section>`;
@@ -25071,7 +25924,7 @@ function lcFiResumen(ownT, fuT, cu){
     return `<li><b>${esc(tipo)}</b> · ${p.join(" · ")}</li>`;
   });
   /* secuencia de BBCH */
-  const seq=[]; asc(ownT.filter(e=>e.cat==="fen" && e.bbch)).forEach(e=>{ if(!seq.length || seq[seq.length-1].b!==e.bbch) seq.push({b:e.bbch, f:e.fecha}); });
+  const seq=[]; ownT.filter(e=>e.cat==="fen" && e.bbch).sort(fenCmp).forEach(e=>{ if(!seq.length || seq[seq.length-1].b!==e.bbch) seq.push({b:e.bbch, f:e.fecha, nb:e.fenCer? (e.fenNb||"") : null, nom:e.fenCorto||e.tit}); });   // solo el principal; en cerezo con el nombre del boletín
   /* riego: horas del cuartel; los riegos generales del fundo, aparte y sin repartir */
   const rg=ownT.filter(e=>e.cat==="riego"), hs=rg.reduce((s,e)=>s+lcFiHoras(e),0), sinH=rg.filter(e=>!lcFiHoras(e)).length;
   const rgF=cu? fuT.filter(e=>e.cat==="riego") : LC_SIN, hsF=rgF.reduce((s,e)=>s+lcFiHoras(e),0);
@@ -25081,7 +25934,7 @@ function lcFiResumen(ownT, fuT, cu){
   const ns=ownT.filter(e=>e.cat==="nota" && e.urg);
   return dd("Aplicaciones", apl.length? ul(apl) : no("ninguna"))
     +dd("Labores", lab.length? ul(lab)+no("Totales por unidad y por fuente; sin rendimientos.") : no("ninguna"))
-    +dd("Fenología", seq.length? seq.map(x=>"BBCH "+esc(x.b)+" "+no("("+lcDM(x.f)+")")).join(" → ") : no("sin estados fenológicos"))
+    +dd("Fenología", seq.length? seq.map(x=>(x.nb!=null? fenNbHTML(x.nb)+esc(x.nom)+" "+no("(BBCH "+esc(x.b)+", "+lcDM(x.f)+")") : "BBCH "+esc(x.b)+" "+no("("+lcDM(x.f)+")"))).join(" → ") : no("sin estados fenológicos"))
     +dd("Riego", riego)
     +dd("Notas sin resolver", ns.length? ul(ns.map(e=>`<li>${lcDM(e.fecha)} · ${esc(lcLinea(e.tit, 70))}</li>`)) : no("ninguna"));
 }
@@ -25250,6 +26103,7 @@ function menuTgl(){
    (antes, al tocar algo adentro, p. ej. «descontar la lluvia», la sección se cerraba sola) */
 const _detEstado = {};
 function detClave(d){
+  if(d.hasAttribute && d.hasAttribute("data-sin-memoria")) return "";   // v164: «Más detalle» del formulario de fenología se abre solo si el estado lo pide
   if(d.dataset && d.dataset.k) return d.dataset.k;
   const sm=d.querySelector("summary"); if(!sm) return "";
   const t=(sm.textContent||"").replace(/[\d.,]+/g,"#").replace(/\s+/g," ").trim();

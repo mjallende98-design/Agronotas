@@ -23,7 +23,7 @@ let botActual = null, pasoActual = "", vel = "mirar", enMono = false;
 const LS_INFORME = "agronotasBotsUltimo";
 const XSS = `<img src="x-bot" onerror="window.__xss=(window.__xss||0)+1">`;
 /* funciones que ningún bot debe tocar nunca (aunque esté en la copia de prueba) */
-const PELIGROSAS = /\b(borrarTodo|restaurar|inpRest|sync[A-Z]\w*|asisMic|asisOrdenar|asisBandejaMirar|asisColaEnviar|asisLeer|asisLeerSet|fenSugerir|wlConectar|guardarIA|probarIA|iaAnalizar\w*|iaBuscar|iaIdentificar|iaEscanearEtiqueta|iaInterpretarDoc|iaTranscribir|iaResumenInforme|importarGesAgro|quitarGesAgro|ortoOff\w*|salirProyecto|nuevoProyecto|pedirEntrar|lluviaGPS|mapaVerEarth|mapaMedRelieve|botsAbrir|espacioContarNube|cfPDFRedactarIA|lluviaOficialIA|lluviaAnalizar|riegoMsjCompartir|cfReset|estRebajarTodo|estBorrarLocal|AgroBots|demoAbrir|AgroDemo)\b/;
+const PELIGROSAS = /\b(borrarTodo|restaurar|inpRest|sync[A-Z]\w*|asisMic|asisOrdenar|asisBandejaMirar|asisColaEnviar|asisLeer|asisLeerSet|fenSugerir|lcCeSugerir|wlConectar|guardarIA|probarIA|iaAnalizar\w*|iaBuscar|iaIdentificar|iaEscanearEtiqueta|iaInterpretarDoc|iaTranscribir|iaResumenInforme|importarGesAgro|quitarGesAgro|ortoOff\w*|salirProyecto|nuevoProyecto|pedirEntrar|lluviaGPS|mapaVerEarth|mapaMedRelieve|botsAbrir|espacioContarNube|cfPDFRedactarIA|lluviaOficialIA|lluviaAnalizar|riegoMsjCompartir|cfReset|estRebajarTodo|estBorrarLocal|AgroBots|demoAbrir|AgroDemo)\b/;
 /* MUDO (28-10-2026): en este PC (localhost, 127.0.0.1, archivo abierto con doble clic) nada de lo que prueban los bots suena: dentro de la caja,
    speechSynthesis.speak no habla (cuenta la frase en AB.vozMuda y avisa «terminó» al rato). Lo mismo que demo.js. ?sonido en la dirección lo desactiva */
 const esMudo = loc=>(loc.protocol==="file:" || /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)$/.test(loc.hostname) || /\.localhost$/.test(loc.hostname)) && !/[?&]sonido\b/.test(loc.search);
@@ -5418,8 +5418,9 @@ BOTS.push({id:"estacion", modulo:"Estación", nombre:"Valentina, encargada de la
 }});
 
 /* 🌸 FENOLOGÍA --------------------------------------------------------------------------- */
-BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"🌸", que:"Fenología: validaciones (fecha, cuartel, estado), registro completo, cambio a cuartel de otra especie, vistas y filtros, editar, borrar y deshacer, y su efecto en el Kc del riego", correr: async ()=>{
+BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"🌸", que:"Fenología: validaciones (fecha, cuartel, estado), registro completo, cambio a cuartel de otra especie, vistas y filtros, editar, borrar y deshacer, y su efecto en el Kc del riego; v164: estado principal y hasta 3 «también hay» (tope, desmarcar, IA con secundarios), el último del mismo día por la hora de la observación en Riego, el mapa, la pestaña y la Bitácora, Kc y lluvia en cosecha solo con el principal, CSV de Fenología, el cerezo con los 10 estados del boletín (grilla, subestados, postcosecha, registros antiguos, Kc igual) y sus fotos de referencia propias con el enlace al boletín", correr: async ()=>{
   const fu = fundosConCuarteles()[0];
+  const feIni = JSON.stringify(D.fenologia||[]);   // v164: al final la fenología vuelve a como estaba (antes quedaba «Bot: plena flor (editado)», que ahora trae la hora de la observación y sería el «último» de su cuartel para los bots que vienen después)
   await paso("Validaciones del registro fenológico", async ()=>{
     await irA("fenologia"); await tocar("[onclick='fenNuevo()']", "Registrar estado");
     necesito(modalAbierto(), "el formulario fenológico");
@@ -5525,6 +5526,371 @@ BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"�
       guardar();
     }
   });
+  /* ---- v164 (30-10-2026): varios estados en un registro (F2) y el cerezo con los 10 estados del boletín (F3), con los valores exactos del
+     diseño (fenologia_diseno.md §5.1, FN1–FN12). Cuarteles propios en un fundo de prueba: QC cerezo, QD duraznero (carozo sin la capa del
+     cerezo) y QL limonero. Todo vuelve a como estaba: fenología, referencias, cuarteles, riego, pantalla, sincronización y la Bitácora ---- */
+  const FB = "Bot Fenología v164", T = {};
+  const fr0 = ("fenRef" in D)? JSON.stringify(D.fenRef) : null, cu0 = D.cuarteles.slice(), rg0 = JSON.stringify(D.riego||null);
+  const ui0 = JSON.stringify(D.ui||{}), sy0 = JSON.stringify(D.sync||{}), nf0 = nav.fen? JSON.stringify(nav.fen) : null, lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null, pB0 = localStorage.getItem("agronotasBitacora"), sfF = window.syncFetch;
+  const cuF = (nombre, especie)=>{ const q = {id:nid(), fundo:FB, nombre, especie, variedad:"Bot", portainjerto:"", ha:1, marco:"4x2", anio:"2020"}; D.cuarteles.push(q); return q; };
+  const reg = (q, o)=>{ const e = Object.assign({id:nid(), fecha:HOY(), fundo:q.fundo, cuartel:q.nombre, especie:q.especie, bbch:"65", estado:"", fotos:[], nota:"Bot v164"}, o||{}); fenAll().push(e); return e; };
+  const deCu = q=>fenAll().filter(e=>e.fundo===FB && e.cuartel===q.nombre);
+  const aparte = q=>{ const l = deCu(q); D.fenologia = fenAll().filter(e=>l.indexOf(e)<0); guardar(); return l; };   // saca los registros de un cuartel (para mirar uno solo) y los devuelve después con devolver
+  const devolver = l=>{ l.forEach(e=>{ if(fenAll().indexOf(e)<0) fenAll().push(e); }); guardar(); };
+  const quitarDe = q=>{ D.fenologia = fenAll().filter(e=>!(e.fundo===FB && e.cuartel===q.nombre)); guardar(); };
+  const formFen = async q=>{ await cerrarTodo(); fenNuevo(FB, q.nombre); await pausa(); necesito(modalAbierto() && FEN && FEN.cuartel===q.nombre, "el formulario fenológico en "+q.nombre); };
+  const cuEst = q=>{ const r = lcCuFila(FB, q, q.nombre, lcIdx(), [], {ven:"sem"}, [], null); return lcCuEst(r, hoy()); };
+  const tarjetaFen = q=>{ fenNav().fundo = FB; fenNav().cuartel = ""; fenNav().vista = "actual"; render(); return [...document.querySelectorAll("#app .fencard")].find(c=>txtDe(c.querySelector(".fencn"))===q.nombre) || null; };
+  T.QC = cuF("Cerezo bot", "Cerezo"); T.QD = cuF("Duraznero bot", "Duraznero"); T.QL = cuF("Limonero bot", "Limonero"); guardar();
+  try{
+    await paso("FN1 · Estado principal + «también hay»: 65, después 69 y 57 → bbchSec [57, 69] ordenados, el 65 deshabilitado en la lista chica y la hora de la observación", async ()=>{
+      await irA("fenologia"); await formFen(T.QD);
+      chk(/Estado principal/.test(txtDe(modalAbierto())), "El formulario no dice «Estado principal»", "leve");
+      await tocar(`#fenEstados [onclick="fenSel('65')"]`, "65 como principal");
+      await tocar({texto:/¿Hay otros estados a la vez\?/, sel:"#fenSec button"}, "¿Hay otros estados a la vez?");
+      const ch65 = document.querySelector('#fenSec [data-sec="65"]');
+      chk(ch65 && ch65.disabled, "En «También hay» el 65 (el principal) no está deshabilitado", "media");
+      chk(/predomina \(6 a 8 de cada 10/.test(txtDe(document.getElementById("fenSec"))), "Falta la ayuda «El principal es el que predomina (6 a 8 de cada 10…)»", "leve");
+      await tocar('#fenSec [data-sec="69"]', "también 69"); await tocar('#fenSec [data-sec="57"]', "también 57");
+      chk(JSON.stringify(FEN.sec)==='["57","69"]' && document.querySelector('#fenSec [data-sec="57"]').getAttribute("aria-pressed")==="true", "Los «también hay» marcados no quedaron [57, 69]: "+JSON.stringify(FEN.sec), "media");
+      const n0 = fenAll().length; chk(await guardarModal_(), "No se guardó el registro con «también hay»", "grave");
+      const r = fenAll()[fenAll().length-1]; T.fn1 = r;
+      chk(fenAll().length===n0+1 && r.cuartel===T.QD.nombre && r.bbch==="65" && JSON.stringify(r.bbchSec)==='["57","69"]' && r.estado==="Plena floración (50%+)",
+        "FN1: el registro debía quedar {bbch 65, bbchSec [57, 69], estado «Plena floración (50%+)»} y quedó "+JSON.stringify({bbch:r.bbch, bbchSec:r.bbchSec, estado:r.estado}), "grave");
+      chk(typeof r.fh==="string" && !isNaN(Date.parse(r.fh)), "El registro nuevo no trae fh (la hora de la observación, para desempatar dos del mismo día)", "media");
+      chk(fenEtiqueta(r)==="Plena floración (50%+) · BBCH 65 · también Botón blanco / rosado, Fin de floración", "La etiqueta del registro no es «Plena floración (50%+) · BBCH 65 · también Botón blanco / rosado, Fin de floración»: «"+fenEtiqueta(r)+"»", "leve");
+    });
+    await paso("FN2 · Tope de 3 «también hay», el principal sale de los secundarios y desmarcar todos deja el registro sin bbchSec (nuevo y editado)", async ()=>{
+      await formFen(T.QD); await tocar(`#fenEstados [onclick="fenSel('65')"]`, "65 como principal");
+      await tocar({texto:/¿Hay otros estados a la vez\?/, sel:"#fenSec button"}, "¿Hay otros estados a la vez?");
+      for(const c of ["57","61","67"]) await tocar(`#fenSec [data-sec="${c}"]`, "también "+c);
+      const a0 = R.alerts.length; await tocar('#fenSec [data-sec="69"]', "también 69 (el cuarto)");
+      chk(huboMsg(a0, /^Máximo 3 estados «también hay»/) && JSON.stringify(FEN.sec)==='["57","61","67"]' && document.querySelector('#fenSec [data-sec="69"]').getAttribute("aria-pressed")==="false",
+        "Con 3 marcados, el cuarto (69) se marcó o no avisó «Máximo 3 estados «también hay»» dentro de la ventana: "+JSON.stringify(FEN.sec), "media");
+      await tocar(`#fenEstados [onclick="fenSel('57')"]`, "57 como principal");
+      chk(FEN.bbch==="57" && JSON.stringify(FEN.sec)==='["61","67"]' && document.querySelector('#fenSec [data-sec="57"]').disabled, "Al elegir 57 como principal no salió de «También hay» (debía quedar [61, 67]): "+JSON.stringify(FEN.sec), "media");
+      { const mav = document.getElementById("mAviso");   // revisión v164: con 2 marcados el aviso del tope ya no corresponde (en el celular lcCeFen ya lo borraba)
+        chk(!mav || mav.hidden || !txtDe(mav), "Al elegir como principal uno de los «también hay» (quedan 2) sigue a la vista «Máximo 3 estados «también hay»…»: «"+txtDe(mav)+"»", "leve"); }
+      for(const c of ["61","67"]) await tocar(`#fenSec [data-sec="${c}"]`, "desmarca "+c);
+      const n0 = fenAll().length; chk(await guardarModal_(), "No se guardó", "media");
+      const r = fenAll()[fenAll().length-1];
+      chk(fenAll().length===n0+1 && r.bbch==="57" && !("bbchSec" in r), "Un registro nuevo sin «también hay» quedó con la clave bbchSec: "+JSON.stringify(r).slice(0,200), "media");
+      /* editar uno que tenía y desmarcar todos: la clave se borra (una versión vieja que lo edite la conserva por Object.assign) */
+      const e = reg(T.QD, {fecha:masDias(HOY(),-20), bbch:"67", estado:"Caída de pétalos", bbchSec:["65","69"]}); guardar();
+      fenEditar(e.id); await pausa(); necesito(modalAbierto(), "la edición");
+      chk(JSON.stringify(FEN.sec)==='["65","69"]' && document.querySelector('#fenSec [data-sec="65"]'), "Al editar no se ven los «también hay» guardados", "media");
+      for(const c of ["65","69"]) await tocar(`#fenSec [data-sec="${c}"]`, "desmarca "+c);
+      await guardarModal_();
+      chk(!("bbchSec" in e) && e.bbch==="67", "Al desmarcar todos y guardar, el registro editado siguió con bbchSec: "+JSON.stringify(e.bbchSec), "media");
+      D.fenologia = fenAll().filter(x=>x!==e && x!==r); guardar();
+    });
+    await paso("FN3 · Dos registros del mismo cuartel y día: manda la hora de la observación (fh) y después el id, igual en Riego, el mapa, la pestaña y la Bitácora", async ()=>{
+      const l = aparte(T.QD);
+      try{
+        const A = reg(T.QD, {bbch:"65", estado:"Plena floración (50%+)", fh:HOY()+"T10:00"}), B = reg(T.QD, {bbch:"81", estado:"Pinta · inicio de color", fh:HOY()+"T15:00"}); guardar();
+        const ver = ()=>{ const c = tarjetaFen(T.QD), e = cuEst(T.QD); return {riego:(riegoFenDe(T.QD)||{}).bbch, pest:txtDe(c && c.querySelector(".fenbb")), cu:/BBCH 81/.test(e.t2+" "+e.m)? "81" : /BBCH 65/.test(e.t2+" "+e.m)? "65" : "?", mapa:/BBCH (\d+)/.exec(mapaTemaDe(T.QD, "fenologia").det||"")};};
+        await irA("fenologia");
+        let x = ver(); chk(x.riego==="81" && x.pest==="81" && x.cu==="81" && x.mapa && x.mapa[1]==="81", "Con A 65 (10:00) y B 81 (15:00) no mandó el 81 en todas partes: "+JSON.stringify(x), "grave");
+        A.fh = HOY()+"T15:00"; B.fh = HOY()+"T10:00"; guardar();
+        x = ver(); chk(x.riego==="65" && x.pest==="65" && x.cu==="65" && x.mapa && x.mapa[1]==="65", "Con las horas al revés no mandó el 65 en todas partes: "+JSON.stringify(x), "grave");
+        delete A.fh; delete B.fh; guardar();
+        x = ver(); chk(x.riego==="81" && x.pest==="81" && x.cu==="81", "Sin hora de observación no mandó el id mayor (81) en todas partes: "+JSON.stringify(x), "media");
+        quitarDe(T.QD);
+      } finally { devolver(l); }
+    });
+    await paso("FN4 · El Kc usa solo el principal: 75 con «también» 81 → Kc 0,60 (74-75), no 0,85", async ()=>{
+      const l = aparte(T.QD), rc = riegoCfg(), cu00 = rc.cu[T.QD.id];
+      try{
+        reg(T.QD, {bbch:"75", estado:"Fruto al 50% del tamaño", bbchSec:["81"]}); guardar();
+        rc.cu[T.QD.id] = {modo:"fen"};
+        const k = riegoKcInfoBase(T.QD, new Date().getMonth());
+        chk(k.src==="fen" && Math.abs(k.kc-0.60)<1e-9 && k.bbch==="75", "Con 75 + también 81 el Kc debía ser 0,60 (rango 74-75) y es "+k.kc+" ("+k.src+", BBCH "+k.bbch+")", "grave");
+        quitarDe(T.QD);
+      } finally { if(cu00===undefined) delete rc.cu[T.QD.id]; else rc.cu[T.QD.id] = cu00; devolver(l); }
+    });
+    await paso("FN5 · Lluvia en cosecha: el principal manda (75 + también 81 no entra a la ventana) y la tarjeta lo dice en una línea; el aviso de Ahora no cambia", async ()=>{
+      const l = aparte(T.QC);
+      try{
+        if(typeof estCampoCosecha!=="function") throw new SinProbar("No existe estCampoCosecha");
+        const e = reg(T.QC, {fecha:masDias(HOY(),-3), bbch:"75", estado:"Fruto en desarrollo"}); guardar();
+        let ah0 = ""; try{ ah0 = estAvisosAhoraHTML(); }catch(x){ ah0 = "error"; }
+        e.bbchSec = ["81"]; guardar();
+        const CZ = estCerezosVentana(), SP = estCerezosSecPinta();
+        chk(!CZ.lista.some(z=>z.q===T.QC) && SP.lista.some(z=>z.q===T.QC), "75 + también 81: el cerezo entró a la ventana o no salió en estCerezosSecPinta ("+JSON.stringify({ventana:CZ.n, sec:SP.n})+")", "grave");
+        let t = ""; try{ t = estCampoCosecha(); }catch(x){ throw new SinProbar("La tarjeta de cosecha no se pudo armar fuera del panel: "+x.message); }
+        const d = document.createElement("div"); d.innerHTML = t;
+        chk(txtDe(d).indexOf("También hay fruta en 09 Color pajizo y pinta en Cerezo bot")>=0, "La tarjeta de cosecha no dice «También hay fruta en 09 Color pajizo y pinta en Cerezo bot»: «"+txtDe(d).slice(0,240)+"»", "media");
+        /* revisión v164: con la pinta anotada como «también hay» la tarjeta no puede decir «ningún cuartel tiene un estado entre 09…» a secas
+           (sin los demás cerezos del cuaderno, que podrían estar en ventana; solo se arma la tarjeta: no se guarda nada) */
+        { const todo = D.fenologia, pv0 = window.estPronVigente, lp0 = window.estLluviaProx; D.fenologia = todo.filter(x=>x===e);
+          window.estPronVigente = ()=>({bot:true}); window.estLluviaProx = ()=>null;   // con pronóstico (sin lluvia): el semáforo dice lo suyo
+          try{ const d2 = document.createElement("div"); d2.innerHTML = estCampoCosecha(); const td = txtDe(d2), sem = txtDe(d2.querySelector(".est-sem"));
+            chk(!/tiene en Fenología un estado entre 09/.test(td) && /tiene en Fenología un estado principal entre 09 Color pajizo y pinta/.test(td) && /Anota la pinta como estado principal en Fenología/.test(td)
+              && /Ningún cerezo con la pinta como estado principal/.test(sem) && /También hay fruta en 09 Color pajizo y pinta/.test(td),
+              "Con 75 + también 81 la tarjeta se contradice (dice «ningún cuartel… un estado entre 09…» sin «principal», o no pide anotarla como estado principal): «"+sem+"» · «"+td.slice(0,300)+"»", "media");
+            delete e.bbchSec; d2.innerHTML = estCampoCosecha();
+            chk(/Anota la pinta en Fenología/.test(txtDe(d2)) && !/como estado principal en Fenología/.test(txtDe(d2)) && /Ningún cerezo entre pinta y cosecha/.test(txtDe(d2.querySelector(".est-sem"))), "Sin «también hay» en pinta la tarjeta no dice «Ningún cerezo entre pinta y cosecha» y «Anota la pinta en Fenología»: «"+txtDe(d2.querySelector(".est-sem"))+"»", "leve");
+            e.bbchSec = ["81"];
+          } finally { D.fenologia = todo; window.estPronVigente = pv0; window.estLluviaProx = lp0; } }
+        let ah1 = ""; try{ ah1 = estAvisosAhoraHTML(); }catch(x){ ah1 = "error"; }
+        chk(ah1===ah0, "El aviso de «Ahora» cambió por un «también hay» en pinta (debe quedar igual: los cálculos usan el principal)", "media");
+        e.bbch = "81"; e.estado = "Color pajizo y pinta"; delete e.bbchSec; guardar();
+        const CZ2 = estCerezosVentana(); d.innerHTML = estCampoCosecha();
+        chk(CZ2.lista.some(z=>z.q===T.QC) && txtDe(d).indexOf("También hay fruta")<0, "Con el principal en 81 el cerezo no entró a la ventana o siguió la línea «También hay fruta»", "media");
+        /* revisión 2 de la v164: una variedad tardía a medio cosechar (el principal ya en 91 Postcosecha y fruta todavía en 87, «también hay»): la línea sale y la ventana no se enciende */
+        e.bbch = "91"; e.estado = "Postcosecha"; e.bbchSec = ["87"]; guardar();
+        { const CZ3 = estCerezosVentana(), SP3 = estCerezosSecPinta(); d.innerHTML = estCampoCosecha(); const t3 = txtDe(d);
+          chk(!CZ3.lista.some(z=>z.q===T.QC) && SP3.lista.some(z=>z.q===T.QC && z.c==="87") && /También hay fruta en 10 Maduración de fruto en [^;]*Cerezo bot/.test(t3),
+            "Con 91 Postcosecha + también 87 la tarjeta no dice «También hay fruta en 10 Maduración de fruto en … Cerezo bot» (o el cerezo entró a la ventana): «"+t3.slice(0,300)+"»", "media"); }
+        quitarDe(T.QC);
+      } finally { devolver(l); }
+    });
+    await paso("FN6 · Bitácora: título «BBCH 65 · … · también 57, 69», grupo fen:65+57,69, la búsqueda encuentra «botón blanco» y uno sin secundarios va en otra fila", async ()=>{
+      const r = necesito(T.fn1 && fenAll().indexOf(T.fn1)>=0 && T.fn1, "el registro de FN1");
+      const igual = reg(T.QL, {bbch:"65", estado:"Plena floración (50%)"}), igual2 = reg(T.QD, {bbch:"65", estado:"Plena floración (50%+)", fh:ahora()}); guardar();
+      const ix = lcIdx(), e = ix.ev.find(x=>x.st==="fenologia" && x.id===r.id), e2 = ix.ev.find(x=>x.st==="fenologia" && x.id===igual2.id);
+      chk(e && /^BBCH 65 · /.test(e.tit) && /también 57, 69$/.test(e.tit) && e.grupo==="fen:65+57,69", "El evento de FN1 no trae «BBCH 65 … también 57, 69» o su grupo no es fen:65+57,69: "+JSON.stringify(e && {tit:e.tit, grupo:e.grupo}), "media");
+      chk(e && e.txt.indexOf(gtNorm("Botón Blanco"))>=0, "Buscar «botón blanco» (sin tildes ni mayúsculas) no encuentra el registro con ese «también hay»", "media");
+      chk(e && e2 && e2.grupo==="fen:65" && lcGrupoK(e)!==lcGrupoK(e2), "Un registro igual sin secundarios quedó en la misma fila que el de FN1", "media");
+      nav.lc = {v:"dia", fundo:FB, per:"30"}; await irA("bitacora");
+      const tf = [...document.querySelectorAll("#lcVista .lc-it")].map(el=>txtDe(el.querySelector(".lc-it-t b")));
+      chk(tf.indexOf("BBCH 65 · Plena floración (50%+) · también 57, 69")>=0 && tf.indexOf("BBCH 65 · Plena floración (50%+)")>=0, "Día a día no muestra las dos filas («… · también 57, 69» y la sin secundarios): "+tf.filter(t=>/BBCH 65/.test(t)).join(" | "), "media");
+      D.fenologia = fenAll().filter(x=>x!==igual && x!==igual2); guardar();
+    });
+    await paso("FN7 · CSV de Fenología: encabezado exacto, la fila de FN1 con sus «también hay» y el n.º del boletín del cerezo", async ()=>{
+      const r = necesito(T.fn1 && fenAll().indexOf(T.fn1)>=0 && T.fn1, "el registro de FN1");
+      const ec = reg(T.QC, {bbch:"65", estado:"Plena flor", nota:"Bot CSV cerezo"}); guardar();
+      const cu0b = URL.createObjectURL; let blob = null;
+      URL.createObjectURL = function(b){ if(b instanceof Blob) blob = b; return cu0b.apply(this, arguments); };
+      try{
+        await irA("datos"); const sb = buscar(`#app .dsec-b[onclick*="'respaldo'"]`); if(sb) await tocar(sb, "Datos › Respaldo");
+        const b = necesito(buscar(`[onclick="csvExport('fenologia')"]`), "el botón «Fenología (CSV)»");
+        chk(/los códigos se ven como números \(05 → 5\): es el mismo estado/.test(txtDe(b.closest(".card"))), "Junto al CSV de Fenología no se explica que en Excel los códigos se ven como números (05 → 5)", "leve");   // revisión v164
+        chk(await esperarSalida(()=>tocar(b, "Fenología (CSV)"), 5000), "El CSV de Fenología no se generó");
+      } finally { URL.createObjectURL = cu0b; }
+      necesito(blob, "el archivo del CSV");
+      const txt = (await blob.text()).replace(/^﻿/, ""), ls = txt.split(/\r\n/), fil = ls.slice(1).map(x=>x.split(";"));
+      chk(ls[0]==="Fecha;Fundo;Cuartel;Especie;BBCH principal;Estado principal;Estados secundarios;N.º del boletín;Nota;Fotos;Origen;Quién", "El encabezado del CSV de Fenología no es el pedido: «"+ls[0]+"»", "media");
+      const f1 = fil.find(c=>c[2]===T.QD.nombre && c[4]==="65" && c[6]), fc = fil.find(c=>c[2]===T.QC.nombre && c[4]==="65");
+      chk(f1 && f1[6]==="57 Botón blanco / rosado, 69 Fin de floración" && f1[5]==="Plena floración (50%+)" && f1[7]==="" && f1[10]==="iPad", "La fila de FN1 no trae 65 y «57 Botón blanco / rosado, 69 Fin de floración»: "+JSON.stringify(f1), "media");
+      chk(fc && fc[7]==="05" && fc[5]==="Plena flor" && fc[3]==="Cerezo", "La fila del cerezo con 65 no trae «05» en N.º del boletín: "+JSON.stringify(fc), "media");
+      D.fenologia = fenAll().filter(x=>x!==ec); guardar();
+    });
+    await paso("FN8 · Cerezo: 10 tarjetas del boletín + 2 de después de la cosecha, 05 Plena flor → 65, el subestado 61, la insignia «05 · Plena flor · BBCH 65» y tarjetas de 44 px o más a 375 px", async ()=>{
+      await irA("fenologia"); await formFen(T.QC);
+      const nb = [...document.querySelectorAll("#fenEstados [data-fenb]")].map(x=>x.getAttribute("data-fenb"));
+      chk(nb.join(",")==="01,02,03,04,05,06,07,08,09,10" && document.querySelector('#fenEstados [data-fenc="91"]') && document.querySelector('#fenEstados [data-fenc="93"]') && /Después de la cosecha/i.test(txtDe(document.getElementById("fenEstados"))),
+        "La grilla del cerezo no tiene las 10 tarjetas 01–10 y las 2 de «Después de la cosecha» (91 y 93): "+nb.join(","), "grave");
+      const det = document.querySelector("#fenEstados details.fen-mas");
+      chk(det && !det.open && /Más detalle \(escala BBCH completa\)/.test(txtDe(det.querySelector("summary"))) && det.querySelector(`[onclick="fenSel('63')"]`), "Falta «Más detalle (escala BBCH completa)» plegado con los chips de siempre", "media");
+      chk(/sin foto de referencia/.test(txtDe(document.querySelector('#fenEstados [data-fenb="05"]'))), "Sin foto de referencia, la tarjeta no lo dice («sin foto de referencia»)", "leve");
+      await tocar('#fenEstados [data-fenb="05"] .fcb-b', "05 Plena flor");
+      chk(FEN.bbch==="65" && document.querySelector('#fenEstados [data-fenb="05"]').classList.contains("on"), "Tocar «05 Plena flor» no eligió el BBCH 65", "grave");
+      const n0 = fenAll().length; chk(await guardarModal_(), "No se guardó el cerezo", "media");
+      const r = fenAll()[fenAll().length-1];
+      chk(fenAll().length===n0+1 && r.bbch==="65" && r.estado==="Plena flor" && r.cuartel===T.QC.nombre, "El cerezo con «05 Plena flor» debía quedar {bbch 65, estado «Plena flor»} y quedó "+JSON.stringify({bbch:r.bbch, estado:r.estado}), "grave");
+      chk(fenEtiqueta(r)==="05 Plena flor · BBCH 65", "La etiqueta del cerezo no es «05 Plena flor · BBCH 65»: «"+fenEtiqueta(r)+"»", "leve");
+      const bd = document.createElement("div"); bd.innerHTML = fenBadge(r);
+      chk(txtDe(bd.querySelector(".fenbadge .fen-nb"))==="05" && /Plena flor/.test(txtDe(bd.querySelector(".fenbadge"))) && !/BBCH/.test(txtDe(bd.querySelector(".fenbadge"))) && txtDe(bd.querySelector(".fenbadge + .fen-bbch"))==="BBCH 65",
+        "La insignia del cerezo no muestra «05», «Plena flor» y aparte «BBCH 65»: "+bd.innerHTML.slice(0,240), "media");
+      await formFen(T.QC); await tocar('#fenEstados [data-fenb="05"] .fcb-s', "subestado inicio de floración");
+      chk(FEN.bbch==="61" && document.querySelector('#fenEstados [data-fenb="05"] .fcb-s').classList.contains("on"), "El subestado «inicio de floración» no eligió el 61", "media");
+      await guardarModal_(); const r2 = fenAll()[fenAll().length-1];
+      chk(r2.bbch==="61" && r2.estado==="Plena flor (inicio de floración)", "El subestado 61 debía guardar «Plena flor (inicio de floración)» y guardó «"+r2.estado+"» ("+r2.bbch+")", "media");
+      await formFen(T.QC); await tocar('#fenEstados [data-fenb="08"] .fcb-s', "subestado fase I");
+      chk(FEN.bbch==="73", "El subestado «fase I» de 08 no eligió el 73", "leve");
+      await tocar('#fenEstados [data-fenc="91"] .fcb-b', "Postcosecha"); chk(FEN.bbch==="91", "«Postcosecha» no eligió el 91", "media");
+      /* revisión v164: en el «También hay» del cerezo, Postcosecha y Caída de hojas no llevan un número suelto junto a las burbujas 01–10: «BBCH 93» aparte */
+      fenSecAbrir(); await pausa(.2);
+      { const c93 = document.querySelector('#fenSec [data-sec="93"]'), c65 = document.querySelector('#fenSec [data-sec="65"]');
+        chk(c93 && !c93.querySelector(".fenbb, .fen-nb") && /Caída de hojas/.test(txtDe(c93)) && txtDe(c93.querySelector(".fen-bbch"))==="BBCH 93" && c65 && txtDe(c65.querySelector(".fen-nb"))==="05" && !c65.querySelector(".fenbb"),
+          "En el «También hay» del cerezo, «Caída de hojas» no va como «Caída de hojas BBCH 93» (sin número suelto) o «Plena flor» perdió su burbuja 05: «"+txtDe(c93)+"» · «"+txtDe(c65)+"»", "leve"); }
+      /* 375 × 812 (celular): 2 columnas y ninguna tarjeta bajo 44 px */
+      try{
+        D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar();
+        const m = necesito(modalAbierto(), "el formulario"); m.style.width = "375px"; m.style.maxWidth = "375px"; await pausa(.6);
+        const cards = [...m.querySelectorAll(".fcb-b")], bajos = cards.filter(b=>b.offsetHeight<44), cols = getComputedStyle(m.querySelector(".fcb-g")).gridTemplateColumns.split(" ").length;
+        chk(cards.length===12 && !bajos.length && cols===2, "A 375 px: "+cards.length+" tarjetas, "+bajos.length+" de menos de 44 px, "+cols+" columnas (se esperaban 12, 0 y 2)", "media");
+        const mb = m.querySelector(".mb"), mr = m.getBoundingClientRect(), fuera = [...m.querySelectorAll(".fcb, .fcb *")].filter(e=>visible(e) && e.getBoundingClientRect().right>mr.right+1);
+        chk(!fuera.length && mb.scrollWidth<=mb.clientWidth+1, "A 375 px la grilla del cerezo se sale por el costado", "media");
+        const chicos = [...m.querySelectorAll(".fcb-l, .fcb-s")].filter(b=>b.offsetHeight<30 || b.offsetWidth<30);
+        chk(!chicos.length, "A 375 px la lupa o los subestados miden menos de 30 px: "+chicos.length, "leve");
+      } finally { D.ui = JSON.parse(ui0); uiAplicar(); }
+      await cancelarModal();
+      T.c65 = r; D.fenologia = fenAll().filter(x=>x!==r2); guardar();
+    });
+    await paso("FN9 · Registros antiguos del cerezo: 65 «Plena floración (50%+)» se ve como «05 Plena flor», el 09 con su nombre BBCH y «(fuera de los 10 del boletín)», y no se reescriben", async ()=>{
+      const l = aparte(T.QC);
+      try{
+        const v65 = reg(T.QC, {fecha:masDias(HOY(),-5), bbch:"65", estado:"Plena floración (50%+)", nota:"Bot viejo 65"}), v09 = reg(T.QC, {fecha:masDias(HOY(),-6), bbch:"09", estado:"", nota:"Bot viejo 09"});
+        guardar(); const j0 = JSON.stringify([v65, v09]);
+        chk(fenNombre("Cerezo","65")==="Plena flor" && fenNombre("Cerezo","65","Plena floración (50%+)")==="Plena flor", "fenNombre(Cerezo, 65) no da «Plena flor»: "+fenNombre("Cerezo","65"), "media");
+        const ix = lcIdx(), e65 = ix.ev.find(x=>x.st==="fenologia" && x.id===v65.id), e09 = ix.ev.find(x=>x.st==="fenologia" && x.id===v09.id);
+        chk(e65 && e65.fenNb==="05" && e65.tit==="Plena flor" && e65.txt.indexOf(gtNorm("Plena floración"))>=0, "En la Bitácora el 65 viejo no sale como «[05] Plena flor» (o no se encuentra por su nombre guardado): "+JSON.stringify(e65 && {nb:e65.fenNb, tit:e65.tit}), "media");
+        chk(e09 && /Punta verde/.test(e09.tit) && /\(fuera de los 10 del boletín\)/.test(e09.tit) && !e09.fenNb, "El 09 no sale con su nombre BBCH y «(fuera de los 10 del boletín)»: "+JSON.stringify(e09 && e09.tit), "media");
+        nav.lc = {v:"dia", fundo:FB, per:"30"}; await irA("bitacora");
+        const fil = [...document.querySelectorAll("#lcVista .lc-it")].find(el=>/Plena flor$/.test(txtDe(el.querySelector(".lc-it-t b"))) && /Cerezo bot/.test(txtDe(el)) && txtDe(el.querySelector(".lc-it-t b .fen-nb"))==="05");
+        chk(fil && /BBCH 65/.test(txtDe(fil.querySelector(".lc-it-m"))), "Día a día no muestra la fila «[05] Plena flor» con «BBCH 65» aparte", "media");
+        await irA("fenologia"); fenNav().fundo = FB; fenNav().cuartel = T.QC.nombre; fenNav().vista = "hist"; render(); await pausa();
+        chk([...document.querySelectorAll("#app .fentile")].some(t=>/Punta verde/.test(txtDe(t)) && /fuera de los 10 del boletín/.test(txtDe(t))), "El historial no muestra el 09 con «(fuera de los 10 del boletín)»", "leve");
+        { const b9 = document.createElement("div"); b9.innerHTML = fenBadge(v09);   // revisión v164: en cerezo el 09 no va en una burbuja sola (se leería «09 Color pajizo y pinta»): «BBCH 09» aparte
+          chk(!b9.querySelector(".fenbb, .fen-nb") && txtDe(b9.querySelector(".fenbadge + .fen-bbch"))==="BBCH 09" && /Punta verde/.test(txtDe(b9.querySelector(".fenbadge"))), "La insignia del 09 de cerezo no dice «Punta verde (fuera…)» con «BBCH 09» aparte (o muestra el 09 en una burbuja): "+b9.innerHTML.slice(0,200), "leve"); }
+        chk(JSON.stringify([v65, v09])===j0, "Mostrar los registros viejos los reescribió (el JSON cambió)", "grave");
+        quitarDe(T.QC);
+      } finally { devolver(l); fenNav().cuartel = ""; fenNav().vista = "actual"; }
+    });
+    await paso("FN10 · El Kc no cambia por la capa del cerezo: cada estado del boletín con su Kc de carozo y fenGrupoDe sigue en «carozo»", async ()=>{
+      const esp = {"00":0.20, "51":0.35, "55":0.35, "57":0.35, "65":0.40, "67":0.40, "72":0.50, "75":0.60, "81":0.85, "87":0.85, "91":0.85, "93":0.60};
+      const mal = Object.keys(esp).filter(c=>{ const k = riegoKcFen("carozo", c); return !k || Math.abs(k.kc-esp[c])>1e-9; });
+      chk(!mal.length, "Kc de la tabla de carozo distinto del esperado en: "+mal.map(c=>c+" → "+((riegoKcFen("carozo", c)||{}).kc)+" (esperado "+esp[c]+")").join(", "), "grave");
+      chk(fenGrupoDe("Cerezo")==="carozo" && riegoGrupo(T.QC)==="carozo", "fenGrupoDe(«Cerezo») o el grupo de riego del cerezo dejó de ser «carozo»", "grave");
+      chk(FEN_CEREZO.map(b=>b.c).join(",")==="00,51,55,57,65,67,72,75,81,87" && FEN_CEREZO_POST.map(b=>b.c).join(",")==="91,93" && FEN_CEREZO_TODOS.every(b=>fenEstado("Cerezo", b.c)), "Los códigos internos del boletín no son los del diseño o alguno no existe en la escala de carozo", "grave");
+    });
+    await paso("FN11 · Fotos de referencia propias: «Usar como foto de referencia» copia la foto con id «fr…», borrar el registro no la borra, 12 tarjetas, nada con http en una imagen y el enlace de texto al boletín", async ()=>{
+      const cv = document.createElement("canvas"); cv.width = 320; cv.height = 240; const cx = cv.getContext("2d"); cx.fillStyle = "#e9b8c8"; cx.fillRect(0,0,320,240); cx.fillStyle = "#3a7d44"; cx.fillRect(40,40,120,90);
+      const fid = "f"+nid(); await fotoPut(fid, cv.toDataURL("image/jpeg", 0.8));
+      const e = reg(T.QC, {fecha:masDias(HOY(),-1), bbch:"65", estado:"Plena flor", fotos:[fid], nota:"Bot referencia"}); guardar();
+      fenEditar(e.id); await pausa(); necesito(modalAbierto(), "la edición del cerezo con foto");
+      await esperarQue(()=>buscar("#fenRefUsar .fen-ref-usar"), 4000);
+      await tocar({texto:/Usar como foto de referencia de «Plena flor»/, sel:"#fenRefUsar button"}, "☆ Usar como foto de referencia de «Plena flor»");
+      await esperarQue(()=>D.fenRef && D.fenRef.cerezo && D.fenRef.cerezo["65"], 4000);
+      const rf = ((D.fenRef||{}).cerezo||{})["65"];
+      chk(rf && /^fr/.test(rf.fid) && rf.fid!==fid && rf.cuartel===T.QC.nombre && rf.fecha===e.fecha, "La referencia de «Plena flor» no quedó con una copia «fr…» de la foto: "+JSON.stringify(rf), "grave");
+      await cancelarModal();
+      fenEditar(e.id); await pausa(); await tocar(`[onclick="fenBorrar(${e.id})"]`, "Eliminar el registro"); if(modalAbierto()){ try{ cerrarModal(); }catch(x){} }
+      _undoSnap = null; await pausa(); fotoPendEjecutar(); await esperar(300);
+      chk(rf && await fotoGet(rf.fid), "Al borrar el registro se borró también la foto de referencia", "grave");
+      await irA("fenologia");
+      await tocar("#app .fen-ref-b", "Referencias del cerezo");
+      const m = necesito(modalAbierto(), "la pantalla «Referencias del cerezo»");
+      chk(m.querySelectorAll("[data-fenr]").length===12 && m.querySelector('[data-fenr="65"] .fenref-ph:not(.sin)') && /Foto de Cerezo bot/.test(txtDe(m.querySelector('[data-fenr="65"]'))), "«Referencias del cerezo» no tiene 12 tarjetas o la de Plena flor no muestra su foto y «Foto de Cerezo bot · …»", "media");
+      { const pie = [...m.querySelectorAll(".mf .btn")].filter(visible);   // revisión v164: todo se guarda al tiro: un solo botón, sin un «Cancelar» que no deshace nada
+        chk(pie.length===1 && /Listo/.test(txtDe(pie[0])), "El pie de «Referencias del cerezo» no tiene un solo botón «Listo»: "+pie.map(b=>"«"+txtDe(b)+"»").join(" "), "leve"); }
+      await escribir("fenRefEnl", "https://ejemplo.cl/boletin", "Enlace al boletín");
+      const a = document.querySelector('#capaModal a[href="https://ejemplo.cl/boletin"][target="_blank"]');
+      chk(a && /(^|\s)noopener(\s|$)/.test(a.getAttribute("rel")||"") && !document.querySelector('img[src="https://ejemplo.cl/boletin"]') && (D.fenRef||{}).enlace==="https://ejemplo.cl/boletin", "El enlace al boletín no quedó como enlace de texto (target _blank, rel noopener) o se usó como imagen", "media");
+      const http = [...document.querySelectorAll("#app img, #capaModal img")].filter(i=>/^http/i.test(i.getAttribute("src")||""));
+      chk(!http.length, "Hay imágenes con dirección http en Fenología (no se enlaza ninguna imagen de afuera): "+http.length, "media");
+      await escribir("fenRefEnl", "javascript:alert(1)", "Enlace al boletín");
+      chk(!document.querySelector('#capaModal a[href^="javascript"]') && (D.fenRef||{}).enlace==="https://ejemplo.cl/boletin", "Una dirección que no es web quedó como enlace", "media");
+      await escribir("fenRefEnl", "https://ejemplo.cl/boletin", "Enlace al boletín");
+      /* la lupa abre la referencia con su descripción propia */
+      await tocar('#capaModal [data-fenr="65"] .fenref-ph', "lupa de Plena flor");
+      chk(visorAbierto() && /La mayoría de las flores abiertas/.test(txtDe(visorAbierto())) && document.querySelector("#capaVisor img.full"), "La referencia en grande no muestra la foto y la descripción propia", "leve");
+      try{ cerrarVisor(); }catch(x){}
+      /* Galería (una foto propia nueva, «fr…» de hoy), «Elegir de un registro» (solo las fotos de registros de cerezo en ese rango) y Cambiar → Cancelar */
+      const gal = necesito(document.querySelector('#capaModal [data-fenr="57"] input[type="file"]:not([capture])'), "Galería de «Botón blanco»");
+      await adjuntarArchivos(gal, [await fotoBot(400, 300, "boton_blanco_bot.png")]);
+      await esperarQue(()=>((D.fenRef||{}).cerezo||{})["57"], 5000);
+      const r57 = ((D.fenRef||{}).cerezo||{})["57"];
+      chk(r57 && /^fr/.test(r57.fid) && r57.fecha===HOY() && !r57.cuartel && await fotoGet(r57.fid), "Galería no dejó la foto propia de «Botón blanco» («fr…», de hoy): "+JSON.stringify(r57), "media");
+      const f81 = "f"+nid(); await fotoPut(f81, cv.toDataURL("image/jpeg", 0.7));
+      const e81 = reg(T.QC, {fecha:masDias(HOY(),-2), bbch:"81", estado:"Color pajizo y pinta", fotos:[f81], nota:"Bot referencia 81"}), e75 = reg(T.QC, {fecha:masDias(HOY(),-9), bbch:"75", estado:"Fruto en desarrollo", fotos:[fid], nota:"Bot fuera del rango"}); guardar();
+      await tocar(`#capaModal [data-fenr="81"] [onclick="fenRefElegir('81')"]`, "Elegir de un registro (09)");
+      const ths = [...document.querySelectorAll('#capaModal [data-fenr="81"] .fenref-th')];
+      chk(ths.length===1 && /Cerezo bot/.test(ths[0].getAttribute("aria-label")||""), "«Elegir de un registro» no muestra solo la foto del registro de cerezo en 09 ("+ths.length+" fotos)", "media");
+      if(ths[0]){ await tocar(ths[0], "usar la foto del registro"); await esperarQue(()=>((D.fenRef||{}).cerezo||{})["81"], 4000); }
+      const r81 = ((D.fenRef||{}).cerezo||{})["81"];
+      chk(r81 && /^fr/.test(r81.fid) && r81.fid!==f81 && r81.cuartel===T.QC.nombre && r81.fecha===e81.fecha, "La foto elegida de un registro no quedó copiada como referencia de 09: "+JSON.stringify(r81), "media");
+      await tocar(`#capaModal [onclick="fenRefCambiar('57')"]`, "Cambiar la foto de «Botón blanco»");
+      chk(document.querySelector(`#capaModal [data-fenr="57"] [onclick="fenRefElegir('57')"]`), "«Cambiar» no muestra Cámara, Galería y Elegir de un registro", "leve");
+      await tocar({texto:/^Cancelar$/, sel:'#capaModal [data-fenr="57"] .fenref-acc button'}, "Cancelar el cambio");
+      chk(document.querySelector(`#capaModal [data-fenr="57"] [onclick="fenRefQuitar('57')"]`) && ((D.fenRef||{}).cerezo||{})["57"].fid===r57.fid, "Cancelar el cambio no dejó la foto de antes", "leve");
+      D.fenologia = fenAll().filter(x=>x!==e81 && x!==e75); guardar();
+      /* Quitar con Deshacer */
+      await tocar('#capaModal [data-fenr="65"] [onclick="fenRefQuitar(\'65\')"]', "Quitar la foto de referencia");
+      chk(!((D.fenRef||{}).cerezo||{})["65"], "«Quitar» no quitó la foto de referencia", "media");
+      if(await undoVisible()){ await deshacer(); chk(((D.fenRef||{}).cerezo||{})["65"] && ((D.fenRef||{}).cerezo||{})["65"].fid===rf.fid, "Deshacer no devolvió la foto de referencia", "media");
+        await pausa(.3); chk(modalAbierto() && document.querySelector('#capaModal [data-fenr="65"] [onclick="fenRefQuitar(\'65\')"]'), "Deshacer devolvió la foto pero cerró «Referencias del cerezo» (debe quedar abierta, con la foto de vuelta)", "leve"); }
+      else falla("Sin Deshacer", "Al quitar una foto de referencia no apareció Deshacer");
+      T.QC = D.cuarteles.find(q=>q.fundo===FB && q.nombre==="Cerezo bot") || T.QC; T.QD = D.cuarteles.find(q=>q.fundo===FB && q.nombre==="Duraznero bot") || T.QD; T.QL = D.cuarteles.find(q=>q.fundo===FB && q.nombre==="Limonero bot") || T.QL;   // Deshacer vuelve a leer el cuaderno
+      T.fn1 = fenAll().find(x=>x.fundo===FB && x.cuartel===T.QD.nombre && JSON.stringify(x.bbchSec)==='["57","69"]') || null;
+    });
+    await paso("FN12 · «Sugerir con Claude» con secundarios: deja los 3 primeros válidos, sin repetir ni el principal y ordenados; en cerezo la lista empieza con los nombres del boletín", async ()=>{
+      const s = syncCfg(), s0 = {url:s.url, clave:s.clave, rol:s.rol}; let pedido = null;
+      window.syncFetch = async function(ruta, opt){
+        if(ruta==="asistente"){ pedido = asisCuerpoLeer(opt.body); await esperar(80);
+          return {ok:true, modelo:"claude-opus-5-5", adjuntos:(pedido.adjuntos||[]).length, usage:{input_tokens:2500, output_tokens:140}, datos:{bbch:"65", secundarios:["57","57","65","99","69","67","61"], confianza:"media", explicacion:"Bot: flores abiertas y botones", foto_recibida:true}}; }
+        throw new Error("bots: ruta "+ruta+" no simulada");
+      };
+      try{
+        s.url = "https://bots.invalid"; s.clave = "bots"; s.rol = "off"; guardar();
+        await irA("fenologia"); await formFen(T.QD);
+        const inp = necesito([...document.querySelectorAll('#capaModal input[type="file"]')].find(x=>!x.hasAttribute("capture")), "el botón Galería");
+        await adjuntarArchivos(inp, [await fotoBot(800, 600, "flor_v164.png")]);
+        await esperarQue(()=>buscar("#fenSugBtn"), 6000);
+        accion("Sugerir estado con Claude (simulado, con secundarios)"); await fenSugerir(); await pausa();
+        necesito(pedido, "el pedido a Claude");
+        const sc = (pedido.schema||{}).properties||{};
+        chk(sc.secundarios && sc.secundarios.type==="array" && (pedido.schema.required||[]).indexOf("secundarios")>=0 && JSON.stringify(sc.secundarios.items.enum)===JSON.stringify(sc.bbch.enum), "El formato pedido a Claude no trae «secundarios» (arreglo con los mismos códigos)", "media");
+        chk(/secundarios = otros estados de la lista que se ven claramente/.test(pedido.system) || /secundarios: otros estados/.test(pedido.system), "Lo que se le pide a Claude no explica los secundarios", "leve");
+        chk(FEN && FEN.bbch==="65" && JSON.stringify(FEN.sec)==='["57","67","69"]' && _fenSug && JSON.stringify(_fenSug.sec)==='["57","67","69"]', "De [57, 57, 65, 99, 69, 67, 61] debían quedar [57, 67, 69] y quedó "+JSON.stringify(FEN && FEN.sec), "grave");
+        chk(/Claude sugiere: Plena floración \(50%\+\); también /.test(txtDe(buscar("#fenSug"))) && ["57","67","69"].every(c=>document.querySelector(`#fenSec [data-sec="${c}"]`).getAttribute("aria-pressed")==="true"), "El recuadro no dice «Claude sugiere: Plena floración (50%+); también …» o no marcó los «también hay»", "media");
+        await cancelarModal();
+        pedido = null; await formFen(T.QC);
+        const inp2 = necesito([...document.querySelectorAll('#capaModal input[type="file"]')].find(x=>!x.hasAttribute("capture")), "el botón Galería");
+        await adjuntarArchivos(inp2, [await fotoBot(800, 600, "cerezo_v164.png")]);
+        await esperarQue(()=>buscar("#fenSugBtn"), 6000); await fenSugerir(); await pausa();
+        necesito(pedido, "el pedido a Claude del cerezo");
+        const sy = pedido.system, iL = sy.indexOf("ESTADOS DE LA LISTA"), iC = sy.indexOf("Cerezo (usa estos nombres): 00 Yema dormida, 51 Yema hinchada"), i00 = sy.indexOf("00 · Receso");
+        chk(iL>=0 && iC>iL && i00>iC && (((pedido.schema||{}).properties||{}).bbch||{}).enum.length===fenLista("Cerezo").length, "En el cerezo la lista para Claude no empieza con «Cerezo (usa estos nombres): 00 Yema dormida, …» (o el enum ya no es la escala completa)", "media");
+        await cancelarModal();
+      } finally { window.syncFetch = sfF; s.url = s0.url; s.clave = s0.clave; s.rol = s0.rol; guardar(); }
+    });
+    /* revisión v164: en la ficha de un cerezo, el «también hay» va con el nombre del boletín (un «también 81» suelto, junto a la burbuja 08, se leería
+       como un n.º del boletín) */
+    await paso("FN13 · Ficha de un cerezo: la casilla Fenología dice «08 Fruto en desarrollo · BBCH 75» y «también Color pajizo y pinta», sin un número suelto", async ()=>{
+      const l = aparte(T.QC);
+      try{
+        reg(T.QC, {fecha:masDias(HOY(),-1), bbch:"75", estado:"Fruto en desarrollo", bbchSec:["81"]}); guardar();
+        lcAbrirCu(T.QC.fundo, T.QC.nombre); await pausa();
+        const c = necesito(document.querySelector("#lcVista .lc-fi-ac.fen"), "la casilla Fenología de la ficha de "+T.QC.nombre), t = txtDe(c);
+        chk(/también Color pajizo y pinta/.test(t) && !/también 81/.test(t) && /BBCH 75/.test(t) && txtDe(c.querySelector(".fen-nb"))==="08" && /Fruto en desarrollo/.test(t),
+          "La casilla Fenología del cerezo no dice «08 Fruto en desarrollo · BBCH 75 … también Color pajizo y pinta»: «"+t+"»", "leve");
+        quitarDe(T.QC);
+      } finally { devolver(l); }
+    });
+    /* revisión 2 de la v164: en cerezo varios códigos caen en el mismo estado del boletín: no se repite el nombre ni el del principal */
+    await paso("FN14 · Cerezo: un «también hay» del mismo estado del boletín que el principal (o que otro) no se guarda ni se muestra dos veces; en duraznero nada cambia", async ()=>{
+      const l = aparte(T.QC);
+      try{
+        const L1 = fenSecLimpiar("Cerezo", "75", ["79","85","87","67"]).sec, L2 = fenSecLimpiar("Duraznero", "75", ["79","85","87"]).sec;
+        chk(JSON.stringify(L1)==='["67","85"]' && JSON.stringify(L2)==='["79","85","87"]', "fenSecLimpiar: en cerezo 75 + [79, 85, 87, 67] debía dar [67, 85] (79 es el mismo 08 que el principal; 87, el mismo 10 que 85) y en duraznero [79, 85, 87] sin cambio: "+JSON.stringify({cerezo:L1, duraznero:L2}), "media");
+        const e1 = reg(T.QC, {fecha:masDias(HOY(),-1), bbch:"75", estado:"Fruto en desarrollo", bbchSec:["79","85","87"]}); guardar();   // como podría haber quedado de antes (sin limpiar)
+        const et = fenEtiqueta(e1), tb = document.createElement("div"); tb.innerHTML = fenBadge(e1); const ft = fenTitulo("Cerezo", "75", "", ["79","85","87"]);
+        chk(et==="08 Fruto en desarrollo · BBCH 75 · también Maduración de fruto" && [...tb.querySelectorAll(".fen-t")].map(x=>txtDe(x)).join("|")==="+ Maduración de fruto" && ft==="Fruto en desarrollo · también Maduración de fruto",
+          "En cerezo los «también hay» repetidos se siguen mostrando: «"+et+"» · «"+txtDe(tb)+"» · «"+ft+"»", "leve");
+        chk(JSON.stringify(e1.bbchSec)==='["79","85","87"]', "Mostrar el registro cambió lo guardado", "media");
+        /* el formulario: con el principal 79 (desde «Más detalle»), «08 Fruto en desarrollo» queda deshabilitado en «También hay» y el 09 no */
+        await irA("fenologia"); await formFen(T.QC); accion("79 como principal (Más detalle)"); fenSel("79"); fenSecAbrir(); await pausa(.2);
+        const c75 = document.querySelector('#fenSec [data-sec="75"]'), c81 = document.querySelector('#fenSec [data-sec="81"]');
+        chk(c75 && c75.disabled && c81 && !c81.disabled, "Con el principal 79 (08 Fruto en desarrollo), el chip «08 Fruto en desarrollo» de «También hay» no quedó deshabilitado (o el 09 sí)", "leve");
+        await cancelarModal();
+        quitarDe(T.QC);
+      } finally { devolver(l); }
+    });
+    await paso("FN15 · En el iPad una fenología con fecha de pasado mañana no se guarda (aviso dentro del formulario, sin alert); con la de mañana sí", async ()=>{
+      const n0 = fenAll().length; let r = null;
+      try{
+        await irA("fenologia"); await formFen(T.QD); await tocar(`#fenEstados [onclick="fenSel('65')"]`, "65 como principal");
+        await fecha("fen_fecha", masDias(HOY(),2)); const a0 = R.alerts.length; await guardarModal_();
+        const av = document.getElementById("mAviso");
+        chk(modalAbierto() && av && !av.hidden && /está en el futuro/.test(txtDe(av)) && fenAll().length===n0 && R.alerts.length===a0, "Con la fecha de pasado mañana el formulario no avisó adentro (o guardó, o salió un alert): «"+txtDe(av||null)+"»", "media");
+        await fecha("fen_fecha", masDias(HOY(),1)); await guardarModal_();
+        r = fenAll().length===n0+1? fenAll()[fenAll().length-1] : null;
+        chk(!modalAbierto() && r && r.fecha===masDias(HOY(),1), "Con la fecha de mañana no se guardó (o quedó otra fecha)", "leve");
+      } finally { if(modalAbierto()){ try{ cerrarModal(); }catch(e){} } if(r) D.fenologia = fenAll().filter(x=>x!==r); guardar(); }
+    });
+  } finally {
+    try{ if(modalAbierto()) cerrarModal(); }catch(e){} try{ cerrarVisor(); }catch(e){}
+    window.syncFetch = sfF;
+    D.fenologia = JSON.parse(feIni); if(fr0==null) delete D.fenRef; else D.fenRef = JSON.parse(fr0);
+    D.cuarteles.length = 0; cu0.forEach(q=>D.cuarteles.push(q)); D.riego = JSON.parse(rg0); D.ui = JSON.parse(ui0); D.sync = JSON.parse(sy0);
+    if(nf0) nav.fen = JSON.parse(nf0); else delete nav.fen;
+    if(lc0) nav.lc = JSON.parse(lc0); else delete nav.lc;
+    if(pB0==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", pB0);
+    FEN = null; _undoSnap = null; uiAplicar(); guardar(); render();
+  }
 }});
 
 /* 📓 BITÁCORA ---------------------------------------------------------------------------- */
@@ -5604,7 +5970,7 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
       qs.slice(0,3).forEach(q=>{ const r = Object.assign({id:nid(), estado:"aplicado", fecha:H, fechaPlan:H, fechaReal:H, cuartel:q.nombre}, base); D.registros.push(r); T.regs.push(r.id); });
       const rp = Object.assign({id:nid(), estado:"pendiente", fecha:masDias(H,2), fechaPlan:masDias(H,2), cuartel:qs[3].nombre}, base); D.registros.push(rp); T.regs.push(rp.id);
       /* la del asistente, por el mismo camino que usa al guardar (origen «asis», lote del dictado y texto dictado) */
-      const vacio = {hora:"",cuarteles:[],titulo:"",texto:"",categoria:"",urgente:false,labor_tipo:"",fecha_fin:"",cantidad:null,unidad:"",personas:null,estado_labor:"",producto:"",dosis:"",objetivo:"",mojamiento:null,carencia:null,aplicado:false,registro_tipo:"",registro_valor:null,bbch:"",faltante:"",confianza:"alta",importante:false};
+      const vacio = {hora:"",cuarteles:[],titulo:"",texto:"",categoria:"",urgente:false,labor_tipo:"",fecha_fin:"",cantidad:null,unidad:"",personas:null,estado_labor:"",producto:"",dosis:"",objetivo:"",mojamiento:null,carencia:null,aplicado:false,registro_tipo:"",registro_valor:null,bbch:"",bbch_sec:[],faltante:"",confianza:"alta",importante:false};
       const n0 = D.registros.length;
       asisAplicarTodos([{...vacio, id:"asBotLc1", tipo:"aplicacion", fecha:H, fundo:fu, cuarteles:[qs[1].nombre], producto:"Bot Esterón dictado", aplicado:true,
         dictado:"se aplicó bot esterón en "+qs[1].nombre+" "+XSS, dictadoFh:new Date().toISOString(), asisLote:"alBotLc"}], "ipad");
@@ -6300,8 +6666,8 @@ BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta 
   const fu = fundosConCuarteles()[0], cus = plantados(fu).map(q=>q.nombre);
   if(cus.length<2) throw new SinProbar("Hace falta un fundo con al menos dos cuarteles plantados");
   const qf = plantados(fu).find(q=>fenLista(q.especie||"").length>2) || plantados(fu)[0], bb = fenLista(qf.especie||"")[2].c;
-  const s = syncCfg(), s0 = {url:s.url, clave:s.clave, rol:s.rol}, sf0 = window.syncFetch, A = asisCfg();
-  const base = {hora:"",cuarteles:[],titulo:"",texto:"",categoria:"",urgente:false,labor_tipo:"",fecha_fin:"",cantidad:null,unidad:"",personas:null,estado_labor:"",producto:"",dosis:"",objetivo:"",mojamiento:null,carencia:null,aplicado:false,registro_tipo:"",registro_valor:null,bbch:"",faltante:"",confianza:"alta",importante:false};
+  const s = syncCfg(), s0 = {url:s.url, clave:s.clave, rol:s.rol}, sf0 = window.syncFetch, A = asisCfg(), ba0 = JSON.stringify(D.buzonAcuse||[]), env0 = Array.isArray(A.enviados)? JSON.stringify(A.enviados) : null;   // v164: el acuse que deja el iPad al importar y la copia de lo enviado del celular
+  const base = {hora:"",cuarteles:[],titulo:"",texto:"",categoria:"",urgente:false,labor_tipo:"",fecha_fin:"",cantidad:null,unidad:"",personas:null,estado_labor:"",producto:"",dosis:"",objetivo:"",mojamiento:null,carencia:null,aplicado:false,registro_tipo:"",registro_valor:null,bbch:"",bbch_sec:[],faltante:"",confianza:"alta",importante:false};
   /* para la aplicación dictada sin fundo: un cuartel con nombre único en todos los fundos, sin carencias ni pendientes, y un producto del catálogo sin carencia para su especie (Esteron en cítricos) */
   const nomK = s=>gtNorm(s||"").replace(/\s+/g," ").trim();
   const qU = plantados().find(q=>fundos().indexOf(q.fundo)>=0 && D.cuarteles.filter(x=>nomK(x.nombre)===nomK(q.nombre)).length===1 && !(q.fundo===fu && (q.nombre===cus[0] || q.nombre===cus[1])) && !carenciaDe(q)) || null;
@@ -6882,12 +7248,107 @@ BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta 
       finally{ window.webkitSpeechRecognition = sr; window.SpeechRecognition = sr2; }
       chk(huboMsg(a0, /micr[oó]fono del teclado/i), "Sin dictado en el navegador no avisa que use el micrófono del teclado");
     });
+    /* ---- v164 (30-10-2026): «también hay» (bbch_sec) en el asistente, con los valores exactos del diseño (AS1–AS3), y H8 ---- */
+    await paso("AS1 · bbch_sec en lo que se le pide a Claude y en lo que se guarda: un «también hay» que no existe se quita y se dice en faltante (no pasa a nota)", async ()=>{
+      const FA = "Bot Asistente v164", QD = {id:nid(), fundo:FA, nombre:"Duraznero asis bot", especie:"Duraznero", variedad:"Bot", ha:1, marco:"4x2"};
+      D.cuarteles.push(QD); lotesAdj.push("alBotAS1", "alBotAS2", "alBotAS3"); guardar();
+      try{
+        const sc = asisSchema().properties.items.items;
+        chk(sc.required.indexOf("bbch_sec")>=0 && sc.properties.bbch_sec && sc.properties.bbch_sec.type==="array" && sc.properties.bbch_sec.items.type==="string", "El formato pedido a Claude no trae bbch_sec (arreglo de textos, obligatorio)", "media");
+        chk(/bbch_sec = los otros que se ven claramente/.test(asisSystem()) && asisSystem().indexOf("Cerezo (usa estos nombres): 00 Yema dormida")>=0, "Lo que se le pide a Claude no explica bbch_sec o no trae los nombres del boletín del cerezo", "leve");
+        const sinSec = Object.assign({}, base); delete sinSec.bbch_sec;
+        chk(JSON.stringify(asisNorm(Object.assign({}, sinSec, {tipo:"fenologia", fundo:FA, cuarteles:[QD.nombre], bbch:"65"})).bbch_sec)==="[]", "asisNorm de un ítem sin bbch_sec no da bbch_sec: []", "media");
+        const it = Object.assign({}, base, {tipo:"fenologia", fecha:HOY(), fundo:FA, cuarteles:[QD.nombre], bbch:"65", bbch_sec:["57","XX"], texto:"Bot AS1", asisLote:"alBotAS1", dictadoFh:HOY()+"T09:30:00"});
+        const nIt = asisNorm(it);
+        chk(JSON.stringify(nIt.bbch_sec)==='["57"]' && /XX/.test(nIt.faltante) && !asisFaltan(nIt).length, "Con [57, XX] el ítem debía quedar con bbch_sec [57], «XX» en faltante y nada que lo pase a nota: "+JSON.stringify({sec:nIt.bbch_sec, faltante:nIt.faltante, faltan:asisFaltan(nIt)}), "grave");
+        chk(asisDetalle(nIt)==="BBCH 65 · Plena floración (50%+) (+57)", "La revisión no muestra «BBCH 65 · Plena floración (50%+) (+57)»: «"+asisDetalle(nIt)+"»", "leve");
+        chk(asisCaminoDe(nIt).tit==="BBCH 65 · Plena floración (50%+) (+1)", "«En camino al iPad» no muestra «BBCH 65 · Plena floración (50%+) (+1)»: «"+asisCaminoDe(nIt).tit+"»", "leve");
+        const f0 = fenAll().length, n0 = D.notas.length;
+        asisAplicarTodos([it], "ipad");
+        const r = fenAll()[fenAll().length-1];
+        chk(fenAll().length===f0+1 && D.notas.length===n0 && r.bbch==="65" && JSON.stringify(r.bbchSec)==='["57"]' && r.fh===it.dictadoFh && r.estado==="Plena floración (50%+)",
+          "asisAplicarTodos no creó la fenología con bbchSec [57] y fh = la hora del dictado (o la pasó a nota): "+JSON.stringify(r).slice(0,240), "grave");
+        /* la ventana del ítem en la revisión: chips «también hay» con el principal deshabilitado */
+        const A1 = asisCfg(); A1.items = [asisNorm(Object.assign({}, base, {tipo:"fenologia", fecha:HOY(), fundo:FA, cuarteles:[QD.nombre], bbch:"65", texto:"Bot AS1 revisión", asisLote:"alBotAS1"}))]; A1.lote = "alBotAS1"; guardar();
+        await irA("asist"); asisEditar(0); await pausa(); necesito(modalAbierto() && document.getElementById("ai_sec"), "la ventana del ítem con «También hay»");
+        chk(document.querySelector('#ai_sec [data-sec="65"]') && document.querySelector('#ai_sec [data-sec="65"]').disabled, "En la revisión, el principal no está deshabilitado en «También hay»", "leve");
+        await tocar('#ai_sec [data-sec="57"]', "también 57"); await guardarModal_();
+        chk(JSON.stringify((asisCfg().items && asisCfg().items[0] || {}).bbch_sec)==='["57"]', "La ventana del ítem no guardó el «también hay» marcado: "+JSON.stringify((asisCfg().items && asisCfg().items[0] || {}).bbch_sec), "media");
+        asisCfg().items = null; guardar();
+      } finally { if(modalAbierto()){ try{ cerrarModal(); }catch(e){} } D.cuarteles = D.cuarteles.filter(q=>q!==QD); guardar(); }
+    });
+    await paso("AS2 · Fenología para un cuartel que no existe: queda como nota «(revisar)» con «BBCH 65» en el texto (H7)", async ()=>{
+      const n0 = D.notas.length, f0 = fenAll().length;
+      asisAplicarTodos([Object.assign({}, base, {tipo:"fenologia", fecha:HOY(), fundo:fu, cuarteles:["Cuartel que no existe bot"], bbch:"65", bbch_sec:["57"], texto:"Bot AS2", asisLote:"alBotAS2"})], "celular");
+      const n = D.notas[D.notas.length-1];
+      chk(D.notas.length===n0+1 && fenAll().length===f0 && /\(revisar\)$/.test(n.titulo||"") && /BBCH 65/.test(n.texto||""), "La fenología de un cuartel que no existe no quedó como nota «(revisar)» con «BBCH 65»: "+JSON.stringify(n && {titulo:n.titulo, texto:n.texto}).slice(0,240), "media");
+    });
+    await paso("AS3 · Un ítem armado a mano sin bbch_sec (como los de antes) se guarda igual que siempre", async ()=>{
+      const sinSec = Object.assign({}, base); delete sinSec.bbch_sec;
+      const f0 = fenAll().length; let err = null;
+      try{ asisAplicarTodos([Object.assign({}, sinSec, {tipo:"fenologia", fecha:HOY(), fundo:fu, cuarteles:[qf.nombre], bbch:bb, texto:"Bot AS3", asisLote:"alBotAS3"})], "ipad"); }catch(e){ err = e; }
+      const r = fenAll()[fenAll().length-1];
+      chk(!err && fenAll().length===f0+1 && r.bbch===bb && r.cuartel===qf.nombre && !("bbchSec" in r), "Un ítem sin bbch_sec no se guardó como antes"+(err? ": "+err.message : ": "+JSON.stringify(r).slice(0,200)), "media");
+    });
+    /* ---- revisión v164 (los 3 revisores): la fecha del celular (§2.7) y lo que se conserva al editar en el iPad ---- */
+    await paso("AS4 · Una fenología que llega del celular con fecha de pasado mañana (el reloj mal puesto) se guarda con la de hoy y lo dice en la nota; mañana todavía vale; lo del iPad no se toca", async ()=>{
+      lotesAdj.push("alBotAS4");
+      const mk = (f, eq, tx)=>{ const f0 = fenAll().length; asisAplicarTodos([Object.assign({}, base, {tipo:"fenologia", fecha:f, fundo:fu, cuarteles:[qf.nombre], bbch:bb, bbch_sec:[], texto:tx, asisLote:"alBotAS4"})], eq); return fenAll().length===f0+1? fenAll()[fenAll().length-1] : null; };
+      const f3 = masDias(HOY(),3), r1 = mk(f3, "celular", "Bot AS4 futuro"), r2 = mk(masDias(HOY(),1), "celular", "Bot AS4 mañana"), r3 = mk(f3, "ipad", "Bot AS4 iPad");
+      chk(r1 && r1.fecha===HOY() && (r1.nota||"").indexOf("Bot AS4 futuro\nOjo: la fecha venía en el futuro ("+fmtF(f3)+"): se guardó con la de hoy.")===0, "Del celular con fecha "+fmtF(f3)+" no quedó con la de hoy y «Ojo: la fecha venía en el futuro…» en la nota: "+JSON.stringify(r1 && {fecha:r1.fecha, nota:r1.nota}), "media");
+      chk(r2 && r2.fecha===masDias(HOY(),1) && r2.nota==="Bot AS4 mañana", "Del celular con la fecha de mañana (diferencia de horario) se cambió la fecha o la nota: "+JSON.stringify(r2 && {fecha:r2.fecha, nota:r2.nota}), "leve");
+      chk(r3 && r3.fecha===f3 && r3.nota==="Bot AS4 iPad", "En el iPad (dictado) se cambió la fecha: "+JSON.stringify(r3 && {fecha:r3.fecha, nota:r3.nota}), "leve");
+      const it = asisNorm(Object.assign({}, base, {tipo:"fenologia", fecha:masDias(HOY(),5), fundo:fu, cuarteles:[qf.nombre], bbch:bb})); asisFechaCel(it);
+      chk(it.fecha===HOY() && /la fecha venía en el futuro/.test(it.faltante||""), "asisFechaCel no dejó la fecha de hoy y el aviso en faltante: "+JSON.stringify({fecha:it.fecha, faltante:it.faltante}), "leve");
+    });
+    /* revisión 2 de la v164: la hora que trae el celular */
+    await paso("AS6 · La hora del celular (dictadoFh) solo vale si es una fecha y hora válida y no del futuro: si no, fh y la hora de la Bitácora son las del iPad (y ese registro no queda como «el último» del día); la del iPad no se toca", async ()=>{
+      lotesAdj.push("alBotAS6");
+      const t0 = Date.now(), enAhora = x=>{ const t = Date.parse(x||""); return !isNaN(t) && t>=t0-2000 && t<=Date.now()+2000; };
+      const mk = (fh, eq, tx, f)=>{ const f0 = fenAll().length; asisAplicarTodos([Object.assign({}, base, {tipo:"fenologia", fecha:f||HOY(), fundo:fu, cuarteles:[qf.nombre], bbch:bb, bbch_sec:[], texto:tx, asisLote:"alBotAS6", dictadoFh:fh, mano:true})], eq); return fenAll().length===f0+1? fenAll()[fenAll().length-1] : null; };
+      const r1 = mk(new Date(t0+5*864e5).toISOString(), "celular", "Bot AS6 reloj adelantado", masDias(HOY(),5));
+      chk(r1 && r1.fecha===HOY() && enAhora(r1.fh) && enAhora(r1.dictadoFh), "Con el reloj del celular 5 días adelantado quedaron la hora (fh) o la del dictado en el futuro: "+JSON.stringify(r1 && {fecha:r1.fecha, fh:r1.fh, dictadoFh:r1.dictadoFh}), "media");
+      const otro = {id:(+(r1 && r1.id)||0)-1, fecha:HOY(), fh:new Date(Date.now()+1500).toISOString()};   // lo que se anote en el iPad un momento después, el mismo día
+      chk(r1 && fenCmp(otro, r1)>0, "Un registro del iPad anotado después, el mismo día, no queda como «el último» frente al que llegó con el reloj adelantado", "media");
+      const bien = new Date(t0-3600000).toISOString(), r2 = mk(bien, "celular", "Bot AS6 hora bien");
+      chk(r2 && r2.fh===bien && r2.dictadoFh===bien, "Una hora del celular de hace 1 hora no se guardó tal cual: "+JSON.stringify(r2 && {fh:r2.fh, dictadoFh:r2.dictadoFh}), "media");
+      const cinco = new Date(t0+5*60000).toISOString(), r3 = mk(cinco, "celular", "Bot AS6 cinco minutos");
+      chk(r3 && r3.fh===cinco && r3.dictadoFh===cinco, "Con el reloj del celular 5 minutos adelantado (dentro del margen de 10) se cambió la hora", "leve");
+      const r4 = mk("2026-11-02T10:00<b onmouseover=x>", "celular", "Bot AS6 hora rara");
+      const o4 = document.createElement("div"); o4.innerHTML = lcOrigenHTML({origen:"asis", st:"fenologia"}, r4||{}, null);
+      chk(r4 && enAhora(r4.fh) && enAhora(r4.dictadoFh) && !o4.querySelector("b"), "Una hora rara del celular quedó guardada o cambió la Bitácora: "+JSON.stringify(r4 && {fh:r4.fh, dictadoFh:r4.dictadoFh}), "media");
+      const o5 = document.createElement("div"); o5.innerHTML = lcOrigenHTML({origen:"asis", st:"fenologia"}, {origen:"asis", equipo:"celular", mano:true, dictadoFh:"<i>xx</i>"}, null);
+      chk(!o5.querySelector("i"), "La línea «Origen» de la Bitácora no escapa una hora rara guardada de antes", "leve");
+      const ip = new Date(t0+2*3600000).toISOString(), r6 = mk(ip, "ipad", "Bot AS6 iPad");
+      chk(r6 && r6.fh===ip && r6.dictadoFh===ip, "En el iPad (lo dictado ahí) se cambió la hora del dictado", "leve");
+    });
+    await paso("AS5 · Editar en el iPad un registro que llegó del celular (Riego) conserva desde qué celular y quién lo anotó (equipoId y autor)", async ()=>{
+      lotesAdj.push("alBotAS5");
+      const r0 = D.registros.length;
+      asisAplicarTodos([Object.assign({}, base, {tipo:"registro", fecha:HOY(), fundo:fu, cuarteles:[qf.nombre], registro_tipo:"Riego", registro_valor:3, texto:"Bot AS5", asisLote:"alBotAS5", equipoId:"Celular-bot5", autor:"Pía bot"})], "celular");
+      const r = D.registros[D.registros.length-1];
+      necesito(D.registros.length===r0+1 && r && r.equipoId==="Celular-bot5" && r.autor==="Pía bot", "el riego llegado del celular con equipoId y autor");
+      syncCfg().rol = "off"; guardar(); await irA("bitacora");
+      formReg(r.id); await pausa(); necesito(modalAbierto(), "la edición del riego");
+      await escribir("m_obs", "Bot AS5 editado en el iPad", "observación"); await guardarModal_();
+      const e = D.registros.find(x=>x.id===r.id);
+      chk(e && e.obs==="Bot AS5 editado en el iPad" && e.equipoId==="Celular-bot5" && e.autor==="Pía bot" && e.equipo==="celular" && e.asisId===r.asisId, "Al editar en el iPad el riego del celular se perdió equipoId o autor (la Bitácora ya no diría quién lo anotó): "+JSON.stringify(e && {obs:e.obs, equipoId:e.equipoId, autor:e.autor}), "media");
+      if(modalAbierto()){ try{ cerrarModal(); }catch(x){} }
+    });
+    await paso("H8 · Datos → Sincronización dice cada cuánto revisa de verdad el celular (45 s), no «cada 10 s»", async ()=>{
+      const s2 = syncCfg(), k0 = {rol:s2.rol, url:s2.url, clave:s2.clave};
+      try{ s2.rol = "receptor"; s2.url = "https://bots.invalid"; s2.clave = "bots";
+        const t = txtDe(Object.assign(document.createElement("div"), {innerHTML:syncCardHTML()}));
+        chk(t.indexOf("cada "+Math.round(SYNC_SONDEO/1000)+" segundos")>=0 && t.indexOf("revisa cada "+Math.round(SYNC_SONDEO/1000)+" s")>=0 && !/cada 10 s/.test(t), "La tarjeta de sincronización no dice el sondeo real ("+Math.round(SYNC_SONDEO/1000)+" s): «"+t.slice(0,220)+"»", "leve");
+      } finally { s2.rol = k0.rol; s2.url = k0.url; s2.clave = k0.clave; }
+    });
   } finally {
     window.syncFetch = sf0; const s1 = syncCfg(); s1.url = s0.url; s1.clave = s0.clave; s1.rol = s0.rol;
     /* lo que el iPad importó de la bandeja (nota, recordatorio, fenología…) no se deshace en los pasos: se quita aquí (si no, el revisor de pantallas lo encuentra en la Gantt) */
     ["notas","registros","recordatorios","fenologia","labores","bitacora"].forEach(k=>{ if(Array.isArray(D[k])) D[k] = D[k].filter(x=>!(x && (x.dictado==="Bot borrador que no se pierde" || /orden_aplicacion_bot\.pdf/.test(x.dictado||"") || (x.asisLote && lotesAdj.indexOf(x.asisLote)>=0)))); });
     respEsp = null; try{ asisAdjFin(); }catch(e){}
-    const A3 = asisCfg(); A3.items = null; A3.borrador = ""; A3.cola = []; guardar();
+    D.buzonAcuse = JSON.parse(ba0);
+    const A3 = asisCfg(); A3.items = null; A3.borrador = ""; A3.cola = []; if(env0===null) delete A3.enviados; else A3.enviados = JSON.parse(env0); guardar();
   }
 }});
 
@@ -7369,7 +7830,8 @@ BOTS.push({id:"ficha", modulo:"Bitácora", nombre:"Tomás, mira un cuartel", ico
       chk(st==="★"+nd, "El ★ de la cabecera no cuenta solo los destacados propios de la temporada ("+nd+", como la portada): dice «"+st+"»", "leve");
       const nA = T.d12>=T.t0? 2 : 1;
       chk(/En carencia/.test(cas(0)) && cas(0).indexOf("hasta "+dm(masDias(H,5)))>=0 && /Bot Fi Karate/.test(cas(0)), "La casilla Carencia no dice «En carencia · hasta "+dm(masDias(H,5))+" · Bot Fi Karate»: «"+cas(0)+"»");
-      chk(/BBCH 71/.test(cas(1)) && /Cuaja/.test(cas(1)) && /hoy/.test(cas(1)), "La casilla Fenología no dice «BBCH 71 · Cuaja · hoy»: «"+cas(1)+"»");
+      const nom71 = fenNombre(q1.especie||"", "71", "Cuaja");   // v164: en un cerezo, el nombre del boletín («Caída de chaqueta»)
+      chk(/BBCH 71/.test(cas(1)) && cas(1).indexOf(nom71)>=0 && /hoy/.test(cas(1)), "La casilla Fenología no dice «BBCH 71 · "+nom71+" · hoy»: «"+cas(1)+"»");
       chk(/Bot Fi Karate/.test(cas(2)) && cas(2).indexOf(nA+".ª esta temporada")>=0, "La casilla Última aplicación no dice «Bot Fi Karate · "+nA+".ª esta temporada»: «"+cas(2)+"»");
       chk(/Bot Fi Amarre/.test(cas(3)) && /300 plantas/.test(cas(3)) && /5 pers/.test(cas(3)) && /hoy/.test(cas(3)), "La casilla Última labor no dice «Bot Fi Amarre · 300 plantas · 5 pers. · hoy»: «"+cas(3)+"»");
       const pd = q(".lc-fi-pend");
@@ -7624,7 +8086,7 @@ BOTS.push({id:"ficha", modulo:"Bitácora", nombre:"Tomás, mira un cuartel", ico
 }});
 
 /* 📲 CELULAR ESPEJO → iPAD (Bitácora · Etapa 3) ------------------------------------------ */
-BOTS.push({id:"celular", modulo:"Bitácora: celular", nombre:"Pía, anota desde el celular", ico:"📲", que:"El celular espejo de punta a punta con el caso Esteron: aviso fijo, «+ Anotar» abre el formulario corto (no los del iPad) con avisos dentro de la ventana; la aplicación hecha con la caja del catálogo arma un ítem del asistente correcto (origen, asisId, equipo, resumen como texto dictado) sin tocar la revisión pendiente ni escribir en el cuaderno; sin señal queda en la cola y sale solo al volver; fila gris «En camino al iPad» (en cola / enviado) en Día a día y en la ficha que se va recién cuando el registro llega sincronizado; el iPad lo importa con su asisId y el catálogo; labor hecha; «Pedir al iPad» ★ Destacar y Corregir… desde la hoja de detalle (★ en la línea, nota «Por corregir» enlazada con su chip, «Ya se corrigió», referencia borrada) y nada de base64 ni datos de pantalla en el cuaderno. El puente se simula", correr: async ()=>{
+BOTS.push({id:"celular", modulo:"Bitácora: celular", nombre:"Pía, anota desde el celular", ico:"📲", que:"El celular espejo de punta a punta con el caso Esteron: aviso fijo, «+ Anotar» abre el formulario corto (no los del iPad) con avisos dentro de la ventana; la aplicación hecha con la caja del catálogo arma un ítem del asistente correcto (origen, asisId, equipo, resumen como texto dictado) sin tocar la revisión pendiente ni escribir en el cuaderno; sin señal queda en la cola y sale solo al volver; fila gris «En camino al iPad» (en cola / enviado) en Día a día y en la ficha que se va recién cuando el registro llega sincronizado; el iPad lo importa con su asisId y el catálogo; labor hecha; «Pedir al iPad» ★ Destacar y Corregir… desde la hoja de detalle (★ en la línea, nota «Por corregir» enlazada con su chip, «Ya se corrigió», referencia borrada) y nada de base64 ni datos de pantalla en el cuaderno; v164 (F1): Fenología desde el celular (fenCel, «También hay», la grilla del cerezo, hasta 4 fotos de 1.600 px, Sugerir con Claude), quién y desde qué equipo, el acuse de recibo, el reenvío de lo perdido, «No llegó al iPad», «Quitar de la cola», el cuartel renombrado, la detección del puente con «Probar» y el gasto del plan gratis. El puente se simula", correr: async ()=>{
   const nomK = s=>gtNorm(s||"").replace(/\s+/g," ").trim();
   const qU = plantados().find(q=>fundos().indexOf(q.fundo)>=0 && D.cuarteles.filter(x=>nomK(x.nombre)===nomK(q.nombre)).length===1 && !carenciaDe(q)) || null;
   const pSD = qU? (cfCatProd().find(p=>/esteron/i.test(p.n||"") && cfCarEsp(p, cfEspKey(qU.especie))==null) || cfCatProd().find(p=>p.n && cfCarEsp(p, cfEspKey(qU.especie))==null)) : null;
@@ -7633,6 +8095,52 @@ BOTS.push({id:"celular", modulo:"Bitácora: celular", nombre:"Pía, anota desde 
   const H = HOY(), s = syncCfg(), s0 = {url:s.url, clave:s.clave, rol:s.rol}, sf0 = window.syncFetch, on0 = Object.getOwnPropertyDescriptor(navigator, "onLine");
   const ui0 = JSON.stringify(D.ui||{}), lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null, p0 = localStorage.getItem("agronotasBitacora");
   const asis0 = JSON.stringify(D.asist||{}), lab0 = JSON.stringify(D.labores||[]), bc0 = JSON.stringify(D.bitCfg||null), keys0 = Object.keys(D), ids = [];
+  const ba0 = JSON.stringify(D.buzonAcuse||[]);   // v164: el acuse que deja el iPad al importar se repone al final
+  /* v164 (F1): lo que tocan los pasos CE1–CE9 (se repone en el finally) y el puente SIMULADO, que anota cada pedido («PUT foto/fc…»,
+     «POST bandeja», «GET meta»…) para contar el gasto del plan gratis. Nunca se llama al puente real */
+  const FC = "Bot Celular v164", cuC0 = D.cuarteles.slice(), sy0 = JSON.stringify(D.sync||{}), nf0 = nav.fen? JSON.stringify(nav.fen) : null, ds0 = nav.datosSec, fcIds = [];
+  let QD = null, QN = null, QC = null;
+  const cuC = (nombre, especie)=>{ const q = {id:nid(), fundo:FC, nombre, especie, variedad:"Bot", portainjerto:"", ha:1, marco:"4x2", anio:"2020"}; D.cuarteles.push(q); return q; };
+  const PB = {bandeja:[], fotos:{}, log:[], todo:[], posts:[], caido:false, sinBandeja:false, v4:false, ia:null, pedidoIA:null, postErr:0};
+  const pbErr = (st, m)=>Object.assign(new Error(m), {status:st});
+  const pbFetch = async function(ruta, opt){
+    const r = String(ruta), m = String((opt && opt.method) || "GET").toUpperCase(), k = m+" "+(r.indexOf("foto/")===0? "foto/"+decodeURIComponent(r.slice(5)) : r);
+    PB.log.push(k); PB.todo.push(k);
+    if(!navigator.onLine || PB.caido) throw new TypeError("Failed to fetch");
+    if(r==="meta") return Object.assign({ts:Date.now(), equipo:"iPad-bot", n:4096, hay:true, fotos:"kv"}, PB.v4? {v:4} : {});
+    if(/^bandeja(\/|$)/.test(r) && PB.sinBandeja) throw pbErr(400, "ruta no permitida");
+    if(r==="bandeja" && m==="GET") return {items:JSON.parse(JSON.stringify(PB.bandeja)), n:PB.bandeja.length};
+    if(r==="bandeja" && m==="POST"){   // como el Worker: un id que ya está no se duplica
+      if(PB.postErr) throw pbErr(PB.postErr, PB.postErr===400? "lo enviado no tiene la forma esperada (id o tamaño)" : "la bandeja está llena: abre el iPad para que importe lo pendiente");   // revisión v164: el puente v4 rechaza el envío
+      const b = JSON.parse(opt.body), ya = new Set(PB.bandeja.map(x=>x.id)); let n = 0;
+      (b.items||[]).forEach(x=>{ PB.posts.push(x.id); if(ya.has(x.id)) return; ya.add(x.id); PB.bandeja.push({id:x.id, ts:Date.now(), origen:String(b.origen||""), item:JSON.parse(JSON.stringify(x.item))}); n++; });
+      return {ok:true, agregados:n, n:PB.bandeja.length};
+    }
+    if(r==="bandeja/borrar" && m==="POST"){ const xs = (JSON.parse(opt.body).ids||[]).map(String); PB.bandeja = PB.bandeja.filter(x=>xs.indexOf(String(x.id))<0); return {ok:true}; }
+    if(r.indexOf("foto/")===0){
+      const id = decodeURIComponent(r.slice(5));
+      if(m==="PUT"){ PB.fotos[id] = String((opt && opt.body)||""); return {ok:true, id}; }
+      if(m==="GET" && opt && opt.crudo) return PB.fotos[id]!=null? PB.fotos[id] : null;
+    }
+    if(r==="fotos") return {ids:Object.keys(PB.fotos), cursor:null, donde:"kv"};   // el list() de KV: ningún paso debería pedirlo
+    if(r==="asistente" && PB.ia){ const p = asisCuerpoLeer(opt.body); PB.pedidoIA = p; await esperar(60);
+      return {ok:true, modelo:"claude-opus-5-5", adjuntos:(p.adjuntos||[]).length, usage:{input_tokens:2500, output_tokens:120}, datos:PB.ia}; }
+    throw new Error("bots: ruta "+r+" no simulada");
+  };
+  const fotoRuido = async (w, h, nombre)=>{   // mucho detalle: en JPEG de 1.600 px pasa de 600 KB
+    const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d"), im = x.createImageData(w, h), d = im.data;
+    for(let i=0;i<d.length;i+=4){ d[i] = (Math.random()*256)|0; d[i+1] = (Math.random()*256)|0; d[i+2] = (Math.random()*256)|0; d[i+3] = 255; }
+    x.putImageData(im, 0, 0); const b = await new Promise(res=>c.toBlob(res, "image/png")); return new File([b], nombre, {type:"image/png"});
+  };
+  const fotosCe = ()=>((_lcCe && _lcCe.fotos)||[]).map(f=>f.id);
+  const avFen = ()=>{ const a = document.getElementById("lcCeFenAv"); return a && !a.hidden? txtDe(a) : ""; };
+  const galeria = ()=>necesito([...document.querySelectorAll('#capaModal .lc-ce-fot input[type="file"]')].find(x=>!x.hasAttribute("capture")), "el botón Galería del formulario corto");
+  const conFotos = async files=>{ const n0 = fotosCe().length; await adjuntarArchivos(galeria(), files); await esperarQue(()=>_lcCe && !_lcCe.fotoOcup, 20000); const l = fotosCe().slice(n0); l.forEach(f=>fcIds.push(f)); return l; };
+  const formCel = async q=>{ await cerrarTodo(); fenCel(q.fundo, q.nombre); await pausa(); necesito(modalAbierto() && document.getElementById("lcCe") && _lcCe && _lcCe.que==="fen", "el formulario corto en Fenología de "+q.nombre); };
+  const camId = id=>document.querySelector(`#app [data-cam="${id}"]`);
+  const env = id=>asisEnv(asisCfg()).find(e=>e && e.id===id) || null;
+  const histIt = id=>{ for(const h of asisCfg().hist) for(const x of ((h && h.its)||[])) if(x && x.id===id) return x; return null; };
+  const fenIr = async ()=>{ fenNav().fundo = FC; fenNav().cuartel = ""; fenNav().vista = "hist"; await irA("fenologia"); };
   let bandeja = [], borrados = [];
   const sinSenal = off=>{ if(off) Object.defineProperty(navigator, "onLine", {configurable:true, get:()=>false}); else { if(on0) Object.defineProperty(navigator, "onLine", on0); else delete navigator.onLine; } };
   window.syncFetch = async function(ruta, opt){
@@ -7663,7 +8171,7 @@ BOTS.push({id:"celular", modulo:"Bitácora: celular", nombre:"Pía, anota desde 
       const m = necesito(modalAbierto(), "el formulario corto");
       chk(document.querySelector("#capaModal #lcCe") && /se envía al iPad/.test(txtDe(document.querySelector("#capaModal .mh h3"))) && !document.querySelector("#capaModal .lc-op, #capaModal #bit_fecha, #capaModal #m_tipo, #capaModal #m_titulo"), "En el espejo «+ Anotar» no abrió el formulario corto «Anotar · se envía al iPad» (o abrió uno del iPad)", "grave");
       const qs = [...m.querySelectorAll('[data-ce="que"]')].map(txtDe);
-      chk(qs.length===4 && /Aplicación hecha/.test(qs[0]) && /Labor hecha/.test(qs[1]) && /Riego/.test(qs[2]) && /Nota/.test(qs[3]), "«Qué» no ofrece Aplicación hecha · Labor hecha · Riego · Nota: "+qs.join(" | "));
+      chk(qs.length===5 && /Aplicación hecha/.test(qs[0]) && /Labor hecha/.test(qs[1]) && /Riego/.test(qs[2]) && /Fenología/.test(qs[3]) && /Nota/.test(qs[4]), "«Qué» no ofrece Aplicación hecha · Labor hecha · Riego · Fenología · Nota (v164): "+qs.join(" | "));
       chk([...m.querySelectorAll('[data-ce="dia"]')].map(txtDe).join("|").indexOf("Hoy "+lcDM(H))===0 && m.querySelectorAll('[data-ce="fu"]').length>=1, "Faltan los chips de fecha (Hoy, Ayer, Otro día…) o de fundo");
       const chicos = [...m.querySelectorAll(".mb button, .mb input:not([type=checkbox]):not(.fdmy-nat), .mb select, .mf .btn")].filter(visible).filter(b=>b.offsetHeight<34);   // offsetHeight: la ventana entra con una animación de escala
       chk(!chicos.length && [...m.querySelectorAll('[data-ce="que"]')].every(b=>b.offsetHeight>=44), "En el formulario corto hay "+chicos.length+" tocables de menos de 34 px (o «Qué» bajo 44 px): "+chicos.slice(0,3).map(b=>"«"+txtDe(b).slice(0,14)+"»").join(", "), "leve");
@@ -7743,11 +8251,12 @@ BOTS.push({id:"celular", modulo:"Bitácora: celular", nombre:"Pía, anota desde 
       if(rA){ formReg(rA.id); await pausa(); await escribir("m_objetivo", "Bot malezas de hoja ancha", "objetivo"); chk(await guardarModal_(), "No se guardó la edición del registro llegado del celular");
         chk(rA.mano===true && rA.equipo==="celular" && rA.asisId===itA.id && rA.objetivo==="Bot malezas de hoja ancha" && rA.estado==="aplicado", "Al editar en el iPad lo anotado a mano en el celular perdió «a mano» o sus sellos: "+JSON.stringify({mano:rA.mano, equipo:rA.equipo, asisId:rA.asisId, estado:rA.estado}), "media"); }
     });
-    await paso("El iPad ya lo tomó de la bandeja: «recibido en el iPad»; si allá se deshace, la fila gris dura 2 días y no 30", async ()=>{
+    await paso("El iPad acusa recibo (v164: D.buzonAcuse, no «ya no está en la bandeja»): «recibido en el iPad»; si allá se deshace, la fila gris dura 2 días y no 30", async ()=>{
       celular(); const A = asisCfg();
-      accion("el celular revisa la bandeja"); await asisCaminoRevisar();
+      chk(!!asisAcuseDe(itA.id), "El iPad no dejó el acuse de recibo (D.buzonAcuse) de lo que leyó de la bandeja", "media");
+      accion("el celular revisa lo que llegó (acuse)"); await asisCaminoRevisar();
       const x = (A.hist.find(h=>(h.its||[]).some(y=>y.id===itA.id))||{its:[]}).its.find(y=>y.id===itA.id);
-      chk(x && x.rec, "El celular no anotó que el iPad ya tomó lo enviado de la bandeja", "leve");
+      chk(x && x.rec, "El celular no anotó que el iPad ya recibió lo enviado (acuse)", "leve");
       const i = D.registros.indexOf(rA); if(i>=0) D.registros.splice(i,1); guardar();   // como si el iPad hubiera hecho Deshacer
       await dia();
       const re = new RegExp(pSD.n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")), f1 = camino(re);
@@ -7877,15 +8386,461 @@ BOTS.push({id:"celular", modulo:"Bitácora: celular", nombre:"Pía, anota desde 
       chk(!nuevas.length && !Object.keys(A).some(k=>/^_|lcCe/.test(k)), "Quedaron datos de pantalla en el cuaderno: "+nuevas.concat(Object.keys(A).filter(k=>/^_|lcCe/.test(k))).join(", "), "media");
       const malos = ["incl","_fundoNo","_cuNo","adjK","val","que","dia","cus"], hechos = [rA, bL, D.notas.find(n=>pedC && n.asisId===pedC.id)].filter(Boolean);
       chk(hechos.length===3 && hechos.every(o=>!malos.some(k=>k in o)), "Lo guardado en el iPad lleva datos de pantalla: "+hechos.map(o=>malos.filter(k=>k in o).join(",")).filter(Boolean).join(" · "), "media");
-      chk((A.hist||[]).every(h=>(h.its||[]).every(x=>Object.keys(x).every(k=>["id","t","tit","fu","cus","f","c","d","acc","ref","refs","rec"].indexOf(k)>=0))), "Las filas «En camino al iPad» guardan más de lo necesario en el historial", "leve");
+      chk((A.hist||[]).every(h=>(h.its||[]).every(x=>Object.keys(x).every(k=>["id","t","tit","fu","cus","f","c","d","acc","ref","refs","rec","ft"].indexOf(k)>=0))), "Las filas «En camino al iPad» guardan más de lo necesario en el historial", "leve");   // ft (v164): la 1.ª foto, para la miniatura
+    });
+    delete s.puenteV; delete s.puenteFh;   // lo que haya dejado otro bot: CE8 lo prueba desde cero
+    /* ---- v164 (F1, fenologia_diseno.md §5.1, CE1–CE9): registrar fenología (y notas con fotos) desde el celular espejo para que llegue al iPad.
+       Puente SIMULADO (PB: bandeja, fotos y la lista de cada pedido, para contar el gasto); nunca el real. Cuarteles propios en un fundo de prueba:
+       QD duraznero, QN nectarino (la misma escala) y QC cerezo (otra escala). Todo vuelve a como estaba en el finally del bot ---- */
+    QD = cuC("Duraznero cel bot", "Duraznero"); QN = cuC("Nectarino cel bot", "Nectarino"); QC = cuC("Cerezo cel bot", "Cerezo"); guardar();
+    window.syncFetch = pbFetch;
+    let itF = null, fF = [], rF = null, envF = null;
+    await paso("CE1 · Entrada en el celular: «Registrar estado fenológico · se envía al iPad» (fenCel) a la vista en Fenología, fenNuevo abre el formulario corto en Fenología, el historial abre la foto y «Qué» tiene Fenología", async ()=>{
+      celular(); await fenIr();
+      const b = [...document.querySelectorAll('#app button[onclick^="fenCel("]')].find(x=>x.offsetParent!==null && /Registrar estado fenológico · se envía al iPad/.test(txtDe(x)));
+      chk(!!b && ![...document.querySelectorAll('#app button[onclick^="fenNuevo("]')].some(x=>x.offsetParent!==null), "En el celular espejo la pestaña Fenología no muestra a la vista «Registrar estado fenológico · se envía al iPad» (fenCel), o muestra un botón fenNuevo", "grave");
+      chk(LC_CE_QUE.some(x=>x[0]==="fen"), "LC_CE_QUE no tiene la opción «fen»", "grave");
+      accion("fenNuevo() en el espejo"); fenNuevo(QD.fundo, QD.nombre); await pausa();
+      const m = modalAbierto(), qf = m && m.querySelector('[data-ce="que"][data-v="fen"]');
+      chk(m && document.getElementById("lcCe") && qf && qf.getAttribute("aria-pressed")==="true" && _lcCe && _lcCe.fu===QD.fundo && _lcCe.cus.join()===QD.nombre && !/díctalo o anótalo/.test(txtDe(document.getElementById("avisoCapa"))),
+        "En el espejo fenNuevo no abrió el formulario corto con Fenología y el cuartel elegidos (o avisó «díctalo o anótalo»)", "grave");
+      chk(m && /Estado principal/.test(txtDe(m)) && m.querySelector(`#lcCeEst [onclick="lcCeFen('65')"]`), "El formulario corto en Fenología no muestra «Estado principal» con los estados de "+QD.especie, "grave");
+      await cancelarModal();
+      /* el historial: «＋ Registrar» va al formulario corto y la tarjeta con foto abre la foto (en el iPad, la edición de siempre) */
+      const cv = document.createElement("canvas"); cv.width = 64; cv.height = 48; cv.getContext("2d").fillRect(0, 0, 64, 48);
+      const fid = "f"+nid(); await fotoPut(fid, cv.toDataURL("image/jpeg", 0.8));
+      const e0 = {id:nid(), fecha:masDias(H,-2), fundo:QD.fundo, cuartel:QD.nombre, especie:QD.especie, bbch:"57", estado:"Botón blanco / rosado", fotos:[fid], nota:"Bot CE1"}; fenAll().push(e0); guardar();
+      try{
+        await fenIr();
+        const rg = [...document.querySelectorAll("#app .fencu button")].find(x=>/Registrar/.test(txtDe(x)) && x.offsetParent!==null);
+        chk(rg && /^fenCel\(/.test(rg.getAttribute("onclick")||"") && document.querySelector(`#app .fentile[onclick="abrirVisor('${fid}')"]`), "En el historial del celular «＋ Registrar» no abre el formulario corto (fenCel) o la tarjeta con foto no abre la foto", "media");
+        ipad(); await fenIr();
+        chk(document.querySelector(`#app .fentile[onclick="fenEditar(${e0.id})"]`) && [...document.querySelectorAll("#app .fencu button")].some(x=>/^fenNuevo\(/.test(x.getAttribute("onclick")||"")), "En el iPad la tarjeta del historial ya no abre la edición (fenEditar) o «＋ Registrar» no es fenNuevo", "grave");
+        celular(); accion("fenEditar() en el espejo"); fenEditar(e0.id);
+        chk(await esperarQue(()=>visorAbierto(), 2500) && !modalAbierto(), "En el espejo fenEditar no abrió la foto (o abrió un formulario)", "media");
+      } finally { await cerrarTodo(); D.fenologia = fenAll().filter(x=>x!==e0); guardar(); fotoDelAhora(fid); }
+    });
+    await paso("CE2 · Formulario corto en Fenología: «¿Quién usa este equipo?», avisos dentro de la ventana (cuartel, otra especie, estado), principal 65 + también 57, fotos a 1.600 px (o 1.280 si pasa de 600 KB) con miniatura y ✕, tope de 4; Enviar al iPad deja en la cola el ítem con sus fotos «fc…» en subir (H4)", async ()=>{
+      celular(); nav.datosSec = "conexiones"; await irA("datos");
+      const ca = necesito(document.getElementById("sync_autor"), "«¿Quién usa este equipo?» en Datos → Sincronización");
+      chk(/¿Quién usa este equipo\?/.test(txtDe(ca.closest("label"))), "Falta el rótulo «¿Quién usa este equipo?»", "leve");
+      await escribir("sync_autor", "  Pía  ", "¿Quién usa este equipo?");
+      chk(syncCfg().autor==="Pía" && /· Pía/.test(txtDe(document.getElementById("syncEstado"))), "El nombre de «¿Quién usa este equipo?» no quedó «Pía» (sin espacios) o no se ve en el estado: "+JSON.stringify(syncCfg().autor), "media");
+      PB.caido = true;   // CE3: sin respuesta del puente, queda en la cola
+      await cerrarTodo(); lcCel({fundo:FC, cuarteles:[], que:"fen"}); await pausa();
+      await enviarCe(); chk(modalAbierto() && /Elige al menos un cuartel/.test(avisoCe()), "Sin cuartel no avisó «Elige al menos un cuartel» dentro de la ventana: «"+avisoCe()+"»", "media");
+      await chipCe("cu", QD.nombre, "cuartel "+QD.nombre);
+      await chipCe("cu", QC.nombre, "cuartel "+QC.nombre+" (otra especie)");
+      chk(_lcCe.cus.join()===QD.nombre && /no son los mismos/.test(avFen()), "Un cerezo junto al duraznero no avisó que los estados no son los mismos (o se agregó): "+_lcCe.cus.join(", ")+" · «"+avFen()+"»", "media");
+      await chipCe("cu", QN.nombre, "cuartel "+QN.nombre+" (la misma escala)");
+      chk(_lcCe.cus.length===2, "Un "+QN.especie+" (la misma escala que el duraznero) no se pudo agregar", "leve");
+      await tocar(`#capaModal [data-ce="cu"][data-v="${QN.nombre}"]`, "quitar "+QN.nombre);
+      await enviarCe(); chk(modalAbierto() && /Elige el estado principal/.test(avisoCe()), "Sin estado no avisó «Elige el estado principal» dentro de la ventana: «"+avisoCe()+"»", "media");
+      await tocar(`#lcCeEst [onclick="lcCeFen('65')"]`, "65 como principal");
+      await tocar({texto:/¿Hay otros estados a la vez\?/, sel:"#lcCeSec button"}, "¿Hay otros estados a la vez?");
+      const ch65 = document.querySelector('#lcCeSec [data-sec="65"]');
+      chk(ch65 && ch65.disabled, "En «También hay» del celular el 65 (el principal) no está deshabilitado", "media");
+      await tocar('#lcCeSec [data-sec="57"]', "también 57");
+      chk(_lcCe.bbch==="65" && JSON.stringify(_lcCe.sec)==='["57"]', "El formulario corto no quedó con 65 y también [57]: "+JSON.stringify({bbch:_lcCe.bbch, sec:_lcCe.sec}), "grave");
+      /* una foto grande (2.400 px → 1.600) y una con mucho detalle (pasa de 600 KB → se rehace a 1.280 px) */
+      fF = await conFotos([await fotoBot(2400, 1800, "cel_a.png"), await fotoRuido(1700, 1275, "cel_b.png")]);
+      const ths = [...document.querySelectorAll("#lcCeFotos .lc-ce-th img")];
+      chk(fF.length===2 && fF.every(f=>/^fc[a-z0-9]+$/.test(f)) && ths.length===2 && ths.every(i=>/^data:image\/jpeg/.test(i.src)), "Las 2 fotos no quedaron con id «fc…» y su miniatura: "+JSON.stringify(fF), "grave");
+      const d1 = await fotoGetLocal(fF[0]), d2 = await fotoGetLocal(fF[1]), m1 = d1? await dims(d1) : {w:0, h:0}, m2 = d2? await dims(d2) : {w:0, h:0};
+      const kb = d=>Math.round(asisB64Bytes(String(d).slice(String(d).indexOf(",")+1))/1024);
+      chk(d1 && /^data:image\/jpeg/.test(d1) && Math.max(m1.w, m1.h)===1600 && kb(d1)<=LC_CE_FOTO_KB, "La foto grande no quedó en JPEG de 1.600 px y 600 KB o menos ("+m1.w+"×"+m1.h+", "+(d1? kb(d1) : 0)+" KB)", "media");
+      chk(d2 && /^data:image\/jpeg/.test(d2) && Math.max(m2.w, m2.h)===1280, "La foto que pasaba de 600 KB no se rehízo a 1.280 px ("+m2.w+"×"+m2.h+", "+(d2? kb(d2) : 0)+" KB)", "media");
+      const ext = await conFotos([await fotoBot(800, 600, "cel_c.png"), await fotoBot(800, 600, "cel_d.png"), await fotoBot(800, 600, "cel_e.png")]);
+      chk(fotosCe().length===LC_CE_FOTOS && ext.length===2 && /Hasta 4 fotos por registro/.test(avFen()), "Con 5 fotos no quedaron 4 con el aviso «Hasta 4 fotos por registro» ("+fotosCe().length+"): «"+avFen()+"»", "media");
+      for(const f of ext) await tocar(`#lcCeFotos button[onclick="lcCeFotoQuitar('${f}')"]`, "✕ quitar una foto");
+      chk(fotosCe().join()===fF.join() && !(await fotoGetLocal(ext[0])) && !(await fotoGetLocal(ext[1])), "✕ no quitó las fotos de la ventana o no las borró del equipo", "media");
+      await escribir("lcCeTx", "Bot CE2: floración pareja", "observación");
+      const c0 = cuenta(), A = asisCfg(), n0 = A.cola.length;
+      await enviarCe(); await esperarQue(()=>!_asisColaOcup, 3000);
+      chk(!modalAbierto() && A.cola.length===n0+1, "«Enviar al iPad» no dejó el registro en la cola (o la ventana no se cerró)", "grave");
+      const c = A.cola[A.cola.length-1]; itF = (c && c.item) || null; if(itF) ids.push(itF.id);
+      chk(itF && itF.tipo==="fenologia" && itF.bbch==="65" && JSON.stringify(itF.bbch_sec)==='["57"]' && itF.fundo===FC && itF.cuarteles.join()===QD.nombre && itF.texto==="Bot CE2: floración pareja",
+        "El ítem no quedó {tipo fenologia, bbch 65, bbch_sec [57]}: "+JSON.stringify(itF||{}).slice(0,260), "grave");
+      chk(itF && JSON.stringify((itF.adjIds||{}).fotos)===JSON.stringify(fF) && c && JSON.stringify(c.subir)===JSON.stringify(fF), "El ítem no lleva sus 2 fotos «fc…» en adjIds y en subir (H4): "+JSON.stringify({adj:itF && itF.adjIds, subir:c && c.subir}), "grave");
+      chk(itF && itF.autor==="Pía" && itF.equipoId===syncEquipo() && itF.equipo==="celular" && itF.mano===true && itF.origen==="asis" && itF.asisId===itF.id && !!itF.dictadoFh
+        && /^Anotado a mano en el celular: Fenología · Plena floración \(50%\+\) \(BBCH 65\), también Botón blanco \/ rosado · /.test(itF.dictado||"") && /2 fotos/.test(itF.dictado||""),
+        "El ítem no lleva autor «Pía», equipoId, el sello y el texto «Anotado a mano en el celular: Fenología · … (BBCH 65), también …»: "+JSON.stringify(itF && {autor:itF.autor, equipoId:itF.equipoId, dictado:itF.dictado}), "media");
+      chk(!/data:|base64/.test(JSON.stringify(A.cola.map(x=>x.item))), "La cola guarda base64 (las fotos van aparte, por su id)", "grave");
+      chk(JSON.stringify(cuenta())===JSON.stringify(c0), "Enviar desde el celular escribió en el cuaderno del celular", "grave");
+    });
+    await paso("CE3 · Sin respuesta del puente queda en la cola con su fila «En camino al iPad» (miniatura y «Plena floración (50%+) (+1)»); con señal sube primero las 2 fotos (PUT foto/fc…) y después 1 POST bandeja", async ()=>{
+      necesito(itF, "el registro de CE2");
+      await fenIr();
+      const fl = camId(itF.id);
+      chk(fl && fl.closest("#fenCam") && /BBCH 65 · Plena floración \(50%\+\) \(\+1\)/.test(txtDe(fl)) && /en cola \(sin señal\)/.test(txtDe(fl)) && fl.querySelector(`.lc-cam-ph[data-fid="${fF[0]}"]`) && fl.querySelector(`[onclick="lcCamQuitar('${itF.id}')"]`),
+        "Arriba de la pestaña Fenología del celular no está la fila «En camino al iPad» con miniatura, «BBCH 65 · Plena floración (50%+) (+1)», «en cola (sin señal)» y «Quitar de la cola»: «"+txtDe(fl||null)+"»", "media");
+      chk(await esperarQue(()=>{ const p = fl && fl.querySelector(".lc-cam-ph"); return p && /data:image/.test(p.style.backgroundImage); }, 3000), "La miniatura de la fila no muestra la foto de este celular", "leve");
+      await dia(); chk(!!document.querySelector(`#lcVista .lc-cam-it[data-cam="${itF.id}"]`), "En Día a día no aparece la fila «En camino al iPad» de la fenología", "leve");
+      await esperarQue(()=>!_asisColaOcup, 3000); PB.log = []; PB.caido = false;   // la vuelta de 2 min del celular (asisIniciar) puede estar intentando
+      accion("vuelve la señal"); await asisColaEnviar(); await esperarQue(()=>!_asisColaOcup && !asisCfg().cola.length, 3000);
+      const sube = PB.log.filter(x=>!/^GET /.test(x));
+      chk(JSON.stringify(sube)===JSON.stringify(["PUT foto/"+fF[0], "PUT foto/"+fF[1], "POST bandeja"]), "Con señal el orden no fue PUT foto ×2 y después POST bandeja ×1: "+sube.join(" → "), "grave");
+      const A = asisCfg(), e = env(itF.id); envF = e? JSON.stringify(e) : null;
+      chk(!A.cola.length && PB.bandeja.some(x=>x.id===itF.id) && /^data:image\/jpeg/.test(PB.fotos[fF[0]]||"") && /^data:image\/jpeg/.test(PB.fotos[fF[1]]||""), "Lo enviado no quedó en la bandeja del puente con sus 2 fotos (o siguió en la cola)", "grave");
+      chk(e && e.reenvios===0 && typeof e.msEnv==="number" && !!e.fhEnv && !/data:|base64/.test(JSON.stringify(A.enviados)), "No quedó la copia de lo enviado (A.enviados con msEnv y reenvios 0, sin base64): "+JSON.stringify(e||{}).slice(0,160), "media");
+      await fenIr(); const f2 = camId(itF.id);
+      chk(f2 && /enviado \d{2}:\d{2}/.test(txtDe(f2)) && !f2.querySelector("button"), "Después de salir de la cola la fila no dice «enviado HH:MM» (o tiene botones)", "media");
+    });
+    await paso("CE4 · El iPad lo importa una vez: bbchSec, las mismas 2 fotos (bajadas del puente), equipoId, autor «Pía», fh = la hora de lo anotado y el acuse en D.buzonAcuse; con el ítem todavía en la bandeja no duplica", async ()=>{
+      necesito(itF && PB.bandeja.some(x=>x.id===itF.id), "lo enviado en la bandeja");
+      for(const f of fF) await fotoDelAhora(f);   // el iPad es otro equipo: no tiene las fotos del celular
+      ipad();
+      const n0 = fenAll().length; PB.log = [];
+      accion("el iPad revisa la bandeja"); await asisBandejaMirar(true); await pausa();
+      const l = fenAll().filter(x=>x.asisId===itF.id); rF = l[0] || null;
+      chk(fenAll().length===n0+1 && l.length===1, "El iPad no creó exactamente 1 registro fenológico ("+(fenAll().length-n0)+")", "grave");
+      chk(rF && rF.bbch==="65" && JSON.stringify(rF.bbchSec)==='["57"]' && JSON.stringify(rF.fotos)===JSON.stringify(fF) && rF.cuartel===QD.nombre && rF.estado==="Plena floración (50%+)" && rF.nota==="Bot CE2: floración pareja",
+        "El registro no quedó con bbch 65, bbchSec [57], las mismas 2 fotos y la observación: "+JSON.stringify(rF||{}).slice(0,260), "grave");
+      chk(rF && rF.equipoId===itF.equipoId && rF.autor==="Pía" && rF.fh===itF.dictadoFh && rF.equipo==="celular" && rF.mano===true && rF.origen==="asis",
+        "El registro no lleva equipoId, autor «Pía», fh = dictadoFh y el sello del celular: "+JSON.stringify(rF && {equipoId:rF.equipoId, autor:rF.autor, fh:rF.fh, dictadoFh:itF.dictadoFh}), "media");
+      chk(PB.log.filter(x=>/^GET foto\//.test(x)).length===2 && (await fotoGetLocal(fF[0]))===PB.fotos[fF[0]] && (await fotoGetLocal(fF[1]))===PB.fotos[fF[1]], "El iPad no bajó las 2 fotos del puente con el mismo id: "+PB.log.join(", "), "media");
+      chk(!!asisAcuseDe(itF.id) && (D.buzonAcuse||[]).some(x=>x.id===itF.id && x.eq===String(syncEquipo()).replace(/[^\w .-]/g,"")), "El iPad no dejó el acuse {id, ts, eq} en D.buzonAcuse", "grave");
+      chk(!PB.bandeja.length && PB.log.indexOf("POST bandeja/borrar")>=0, "El iPad no vació la bandeja después de guardar", "media");
+      const o = document.createElement("div"); o.innerHTML = lcOrigenHTML({origen:"asis", st:"fenologia"}, rF||{}, null);
+      chk(/anotado a mano en el celular por Pía \(/.test(txtDe(o)) && txtDe(o).indexOf("("+itF.equipoId+")")>=0 && /llegó al iPad \d{2}:\d{2}/.test(txtDe(o)), "El origen en la Bitácora no dice «anotado a mano en el celular por Pía ("+itF.equipoId+") · … · llegó al iPad HH:MM»: «"+txtDe(o)+"»", "media");
+      /* revisión 2 de la v164: en la fila de la Bitácora lo anotado a mano en el celular dice «celular» (no «dictado»), como Riego y las notas */
+      await dia();
+      { const fl = [...document.querySelectorAll("#lcVista .lc-it")].find(el=>/^BBCH 65 · Plena floración \(50%\+\) · también 57$/.test(txtDe(el.querySelector(".lc-it-t b"))) && txtDe(el).indexOf(QD.nombre)>=0), ob = fl && fl.querySelector(".lc-b.or");
+        chk(ob && /^celular( \d{2}:\d{2})?$/.test(txtDe(ob)), "La fila de la Bitácora de la fenología anotada a mano en el celular no dice «celular» (dice «"+txtDe(ob||null)+"»)", "leve"); }
+      /* KV puede entregar una copia vieja: el mismo ítem aparece otra vez en la bandeja → no se duplica */
+      PB.bandeja.push({id:itF.id, ts:Date.now(), origen:syncEquipo(), item:JSON.parse(JSON.stringify(itF))});
+      _undoSnap = null; await asisBandejaMirar(true); await pausa();
+      chk(fenAll().filter(x=>x.asisId===itF.id).length===1 && fenAll().length===n0+1 && !PB.bandeja.length, "Con el ítem todavía en la bandeja el iPad lo guardó otra vez (o no vació la bandeja)", "grave");
+      await fenIr(); const tl = rF && document.querySelector(`#app .fentile[onclick="fenEditar(${rF.id})"]`);
+      chk(tl && /anotado en el celular por Pía/.test(txtDe(tl)), "La tarjeta del historial en el iPad no dice «anotado en el celular por Pía» (o no abre la edición)", "leve");
+      _undoSnap = null;
+    });
+    await paso("CE4b · Cuartel renombrado antes de llegar al iPad: queda como nota «(revisar)» con «BBCH 65 · también 57», su foto y su acuse", async ()=>{
+      celular(); await formCel(QN);
+      await tocar(`#lcCeEst [onclick="lcCeFen('65')"]`, "65 como principal");
+      await tocar({texto:/¿Hay otros estados a la vez\?/, sel:"#lcCeSec button"}, "¿Hay otros estados a la vez?"); await tocar('#lcCeSec [data-sec="57"]', "también 57");
+      const fr = await conFotos([await fotoBot(900, 700, "cel_r.png")]);
+      await enviarCe(); await esperarQue(()=>!_asisColaOcup && !asisCfg().cola.length, 3000);
+      const it = (PB.bandeja[PB.bandeja.length-1]||{}).item || null; if(it) ids.push(it.id);
+      necesito(it && it.tipo==="fenologia" && it.cuarteles.join()===QN.nombre && fr.length===1, "lo enviado de "+QN.nombre+" con 1 foto");
+      ipad(); const nom0 = QN.nombre; QN.nombre = nom0+" (renombrado)"; guardar();
+      try{
+        const f0 = fenAll().length; await asisBandejaMirar(true); await pausa();
+        const n = D.notas.find(x=>x.asisId===it.id);
+        chk(fenAll().length===f0 && n && /\(revisar\)$/.test(n.titulo||"") && /BBCH 65/.test(n.texto||"") && /también 57/.test(n.texto||"") && JSON.stringify(n.fotos)===JSON.stringify(fr) && n.equipo==="celular",
+          "Con el cuartel renombrado no quedó la nota «(revisar)» con «BBCH 65 … también 57» y su foto: "+JSON.stringify(n||{}).slice(0,260), "grave");
+        chk(!!asisAcuseDe(it.id), "Lo que quedó como nota «(revisar)» no tiene su acuse (el celular lo reenviaría)", "media");
+      } finally { QN.nombre = nom0; guardar(); _undoSnap = null; }
+    });
+    await paso("CE5 · Acuse en el celular: al recibir el cuaderno con D.buzonAcuse la fila pasa a «recibido en el iPad HH:MM» (la hora del acuse) y sale de lo enviado; con el registro sincronizado, la fila se va", async ()=>{
+      const aplicar = AB._orig && AB._orig.syncAplicar; if(typeof aplicar!=="function") throw new SinProbar("No quedó la syncAplicar original");
+      necesito(rF && fenAll().indexOf(rF)>=0, "el registro importado en CE4");
+      celular();
+      /* el cuaderno que tiene el celular antes de que el iPad suba: sin el registro y sin el acuse */
+      const rJ = JSON.stringify(rF), acu = (D.buzonAcuse||[]).find(x=>x.id===itF.id);
+      D.fenologia = fenAll().filter(x=>x!==rF); D.buzonAcuse = (D.buzonAcuse||[]).filter(x=>x.id!==itF.id);
+      const x0 = histIt(itF.id); if(x0) delete x0.rec;   // en el bot los dos equipos comparten la copia: la vuelta de 2 min del celular pudo ver el acuse antes
+      if(!env(itF.id) && envF) asisEnv(asisCfg(), true).push(JSON.parse(envF));
+      guardar();
+      PB.log = []; await asisCaminoRevisar();
+      chk(env(itF.id) && !(histIt(itF.id)||{}).rec && !PB.log.length, "Sin acuse el celular marcó «recibido» o gastó una lectura del puente: "+PB.log.join(", "), "media");
+      const acTs = new Date(Date.now()-7*60000).toISOString();
+      const datos = JSON.parse(JSON.stringify(syncPayload())); datos.buzonAcuse = (datos.buzonAcuse||[]).concat([{id:itF.id, ts:acTs, eq:acu? acu.eq : "bot"}]);
+      accion("llega el cuaderno del iPad con el acuse"); aplicar(datos, Date.now()); Object.assign(s, D.sync); D.sync = s; await pausa();
+      await fenIr(); const f1 = camId(itF.id);
+      chk(f1 && txtDe(f1).indexOf("recibido en el iPad "+lcCamHora(acTs))>=0, "Con el acuse la fila no dice «recibido en el iPad "+lcCamHora(acTs)+"» (la hora del acuse): «"+txtDe(f1||null)+"»", "media");
+      chk(!env(itF.id) && (histIt(itF.id)||{}).rec===acTs, "Con el acuse lo enviado no salió de A.enviados o la fila no guardó la hora del acuse", "media");
+      const datos2 = JSON.parse(JSON.stringify(syncPayload())); datos2.fenologia = (datos2.fenologia||[]).concat([JSON.parse(rJ)]);
+      aplicar(datos2, Date.now()); Object.assign(s, D.sync); D.sync = s; await pausa();
+      rF = fenAll().find(x=>x.asisId===itF.id) || null;
+      await fenIr();
+      chk(rF && !camId(itF.id) && document.querySelector(`#app .fentile[onclick="abrirVisor('${fF[0]}')"]`), "Con el registro sincronizado la fila «En camino» no se fue, o la tarjeta del celular no abre la foto", "media");
+    });
+    await paso("CE6 · Pérdida simulada: sin acuse, a los 20 min y solo si el iPad subió después del envío, se reenvía con el mismo id (1 lectura + 1 envío); sin subida del iPad no se gasta nada; después de 3 reenvíos, «No llegó al iPad» con Reenviar y Quitar; el iPad lo guarda una vez", async ()=>{
+      celular(); await formCel(QD);
+      await tocar(`#lcCeEst [onclick="lcCeFen('67')"]`, "67 como principal");
+      await enviarCe(); await esperarQue(()=>!_asisColaOcup && !asisCfg().cola.length, 3000);
+      const it = (PB.bandeja[PB.bandeja.length-1]||{}).item || null; if(it) ids.push(it.id);
+      necesito(it && it.bbch==="67", "lo enviado (67) en la bandeja");
+      const id = it.id, e = necesito(env(id), "la copia de lo enviado"), pierde = ()=>{ PB.bandeja = PB.bandeja.filter(x=>x.id!==id); }, postsDe = ()=>PB.posts.filter(x=>x===id).length;
+      pierde();   // el puente «pierde» el ítem (H3): sale de la bandeja sin que el iPad lo importe
+      e.msEnv -= 21*60000;   // el reloj, 21 min después del envío
+      s.ultTs = 0; guardar(); PB.log = [];
+      await asisCaminoRevisar();
+      chk(!PB.log.length && (e.reenvios||0)===0, "Con el iPad cerrado (sin una subida nueva del cuaderno) se gastó una lectura o se reenvió: "+PB.log.join(", "), "media");
+      s.ultTs = e.msEnv + 4*60000; guardar(); await asisCaminoRevisar();
+      chk(!PB.log.length, "Con una subida del iPad dentro de los 5 min de diferencia de relojes igual se reenvió", "leve");
+      s.ultTs = e.msEnv + 6*60000; guardar(); PB.log = [];
+      await asisCaminoRevisar();
+      chk(JSON.stringify(PB.log)==='["GET bandeja","POST bandeja"]' && postsDe()===2 && e.reenvios===1 && PB.bandeja.some(x=>x.id===id),
+        "Con la subida del iPad 6 min después del envío no se reenvió con el mismo id (1 lectura + 1 envío): "+PB.log.join(", ")+" · reenvíos "+e.reenvios+" · envíos con ese id "+postsDe(), "grave");
+      /* dos pérdidas más: 3 reenvíos; a la cuarta ya no se reenvía y la fila dice «No llegó al iPad» */
+      for(let k=2;k<=4;k++){ pierde(); e.msUlt -= 21*60000; s.ultTs = e.msUlt + 6*60000; guardar(); PB.log = []; await asisCaminoRevisar(); }
+      chk(e.reenvios===3 && !!e.fallo && postsDe()===4 && !PB.log.length, "Después de 3 reenvíos sin acuse se volvió a reenviar o no se marcó «No llegó al iPad»: reenvíos "+e.reenvios+", envíos "+postsDe()+", "+PB.log.join(", "), "media");
+      await fenIr(); const f = camId(id);
+      chk(f && /No llegó al iPad/.test(txtDe(f)) && f.querySelector(`[onclick="lcCamReenviar('${id}')"]`) && f.querySelector(`[onclick="lcCamQuitar('${id}')"]`), "La fila no dice «No llegó al iPad» con Reenviar y Quitar: «"+txtDe(f||null)+"»", "media");
+      await tocar(`[onclick="lcCamReenviar('${id}')"]`, "Reenviar"); await esperarQue(()=>!_asisColaOcup && !asisCfg().cola.length, 3000); await pausa();
+      const e2 = env(id);
+      chk(postsDe()===5 && PB.bandeja.some(x=>x.id===id) && e2 && e2.reenvios===0 && !e2.fallo && /enviado \d{2}:\d{2}/.test(txtDe(camId(id)||null)), "«Reenviar» no lo volvió a mandar con el mismo id (o la fila no volvió a «enviado»)", "media");
+      ipad(); const f0 = fenAll().filter(x=>x.asisId===id).length;
+      await asisBandejaMirar(true); await pausa();
+      PB.bandeja.push({id, ts:Date.now(), origen:syncEquipo(), item:JSON.parse(JSON.stringify(it))});   // un reenvío que venía en camino
+      _undoSnap = null; await asisBandejaMirar(true); await pausa();
+      chk(f0===0 && fenAll().filter(x=>x.asisId===id).length===1, "Después de la pérdida y los reenvíos el iPad no lo guardó exactamente una vez ("+fenAll().filter(x=>x.asisId===id).length+")", "grave");
+      _undoSnap = null;
+    });
+    await paso("CE7 · «Quitar de la cola»: el registro sale de la cola y de «En camino al iPad», con Deshacer, y sus 2 fotos «fc…» se borran del equipo", async ()=>{
+      celular(); PB.caido = true; await formCel(QD);
+      await tocar(`#lcCeEst [onclick="lcCeFen('69')"]`, "69 como principal");
+      const fq = await conFotos([await fotoBot(900, 700, "cel_q1.png"), await fotoBot(900, 700, "cel_q2.png")]);
+      await enviarCe(); await esperarQue(()=>!_asisColaOcup, 3000);
+      const c = asisCfg().cola.find(x=>x.item && x.item.bbch==="69"), id = c && c.id; if(id) ids.push(id);
+      necesito(c && fq.length===2, "el registro en la cola con 2 fotos");
+      await fenIr(); const f = camId(id);
+      chk(f && /en cola/.test(txtDe(f)), "La fila en cola no aparece en la pestaña Fenología", "leve");
+      await tocar(`[onclick="lcCamQuitar('${id}')"]`, "Quitar de la cola");
+      chk(!asisCfg().cola.some(x=>x.id===id) && !camId(id) && !histIt(id), "«Quitar de la cola» no sacó el registro de la cola y de «En camino al iPad»", "media");
+      chk(await undoVisible(), "«Quitar de la cola» no ofrece Deshacer", "leve");
+      _undoSnap = null; fotoPendEjecutar(); await esperar(400);
+      chk(!(await fotoGetLocal(fq[0])) && !(await fotoGetLocal(fq[1])), "Después de «Quitar de la cola» las 2 fotos «fc…» siguen en el equipo", "media");
+      PB.caido = false; await asisColaEnviar();
+      chk(!PB.posts.some(x=>x===id), "Lo quitado de la cola igual llegó al puente", "media");
+    });
+    await paso("CE8 · «Probar» detecta el puente: sin bandeja (400 «ruta no permitida») lo dice y el formulario corto avisa y no deja enviar; con /meta v:4 «Puente v4: …» sin leer la bandeja; con bandeja, 1 lectura", async ()=>{
+      celular(); nav.datosSec = "conexiones"; await irA("datos");
+      PB.sinBandeja = true; PB.v4 = false; PB.log = [];
+      accion("Probar (puente sin bandeja)"); await syncProbar(); const lg1 = JSON.stringify(PB.log); await pausa();
+      chk(syncCfg().puenteV==="sin" && lg1==='["GET meta","GET bandeja"]' && /Conexión OK, pero este puente no tiene la bandeja/.test(txtDe(document.getElementById("avisoCapa"))) && /Este puente no tiene la bandeja/.test(txtDe(document.getElementById("syncEstado"))),
+        "Con un puente sin bandeja «Probar» no lo dijo (o no quedó puenteV «sin», o gastó algo más que /meta y 1 lectura de la bandeja): "+lg1, "media");
+      chk(!/Puente OK/.test(txtDe(document.getElementById("avisoCapa"))), "Con un puente sin bandeja el aviso de «Probar» empieza con «Puente OK» (revisión v164: «Conexión OK, pero este puente no tiene la bandeja…»)", "leve");
+      await cerrarTodo(); fenCel(QD.fundo, QD.nombre); await pausa();
+      const pv = document.querySelector("#capaModal .lc-ce-pv");
+      chk(pv && /Este puente no tiene la bandeja/.test(txtDe(pv)), "Con un puente sin bandeja el formulario corto no lo avisa arriba", "media");
+      await tocar(`#lcCeEst [onclick="lcCeFen('65')"]`, "65 como principal"); const n0 = asisCfg().cola.length;
+      await enviarCe();
+      chk(modalAbierto() && /no tiene la bandeja/.test(avisoCe()) && asisCfg().cola.length===n0, "Con un puente sin bandeja el formulario corto igual dejó enviar a la cola", "media");
+      chk(/toca Probar en Datos → Conexiones → Sincronización/.test(avisoCe()), "El aviso del formulario corto no da el camino real («Datos → Conexiones → Sincronización»): «"+avisoCe()+"»", "leve");   // revisión v164
+      await cancelarModal();
+      /* también lo descubre el envío: la bandeja responde 400 «ruta no permitida» */
+      delete syncCfg().puenteV; const idq = "asBotPv"+Date.now().toString(36); asisCfg().cola.push({id:idq, item:{id:idq, tipo:"nota", texto:"Bot CE8", fundo:GENERAL, cuarteles:[]}});
+      try{ await asisColaEnviar(); chk(syncCfg().puenteV==="sin", "Cuando la bandeja responde «ruta no permitida» al enviar, la app no lo anota (puenteV)", "leve"); }
+      finally { const A = asisCfg(); A.cola = A.cola.filter(x=>x.id!==idq); A.colaErr = ""; guardar(); }
+      PB.sinBandeja = false; PB.v4 = true; PB.log = []; nav.datosSec = "conexiones"; await irA("datos");
+      await syncProbar(); const lg2 = JSON.stringify(PB.log); await pausa();
+      chk(syncCfg().puenteV==="v4" && lg2==='["GET meta"]' && /Puente v4: el celular puede enviar fenología con fotos y sugerir con Claude\./.test(txtDe(document.getElementById("syncEstado"))),
+        "Con /meta v:4 «Probar» no dice «Puente v4: …» o leyó la bandeja: "+lg2, "media");
+      await cerrarTodo(); fenCel(QD.fundo, QD.nombre); await pausa();
+      chk(modalAbierto() && !document.querySelector("#capaModal .lc-ce-pv"), "Con el puente v4 el formulario corto sigue avisando que no hay bandeja", "media");
+      await cancelarModal();
+      PB.v4 = false; PB.log = []; await syncProbar(); const lg3 = JSON.stringify(PB.log); await pausa();
+      chk(syncCfg().puenteV==="bandeja" && lg3==='["GET meta","GET bandeja"]' && /^Puente con bandeja: el celular puede enviar al iPad\./.test(SYNC_PUENTE_TXT[syncCfg().puenteV]||""),
+        "Con un puente con bandeja (sin v) «Probar» no dice «Puente con bandeja…» con 1 lectura: "+lg3, "leve");
+    });
+    await paso("CE9 · Gasto en el plan gratis: un cerezo con 3 fotos de punta a punta = 3 PUT foto + 1 POST bandeja (celular) y 1 GET bandeja + 3 GET foto + 1 POST bandeja/borrar (iPad), sin list(); a 375 px el formulario corto y la fila «En camino» no se salen", async ()=>{
+      celular(); await formCel(QC);
+      const m = necesito(modalAbierto(), "el formulario corto"); m.style.width = "375px"; m.style.maxWidth = "375px";
+      await tocar('#lcCeEst [data-fenb="07"] .fcb-b', "07 Caída de chaqueta");
+      const f3 = await conFotos([await fotoBot(1200, 900, "cel_g1.png"), await fotoBot(1200, 900, "cel_g2.png"), await fotoBot(1200, 900, "cel_g3.png")]);
+      /* «Sugerir estado con Claude» desde el celular (Claude simulado): la misma consulta del iPad, con las 3 fotos; deja 08 y también 81 */
+      PB.ia = {bbch:"75", secundarios:["81","81","75","99"], confianza:"media", explicacion:"Bot: fruto verde y algunos con color pajizo", foto_recibida:true}; PB.pedidoIA = null;
+      chk(await esperarQue(()=>buscar("#lcCeSug .fen-sug-b"), 3000), "Con fotos y el cuartel elegido el formulario corto no ofrece «Sugerir estado con Claude»", "leve");
+      accion("Sugerir estado con Claude (simulado, desde el celular)"); await lcCeSugerir(); await pausa();
+      chk(PB.pedidoIA && (PB.pedidoIA.adjuntos||[]).length===3 && /Cerezo \(usa estos nombres\)/.test(PB.pedidoIA.system||"") && _lcCe.bbch==="75" && JSON.stringify(_lcCe.sec)==='["81"]'
+        && /Claude sugiere: 08 Fruto en desarrollo; también Color pajizo y pinta/.test(txtDe(document.getElementById("lcCeSug"))),
+        "«Sugerir con Claude» desde el celular no mandó las 3 fotos con la lista del boletín o no dejó 75 y también [81] con «Claude sugiere: 08 Fruto en desarrollo; también Color pajizo y pinta»: "+JSON.stringify({bbch:_lcCe.bbch, sec:_lcCe.sec, adj:PB.pedidoIA && (PB.pedidoIA.adjuntos||[]).length}), "media");
+      await pausa(.6);
+      const mb = m.querySelector(".mb"), mr = m.getBoundingClientRect(), fuera = [...m.querySelectorAll(".mb *")].filter(x=>visible(x) && x.getBoundingClientRect().right>mr.right+1);
+      chk(f3.length===3 && mb.scrollWidth<=mb.clientWidth+1 && !fuera.length, "A 375 px el formulario corto (cerezo, «También hay» y 3 fotos) se sale por el costado: "+(fuera[0]? "«"+String(fuera[0].className||fuera[0].tagName).slice(0,30)+"»" : mb.scrollWidth+" de "+mb.clientWidth+" px"), "media");
+      const chicos = [...m.querySelectorAll(".fcb-b, .fensc, .lc-ce-fb, .lc-ce-fx, .mf .btn")].filter(visible).filter(x=>x.offsetHeight<30 || x.offsetWidth<30);
+      chk(!chicos.length, "A 375 px hay "+chicos.length+" tocables de menos de 30 px en el formulario corto de fenología", "leve");
+      chk(_lcCe.bbch==="75" && JSON.stringify(_lcCe.sec)==='["81"]', "En el cerezo «08 Fruto en desarrollo» no eligió el 75 con también 81: "+JSON.stringify({bbch:_lcCe.bbch, sec:_lcCe.sec}), "media");
+      PB.caido = true; PB.log = [];
+      await enviarCe(); await esperarQue(()=>!_asisColaOcup, 3000);
+      const c = asisCfg().cola.find(x=>x.item && x.item.bbch==="75"), id = c && c.id; if(id) ids.push(id);
+      necesito(c, "el registro del cerezo en la cola");
+      await fenIr(); const cam = necesito(document.getElementById("fenCam"), "la franja «En camino» de la pestaña Fenología");
+      cam.style.width = "375px"; cam.style.maxWidth = "375px"; await pausa(.4);
+      const fr = camId(id), sec = cam.querySelector(".lc-cam");
+      chk(fr && sec && sec.scrollWidth<=sec.clientWidth+1 && fr.getBoundingClientRect().right<=cam.getBoundingClientRect().right+1 && /08 Fruto en desarrollo \(\+1\)/.test(txtDe(fr)),
+        "A 375 px la fila «En camino» del cerezo se sale o no dice «08 Fruto en desarrollo (+1)»: «"+txtDe(fr||null)+"»", "media");
+      cam.style.width = ""; cam.style.maxWidth = "";
+      await esperarQue(()=>!_asisColaOcup, 3000); PB.log = []; PB.caido = false;
+      await asisColaEnviar(); await esperarQue(()=>!_asisColaOcup && !asisCfg().cola.length, 3000);
+      const cel = PB.log.slice();
+      for(const f of f3) await fotoDelAhora(f);   // el iPad es otro equipo
+      ipad(); PB.log = []; await asisBandejaMirar(true); const ip = PB.log.slice(); await pausa();
+      const nDe = (l, re)=>l.filter(x=>re.test(x)).length;
+      chk(nDe(cel, /^PUT foto\//)===3 && nDe(cel, /^POST bandeja$/)===1 && cel.length===4, "El celular no hizo exactamente 3 PUT foto + 1 POST bandeja: "+cel.join(", "), "media");
+      chk(nDe(ip, /^GET bandeja$/)===1 && nDe(ip, /^GET foto\//)===3 && nDe(ip, /^POST bandeja\/borrar$/)===1 && ip.length===5, "El iPad no hizo 1 GET bandeja + 3 GET foto + 1 POST bandeja/borrar: "+ip.join(", "), "media");
+      chk(!PB.todo.some(x=>x==="GET fotos"), "Alguien pidió la lista de fotos del puente (un list() de KV)", "media");
+      const r = fenAll().find(x=>x.asisId===id);
+      chk(r && r.bbch==="75" && JSON.stringify(r.bbchSec)==='["81"]' && r.estado==="Fruto en desarrollo" && (r.fotos||[]).length===3, "El cerezo no llegó al iPad con 75, también 81, «Fruto en desarrollo» y 3 fotos: "+JSON.stringify(r||{}).slice(0,200), "media");
+      _undoSnap = null;
+    });
+    /* ---- revisión v164 (CE10–CE12): lo que encontraron los 3 revisores en el celular ---- */
+    await paso("CE10 · Historial del celular a 375 px (también con texto grande): la fila de un cuartel de nombre largo con «＋ Registrar» y «Bitácora» no se sale; «Referencias del cerezo» con un solo botón «Cerrar»", async ()=>{
+      const QL = cuC("Cuartel de nombre bastante largo para el celular bot", "Duraznero"); guardar();
+      fenAll().push({id:nid(), fecha:masDias(H,-1), fundo:FC, cuartel:QL.nombre, especie:"Duraznero", bbch:"65", estado:"Plena floración (50%+)", fotos:[], nota:"Bot CE10"}); guardar();
+      const app = document.getElementById("app"), w0 = app.style.width, mw0 = app.style.maxWidth;
+      try{
+        for(const grande of [false, true]){
+          celular(); if(grande){ D.ui.grande = true; uiAplicar(); }
+          await fenIr(); app.style.width = "375px"; app.style.maxWidth = "375px"; await pausa(.5);
+          const filas = [...document.querySelectorAll("#app .fencu")].filter(visible);
+          const malas = filas.filter(f=>{ const fr = f.getBoundingClientRect(); return f.scrollWidth>f.clientWidth+1 || [...f.children].some(c=>visible(c) && c.getBoundingClientRect().right>fr.right+1); });
+          const fl = filas.find(f=>txtDe(f).indexOf(QL.nombre)>=0), bts = fl? [...fl.querySelectorAll("button")].filter(visible) : [];
+          chk(filas.length && !malas.length && fl && bts.length===2 && bts.every(b=>b.offsetWidth>=30 && b.offsetHeight>=30), "A 375 px"+(grande? " con texto grande" : "")+" una fila del historial del celular se sale por el costado (o le faltan «＋ Registrar» y «Bitácora»): "+(malas[0]? "«"+txtDe(malas[0]).slice(0,60)+"» "+malas[0].scrollWidth+" de "+malas[0].clientWidth+" px" : "sin la fila de "+QL.nombre), "media");
+          app.style.width = w0; app.style.maxWidth = mw0;
+        }
+        celular(); fenRefPantalla(); await pausa();
+        const m = necesito(modalAbierto(), "«Referencias del cerezo» en el celular"), pie = [...m.querySelectorAll(".mf .btn")].filter(visible);
+        chk(pie.length===1 && /^Cerrar$/.test(txtDe(pie[0])) && !m.querySelector('input[type="file"]'), "En el celular «Referencias del cerezo» no tiene un solo botón «Cerrar» (antes: «Cancelar» y «Cerrar», que hacían lo mismo) o deja poner fotos: "+pie.map(b=>"«"+txtDe(b)+"»").join(" "), "leve");
+        await tocar(pie[0], "Cerrar"); chk(!modalAbierto(), "«Cerrar» no cerró «Referencias del cerezo»", "leve");
+      } finally { app.style.width = w0; app.style.maxWidth = mw0; D.fenologia = fenAll().filter(x=>x.cuartel!==QL.nombre); D.cuarteles = D.cuarteles.filter(q=>q!==QL); celular(); guardar(); }
+    });
+    await paso("CE11 · Reenvío sin respuesta o rechazado: sin señal espera 20 min (no cada 2 min) y, con la señal de vuelta, se reenvía sin esperar otra subida del iPad; un 400 del puente pasa a «No llegó al iPad» sin repetirse; un 401 cuenta el intento; un texto de más de 60.000 letras avisa en la ventana y no se envía", async ()=>{
+      celular(); PB.caido = false; PB.postErr = 0; await formCel(QD);
+      await tocar(`#lcCeEst [onclick="lcCeFen('72')"]`, "72 como principal");
+      await enviarCe(); await esperarQue(()=>!_asisColaOcup && !asisCfg().cola.length, 3000);
+      const it = (PB.bandeja[PB.bandeja.length-1]||{}).item || null; if(it) ids.push(it.id);
+      necesito(it && it.bbch==="72", "lo enviado (72) en la bandeja");
+      const id = it.id, e = necesito(env(id), "la copia de lo enviado"), revisar = async ()=>{ await esperarQue(()=>!_asisCamOcup, 3000); await asisCaminoRevisar(); };   // la vuelta de 2 min del celular puede estar revisando
+      try{
+        PB.bandeja = PB.bandeja.filter(x=>x.id!==id); e.msEnv -= 21*60000; s.ultTs = e.msEnv + 6*60000; guardar();
+        PB.caido = true; PB.log = []; await revisar();
+        const t1 = +e.msInt||0; PB.log = []; await revisar();
+        chk(t1>Date.now()-60000 && !e.msUlt && !PB.log.length && !(e.reenvios||0) && !e.fallo, "Sin respuesta del puente no quedó la hora del intento (msInt, sin tocar msUlt) o se volvió a leer la bandeja en la vuelta siguiente (debe esperar 20 min): "+JSON.stringify({msInt:e.msInt, msUlt:e.msUlt, log:PB.log, reenvios:e.reenvios}), "media");
+        /* revisión 2 de la v164: vuelve la señal y el iPad sigue abierto sin cambios (no sube nada nuevo): igual se reenvía pasados los 20 min del intento
+           (antes el intento sin señal pasaba a ser la referencia y pedía otra subida del iPad: con el iPad sin cambios podían ser horas) */
+        PB.caido = false; e.msInt -= 21*60000; guardar(); PB.log = [];
+        await revisar();
+        chk(JSON.stringify(PB.log)==='["GET bandeja","POST bandeja"]' && e.reenvios===1 && !e.msInt && PB.bandeja.some(x=>x.id===id), "Con la señal de vuelta y sin una subida nueva del iPad no se reenvió a los 20 min del intento sin señal: "+JSON.stringify({log:PB.log, reenvios:e.reenvios, msInt:e.msInt}), "media");
+        PB.bandeja = PB.bandeja.filter(x=>x.id!==id);   // se vuelve a perder
+        PB.postErr = 401; e.msUlt -= 21*60000; s.ultTs = e.msUlt + 6*60000; guardar(); PB.log = [];
+        await revisar();
+        chk(JSON.stringify(PB.log)==='["GET bandeja","POST bandeja"]' && e.reenvios===2 && !e.fallo && +e.msUlt>Date.now()-60000, "Con un 401 al reenviar no se contó el intento (reenvíos "+e.reenvios+") o no quedó la hora: "+PB.log.join(", "), "leve");
+        PB.postErr = 400; e.msUlt -= 21*60000; s.ultTs = e.msUlt + 6*60000; guardar(); PB.log = [];
+        await revisar();
+        chk(JSON.stringify(PB.log)==='["GET bandeja","POST bandeja"]' && !!e.fallo, "Con un 400 del puente (ítem rechazado) no pasó a «No llegó al iPad»: "+JSON.stringify({fallo:e.fallo, log:PB.log}), "media");
+        PB.postErr = 0; PB.log = []; e.msUlt -= 21*60000; s.ultTs = e.msUlt + 6*60000; guardar(); await revisar();
+        chk(!PB.log.length, "Un ítem ya en «No llegó al iPad» se siguió reenviando solo: "+PB.log.join(", "), "media");
+        await fenIr(); const f = camId(id);
+        chk(f && /No llegó al iPad/.test(txtDe(f)) && f.querySelector(`[onclick="lcCamReenviar('${id}')"]`), "La fila del ítem rechazado no dice «No llegó al iPad» con Reenviar: «"+txtDe(f||null)+"»", "media");
+      } finally { PB.caido = false; PB.postErr = 0; const A = asisCfg(); A.enviados = asisEnv(A).filter(x=>x && x.id!==id); A.hist.forEach(h=>{ if(h && h.its) h.its = h.its.filter(x=>!x || x.id!==id); }); guardar(); }
+      /* un texto gigante: el puente v4 no lo dejaría entrar a la bandeja; se avisa antes */
+      await formCel(QD); await tocar(`#lcCeEst [onclick="lcCeFen('65')"]`, "65 como principal");
+      await escribir("lcCeTx", "Bot CE11 largo "+"x".repeat(61000), "observación muy larga");
+      const c0 = asisCfg().cola.length, b0 = PB.bandeja.length; await enviarCe();
+      chk(modalAbierto() && /demasiado largo para enviarlo al iPad/.test(avisoCe()) && asisCfg().cola.length===c0 && PB.bandeja.length===b0, "Con una observación de 61.000 letras el formulario corto no avisó dentro de la ventana (o igual la envió): «"+avisoCe()+"»", "media");
+      await cancelarModal();
+      const c1 = asisCfg().cola.length, idL = "asBotLargo"+Date.now().toString(36);
+      await asisEnviar([{id:idL, tipo:"nota", fecha:H, fundo:GENERAL, cuarteles:[], texto:"x".repeat(61000), asisId:idL, origen:"asis", equipo:"celular"}], true);
+      chk(asisCfg().cola.length===c1 && !asisCfg().hist.some(h=>(h.ids||[]).indexOf(idL)>=0) && /demasiado largo para enviarlo al iPad/.test(txtDe(document.getElementById("avisoCapa"))), "asisEnviar dejó en la cola un ítem de 61.000 letras (el puente v4 lo rechazaría) o no avisó", "media");
+    });
+    await paso("CE12 · El puente que cambia: con /meta v:4 el celular se destraba solo (sin Probar), la bajada usa el /meta que ya trajo, un envío que sale bien con «sin» lo pasa a «con bandeja», y los textos (camino, clave de celular, clave igual a la de la estación, catálogo)", async ()=>{
+      const bajarOrig = AB._orig && AB._orig.syncBajar; if(typeof bajarOrig!=="function") throw new SinProbar("No quedó la syncBajar original");
+      const bajar0 = window.syncBajar, wl0 = ("wl" in D)? JSON.stringify(D.wl) : null;
+      celular();
+      try{
+        Object.defineProperty(document, "hidden", {configurable:true, get:()=>false});   // con el panel del navegador escondido syncMirar no haría nada
+        window.syncBajar = bajarOrig; s.puenteV = "sin"; s.ultTs = 0; PB.v4 = true; PB.sinBandeja = false; PB.log = []; guardar();
+        await syncMirar(); await esperarQue(()=>!_syncBajando, 3000);
+        chk(s.puenteV==="v4" && PB.log.filter(x=>x==="GET meta").length===1 && PB.log.indexOf("GET datos")>=0, "Con /meta v:4 el celular no quedó en «v4» solo (sin Probar), o la bajada volvió a pedir /meta (gasta una list() más con el puente de antes): "+PB.log.join(", "), "media");
+        s.estado = "";
+        window.syncBajar = bajar0; PB.v4 = false;
+        const idb = "asBotPvB"+Date.now().toString(36); s.puenteV = "sin"; asisCfg().cola.push({id:idb, item:{id:idb, tipo:"nota", texto:"Bot CE12", fundo:GENERAL, cuarteles:[]}}); guardar();
+        try{ await asisColaEnviar(); chk(s.puenteV==="bandeja", "Un envío que la bandeja aceptó no destrabó el celular que había quedado en «sin»: "+s.puenteV, "leve"); }
+        finally { const A = asisCfg(); A.cola = A.cola.filter(x=>x.id!==idb); A.enviados = asisEnv(A).filter(x=>x && x.id!==idb); A.colaErr = ""; PB.bandeja = PB.bandeja.filter(x=>x.id!==idb); guardar(); }
+        /* textos */
+        const url0 = s.url; s.url = ""; let msg = "";
+        try{ await sf0("meta"); }catch(x){ msg = String((x && x.message)||x); } finally { s.url = url0; }
+        chk(/Datos → Conexiones → Sincronización/.test(msg), "Sin dirección del puente el error no da el camino real («Datos → Conexiones → Sincronización»): «"+msg+"»", "leve");
+        nav.datosSec = "conexiones"; await irA("datos");
+        const lb = document.getElementById("sync_clave"), lt = lb && lb.closest("label") ? txtDe(lb.closest("label")) : "";
+        chk(/Clave \(CLAVE_SYNC, o la de celular\)/.test(lt), "En el celular el campo de la clave no dice «Clave (CLAVE_SYNC, o la de celular)»: «"+lt+"»", "leve");
+        { const r0 = s.rol; s.rol = "off"; const hOff = syncCardHTML(); s.rol = "emisor"; const hIpad = syncCardHTML(); s.rol = r0;   // revisión 2 de la v164: un celular nuevo (todavía «Apagada») ya ve el mismo nombre
+          chk(/Clave \(CLAVE_SYNC, o la de celular\)/.test(hOff) && !/o la de celular/.test(hIpad), "Con la sincronización «Apagada» el campo no dice «Clave (CLAVE_SYNC, o la de celular)» (o el iPad, que manda, lo dice)", "leve"); }
+        D.wl = Object.assign({}, D.wl||{}, {clave:s.clave}); syncPintar();
+        chk(/Ojo: esta clave es la misma de la estación/.test(txtDe(document.getElementById("syncEstado"))), "Con la clave de la sincronización igual a la de la estación la tarjeta no avisa «Ojo: esta clave es la misma de la estación…»", "media");
+        D.wl = Object.assign({}, D.wl, {clave:s.clave+"-otra"}); syncPintar();
+        chk(!/misma de la estación/.test(txtDe(document.getElementById("syncEstado"))), "Con claves distintas la tarjeta igual avisa que son la misma", "leve");
+        await formCel(QD);
+        chk(/El iPad lo guarda igual que lo dictado/.test(txtDe(document.querySelector("#capaModal .lc-ce-pie"))) && !/catálogo/.test(txtDe(document.querySelector("#capaModal .lc-ce-pie"))), "El pie del formulario corto en Fenología todavía habla del catálogo: «"+txtDe(document.querySelector("#capaModal .lc-ce-pie"))+"»", "leve");
+        await chipCe("que", "apl", "Aplicación hecha");
+        chk(/con el catálogo/.test(txtDe(document.querySelector("#capaModal .lc-ce-pie"))), "En «Aplicación hecha» el pie ya no dice que el iPad la guarda con el catálogo", "leve");
+        await cancelarModal();
+      } finally { delete document.hidden; window.syncBajar = bajar0; PB.v4 = false; if(wl0==null) delete D.wl; else D.wl = JSON.parse(wl0); s.estado = ""; guardar(); }
+    });
+    /* revisión 2 de la v164 (puente y seguridad, medio): una «foto» que empieza bien y trae otra cosa adentro (comillas y un atributo) no se importa,
+       el celular no la guarda al bajarla y, si ya estuviera guardada, ninguna pantalla la pega tal cual. Puente simulado y fetch interceptado: nada real */
+    await paso("CE13 · Una «foto» con otra cosa adentro no se importa en el iPad, el celular no la guarda al bajarla y las pantallas no la pegan tal cual", async ()=>{
+      if(!itF) throw new SinProbar("Falta lo enviado en CE2");
+      const sfx = Date.now().toString(36), MALA = 'data:image/jpeg;base64,/9j/AAAA" onerror="window._botXss=1" x="', idM = "fcBotMala"+sfx, idB = "fcBotBuena"+sfx, idL = "fcBotLocal"+sfx;
+      const duB = await new Promise(async res=>{ const fr = new FileReader(); fr.onload = ()=>res(fr.result); fr.readAsDataURL(await fotoBot(40, 30, "buena_ce13.png")); });
+      fcIds.push(idM, idB, idL+"m", idL+"b", idL+"x"); window._botXss = undefined;
+      /* 1. el iPad importa: la mala no, la buena sí, y lo dice en la nota */
+      ipad(); PB.caido = false; PB.postErr = 0;
+      const idI = "asBotMala"+sfx; ids.push(idI);
+      PB.fotos[idM] = MALA; PB.fotos[idB] = duB;
+      const it = Object.assign(JSON.parse(JSON.stringify(itF)), {id:idI, asisId:idI, asisLote:"alBotCE13", texto:"Bot CE13", adjIds:{fotos:[idM, idB], docs:[]}});
+      PB.bandeja.push({id:idI, ts:Date.now(), origen:"Celular-bot", item:it});
+      await asisBandejaMirar(true); await pausa();
+      const r = fenAll().find(x=>x.asisId===idI);
+      chk(r && JSON.stringify(r.fotos)===JSON.stringify([idB]) && /No llegó desde el celular: una foto/.test(r.nota||"") && (await fotoGetLocal(idM))==null && (await fotoGetLocal(idB))===duB,
+        "El iPad importó la «foto» con otra cosa adentro (o perdió la buena, o no lo dijo en la nota): "+JSON.stringify(r && {fotos:r.fotos, nota:r.nota}), "grave");
+      _undoSnap = null;
+      /* 2. el celular baja una foto del puente (fetch interceptado): la mala no se guarda ni se devuelve, la buena sí */
+      celular(); const f0 = window.fetch, u0 = s.url, c0 = s.clave, fo0 = s.fotos, ped = [];
+      window.fetch = async (u)=>{ const m = /\/foto\/([^?]+)\?/.exec(String(u)); ped.push(m? decodeURIComponent(m[1]) : String(u).slice(0, 40)); if(!m) throw new TypeError("bots: solo /foto simulado");
+        const id = decodeURIComponent(m[1]), t = id===idL+"m"? MALA : id===idL+"b"? duB : null; return new Response(t==null? JSON.stringify({error:"no está"}) : t, {status:t==null? 404 : 200}); };
+      try{
+        s.url = "https://bots.invalid"; s.clave = "bots"; s.fotos = true;
+        const dm = await fotoGet(idL+"m"), db = await fotoGet(idL+"b");
+        chk(dm===null && (await fotoGetLocal(idL+"m"))==null && db===duB && (await fotoGetLocal(idL+"b"))===duB && ped.length===2,
+          "El celular guardó o devolvió la «foto» con otra cosa adentro (o no bajó la buena): "+JSON.stringify({mala:dm===null? null : String(dm).slice(0, 40), buena:db===duB, pedidos:ped}), "grave");
+      } finally { window.fetch = f0; s.url = u0; s.clave = c0; if(fo0===undefined) delete s.fotos; else s.fotos = fo0; }
+      /* 3. una mala que ya estuviera guardada (de antes del arreglo): las pantallas la escapan */
+      await fotoPut(idL+"x", MALA);
+      const cont = document.createElement("div"); cont.innerHTML = `<div class="thumbs" data-fotos="${idL}x"></div><div class="fenph" data-fid="${idL}x"></div>`; document.body.appendChild(cont);
+      try{
+        await posNotas(); await fenCargarThumbs(); await pausa(.2);
+        const im = cont.querySelector("img"), ph = cont.querySelector(".fenph");
+        chk(im && im.getAttributeNames().sort().join(",")==="loading,onclick,src" && !cont.querySelector("[onerror]") && ph && !ph.style.backgroundImage, "Una «foto» con otra cosa adentro, ya guardada, se pegó tal cual en las notas o como fondo: "+(im? im.getAttributeNames().join(",") : "sin img"), "grave");
+      } finally { cont.remove(); }
+      await abrirVisor(idL+"x"); await pausa(.3);
+      chk(!document.querySelector("#capaVisor [onerror]") && !window._botXss, "El visor de fotos pegó tal cual la «foto» con otra cosa adentro (o se ejecutó lo de adentro)", "grave");
+      try{ cerrarVisor(); }catch(x){}
+      chk(!window._botXss, "Se ejecutó lo que traía la «foto» con otra cosa adentro", "grave");
+      delete window._botXss;
+    });
+    /* revisión 2 de la v164: la cola sale en envíos de hasta ~1,5 MB (el puente v4 tiene 2 MB para la bandeja entera: 50 ítems grandes de una vez daban 507 para siempre) */
+    await paso("CE14 · La cola sale en envíos de hasta ~1,5 MB y 50 ítems: 50 registros de 45.000 letras salen en 2 envíos, sin el 507 de la bandeja llena", async ()=>{
+      celular(); PB.caido = false; PB.postErr = 0;
+      const A = asisCfg(), mios = [], tams = [], pf = window.syncFetch;
+      window.syncFetch = async (ruta, o)=>{ if(ruta==="bandeja" && String((o && o.method)||"GET").toUpperCase()==="POST"){ const n = String((o && o.body)||"").length; tams.push(n);
+        if(n>2*1024*1024) throw Object.assign(new Error("la bandeja está llena: abre el iPad para que importe lo pendiente"), {status:507}); } return pf(ruta, o); };   // como el puente v4: la bandeja entera no pasa de 2 MB
+      try{
+        await esperarQue(()=>!_asisColaOcup, 3000);
+        for(let i=0;i<50;i++){ const id = "asBotLote"+i+"x"+Date.now().toString(36); mios.push(id); ids.push(id); A.cola.push({id, item:{id, tipo:"nota", fecha:H, fundo:GENERAL, cuarteles:[], texto:"Bot CE14 "+i+" "+"y".repeat(45000), asisId:id, origen:"asis", equipo:"celular"}}); }
+        guardar();
+        const ok = await asisColaEnviar();
+        chk(ok && !A.cola.some(x=>mios.indexOf(x.id)>=0) && tams.length>=2 && tams.every(n=>n<=1.6e6) && mios.every(id=>PB.bandeja.some(x=>x.id===id)),
+          "50 registros de 45.000 letras no salieron en envíos de hasta ~1,5 MB: "+JSON.stringify({ok, envios:tams, enCola:A.cola.filter(x=>mios.indexOf(x.id)>=0).length, err:A.colaErr}), "media");
+      } finally { window.syncFetch = pf; A.cola = A.cola.filter(x=>mios.indexOf(x.id)<0); A.enviados = asisEnv(A).filter(x=>x && mios.indexOf(x.id)<0); A.colaErr = ""; PB.bandeja = PB.bandeja.filter(x=>mios.indexOf(x.id)<0); guardar(); }
     });
   } finally {
     sinSenal(false);
     window.syncFetch = sf0; s.url = s0.url; s.clave = s0.clave; s.rol = s0.rol;
+    try{ if(modalAbierto()) cerrarModal(); }catch(e){} try{ cerrarVisor(); }catch(e){}
+    { const sy = JSON.parse(sy0); Object.keys(s).forEach(k=>{ if(!(k in sy)) delete s[k]; }); Object.assign(s, sy); D.sync = s; }   // v164: autor, puenteV, ultTs… (y el mismo objeto después de syncAplicar)
+    D.cuarteles.length = 0; cuC0.forEach(q=>D.cuarteles.push(q)); D.fenologia = (D.fenologia||[]).filter(x=>!x || x.fundo!==FC);
+    if(nf0) nav.fen = JSON.parse(nf0); else delete nav.fen; if(ds0===undefined) delete nav.datosSec; else nav.datosSec = ds0;
+    fcIds.forEach(f=>{ try{ fotoDelAhora(f); }catch(e){} });
     const mio = x=>!!x && ids.indexOf(String(x.asisId||""))>=0;
     ["notas","registros","fenologia","recordatorios"].forEach(k=>{ if(Array.isArray(D[k])) D[k] = D[k].filter(x=>!mio(x)); });
     D.bitacora = (D.bitacora||[]).filter(e=>!mio(e) && !(e.lineas||[]).some(mio));
     D.labores = JSON.parse(lab0); if(bc0==="null") delete D.bitCfg; else D.bitCfg = JSON.parse(bc0);
+    D.buzonAcuse = JSON.parse(ba0);
     D.asist = JSON.parse(asis0); D.ui = JSON.parse(ui0); uiAplicar();
     if(lc0) nav.lc = JSON.parse(lc0); else delete nav.lc;
     if(p0==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", p0);
@@ -7983,6 +8938,82 @@ BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ic
     if(pB0==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", pB0);
     D.ui = JSON.parse(ui0); uiAplicar(); render();
   }
+  /* v164 (30-10-2026): el formulario de fenología con «También hay» abierto, la grilla del cerezo (5 columnas en el iPad, 2 en el celular) y
+     «Referencias del cerezo» a 375 px: nada se sale y nada tocable bajo 30 px. Todo en la copia (no se guarda ningún registro) */
+  await paso("Fenología v164: el formulario con «También hay», la grilla del cerezo y «Referencias del cerezo» en el iPad y a 375 px", async ()=>{
+    const qc = plantados().find(q=>fenEsCerezo(q.especie)), qn = plantados().find(q=>!fenEsCerezo(q.especie) && fenLista(q.especie||"").length>10);
+    if(!qc || !qn) throw new SinProbar("Hacen falta un cuartel de cerezo y otro de otra especie");
+    const u0 = JSON.stringify(D.ui||{}), fr0 = ("fenRef" in D)? JSON.stringify(D.fenRef) : null;
+    const sale = m=>{ const mr = m.getBoundingClientRect(), mb = m.querySelector(".mb");
+      const f = [...m.querySelectorAll("*")].filter(e=>{ if(!visible(e)) return false; const r = e.getBoundingClientRect(); return r.width>0 && (r.right>mr.right+1 || r.left<mr.left-1); });
+      return f.length? "«"+String(f[0].className||f[0].tagName).slice(0,30)+"» "+txtDe(f[0]).slice(0,30) : (mb && mb.scrollWidth>mb.clientWidth+1? "desplazamiento lateral" : ""); };
+    try{
+      D.ui = Object.assign({}, JSON.parse(u0), {movil:"no", sol:false, grande:false}); uiAplicar(); await irA("fenologia");
+      fenNuevo(qc.fundo, qc.nombre); await pausa(); let m = necesito(modalAbierto(), "el formulario de "+qc.nombre);
+      const g = m.querySelector(".fcb-g"), nc = g? getComputedStyle(g).gridTemplateColumns.split(" ").length : 0;
+      chk(nc===5, "En el iPad la grilla del cerezo no va en 5 columnas ("+nc+")", "leve");
+      await cancelarModal();
+      D.ui = Object.assign({}, JSON.parse(u0), {movil:"si", sol:false, grande:false}); uiAplicar(); await irA("fenologia");
+      for(const q of [qn, qc]){
+        fenNuevo(q.fundo, q.nombre); await pausa(); m = necesito(modalAbierto(), "el formulario de "+q.nombre); m.style.width = "375px"; m.style.maxWidth = "375px";
+        fenSecAbrir(); await pausa(.6);
+        const s = sale(m); chk(!s, "A 375 px el formulario de fenología de "+q.nombre+" se sale por el costado: "+s, "media");
+        const ch = [...m.querySelectorAll(".fensc, .fcb-b, .fcb-s, .fcb-l, .fen-mas > summary")].filter(visible).filter(b=>b.offsetHeight<30 || b.offsetWidth<30);
+        chk(!ch.length, "A 375 px hay "+ch.length+" botones de menos de 30 px en el formulario de fenología de "+q.nombre, "leve");
+        await cancelarModal();
+      }
+      fenRefPantalla(); await pausa(); m = necesito(modalAbierto(), "«Referencias del cerezo»"); m.style.width = "375px"; m.style.maxWidth = "375px"; await pausa(.6);
+      const s = sale(m); chk(!s && m.querySelectorAll("[data-fenr]").length===12, "A 375 px «Referencias del cerezo» se sale por el costado o no tiene las 12 tarjetas: "+s, "media");
+      const ch = [...m.querySelectorAll(".fenref-acc .btn, .fenref-ph")].filter(visible).filter(b=>b.offsetHeight<30 || b.offsetWidth<30);
+      chk(!ch.length, "A 375 px hay "+ch.length+" botones de menos de 30 px en «Referencias del cerezo»", "leve");
+      revisarPantalla(); await cancelarModal();
+    } finally { if(modalAbierto()){ try{ cerrarModal(); }catch(e){} } FEN = null; D.ui = JSON.parse(u0); if(fr0==null) delete D.fenRef; else D.fenRef = JSON.parse(fr0); uiAplicar(); guardar(); render(); }
+  });
+  /* v164 (F1): el formulario corto del celular en Fenología (el de los cuarteles y el del cerezo) a 375 px. Solo se abre y se cierra: nada se envía */
+  await paso("Fenología v164 (F1): el formulario corto del celular con Fenología («También hay», la grilla del cerezo y las fotos) a 375 px, sin nada que se salga", async ()=>{
+    const qc = plantados().find(q=>fenEsCerezo(q.especie)), qn = plantados().find(q=>!fenEsCerezo(q.especie) && fenLista(q.especie||"").length>10);
+    if(!qc || !qn || typeof lcCel!=="function") throw new SinProbar("Hacen falta un cuartel de cerezo, otro de otra especie y el formulario corto del celular");
+    const u0 = JSON.stringify(D.ui||{}), c0 = asisCfg().cola.length;
+    const sale = m=>{ const mr = m.getBoundingClientRect(), mb = m.querySelector(".mb");
+      const f = [...m.querySelectorAll("*")].filter(e=>{ if(!visible(e)) return false; const r = e.getBoundingClientRect(); return r.width>0 && (r.right>mr.right+1 || r.left<mr.left-1); });
+      return f.length? "«"+String(f[0].className||f[0].tagName).slice(0,30)+"» "+txtDe(f[0]).slice(0,30) : (mb && mb.scrollWidth>mb.clientWidth+1? "desplazamiento lateral" : ""); };
+    try{
+      D.ui = Object.assign({}, JSON.parse(u0), {movil:"si", sol:false, grande:false}); uiAplicar(); await irA("fenologia");
+      for(const q of [qn, qc]){
+        lcCel({fundo:q.fundo, cuarteles:[q.nombre], que:"fen"}); await pausa();
+        const m = necesito(modalAbierto() && document.getElementById("lcCe") && modalAbierto(), "el formulario corto de "+q.nombre);
+        m.style.width = "375px"; m.style.maxWidth = "375px"; lcCeSecAbrir(); await pausa(.6);
+        const s = sale(m); chk(!s, "A 375 px el formulario corto de fenología de "+q.nombre+" se sale por el costado: "+s, "media");
+        const ch = [...m.querySelectorAll(".fensc, .fcb-b, .fcb-s, .fcb-l, .lc-ce-fb, .lc-chip")].filter(visible).filter(b=>b.offsetHeight<30 || b.offsetWidth<30);
+        chk(!ch.length, "A 375 px hay "+ch.length+" botones de menos de 30 px en el formulario corto de fenología de "+q.nombre, "leve");
+        revisarPantalla(); await cancelarModal();
+      }
+      chk(asisCfg().cola.length===c0 && !_lcCe, "Abrir y cerrar el formulario corto dejó algo en la cola o la ventana a medio cerrar", "media");
+    } finally { if(modalAbierto()){ try{ cerrarModal(); }catch(e){} } D.ui = JSON.parse(u0); uiAplicar(); guardar(); render(); }
+  });
+  /* revisión 2 de la v164: la ficha de un cerezo con 3 «también hay»: la casilla Fenología no corta la 2.ª línea (el primero y «+2»), el nombre del
+     boletín cabe en 2 líneas y el estado completo va en el title. Un registro de prueba en la copia, que se quita al final */
+  await paso("Ficha de un cerezo con 3 «también hay» a 1180 px, a 375 px y con texto grande: la casilla Fenología no corta nada y lleva el estado completo en el title", async ()=>{
+    const qc = plantados().find(q=>fenEsCerezo(q.especie));
+    if(!qc || typeof lcAbrirCu!=="function") throw new SinProbar("Hace falta un cuartel de cerezo y la ficha del cuartel");
+    const u0 = JSON.stringify(D.ui||{}), lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null;
+    const e = {id:nid(), fecha:HOY(), fundo:qc.fundo, cuartel:qc.nombre, especie:qc.especie, bbch:"87", estado:"Maduración de fruto", bbchSec:["57","67","91"], fotos:[], nota:"Bot pantallas v164", fh:new Date(Date.now()+60000).toISOString()};
+    fenAll().push(e);
+    try{
+      for(const [nom, mov, gr, ancho] of [["iPad 1180 × 820", "no", false, null], ["celular 375 px", "si", false, 375], ["celular 375 px con texto grande", "si", true, 354]]){
+        D.ui = Object.assign({}, JSON.parse(u0), {movil:mov, sol:false, grande:gr}); uiAplicar();
+        await irA("bitacora"); lcAbrirCu(qc.fundo, qc.nombre); await pausa(.5);
+        const v = necesito(document.getElementById("lcVista"), "la ficha de "+qc.nombre);
+        if(ancho){ v.style.width = ancho+"px"; v.style.maxWidth = ancho+"px"; await pausa(.4); }
+        try{
+          const c = necesito(v.querySelector(".lc-fi-ac.fen"), "la casilla Fenología de "+qc.nombre), s2 = c.querySelector(".lc-fi-ac-c"), n = c.querySelector(".hoy-ac-n");
+          chk(s2 && /también Botón blanco \+2$/.test(txtDe(s2)) && s2.scrollHeight<=s2.clientHeight+1, nom+": la 2.ª línea de la casilla Fenología no dice «… también Botón blanco +2» o se corta: «"+txtDe(s2||null)+"» ("+(s2? s2.scrollHeight+" de "+s2.clientHeight+" px" : "")+")", "leve");
+          chk(n && n.scrollHeight<=n.clientHeight+1 && n.scrollWidth<=n.clientWidth+1, nom+": el nombre «10 Maduración de fruto» se corta en la casilla ("+(n? n.scrollHeight+"/"+n.clientHeight+" px de alto, "+n.scrollWidth+"/"+n.clientWidth+" de ancho" : "")+")", "leve");
+          chk(/también Botón blanco, Caída de pétalos, Postcosecha/.test(c.getAttribute("title")||""), nom+": la casilla no trae el estado completo en el title: «"+(c.getAttribute("title")||"")+"»", "leve");
+        } finally { if(ancho){ v.style.width = ""; v.style.maxWidth = ""; } }
+      }
+    } finally { D.fenologia = fenAll().filter(x=>x!==e); D.ui = JSON.parse(u0); uiAplicar(); if(lc0) nav.lc = JSON.parse(lc0); else delete nav.lc; guardar(); render(); }
+  });
   /* 29-10-2026 (Pp por líneas de riego): la ficha ⚙ de riego a 375 px (celular) con 2 líneas y la caja de «Aplicar a todos» abierta.
      Todo en la copia: los datos de riego vuelven a como estaban (la caja se abre, pero no se toca «Sí») */
   await paso("Ficha de riego a 375 px con 2 líneas y «Aplicar a todos» abierto: nada se sale y la Línea 2 oculta no se puede enfocar", async ()=>{
@@ -8097,6 +9128,31 @@ BOTS.push({id:"auditor", modulo:"Datos guardados", nombre:"Auditor de datos", ic
   await paso("Números de los cuarteles", async ()=>{
     const m = (D.cuarteles||[]).filter(q=>!(isFinite(+q.ha) && +q.ha>=0) || (q.marco && !marcoDens(q.marco)));
     chk(!m.length, m.length+" cuartel(es) con superficie o marco que no se entiende: "+m.slice(0,5).map(q=>q.nombre+" ("+q.ha+" ha, «"+(q.marco||"")+"»)").join(", "), "media");
+  });
+  /* v164: los «también hay» de la fenología y las fotos de referencia del cerezo */
+  await paso("Fenología v164: los «también hay» (bbchSec) y las referencias del cerezo (fenRef) están sanos", async ()=>{
+    const malos = [];
+    (D.fenologia||[]).forEach(e=>{ if(!e || !("bbchSec" in e)) return; const s = e.bbchSec;
+      if(!Array.isArray(s) || !s.length || s.length>3 || s.some(c=>!/^\d{2}$/.test(String(c)) || String(c)===String(e.bbch)) || new Set(s).size!==s.length || s.slice().sort().join()!==s.join()) malos.push("registro "+e.id+" con bbchSec "+JSON.stringify(s)); });
+    const R = D.fenRef;
+    if(R!==undefined){
+      if(!R || typeof R!=="object" || !R.cerezo || typeof R.cerezo!=="object" || (R.enlace && !/^https?:\/\//i.test(R.enlace))) malos.push("fenRef mal formado");
+      else Object.keys(R.cerezo).forEach(k=>{ const o = R.cerezo[k]; if(!FEN_CEREZO_TODOS.some(b=>b.c===k) || !o || !/^fr/.test(String(o.fid||""))) malos.push("referencia «"+k+"» sin foto propia «fr…»"); });
+    }
+    chk(!malos.length, malos.length+" problema(s) en la fenología v164: "+malos.slice(0,5).join(" · "), "media");
+  });
+  await paso("Fenología v164 (F1): el acuse de recibo (D.buzonAcuse) está sano: una lista de {id, ts, eq} con ids únicos y válidos, 300 como máximo", async ()=>{
+    const L = D.buzonAcuse;
+    if(L===undefined) throw new SinProbar("Este cuaderno no tiene D.buzonAcuse (se crea al abrir la app)");
+    const malos = [];
+    if(!Array.isArray(L)) malos.push("D.buzonAcuse no es una lista");
+    else {
+      const ids = L.map(x=>x && String(x.id));
+      if(L.length>ASIS_ACUSE.max) malos.push(L.length+" acuses (máximo "+ASIS_ACUSE.max+")");
+      if(new Set(ids).size!==ids.length) malos.push("ids repetidos");
+      L.forEach((x,i)=>{ if(!x || typeof x!=="object" || !/^[A-Za-z0-9_-]{1,60}$/.test(String(x.id||"")) || isNaN(Date.parse(x.ts)) || Object.keys(x).some(k=>["id","ts","eq"].indexOf(k)<0)) malos.push("acuse "+i+": "+JSON.stringify(x).slice(0,80)); });
+    }
+    chk(!malos.length, malos.length+" problema(s) en el acuse de recibo: "+malos.slice(0,4).join(" · "), "media");
   });
   await paso("Riego v163: las copias de la hoja, lo confirmado y la suspensión están sanos (lunes, orden, números, estados y tamaño)", async ()=>{
     const r = D.riego || {}, P = r.prog || {}, RE = r.real || {}, PA = r.pausa || [], malos = [];
