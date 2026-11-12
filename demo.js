@@ -1402,7 +1402,7 @@ const FRASES = {
         "Guardamos.",
         "En la pestaña <b>Notas</b> se buscan por palabra, se agrupan por día, semana o mes y se filtran por fundo."],
   BIT:["La <b>Bitácora</b> junta la historia de cada cuartel: aplicaciones, labores, fenología, riegos y notas.",
-       "En <b>Cuarteles</b> ves cada uno con su carencia en palabras, su estado fenológico y una tira de doce semanas con lo que se hizo.",
+       "En <b>Cuarteles</b> ves cada uno con su carencia en palabras, su estado fenológico y una tira con lo que se hizo en el período que elijas.",
        "Un toque y se abre la <b>ficha del cuartel</b>: la carencia, lo último que se aplicó, la fenología y su libro completo.",
        "Con <b>Anotar aquí</b> registras con el lugar ya puesto: una aplicación, la labor del día, un estado fenológico o una nota.",
        "Y en <b>Día a día</b> está todo por fecha, con un buscador en toda la historia."],
@@ -1436,7 +1436,7 @@ const FRASES = {
        "Los días en que la estación no tenía datos se completan con Open-Meteo y se ven en gris, como en Riego. Desde seis meses, las barras van por semana.",
        "Aquí, los <b>grados día</b>: abajo eliges la base, 5, 10 o 12,5 grados, y arriba ves el total, el promedio por día y el acumulado de la temporada.",
        "Y el <b>frío invernal</b> en un solo dato: eliges horas frío, unidades Utah o porciones, para saber si el cerezo juntó lo que necesita.",
-       "En <b>Informes</b>: diario, semanal, mensual o de la temporada, en Excel o PDF.",
+       "En <b>Informes</b>: diario, semanal, mensual, de la temporada o del período que elijas, en Excel o PDF.",
        "La tarjeta <b>Presión</b> avisa cuando la presión, el cielo y la humedad coinciden en que viene un frente."],
   ASIST:["El <b>Asistente</b>: le cuentas lo del día con tus palabras, escrito o dictado, y Claude lo ordena.",
          "Por ejemplo…",
@@ -1615,6 +1615,7 @@ const BLOQUES = {
 
   BIT:{prep:async ()=>{ const k = K(); await k.irA("bitacora");
       const L = lcNav(); L.fundo = DEMO.fundo; L.cu = ""; L.fuAb = Object.assign({}, L.fuAb, {[DEMO.fundo]:true}); L.v = "cu"; L.resalta = "";
+      L.per = "3m"; L.ref = ""; delete L.perPref;   // v166: la tira siempre igual
       try{ lcGuardarPrefs(L); }catch(e){} lcPintar(); window.scrollTo(0, 0); await k.pausa(); }, pasos:[
     async fr=>decir(fr, "#lcVista"),
     async fr=>decir(fr, fn("fila del cuartel de ejemplo", ()=>{ const b = filaCu(DEMO.fundo, DEMO.q[0].nombre); return b && (b.closest(".lc-cr") || b); })),

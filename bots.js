@@ -22,6 +22,65 @@ const R = {inicio:null, fin:null, ok:0, verif:0, fallas:[], avisos:[], sinProbar
 let botActual = null, pasoActual = "", vel = "mirar", enMono = false;
 const LS_INFORME = "agronotasBotsUltimo";
 const XSS = `<img src="x-bot" onerror="window.__xss=(window.__xss||0)+1">`;
+/* v165 (03-11-2026): tipos de labor tal como los puede escribir Manuel (comillas, &, dos puntos, apóstrofo, <, ª y ñ, emoji), en el iPad o desde el
+   celular (ya no hay regla de nombres para lo que llega por la bandeja). labRevisar() mira lo que está a la vista: ningún atributo roto, nada escapado
+   dos veces («&amp;», «&quot;»…) y cada onclick/onchange/onmousedown que lleva uno de estos nombres compila y le pasa el nombre EXACTO a su función
+   (labLlamadas lo corre con todo de mentira, como «correria» de CE15: nada de la app se llama) */
+const LAB_RAROS = ['Poda "en verde"', "Riego & fertilización", "Raleo: segunda pasada", "Poda d'invierno", "Desbrote <2 cm>", "Cosecha 1ª pasada (ñ)", "Aplicación 🍒"];
+const LAB_TROZO = /en verde|Riego &|Raleo: segunda|d\\?'invierno|Desbrote <|1ª pasada|Aplicación 🍒/;
+function labLlamadas(code){
+  const calls = [], any = new Proxy(function(){}, {get:(t, k)=>k===Symbol.toPrimitive? ()=>"" : k==="then"? undefined : any, apply:()=>any, construct:()=>any, set:()=>true});
+  const fn = k=>new Proxy(function(){}, {apply:(t, th, args)=>{ calls.push({fn:k, args}); return any; }, get:(t, k2)=>k2===Symbol.toPrimitive? ()=>"" : k2==="then"? undefined : any, set:()=>true});
+  const sc = new Proxy({}, {has:()=>true, get:(t, k)=>k===Symbol.unscopables? undefined : typeof k==="string"? fn(k) : any, set:()=>true});
+  let err = ""; try{ (new Function("__s", "with(__s){ (function(){\n"+code+"\n}).call(__s); }"))(sc); }catch(e){ err = String((e && e.message) || e); }
+  return {calls, err};
+}
+function labRevisar(raiz){
+  const zonas = raiz? [raiz] : ["#topbar","#app","#capaModal","#capaVisor","#avisoCapa"].map(s=>document.querySelector(s)).filter(Boolean), mal = [];
+  const okArg = a=>typeof a!=="string" || !LAB_TROZO.test(a) || LAB_RAROS.indexOf(a)>=0 || ((typeof tiposLabor==="function" && tiposLabor())||[]).indexOf(a)>=0;
+  const ent = /&(amp|quot|lt|gt|#0?39);/;
+  for(const z of zonas){
+    String(z.innerText||"").split("\n").forEach(l=>{ if(/en verde|fertiliz|segunda pasada|invierno|Desbrote|1ª pasada|Aplicaci/.test(l) && ent.test(l)) mal.push("se ve «"+l.trim().slice(0,60)+"» (escapado dos veces)"); });
+    z.querySelectorAll("*").forEach(el=>{
+      if(el.closest("#botsUI")) return;
+      const tag = el.tagName.toLowerCase();
+      for(const a of el.attributes){
+        if(!/^[a-z][a-z0-9_.:-]*$/i.test(a.name)){ mal.push("<"+tag+"> con un atributo roto «"+a.name.slice(0,24)+"»"); continue; }
+        const v = a.value;
+        if(/^on/i.test(a.name)){
+          if(!LAB_TROZO.test(v)) continue;
+          const r = labLlamadas(v), args = [].concat(...r.calls.map(c=>c.args));
+          if(r.err) mal.push("<"+tag+" "+a.name+"> no compila ("+r.err.slice(0,40)+"): "+v.slice(0,80));
+          else if(!args.some(x=>LAB_RAROS.indexOf(x)>=0)) mal.push("<"+tag+" "+a.name+"> lleva el nombre pero no se lo pasa entero a su función: "+v.slice(0,80));
+          args.filter(x=>!okArg(x)).forEach(x=>mal.push("<"+tag+" "+a.name+"> pasa «"+String(x).slice(0,40)+"» en vez del nombre exacto"));
+        } else if(LAB_TROZO.test(v) && ent.test(v)) mal.push("<"+tag+" "+a.name+"=\""+v.slice(0,50)+"\"> escapado dos veces");
+      }
+      if(tag==="option" && LAB_TROZO.test(el.value) && !okArg(el.value)) mal.push("<option> con el valor «"+el.value.slice(0,40)+"»");
+    });
+  }
+  return [...new Set(mal)];
+}
+/* el texto de un PDF de jsPDF (las páginas antes de comprimir), y el de un CSV de la app (csvExport) sin descargarlo */
+function pdfTextoBot(d){ try{ return (d.internal.pages||[]).filter(Boolean).map(p=>[].concat(p).join("\n")).join("\n").replace(/\\([()\\])/g, "$1"); }catch(e){ return ""; } }
+async function csvBot(que){
+  const u0 = URL.createObjectURL; let b = null;
+  URL.createObjectURL = function(x){ if(x instanceof Blob) b = x; return u0.apply(this, arguments); };
+  try{ csvExport(que); } finally { URL.createObjectURL = u0; }
+  const t = b? await b.text() : "";
+  return t.charCodeAt(0)===0xFEFF? t.slice(1) : t;
+}
+function csvFilas(t){
+  const filas = []; let f = [], c = "", q = false;
+  for(let i=0;i<t.length;i++){ const ch = t[i];
+    if(q){ if(ch==='"'){ if(t[i+1]==='"'){ c += '"'; i++; } else q = false; } else c += ch; }
+    else if(ch==='"') q = true;
+    else if(ch===";"){ f.push(c); c = ""; }
+    else if(ch==="\r" || ch==="\n"){ if(ch==="\r" && t[i+1]==="\n") i++; f.push(c); filas.push(f); f = []; c = ""; }
+    else c += ch;
+  }
+  if(c || f.length){ f.push(c); filas.push(f); }
+  return filas;
+}
 /* funciones que ningún bot debe tocar nunca (aunque esté en la copia de prueba) */
 const PELIGROSAS = /\b(borrarTodo|restaurar|inpRest|sync[A-Z]\w*|asisMic|asisOrdenar|asisBandejaMirar|asisColaEnviar|asisLeer|asisLeerSet|fenSugerir|lcCeSugerir|wlConectar|guardarIA|probarIA|iaAnalizar\w*|iaBuscar|iaIdentificar|iaEscanearEtiqueta|iaInterpretarDoc|iaTranscribir|iaResumenInforme|importarGesAgro|quitarGesAgro|ortoOff\w*|salirProyecto|nuevoProyecto|pedirEntrar|lluviaGPS|mapaVerEarth|mapaMedRelieve|botsAbrir|espacioContarNube|cfPDFRedactarIA|lluviaOficialIA|lluviaAnalizar|riegoMsjCompartir|cfReset|estRebajarTodo|estBorrarLocal|AgroBots|demoAbrir|AgroDemo)\b/;
 /* MUDO (28-10-2026): en este PC (localhost, 127.0.0.1, archivo abierto con doble clic) nada de lo que prueban los bots suena: dentro de la caja,
@@ -348,12 +407,69 @@ async function irA(tab){
 }
 function esperarQue(cond, ms){ return new Promise(async res=>{ const t0=Date.now(); while(Date.now()-t0<(ms||4000)){ try{ if(cond()) return res(true); }catch(e){} await esperar(120); } res(false); }); }
 async function esperarSalida(fn, ms){ const p0=R.pdfs.length, s0=R.salidas.length; await fn(); return esperarQue(()=>R.pdfs.length>p0 || R.salidas.length>s0, ms||15000); }
+/* v166 r1: hace de iPad para riegoEsIOS (userAgent) y, si se pasan, cambia navigator.share y canShare; fn corre así y después todo vuelve. La caja de los bots ya captura a.click y share: nada se descarga ni se comparte de verdad */
+async function botComoIPad(fn, o){
+  o = o || {};
+  const Pr = {}; ["userAgent", "share", "canShare"].forEach(k=>{ Pr[k] = Object.getOwnPropertyDescriptor(navigator, k); });
+  const poner = (k, d)=>{ if(d) Object.defineProperty(navigator, k, d); else delete navigator[k]; };
+  poner("userAgent", {configurable:true, get:()=>"Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"});
+  if(o.share) poner("share", {configurable:true, value:o.share});
+  if(o.canShare) poner("canShare", {configurable:true, value:o.canShare});
+  try{ return await fn(); } finally { ["userAgent", "share", "canShare"].forEach(k=>poner(k, Pr[k])); }
+}
+/* revisión r2: dónde están las flechas ‹ › y cuánto miden los filtros de la Bitácora */
+function botFlechasPos(){
+  const q = d=>document.querySelector(`#lcVista [data-acc="pmov"][data-v="${d}"]`), a = q(-1), s = q(1), f = document.querySelector("#lcVista .lc-fil"); if(!a || !s || !f) return null;
+  const ra = a.getBoundingClientRect(), rs = s.getBoundingClientRect(); return {ax:ra.left, ay:ra.top, sx:rs.left, sy:rs.top, fh:f.getBoundingClientRect().height};
+}
+/* toca una flecha n veces en el MISMO punto de la pantalla, como un dedo que no se mueve (elementsFromPoint, sin el panel ni el cursor de los bots). Devuelve si cada toque cayó en la flecha, nav.lc.ref después de cada uno, y cuánto se corrieron ‹ (movA), › (movS) y el alto de los filtros (movF) */
+async function botFlechasToques(dir, n){
+  const sel = `#lcVista [data-acc="pmov"][data-v="${dir}"]`, b = document.querySelector(sel), out = {cayo:[], refs:[], movA:0, movS:0, movF:0};
+  if(!b) return out;
+  try{ b.scrollIntoView({block:"center", behavior:"instant"}); }catch(e){} await esperar(60);
+  const r0 = b.getBoundingClientRect(), x = r0.left + r0.width / 2, y = r0.top + r0.height / 2, p0 = botFlechasPos();
+  for(let i = 0; i < n; i++){
+    const e = document.elementsFromPoint(x, y).find(z=>!z.closest("#botsUI") && !z.closest("#botsCursor")), t = e && e.closest(sel);
+    out.cayo.push(!!t && !t.disabled);
+    if(t) t.click();
+    await esperar(60);
+    out.refs.push(nav.lc.ref);
+    const p = botFlechasPos(); if(!p) continue;
+    out.movA = Math.max(out.movA, Math.abs(p.ax - p0.ax), Math.abs(p.ay - p0.ay)); out.movS = Math.max(out.movS, Math.abs(p.sx - p0.sx), Math.abs(p.sy - p0.sy)); out.movF = Math.max(out.movF, Math.abs(p.fh - p0.fh));
+  }
+  return out;
+}
+/* lo mismo en Día a día y en Cuarteles: el segundo toque también mueve el período (antes, en Día a día con Día caía en el vacío) y, en el iPad, las flechas están en el mismo lugar con cualquier período */
+async function botFlechasRevisar(vista){
+  const H = HOY(), mov = uiEsMovil(), lun = lcSem(H), per0 = nav.lc.per, ref0 = nav.lc.ref, poner = async (per, ref)=>{ nav.lc.per = per; nav.lc.ref = ref || ""; lcPintar(); await esperar(60); };
+  const f0 = lcIdx().f0, viejo = f0 && f0 < masDias(lun, -30) ? null : {id:nid(), tipo:"Riego", fecha:masDias(H, -500), fundo:fundosConCuarteles()[0], cuartel:"", horas:"1", sector:"", fotos:[], docs:[], audios:[], pin:"baja", gps:null, obs:""};   // algo anotado hace tiempo: ‹ no se apaga
+  if(viejo){ D.registros.push(viejo); guardar(); }
+  try{
+    for(const [per, nom, r1, r2] of [["dia", "Día", masDias(H, -1), masDias(H, -2)], ["sem", "Semana", masDias(lun, -7), masDias(lun, -14)]]){
+      await poner(per);
+      chk(!!document.querySelector("#lcVista .lc-fil > .lc-pnav"), vista + ", " + nom + ": la línea ‹ título › no va en su propia línea, bajo los chips", "media");
+      const v = await botFlechasToques(-1, 2);
+      chk(v.cayo.join() === "true,true" && v.refs.join() === r1 + "," + r2 && v.movA <= 1 && v.movF <= 1 && (mov || v.movS <= 1),
+        vista + ", " + nom + ": dos toques en ‹ en el mismo punto dan " + JSON.stringify(v) + " (debían caer los dos, con ref " + r1 + " y " + r2 + ", sin correrse)", "media");
+      const w = await botFlechasToques(1, 2);
+      chk(w.cayo.join() === "true,true" && w.refs.join() === r1 + "," && w.movA <= 1 && w.movF <= 1 && (mov || w.movS <= 1),
+        vista + ", " + nom + ": dos toques en › en el mismo punto dan " + JSON.stringify(w) + " (debían volver a " + r1 + " y a hoy)", "media");
+    }
+    if(!mov){
+      const ps = [], lista = [["dia"], ["dia", masDias(H, -1)], ["dia", masDias(H, -30)], ["sem"], ["sem", masDias(lun, -7)], ["sem", masDias(lun, -70)], ["mes"], ["mes", lcMesSum(H, -1)], ["3m"], ["3m", masDias(lun, -91)], ["6m"], ["6m", lcMesSum(H, -6)], ["1a"], ["1a", lcMesSum(H, -12)]];
+      for(const [p, r] of lista){ await poner(p, r); ps.push(botFlechasPos()); }
+      const p0 = ps[0], malos = ps.map((p, i)=>!p || Math.abs(p.ax - p0.ax) > 1 || Math.abs(p.ay - p0.ay) > 1 || Math.abs(p.sx - p0.sx) > 1 || Math.abs(p.sy - p0.sy) > 1 || Math.abs(p.fh - p0.fh) > 1 ? lista[i].join(" ") + ": " + JSON.stringify(p) : "").filter(Boolean);
+      chk(!malos.length, vista + ": las flechas o el alto de los filtros cambian según el período (de " + JSON.stringify(p0) + "): " + malos.join(" · "), "media");
+    }
+  } finally { if(viejo){ D.registros = D.registros.filter(x=>x!==viejo); guardar(); } nav.lc.per = per0; nav.lc.ref = ref0; lcPintar(); await esperar(60); }
+}
 async function undoVisible(){ return esperarQue(()=>buscar(".aviso-acc"), 1500); }
 async function deshacer(){ const b = buscar(".aviso-acc"); if(!b) return false; await tocar(b, "Deshacer"); await pausa(1.2); return true; }
 
 /* ------------------------------------------------------------------ pasos */
 async function paso(nombre, fn){
   if(AB.parar) throw PARAR;
+  if(AB.soloPasos && !AB.soloPasos.test(nombre)) return;   // para repasar a mano unos pocos pasos de un bot largo desde la consola: AgroBots.soloPasos = /Elegir período/
   pasoActual = nombre; pintarUI(); leyenda();
   const n0 = R.fallas.length;
   let estado = "ok";
@@ -683,6 +799,12 @@ BOTS.push({id:"listas", modulo:"Mis listas", nombre:"Rosa, bodeguera", ico:"✅"
 /* 📅 LABORES Y CARTA GANTT --------------------------------------------------------------- */
 BOTS.push({id:"jefa", modulo:"Carta Gantt y labores", nombre:"Marta, jefa de campo", ico:"📅", que:"Labores y Carta Gantt: validaciones, varios cuarteles, tipos nuevos, períodos y sus títulos, cambio de año y de mes desde un 31, filtros, plan vs real por día, editar/duplicar/borrar, avance, PDF, barras del año alineadas", correr: async ()=>{
   const fu = fundosConCuarteles()[0], cus = plantados(fu);
+  /* revisión 2 de la v165: el tipo nuevo «Bot raleo especial» (paso de la Gantt) y sus labores no quedan en la copia al terminar: ensuciaban lo que se
+     revisa después de los bots («Hoy toca» decía «10 labores · Bot raleo especial…»). Se quitan en el último paso y, si el bot se corta, en el finally */
+  const RALEO = "Bot raleo especial";
+  const sinRaleo = ()=>{ D.catalogos.tiposLabor = (D.catalogos.tiposLabor||[]).filter(t=>t!==RALEO); D.labores = D.labores.filter(l=>l.tipo!==RALEO);
+    const a = gtAj(); if(a.colTipo) delete a.colTipo[RALEO]; const u = (D.bitCfg||{}).unidades; if(u) delete u[RALEO]; guardar(); };
+  try{
   await paso("Validaciones del formulario de labor", async ()=>{
     await irA("panel");
     let a0 = R.alerts.length;
@@ -798,6 +920,213 @@ BOTS.push({id:"jefa", modulo:"Carta Gantt y labores", nombre:"Marta, jefa de cam
     await irA("gantt"); await tocar("[onclick='gtHoy()']", "Hoy");
     chk(await esperarSalida(()=>tocar("[onclick='ganttPDF()']", "PDF")), "El PDF de la Gantt no se generó");
   });
+  /* v165 (03-11-2026): los 7 tipos de LAB_RAROS escritos en el iPad, como los escribiría Manuel, se ven tal cual y cada botón hace lo correcto donde aparece
+     un tipo de labor: Datos (Agregar, repetido, ✕ con Deshacer), Colores de la Gantt (cambiar y ↺), Nueva labor (la lista filtrada y marcar el cuartel), la
+     Carta Gantt (filtro «Toda labor» y PDF), la Labor del día de la Bitácora (chips, «otro cuartel», integrar a la Gantt), Día a día (búsqueda y detalle),
+     «Hoy toca» y Próximas acciones, los dos formularios de la labor, la revisión del asistente, Avances, el informe semanal, el CSV de labores, la ficha y el
+     mapa. Al terminar, el catálogo, los colores, las labores, la bitácora y el asistente quedan como estaban */
+  await paso("v165 · Tipos de labor con comillas, &, dos puntos, apóstrofo, <, ª y ñ y emoji escritos en el iPad: se ven tal cual y cada botón hace lo correcto (Datos, colores, Gantt, Bitácora, Hoy toca, formularios, asistente, Avances, informe, PDF y CSV)", async ()=>{
+    const N = LAB_RAROS, H = HOY(), q1 = cus[0], q2 = cus[1];
+    if(!q1 || !q2) throw new SinProbar("Hace falta un fundo con 2 cuarteles plantados");
+    if(N.some(n=>tiposLabor().indexOf(n)>=0)) throw new SinProbar("El catálogo ya tiene alguno de los tipos de prueba");
+    const tl0 = JSON.stringify(tiposLabor()), aj0 = JSON.stringify(gtAj()), lab0 = JSON.stringify(D.labores), bit0 = JSON.stringify(D.bitacora||[]), bc0 = JSON.stringify(D.bitCfg||null), as0 = JSON.stringify(D.asist||{});
+    const lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null, nv0 = ["datosSec","avPeriodo","avLabor","avFundo","avCuartel","hoyFundo"].map(k=>[k, nav[k]]);
+    const rev = donde=>{ const m = labRevisar(); chk(!m.length, "En "+donde+" un tipo de labor con símbolos se ve distinto o rompe un botón: "+m.slice(0,4).join(" · "), "grave"); };
+    const tiene = (t, donde)=>{ const f = N.filter(n=>String(t).indexOf(n)<0); chk(!f.length, "En "+donde+" no se ven tal cual: "+f.join(" | "), "media"); };
+    const mias = [];
+    try{
+      /* 1. Datos → Personalizar → Tipos de labor */
+      nav.datosSec = "personalizar"; await irA("datos");
+      const inp = ()=>necesito(document.getElementById("cat_tiposLabor"), "el campo de un tipo de labor nuevo en Datos");
+      const chipsTL = ()=>[...inp().closest(".fila").previousElementSibling.querySelectorAll(".chip")].map(c=>({c, t:c.firstChild? c.firstChild.textContent : ""}));
+      for(const n of N){ await escribir(inp(), n, "tipo de labor nuevo"); await tocar(`[onclick="agregarCat('tiposLabor')"]`, "Agregar «"+n+"»"); }
+      chk(JSON.stringify(tiposLabor())===JSON.stringify(JSON.parse(tl0).concat(N)), "Los 7 tipos no quedaron al final del catálogo tal cual: "+JSON.stringify(tiposLabor().slice(-7)), "grave");
+      chk(N.every(n=>chipsTL().filter(x=>x.t===n).length===1), "En Datos los chips no muestran los 7 tipos tal cual: "+chipsTL().slice(-7).map(x=>x.t).join(" | "), "media");
+      rev("Datos → Personalizar catálogos");
+      const a0 = R.alerts.length;
+      await escribir(inp(), 'PODA "EN VERDE"', "el mismo tipo en mayúsculas"); await tocar(`[onclick="agregarCat('tiposLabor')"]`, "Agregar repetido");
+      chk(huboMsg(a0, /Ya existe/) && tiposLabor().filter(x=>x.toLowerCase()==='poda "en verde"').length===1, "Un tipo repetido (con comillas, en mayúsculas) se agregó o no avisó", "media");
+      await escribir(inp(), "", "vaciar el campo");
+      const xI = necesito(chipsTL().find(o=>o.t==="Poda d'invierno"), "el chip «Poda d'invierno»");
+      await tocar(xI.c.querySelector(".qx-cat"), "✕ de «Poda d'invierno»");
+      chk(tiposLabor().indexOf("Poda d'invierno")<0 && N.every(n=>n==="Poda d'invierno" || tiposLabor().indexOf(n)>=0), "✕ no quitó justo «Poda d'invierno»", "media");
+      chk(await undoVisible() && await deshacer() && JSON.stringify(tiposLabor())===JSON.stringify(JSON.parse(tl0).concat(N)), "Deshacer no devolvió «Poda d'invierno» a su lugar del catálogo", "media");
+      /* 2. Colores de la Gantt: cambiar y ↺, con el nombre exacto */
+      await irA("gantt"); await tocar("[onclick='gtHoy()']", "Hoy");
+      await tocar('[onclick="gtColores()"]', "Colores");
+      const filaCol = n=>[...document.querySelectorAll("#capaModal .colrow")].find(r=>txtDe(r.querySelector(".colnom"))===n);
+      rev("Colores de la Gantt");
+      for(const n of N){
+        const f = necesito(filaCol(n), "la fila de «"+n+"» en Colores"), c = f.querySelector("input[type=color]");
+        c.value = "#123456"; c.dispatchEvent(new Event("input", {bubbles:true})); await pausa(.2);
+        chk(gtAj().colTipo[n]==="#123456" && gtColTipo(n)==="#123456" && txtDe(f.querySelector(".colhex"))==="#123456", "El color de «"+n+"» no quedó guardado con su nombre exacto: "+JSON.stringify(Object.keys(gtAj().colTipo).filter(k=>LAB_TROZO.test(k))), "media");
+        await tocar(f.querySelector(".colvolver"), "↺ «"+n+"»");
+        chk(!(n in gtAj().colTipo) && gtColTipo(n)===gtColTipoDef(n), "↺ no volvió «"+n+"» a su color original", "leve");
+      }
+      await cerrarTodo();
+      /* 3. Nueva labor en la Gantt: el tipo de la lista (filtrada por la 1.ª palabra) y el cuartel marcado; una labor por tipo, de hoy a pasado mañana */
+      const kq = gtCuKey(fu, q1.nombre);
+      for(const n of N){
+        await cerrarTodo(); await tocar("[onclick='gtNueva()']", "Nueva labor");
+        const it = necesito(document.getElementById("gt_tipo"), "el campo «Tipo de labor»"), p1 = n.split(/[\s:]/)[0];
+        await escribir(it, p1, "buscar el tipo"); gtCbLista("gt_tipo", true);   // con el panel escondido el oninput puede no llegar
+        rev("la lista de tipos de la Nueva labor («"+p1+"»)");
+        const op = necesito([...document.querySelectorAll("#gt_tipo_l .cbx-o")].find(o=>txtDe(o)===n), "«"+n+"» en la lista de tipos");
+        op.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, cancelable:true})); await pausa(.2);
+        chk(it.value===n, "Elegir «"+n+"» en la lista dejó «"+it.value+"»", "grave");
+        const cb = necesito([...document.querySelectorAll("#gtCuLista input[type=checkbox]")].find(x=>labLlamadas(x.getAttribute("onchange")||"").calls.some(y=>y.fn==="gtCuMarca" && y.args[0]===kq)), "la casilla de "+q1.nombre);
+        await marcar(cb, true, "cuartel "+q1.nombre);
+        chk(GT_SEL.sel[kq]===true && Object.keys(GT_SEL.sel).length===1, "Marcar "+q1.nombre+" no quedó en la selección: "+JSON.stringify(Object.keys(GT_SEL.sel)), "media");
+        await fecha("gt_ini", H); await fecha("gt_fin", masDias(H,2));
+        chk(await guardarModal_(), "No se guardó la labor «"+n+"»");
+        const l = D.labores[D.labores.length-1];
+        chk(l && l.tipo===n && l.fundo===fu && l.cuartel===q1.nombre && l.fecha===H && l.fecha2===masDias(H,2) && tiposLabor().filter(x=>x===n).length===1,
+          "La labor de la Gantt no quedó con el tipo «"+n+"» tal cual (o se repitió en el catálogo): "+JSON.stringify(l && {t:l.tipo, f:l.fecha, f2:l.fecha2, cu:l.cuartel}), "grave");
+        if(l && l.tipo===n) mias.push(l.id);
+      }
+      /* 4. La Carta Gantt: se ven, el filtro «Toda labor» deja solo la exacta y el PDF las trae (el emoji se quita: la letra del PDF no lo tiene) */
+      await irA("gantt"); await tocar("[onclick='gtHoy()']", "Hoy");
+      const etq = ()=>[...document.querySelectorAll("#app .gdlbl")].map(txtDe);
+      rev("la Carta Gantt"); tiene(etq().join("\n"), "las barras de la Carta Gantt");
+      const selT = ()=>necesito(buscar(`#app select[onchange^="gtSetF('tipo'"]`), "el filtro «Toda labor»");
+      for(const n of [N[0], N[3], N[6]]){
+        await elegir(selT(), n, "Toda labor → "+n);
+        const vis = etq();
+        chk(gtAj().tipo===n && vis.indexOf(n)>=0 && !N.some(m=>m!==n && vis.indexOf(m)>=0), "El filtro «Toda labor» con «"+n+"» no dejó solo esa labor: "+JSON.stringify({tipo:gtAj().tipo, vis:vis.filter(x=>LAB_TROZO.test(x))}), "media");
+      }
+      await tocar("[onclick='gtLimpiar()']", "Limpiar filtros");
+      const pe = window.pdfEntregar; let docPdf = null;
+      window.pdfEntregar = async function(d){ docPdf = d; return pe.apply(this, arguments); };
+      try{ chk(await esperarSalida(()=>tocar("[onclick='ganttPDF()']", "PDF")), "El PDF de la Gantt no se generó"); } finally { window.pdfEntregar = pe; }
+      const tp = pdfTextoBot(docPdf);
+      chk(tp && N.slice(0,6).every(n=>tp.indexOf(n)>=0) && /Aplicación ?\)/.test(tp) && !/Aplicación \?/.test(tp), "El PDF de la Gantt no trae los tipos tal cual (el emoji, sin «??»): faltan "+N.filter(n=>tp.indexOf(n)<0).join(" | "), "media");
+      /* pdfSano (v165): el emoji y su selector de variante se quitan; lo demás que no es Latin-1, como antes (PDFMAP o «?»). Revisión 1 de la v165: también los
+         símbolos que se usan como emoji (☀️ ❄️ ✅ ✂️ ⭐ ☔ ☕) y el del «1️⃣», y sin el espacio que quedaba junto a lo quitado */
+      { const cp = (...k)=>String.fromCodePoint(...k), av = cp(0x26A0, 0xFE0F)+" ojo", pr = [["Aplicación 🍒", "Aplicación"], [av, "(!) ojo"], ["Cosecha 1ª pasada (ñ)", "Cosecha 1ª pasada (ñ)"], ["a → b", "a -> b"], ["10 €", "10 ?"],
+          ["Riego "+cp(0x2600, 0xFE0F)+" mañana", "Riego mañana"], ["Helada "+cp(0x2744, 0xFE0F), "Helada"], [cp(0x2705)+" hecho", "hecho"], ["Poda "+cp(0x2702, 0xFE0F), "Poda"],
+          [cp(0x31, 0xFE0F, 0x20E3)+" uno", "1 uno"], [cp(0x2B50)+" "+cp(0x2614)+" y "+cp(0x2615), "y"]];
+        chk(pr.every(([x, y])=>pdfSano(x)===y), "pdfSano no quedó como debía: "+JSON.stringify(pr.map(([x])=>pdfSano(x))), "leve"); }
+      /* 5. Bitácora › Labor del día: los chips (con «Más labores…»), desmarcar, «otro cuartel» e integrar a las labores de la Gantt recién creadas */
+      nav.lc = {v:"dia", per:"7"}; await irA("bitacora");
+      await tocar('#lcVista [data-acc="anotar"]', "+ Anotar"); await tocar('#capaModal .lc-op[data-op="lab"]', "Labor del día");
+      await elegir("bit_fundo", fu, "fundo"); await pausa();
+      if(buscar("#bitTipos .bitchip-mas") && !BIT.mas) await tocar("#bitTipos .bitchip-mas", "Más labores…");
+      const chipB = n=>[...document.querySelectorAll("#bitTipos .bitchip")].find(b=>b.lastChild && b.lastChild.nodeType===3 && b.lastChild.textContent.trim()===n);
+      for(const n of N) await tocar(necesito(chipB(n), "el chip «"+n+"»"), "labor «"+n+"»");
+      chk(JSON.stringify(BIT.lineas.map(l=>l.tipo))===JSON.stringify(N) && N.every(n=>chipB(n) && chipB(n).classList.contains("on")), "Los chips de la Labor del día no marcaron los 7 tipos exactos: "+JSON.stringify(BIT.lineas.map(l=>l.tipo)), "grave");
+      const linB = n=>[...document.querySelectorAll("#bitLineas .bitlin")].filter(d=>txtDe(d.querySelector(".bitlh b"))===n);
+      chk(N.every(n=>linB(n).length===1), "Las líneas de la Labor del día no muestran los 7 tipos tal cual", "media");
+      await tocar(necesito(linB(N[0])[0], "la línea de «"+N[0]+"»").querySelector(".bitmas"), "otro cuartel de «"+N[0]+"»");
+      chk(BIT.lineas.filter(l=>l.tipo===N[0]).length===2 && linB(N[0]).length===2, "«otro cuartel» no agregó otra línea de «"+N[0]+"»", "media");
+      await tocar(chipB(N[3]), "desmarcar «"+N[3]+"»");
+      chk(!BIT.lineas.some(l=>l.tipo===N[3]) && !linB(N[3]).length, "Tocar el chip marcado de «"+N[3]+"» no lo desmarcó", "media");
+      await tocar(chipB(N[3]), "marcar «"+N[3]+"» otra vez");
+      rev("la Labor del día");
+      const i0 = BIT.lineas.findIndex(l=>l.tipo===N[0]);
+      for(const d of [...document.querySelectorAll("#bitLineas .bitlin")]){
+        const u = d.querySelector(".bitest").getAttribute("data-u"), i = BIT.lineas.findIndex(l=>l.uid===u), ins = [...d.querySelectorAll("input")];
+        await elegir(d.querySelector("select"), (BIT.lineas[i].tipo===N[0] && i!==i0)? q2.nombre : q1.nombre, "cuartel");
+        await escribir(ins[0], "10", "cantidad"); await escribir(ins[1], "plantas", "unidad"); await escribir(ins[2], "2", "personas");
+      }
+      await marcar(document.getElementById("bit_integrar"), true, "Integrar a la Carta Gantt");
+      chk(await guardarModal_(), "No se guardó la Labor del día");
+      const e = D.bitacora[D.bitacora.length-1], esp = [N[0], N[1], N[2], N[4], N[5], N[6], N[0], N[3]];
+      chk(e && e.fecha===H && e.fundo===fu && JSON.stringify(e.lineas.map(l=>l.tipo))===JSON.stringify(esp) && e.lineas.every(l=>l.cantidad===10 && l.personas===2 && l.unidad==="plantas"),
+        "El día no quedó con las 8 líneas de los tipos exactos, 10 plantas y 2 personas: "+JSON.stringify(e && e.lineas.map(l=>[l.tipo, l.cuartel, l.cantidad])), "grave");
+      chk(e && e.lineas.every(l=>{ const lab = D.labores.find(x=>x.id===l.laborId); return lab && lab.tipo===l.tipo && lab.cuartel===l.cuartel && (lab.avances||[]).some(a=>a.bitId===e.id && a.cantidad===10) && (l.cuartel===q2.nombre? lab.autoBit===true : mias.indexOf(lab.id)>=0); }),
+        "Integrar a la Carta Gantt no sumó cada línea a la labor de su tipo exacto (la de la Gantt en "+q1.nombre+", una nueva en "+q2.nombre+")", "media");
+      chk(N.every(n=>bitCfg().unidades[n]==="plantas"), "La unidad habitual no quedó guardada con el nombre exacto de la labor", "leve");
+      /* 6. Día a día: una fila por tipo bajo «Hoy», la búsqueda con el nombre entero y el detalle */
+      nav.lc = {v:"dia", per:"7"}; await irA("bitacora");
+      const filasN = n=>[...document.querySelectorAll("#lcVista .lc-it")].filter(el=>txtDe(el.querySelector(".lc-it-t b"))===n && el.closest(".lc-dia") && el.closest(".lc-dia").getAttribute("data-dia")===H);
+      chk(N.every(n=>filasN(n).length>=1), "En Día a día falta la fila de: "+N.filter(n=>!filasN(n).length).join(" | "), "media");
+      rev("Día a día");
+      for(const n of [N[0], N[1], N[3], N[4], N[5], N[6]]){
+        await escribir(necesito(document.getElementById("lcQ"), "el buscador"), n, "buscar «"+n+"»"); await esperar(450);
+        const vis = [...document.querySelectorAll("#lcVista .lc-it")].map(el=>txtDe(el.querySelector(".lc-it-t b"))).filter(t=>N.indexOf(t)>=0);
+        chk(vis.length>=1 && vis.every(t=>t===n), "Buscar «"+n+"» en la Bitácora no encontró justo esa labor: "+JSON.stringify(vis), "media");
+      }
+      lcBuscarYa(""); await pausa();
+      const fr = necesito(filasN(N[1])[0], "la fila de «"+N[1]+"»");
+      await tocar(fr.querySelector(".lc-it-b"), "abrir «"+N[1]+"»");
+      chk(txtDe(document.getElementById(fr.id) || fr).indexOf(N[1])>=0, "El detalle de la fila no muestra «"+N[1]+"» tal cual", "media");
+      rev("el detalle de la fila de la Bitácora");
+      /* 7. Hoy, con solo estas labores en el fundo (lo demás se aparta un momento): «Hoy toca» y Próximas acciones */
+      { const L0 = D.labores, R0 = D.recordatorios, N0 = D.notas;
+        D.labores = L0.filter(l=>mias.indexOf(l.id)>=0); D.recordatorios = []; D.notas = (N0||[]).filter(n=>!n.aviso); nav.hoyFundo = fu;
+        try{
+          await irA("panel");
+          const s = txtDe(document.querySelector("#app .hoy-ac.hoyg .hoy-ac-s")), nn = txtDe(document.querySelector("#app .hoy-ac.hoyg .hoy-ac-n"));
+          chk(nn==="7 labores" && s===N[0]+" "+q1.nombre+" · "+N[1]+" "+q1.nombre+" y 5 más", "«Hoy toca» no muestra los tipos tal cual: «"+nn+"» · «"+s+"»", "media");
+          const px = [...document.querySelectorAll("#app .hoy-it.lab .hoy-it-tx b")].map(txtDe);
+          chk(N.every(n=>px.indexOf(n)>=0), "Próximas acciones no muestra los 7 tipos tal cual: "+JSON.stringify(px), "leve");
+          rev("Hoy («Hoy toca» y Próximas acciones)");
+          const it1 = necesito([...document.querySelectorAll("#app .hoy-it.lab .hoy-it-tx")].find(x=>txtDe(x.querySelector("b"))===N[4]), "«"+N[4]+"» en Próximas acciones");
+          await tocar(it1, "abrir «"+N[4]+"»");
+          chk(modalAbierto() && v("m_tipo")===N[4], "Tocar «"+N[4]+"» en Próximas acciones no abrió su labor con ese tipo: «"+v("m_tipo")+"»", "media");
+          await cerrarTodo();
+        } finally { D.labores = L0; D.recordatorios = R0; D.notas = N0; }
+      }
+      /* 8. Los dos formularios de la labor (formLabor y la Gantt) muestran el tipo exacto y al guardar no lo cambian */
+      for(const n of [N[0], N[3], N[4]]){
+        const l = necesito(D.labores.find(x=>mias.indexOf(x.id)>=0 && x.tipo===n), "la labor «"+n+"»");
+        formLabor(l.id); await pausa();
+        const s = necesito(document.getElementById("m_tipo"), "el tipo en el formulario de la labor");
+        chk(s.value===n && txtDe(s.options[s.selectedIndex])===n, "El formulario de la labor no muestra «"+n+"» elegido: «"+s.value+"»", "media");
+        rev("el formulario de la labor «"+n+"»");
+        chk(await guardarModal_() && l.tipo===n, "Guardar el formulario de la labor cambió el tipo «"+n+"»: «"+l.tipo+"»", "media");
+        gtEditar(l.id); await pausa();
+        const it = necesito(document.getElementById("gt_tipo"), "el tipo al editar la labor en la Gantt");
+        chk(it.value===n, "Editar la labor en la Gantt no muestra «"+n+"»: «"+it.value+"»", "media");
+        gtCbTodo("gt_tipo"); rev("editar la labor «"+n+"» (lista de tipos)");
+        chk(await guardarModal_() && l.tipo===n && tiposLabor().filter(x=>x===n).length===1, "Guardar la labor en la Gantt cambió «"+n+"» o lo repitió en el catálogo", "media");
+      }
+      /* 9. La revisión del asistente: el tipo en la lista, en su ventana y al elegir otro */
+      asisCfg().items = [asisNorm({tipo:"avance", fecha:H, fundo:fu, cuarteles:[q1.nombre], labor_tipo:N[4], cantidad:5, unidad:"plantas", personas:1, texto:"Bot v165"})];
+      await irA("asist"); rev("la revisión del asistente");
+      chk(txtApp().indexOf(N[4])>=0, "La revisión del asistente no muestra «"+N[4]+"» tal cual", "media");
+      asisEditar(0); await pausa();
+      const ai = necesito(document.getElementById("ai_labor_tipo"), "el tipo en la revisión");
+      chk(ai.value===N[4], "La revisión del asistente no muestra «"+N[4]+"»: «"+ai.value+"»", "media");
+      gtCbTodo("ai_labor_tipo"); rev("la lista de tipos de la revisión");
+      const o5 = necesito([...document.querySelectorAll("#ai_labor_tipo_l .cbx-o")].find(o=>txtDe(o)===N[5]), "«"+N[5]+"» en la lista de la revisión");
+      o5.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, cancelable:true})); await pausa(.2);
+      chk(ai.value===N[5] && await guardarModal_() && asisCfg().items[0].labor_tipo===N[5], "Elegir «"+N[5]+"» en la revisión no quedó en el ítem: «"+((asisCfg().items||[])[0]||{}).labor_tipo+"»", "media");
+      /* 10. Avances de labores: «Todas las labores» elige la exacta */
+      nav.avPeriodo = "semana"; nav.avLabor = ""; nav.avFundo = ""; nav.avCuartel = "";
+      abrirAvances(); await pausa();
+      rev("Avances de labores"); tiene(txtDe(visorAbierto()), "Avances de labores");
+      await elegir(necesito(buscar(`#capaVisor select[onchange="avSet('avLabor',this.value)"]`), "la lista «Todas las labores»"), N[1], "Avances → "+N[1]);
+      { const t = txtDe(document.getElementById("avInforme"));
+        chk(nav.avLabor===N[1] && t.indexOf(N[1])>=0 && !N.some(m=>m!==N[1] && t.indexOf(m)>=0), "En Avances, elegir «"+N[1]+"» no dejó solo esa labor", "media"); }
+      rev("Avances de labores con «"+N[1]+"»"); cerrarVisor();
+      /* 11. El informe semanal */
+      abrirInforme(H); await pausa(.5);
+      rev("el informe semanal"); tiene(txtDe(visorAbierto()), "el informe semanal"); cerrarVisor();
+      /* 12. El CSV de labores: la columna Tipo con el nombre exacto (las comillas, dobladas; sin apóstrofo adelante) */
+      { const csv = await csvBot("labores"), fl = csvFilas(csv), iT = (fl[0]||[]).indexOf("Tipo");
+        chk(iT>=0 && N.every(n=>fl.some(r=>r[iT]===n && r[iT+1]===fu)) && csv.indexOf('"Poda ""en verde"""')>=0, "El CSV de labores no trae los tipos tal cual: "+N.filter(n=>!fl.some(r=>r[iT]===n)).join(" | "), "media"); }
+      /* 13. La ficha del cuartel y el mapa de Hoy: nada roto */
+      lcAbrirCu(fu, q1.nombre); await pausa(.5); rev("la ficha de "+q1.nombre);
+      await irA("panel"); await esperarQue(()=>typeof mapaP!=="undefined" && mapaP, 8000); rev("Hoy con el mapa");
+    } finally {
+      await cerrarTodo();
+      D.catalogos.tiposLabor = JSON.parse(tl0);
+      { const a = gtAj(), j = JSON.parse(aj0); Object.keys(a).forEach(k=>{ if(!(k in j)) delete a[k]; }); Object.assign(a, j); }
+      D.labores = JSON.parse(lab0); D.bitacora = JSON.parse(bit0); if(bc0==="null") delete D.bitCfg; else D.bitCfg = JSON.parse(bc0); D.asist = JSON.parse(as0);
+      if(lc0) nav.lc = JSON.parse(lc0); else delete nav.lc;
+      nv0.forEach(([k, x])=>{ if(x===undefined) delete nav[k]; else nav[k] = x; });
+      _undoSnap = null; guardar(); render();
+    }
+  });
+  await paso("Al terminar: «Bot raleo especial» sale del catálogo y sus labores de la Carta Gantt (no quedan en la copia ni en «Hoy toca»); las demás labores quedan", async ()=>{
+    const otras = D.labores.filter(l=>l.tipo!==RALEO).map(l=>l.id), nR = D.labores.length - otras.length;
+    sinRaleo(); await irA("panel"); await pausa(.4);
+    const card = document.querySelector(".hoy-ac.hoyg");
+    chk(tiposLabor().indexOf(RALEO)<0 && !D.labores.some(l=>l.tipo===RALEO) && JSON.stringify(D.labores.map(l=>l.id))===JSON.stringify(otras) && !(card && txtDe(card).indexOf(RALEO)>=0),
+      "Al terminar quedó «"+RALEO+"» en la copia: "+JSON.stringify({labores_del_bot:nR, catalogo:tiposLabor().indexOf(RALEO)>=0, quedan:D.labores.filter(l=>l.tipo===RALEO).length, hoyToca:card? txtDe(card).slice(0,120) : "—"}), "leve");
+  });
+  } finally { sinRaleo(); }
 }});
 
 /* 🔔 HOY, RECORDATORIOS Y WIDGETS --------------------------------------------------------- */
@@ -1063,6 +1392,13 @@ BOTS.push({id:"aplicador", modulo:"Calc Fito y Aplicaciones", nombre:"Pedro, apl
     chk(txt.indexOf(fmtCL(5.5*2000))>=0, "La pantalla no muestra el agua total "+fmtCL(11000)+" L", "media");
     const cos = masDias(HOY(),14); const cosTxt = (typeof fmtF==="function")? fmtF(cos) : cos;
     bug("La fecha de cosecha (aplicación + carencia) sale un día antes por la zona horaria", txt.indexOf(cosTxt)<0, "Esperado «"+cosTxt+"» en pantalla", "media");
+    /* revisión del cierre: a 375 px «N bombadas en total · … · cubre … ha» se salía por el costado (lo vio el bot con la ventana de 375 px): el valor baja a otra línea */
+    { const app = document.getElementById("app"), ui0 = JSON.stringify(D.ui||{}), cj = ()=>document.getElementById("cfResumen");
+      try{ D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar(); app.style.width = "375px"; app.style.maxWidth = "375px"; render(); await pausa(.3);
+        const K = necesito(cj(), "la tarjeta de resultados de Calc Fito"), bR = K.getBoundingClientRect(), bs = [...K.querySelectorAll("b")].filter(b=>b.getBoundingClientRect().right > bR.right + 1);
+        chk(/bombadas en total/.test(txtDe(K)) && !bs.length && K.scrollWidth <= K.clientWidth + 1, "A 375 px la tarjeta de Calc Fito se sale por el costado: «"+(bs[0]? txtDe(bs[0]).slice(0,60) : "")+"» ("+K.scrollWidth+" de "+K.clientWidth+" px)", "media");
+      } finally { app.style.width = ""; app.style.maxWidth = ""; D.ui = JSON.parse(ui0); uiAplicar(); render(); await pausa(.2); }
+    }
   });
   await paso("Números al estilo chileno: punto de miles, negativos y exponentes", async ()=>{
     bug("La calculadora lee «1.500» como 1,5 (no entiende el punto de miles)", cfP("1.500")!==1500, "cfP(«1.500») = "+cfP("1.500"), "media");
@@ -1194,6 +1530,56 @@ BOTS.push({id:"aplicador", modulo:"Calc Fito y Aplicaciones", nombre:"Pedro, apl
   await paso("Excel, editar un registro y borrar el lote (con Deshacer)", async ()=>{
     await irA("aplic");
     chk(await esperarSalida(()=>tocar("[onclick='exportarAplicExcel()']", "Excel"), 6000), "Exportar a Excel no generó archivo");
+    /* v166: el cuaderno es un .xlsx de verdad, una hoja «Aplicaciones», mismas columnas, títulos y encabezado fijo; con textos difíciles y fechas y números como tales */
+    chk(/\.xlsx$/.test((R.salidas[R.salidas.length-1]||{}).archivo||""), "«Excel» de Aplicaciones no entregó un .xlsx ("+((R.salidas[R.salidas.length-1]||{}).archivo)+")", "grave");
+    chk((R.salidas[R.salidas.length-1]||{}).tipo==="descarga", "En el PC «Excel» de Aplicaciones no descarga ("+((R.salidas[R.salidas.length-1]||{}).tipo)+")", "media");
+    const ffA = nav.filtroFundo, nDif = 'Aceite "premium" & <mezcla> ñ ª 😀', regDif = {id:9007199254, tipo:"Aplicación", fecha:hoy(), fundo:'Fundo "Ñ" & <Sur>', cuartel:"Cuartel 1ª 😀", producto:nDif, dosis:"2,5 L/ha", objetivo:'Trips <5%> & "chanchito" ñ\u0007', carencia:"14", mojamiento:"1.500", estado:"aplicado", fechaReal:hoy(),
+      obs:"Sup 1,50 ha · producto 12,5 L · costo $123.456 · cosecha desde 20-11-2026 · resp: Ñandú & Cía", mezcla:[{n:"Adherente <x>", dosis:"1 cc/L", carencia:7, total:2.5, uP:"L", costo:5000}]};
+    try{
+      nav.filtroFundo = ""; D.registros.push(regDif);
+      const nReg = D.registros.filter(x=>x.tipo==="Aplicación").length, xA = await aplicExcelBlob(), zA = await estBotXlsx(xA.blob), hA = zA.hojas[0] || {cab:[], datos:[], filas:[]};
+      if(AB.muestras) AB.muestras.aplicaciones = xA.blob;
+      chk(xA.nombre==="aplicaciones_"+hoy()+".xlsx" && xA.blob.type===XLSX_MIME && !zA.errores.length && zA.hojas.length===1 && hA.nom==="Aplicaciones", "El Excel de Aplicaciones no es un .xlsx válido de una hoja «Aplicaciones» ("+xA.nombre+", "+xA.blob.type+", "+zA.errores.join("; ")+")", "grave");
+      chk(zA.partes.indexOf("xl/sharedStrings.xml")>=0 && zA.partes.indexOf("docProps/core.xml")>=0 && !/inlineStr/.test(zA.textos["xl/worksheets/sheet1.xml"]||""), "El .xlsx de Aplicaciones no usa las piezas conservadoras", "media");
+      chk(hA.cab.join("|")==="Fecha plan|Estado|Fecha real|Fundo|Cuartel|Especie|Variedad|Producto|Dosis|Objetivo|Carencia (d)|Mojamiento (L/ha)|Superficie (ha)|Producto total|Costo|Cosecha desde|Responsable", "Las columnas de Aplicaciones cambiaron: "+hA.cab.join("|"), "grave");
+      chk(hA.pane && hA.pane.y==="4" && hA.pane.est==="frozen" && hA.filas[0][0]==="Cuaderno de aplicaciones fitosanitarias" && /generado el \d{2}-\d{2}-\d{4} · \d+ registros?$/.test(hA.filas[1][0]) && hA.filas[1][0].indexOf(nReg+" registro")>0, "Falta el encabezado fijo, el título o el subtítulo de Aplicaciones ("+(hA.filas[1]||[""])[0]+")", "media");
+      const iF = hA.datos.findIndex(f=>f[7]===nDif), fA = hA.datos[iF]||[], fM = hA.datos[iF+1]||[], eA = hA.est[4+iF]||[];
+      chk(iF>=0 && fA[3]==='Fundo "Ñ" & <Sur>' && fA[4]==="Cuartel 1ª 😀" && fA[9]==='Trips <5%> & "chanchito" ñ' && fA[16]==="Ñandú & Cía", "Los textos difíciles (comillas, &, <, ñ, ª, emoji) no quedaron intactos en el .xlsx: "+fA.slice(3,5).join(" · ")+" · "+fA[9]+" · "+fA[16], "grave");
+      chk(/&lt;mezcla&gt;/.test(zA.textos["xl/sharedStrings.xml"]) && /&amp;/.test(zA.textos["xl/sharedStrings.xml"]) && zA.textos["xl/sharedStrings.xml"].indexOf("\u0007")<0, "El XML de Aplicaciones no escapa < y & o deja caracteres de control", "grave");
+      const sH = estXlSerial(hoy());
+      chk(fA[0]===sH && fA[2]===sH && fA[15]===estXlSerial("2026-11-20") && zA.fmt(eA[0])==="dd\\-mm\\-yyyy" && zA.fmt(eA[15])==="dd\\-mm\\-yyyy", "Las fechas de Aplicaciones no son fechas de verdad ("+[fA[0],fA[2],fA[15]].join(", ")+")", "media");
+      chk(fA[1]==="Aplicado" && fA[10]===14 && fA[11]===1500 && fA[12]===1.5 && fA[13]==="12,5 L" && fA[14]===123456 && zA.fmt(eA[14])==='"$"#,##0', "Los números de Aplicaciones no son números (carencia "+fA[10]+", mojamiento "+fA[11]+", superficie "+fA[12]+", costo "+fA[14]+")", "media");
+      chk(fM[7]==="↳ Adherente <x>" && fM[9]==="(en mezcla)" && fM[10]===7 && fM[13]===cfQty(2.5,"L") && fM[14]===5000 && fM[0]===sH, "La fila de la mezcla no quedó bien ("+fM.slice(7,15).join(" · ")+")", "media");
+      const s0A = R.salidas.length; await tocar("[onclick='enviarAplicExcel()']", "Enviar"); await esperarQue(()=>R.salidas.length>s0A, 6000);
+      chk(R.salidas.slice(s0A).some(z=>z.tipo==="compartir" && z.archivo===xA.nombre && z.kb>0), "«Enviar» de Aplicaciones no compartió el .xlsx", "media");
+      /* revisión r1: los textos largos sin el formato «@» (Excel antiguo muestra ##### sobre 255 letras) */
+      chk(zA.fmt(eA[3])==="General" && zA.fmt(eA[9])==="General" && fA[9]==='Trips <5%> & "chanchito" ñ', "Las celdas de texto de Aplicaciones no tienen formato General ("+zA.fmt(eA[3])+", "+zA.fmt(eA[9])+")", "leve");
+      /* revisión r1: en el iPad «Excel» va por la hoja para compartir (el clic en un enlace no descarga en la app instalada), sin «text» (en iOS puede guardarse como un segundo archivo) */
+      const capaA = ()=>document.getElementById("avisoCapa"), noAb = n=>Object.assign(new Error("bot"), {name:n});
+      let dA = [], sI = R.salidas.length;
+      await botComoIPad(()=>exportarAplicExcel(), {share:async d=>{ dA.push(d); }});
+      chk(dA.length===1 && dA[0].files[0].name===xA.nombre && dA[0].files[0].type===XLSX_MIME && dA[0].files.length===1 && dA[0].title===xA.nombre && dA[0].text===undefined && R.salidas.length===sI,
+        "iPad, «Excel» de Aplicaciones: no abrió la hoja con el archivo solo ("+dA.length+" veces, text «"+(dA[0]&&dA[0].text)+"») o descargó además ("+(R.salidas.length-sI)+")", "grave");
+      if(capaA()) capaA().innerHTML = ""; dA = [];
+      await botComoIPad(()=>exportarAplicExcel(), {share:async ()=>{ throw noAb("AbortError"); }});
+      chk(R.salidas.length===sI && !txtDe(capaA()), "iPad, «Excel» de Aplicaciones: al cerrar la hoja a propósito igual descargó o avisó («"+txtDe(capaA())+"»)", "media");
+      let nA = 0, tAv = "", tBt = "";
+      await botComoIPad(async ()=>{ await exportarAplicExcel(); tAv = txtDe(capaA()); const b = capaA().querySelector(".aviso-acc"); tBt = txtDe(b); b.click(); await esperar(60); }, {share:async d=>{ nA++; if(nA===1) throw noAb("NotAllowedError"); dA.push(d); }});
+      chk(nA===2 && dA.length===1 && dA[0].files[0].name===xA.nombre && tAv.indexOf("Archivo listo: "+xA.nombre)>=0 && tBt==="Guardar o compartir" && R.salidas.length===sI,
+        "iPad, «Excel» de Aplicaciones: si Safari no deja abrir la hoja no queda el aviso con su botón («"+tAv+"», «"+tBt+"», "+nA+" veces)", "media");
+      if(capaA()) capaA().innerHTML = "";
+      await botComoIPad(()=>exportarAplicExcel(), {canShare:()=>false});
+      chk(R.salidas.length===sI+1 && R.salidas[sI].tipo==="descarga" && R.salidas[sI].archivo===xA.nombre, "iPad sin hoja: «Excel» de Aplicaciones no cae en la descarga ("+JSON.stringify(R.salidas.slice(sI))+")", "media");
+      /* revisión r2: ahí no se sabe si bajó: lo dice, como Informes (aquí el botón se llama «Enviar»); en el PC, sin aviso */
+      chk(txtDe(capaA()).indexOf("Listo: "+xA.nombre+". Si no aparece en Descargas, toca «Enviar».")>=0, "iPad sin hoja: «Excel» de Aplicaciones no avisa qué hacer si no aparece («"+txtDe(capaA())+"»)", "media");
+      capaA().innerHTML = ""; const sPc = R.salidas.length; await exportarAplicExcel();
+      chk(R.salidas.length===sPc+1 && !txtDe(capaA()), "En el PC, «Excel» de Aplicaciones debe descargar sin aviso («"+txtDe(capaA())+"»)", "leve");
+      /* «Enviar» sin hoja: una sola descarga directa (no vuelve a intentar la hoja: era un ciclo) y lo explica */
+      sI = R.salidas.length; const aI = R.alerts.length; let nC = 0;
+      await botComoIPad(()=>enviarAplicExcel(), {canShare:()=>{ nC++; return false; }});
+      chk(R.salidas.length===sI+1 && R.salidas[sI].tipo==="descarga" && nC===1 && R.alerts.length===aI+1 && /no dejó compartir directo, así que descargué el archivo/.test(R.alerts[aI].t),
+        "«Enviar» sin hoja: "+(R.salidas.length-sI)+" salidas, canShare "+nC+" veces, alert «"+((R.alerts[aI]||{}).t||"")+"» (debía ser 1 descarga, 1 canShare y el aviso)", "media");
+    } finally { D.registros = D.registros.filter(x=>x!==regDif); nav.filtroFundo = ffA; }
     const r = necesito(D.registros.filter(x=>/Bot Producto Ejemplo/.test(x.producto||"")).pop(), "el registro de la aplicación");
     formReg(r.id); await pausa(); necesito(modalAbierto(), "el registro");
     await escribir("m_obs", (v("m_obs")||"")+" · revisado bot"); chk(await guardarModal_(), "No se guardó la edición del registro");
@@ -1304,7 +1690,7 @@ BOTS.push({id:"aplicador", modulo:"Calc Fito y Aplicaciones", nombre:"Pedro, apl
 }});
 
 /* 💧 RIEGO ------------------------------------------------------------------------------- */
-BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que:"Riego: horas recalculadas con la fórmula, Pp por líneas de riego y marco (tabla de los 32 cuarteles y casos del pedido del 28-10), valores iniciales, Línea 2 oculta y conservada, «Aplicar a todos los cuarteles del fundo» con Deshacer, m³ iguales, cobertura de copa, prioridad de la Pp, semilla del plano, datos guardados antes, cadena del Kc, alertas de huerto joven, de 8 h y de 24 h (con qué hacer, botón a la ficha y días de riego sugeridos), notas del PDF Pro, días (y que no salten), mínimo un día, bases y vistas, ficha (Kc %, sectores, validaciones, cancelar), Kc manual, bomba y turnos, sin «descontar la lluvia», PDF con sus validaciones, detalles de la Pp (motivo real del marco, «Borrar» de 44 px, «no es un número», Deshacer sobre «Guardar») y año de plantación «2006-2007»; balance con la lluvia medida (copia del programa, Sí/No/En parte, lluvia efectiva, tope, capacidad, válvula compartida, arrastre, mensaje y hoja corregida, espejo)", correr: async ()=>{
+BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que:"Riego: horas recalculadas con la fórmula, Pp por líneas de riego y marco (tabla de los 32 cuarteles y casos del pedido del 28-10), valores iniciales, Línea 2 oculta y conservada, «Aplicar a todos los cuarteles del fundo» con Deshacer, m³ iguales, cobertura de copa, prioridad de la Pp, semilla del plano, datos guardados antes, cadena del Kc, alertas de huerto joven, de 8 h y de 24 h (con qué hacer, botón a la ficha y días de riego sugeridos), notas del PDF Pro, días (y que no salten), mínimo un día, bases y vistas, ficha (Kc %, sectores, validaciones, cancelar), Kc manual, bomba y turnos, sin «descontar la lluvia», PDF con sus validaciones, detalles de la Pp (motivo real del marco, «Borrar» de 44 px, «no es un número», Deshacer sobre «Guardar») y año de plantación «2006-2007»; pantalla quieta al cambiar números en Riego (v166: la casilla tocada no se mueve, Intro = listo, coma decimal, espejo de solo lectura); balance con la lluvia medida (copia del programa, Sí/No/En parte, lluvia efectiva, tope, capacidad, válvula compartida, arrastre, mensaje y hoja corregida, espejo)", correr: async ()=>{
   let serie = null;
   /* ---- Pedido de Manuel (28-10-2026, hecho el 29-10): Pp por líneas de riego y marco. Reemplaza los casos del 27-10.
      Casos de prueba EXACTOS con cuarteles de prueba en la caja de arena y una serie fija: ET₀ 3,586 mm/día los 7 días,
@@ -1564,10 +1950,53 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     await cancelarModal();
     D.sync = D.sync||{}; const tenia = ("rol" in D.sync), rol0 = D.sync.rol;
     try{
-      D.sync.rol = "receptor"; riegoFicha(A.id); await pausa(); await escribir("rf_caudal", "3", "caudal 3 L/h"); d0 = JSON.stringify(riegoCfg());
-      await tocar("#rfAplBtn", "Aplicar en el celular espejo");
+      /* revisión r3: en el espejo la ficha ya no trae «Aplicar»; llamado a la fuerza, tampoco escribe */
+      D.sync.rol = "receptor"; riegoFicha(A.id); await pausa(); d0 = JSON.stringify(riegoCfg());
+      chk(!document.getElementById("rfAplBtn") && document.getElementById("rf_caudal").readOnly, "En el celular espejo la ficha trae «Aplicar a todos» o el caudal se puede escribir", "media");
+      riegoFichaAplicar(A.id); await pausa();
       chk(JSON.stringify(riegoCfg())===d0 && document.getElementById("rfAplConf").hidden && /solo se consulta/i.test(txtDe(document.getElementById("avisoCapa"))), "En el celular espejo «Aplicar» escribió algo o no avisó que solo se consulta", "media");
     } finally { if(tenia) D.sync.rol = rol0; else delete D.sync.rol; if(modalAbierto()) await cancelarModal(); }
+  }));
+  await paso("Ficha ⚙ en el celular espejo (revisión r3): solo se consulta (casillas de solo lectura, un solo botón «Cerrar», sin los botones que escriben) y nada se guarda; en el iPad funciona igual que siempre (eficiencia 90 → 70)", ()=>enCaja(async ()=>{
+    await irA("riego"); nav.riegoFundo = FU_BOT;
+    const q = cuBot(); prepBot(q, {caudal:2, lin:2, dg:0.5, ef:90, sectores:[{cod:"BOT-1", nom:"Sector 1", ha:1}]}); riegoPintar();
+    const ju = ()=>JSON.stringify(D.riego.cu[q.id]), j0 = ju(), ord = o=>JSON.stringify(Object.keys(o).sort().map(k=>[k, o[k]])), el = id=>document.getElementById(id);
+    const gu0 = window.guardar; let nG = 0; window.guardar = function(){ nG++; return gu0.apply(this, arguments); };
+    D.sync = D.sync||{}; const tenia = ("rol" in D.sync), rol0 = D.sync.rol;
+    const BTS_ESC = ['#rfAplBtn', '[onclick^="riegoFichaUsarCob"]', '[onclick^="riegoFichaBorrarDato"]', '[onclick*="riegoSectFilaHTML"]', '[onclick*="riegoDiasReset"]', '[onclick^="riegoSectSeed"]'];
+    try{
+      D.sync.rol = "receptor"; uiAplicar(); nG = 0;
+      riegoFicha(q.id); await pausa(); const m = necesito(modalAbierto(), "la ficha ⚙ en el espejo");
+      const bts = [...m.querySelectorAll(".mf .btn")], cas = [...m.querySelectorAll('.mb input:not([type="date"])')], sels = [...m.querySelectorAll(".mb select")];
+      const noRO = cas.filter(e=>!e.readOnly || e.getAttribute("aria-readonly")!=="true").map(e=>e.id || e.dataset.k);
+      chk(modalGuardar===null && bts.length===1 && txtDe(bts[0])==="Cerrar" && !m.querySelector('[onclick*="guardarModal"]'), "Espejo: la ficha ⚙ sigue con «Guardar» («"+bts.map(txtDe).join("», «")+"», callback "+(typeof modalGuardar)+")", "grave");
+      chk(cas.length===18 && !noRO.length && el("rfSect").querySelectorAll(".rf-sect").length===1, "Espejo: no están las 18 casillas de la ficha en solo lectura (15 y las 3 de un sector, sin la fila vacía): "+cas.length+" casillas, se pueden escribir: "+noRO.join(", "), "media");
+      chk(sels.length===2 && sels.every(s=>s.disabled) && el("rf_ppf").disabled, "Espejo: «Líneas por hilera», «¿De dónde sale el Kc?» o el calendario de la fecha del aforo se pueden cambiar", "media");
+      const hay = BTS_ESC.filter(s=>m.querySelector(s)), tEsp = txtDe(m.querySelector("[data-rf-esp]"));
+      chk(!hay.length && !visible(m.querySelector(".rf-cm")) && tEsp==="En el celular solo se consulta: los datos de este cuartel se cambian en el iPad.", "Espejo: la ficha trae botones que escriben ("+hay.join(", ")+"), el caudalímetro a la vista o no dice que solo se consulta: «"+tEsp+"»", "media");
+      const bgE = getComputedStyle(el("rf_ef")).backgroundColor;
+      chk(bgE===getComputedStyle(el("rf_ppmed")).backgroundColor && !el("rfAplRes") && riegoSectFilaHTML().split(" readonly ").length===4, "Espejo: las casillas de la ficha no se ven iguales o una fila nueva de sector se podría escribir", "leve");
+      /* Intro en una casilla: no guarda ni cierra */
+      const e0 = el("rf_ef"); try{ e0.focus({preventScroll:true}); }catch(_){}
+      ["keydown", "keypress", "keyup"].forEach(t=>e0.dispatchEvent(new KeyboardEvent(t, {key:"Enter", code:"Enter", bubbles:true, cancelable:true}))); await pausa(.2);
+      chk(ju()===j0 && nG===0 && modalAbierto()===m, "Espejo: Intro en una casilla de la ficha guardó o cerró ("+nG+" veces guardar, "+ju()+")", "grave");
+      /* «Cerrar»: tampoco guarda (antes reponía los días y llamaba a guardar) */
+      await tocar(bts[0], "Cerrar la ficha en el espejo"); await pausa(.2);
+      chk(ju()===j0 && nG===0 && !modalAbierto() && !window._rfDias, "Espejo: «Cerrar» guardó algo o no cerró ("+nG+" veces guardar, "+ju()+")", "grave");
+      /* el seguro: la ficha abierta en el iPad y el equipo que pasa a espejo con ella abierta; modalGuardar() y guardarModal() a la fuerza no guardan */
+      delete D.sync.rol; uiAplicar(); riegoFicha(q.id); await pausa(); const cb = modalGuardar;
+      el("rf_ef").value = "70"; D.sync.rol = "receptor"; nG = 0;
+      const av0 = el("avisoCapa"); if(av0) av0.innerHTML = "";
+      const rr = await modalGuardar(); await guardarModal();
+      chk(typeof cb==="function" && rr===false && ju()===j0 && nG===0 && modalAbierto() && /En el celular solo se consulta/.test(txtDe(el("avisoCapa"))), "El seguro de la ficha ⚙ no corta en el espejo (devuelve "+rr+", "+nG+" veces guardar, "+ju()+")", "grave");
+      delete D.sync.rol; uiAplicar(); cerrarModal(); await pausa(.2);
+      /* en el iPad, igual que siempre */
+      const J0 = JSON.parse(j0); riegoFicha(q.id); await pausa(); const m2 = necesito(modalAbierto(), "la ficha ⚙ en el iPad"), bt2 = [...m2.querySelectorAll(".mf .btn")];
+      chk(typeof modalGuardar==="function" && bt2.length===2 && txtDe(bt2[0])==="Cancelar" && txtDe(bt2[1])==="Guardar" && !m2.querySelector("[data-rf-esp]") && !m2.querySelector('.mb [readonly], .mb [aria-readonly], .mb [disabled]') && el("rfSect").querySelectorAll(".rf-sect").length===2
+        && BTS_ESC.slice(0, 4).every(s=>s==='[onclick^="riegoFichaBorrarDato"]' || m2.querySelector(s)) && visible(m2.querySelector(".rf-cm")) && el("rf_ef").value==="90" && getComputedStyle(el("rf_ef")).backgroundColor!==bgE, "iPad: la ficha ⚙ cambió (botones «"+bt2.map(txtDe).join("», «")+"», casillas de solo lectura "+m2.querySelectorAll(".mb [readonly]").length+", eficiencia «"+el("rf_ef").value+"», fondo "+getComputedStyle(el("rf_ef")).backgroundColor+")", "grave");
+      await escribir("rf_ef", "70", "Eficiencia 70 %"); nG = 0; const okG = await guardarModal_(); await pausa(.2);
+      chk(okG && !modalAbierto() && nG>=1 && D.riego.cu[q.id].ef===70 && ord(D.riego.cu[q.id])===ord(Object.assign(J0, {ef:70})), "iPad: eficiencia 90 → 70 no guardó como siempre ("+nG+" veces guardar, "+ju()+")", "grave");
+    } finally { window.guardar = gu0; if(tenia) D.sync.rol = rol0; else delete D.sync.rol; if(modalAbierto()) cerrarModal(); uiAplicar(); }
   }));
   await paso("Prioridad de la Pp: medida > líneas > valores iniciales (caudalímetro, insignias, tabla y resumen del fundo)", ()=>enCaja(async ()=>{
     await irA("riego");
@@ -2704,6 +3133,271 @@ BOTS.push({id:"regador", modulo:"Riego", nombre:"Luis, regador", ico:"💧", que
     chk(t4.indexOf("\n- X4 bot Propio (BOT-11): 2 h 35 min (en vez de 3 h 10 min)\n")>0 && t4.indexOf("BOT-10")<0 && t4.indexOf("- X4 bot: ")<0 && Math.abs(S4-0.375)<0.005,
       "Con BOT-10 compartida sin cambio y BOT-11 propia que baja, el mensaje no nombra BOT-11 (el regador podía cortar también BOT-10) o X4 gastó de más (saldo "+fmtCL(S4,3)+", esperado 0,375):\n"+t4, "media");
   }));
+  /* ---- v166 (pedido de Manuel, 03-11-2026; contrato_v166 §C y C_turnos_scroll.md §5): al cambiar un número en Riego la casilla tocada queda en su lugar (±1 px),
+     se recalcula al terminar de escribir (no al saltar de una casilla a otra), Intro = listo, la coma decimal funciona («7,5») y en el celular espejo las casillas
+     son de solo lectura. Se mide con getBoundingClientRect antes y después (la casilla se busca de nuevo por su data-rgin: la vieja ya no existe) y scrollY,
+     que con el arreglo SÍ cambia (es la compensación). «Listo» = value, input, change, blur() y focusout a mano (con el panel escondido blur() no dispara
+     eventos). Pasar a otra casilla = change en la primera, focus() y focusin en la segunda. Cada caso a 1180×820 y a 375 px (#app de 375 px).
+     Antes de arreglar se corrió C1 sobre la v165: la casilla se corría −202,1 px a 1180 (lo que se achicó lo de arriba: 238,9 → 36,8) y −392,3 px a 375,
+     con scrollY igual. C3 se mide aunque la casilla quede bajo el borde a 1180×820 (getBoundingClientRect vale igual fuera de la vista) ---- */
+  await paso("Pantalla quieta al cambiar números en Riego (pedido 03-11): la casilla tocada queda en su lugar (±1 px) en Turnos, Tabla, Repone, Configuración y la ficha ⚙, recalcula al terminar de escribir, Intro = listo, coma decimal y celular espejo de solo lectura (C1–C17, 1180 y 375 px)", ()=>enCajaLl(async ()=>{
+    const sbLl = window.riegoSerieBase, sbBot = ()=>SERIE_BOT.map(d=>Object.assign({}, d)), ui0 = JSON.stringify(D.ui||{}), cu0 = window.riegoCuerpoHTML, app = document.getElementById("app");
+    const FUCAP = "Bot Riego Cap", rol0 = D.sync? D.sync.rol : undefined;
+    let pint = 0; window.riegoCuerpoHTML = function(){ pint++; return cu0.apply(this, arguments); };   // cuántas pintadas de Riego
+    const IN = k=>document.querySelector(`#riegoScroll [data-rgin="${String(k).replace(/["\\]/g, "\\$&")}"]`), top = e=>e? e.getBoundingClientRect().top : NaN;
+    const rsH = ()=>{ const e = document.querySelector("#riegoScroll [data-rg-res]"); return e? e.getBoundingClientRect().height : 0; };
+    const capDe = ()=>[...document.querySelectorAll('#riegoScroll [data-res="cap"]')], bdg = ()=>[...document.querySelectorAll("#riegoScroll .rgt-dia .rgdia-h .badge")];
+    const r1 = x=>Math.round(x*10)/10;
+    const aY = async (e, y)=>{ window.scrollBy(0, top(e) - y); await esperar(40); return top(e); };   // la casilla parte a y px del borde de arriba (o lo más cerca que deje la página)
+    const val = (e, v)=>{ const pr = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e), "value"); if(pr && pr.set) pr.set.call(e, v); else e.value = v; e.dispatchEvent(new Event("input", {bubbles:true})); };
+    const foco = e=>{ try{ e.focus({preventScroll:true}); }catch(_){} };
+    const listo = async (e, v)=>{ foco(e); val(e, v); e.dispatchEvent(new Event("change", {bubbles:true})); e.blur(); e.dispatchEvent(new FocusEvent("focusout", {bubbles:true})); await esperar(80); };
+    const soltar = ()=>{ const a = document.activeElement; if(a && a!==document.body && a.blur){ a.blur(); a.dispatchEvent(new FocusEvent("focusout", {bubbles:true})); } };
+    const caso = async (k, v, y)=>{ const e0 = necesito(IN(k), "la casilla «"+k+"»"); const p0 = await aY(e0, y||400), y0 = scrollY, rs0 = rsH();
+      await listo(e0, v); const e1 = IN(k); return {p0, p1:top(e1), y0, y1:scrollY, rs0, rs1:rsH(), e1}; };
+    const dice = m=>"casilla a "+r1(m.p0)+" → "+r1(m.p1)+" px, scrollY "+r1(m.y0)+" → "+r1(m.y1)+", lo de arriba "+r1(m.rs0)+" → "+r1(m.rs1)+" px";
+    const quieta = m=>Math.abs(m.p1 - m.p0)<=1 && Math.abs(m.p0 - 400)<=1;
+    try{
+      let rc = riegoCfg(); rc.bombas = Object.assign({}, rc.bombas||{});
+      window.riegoSerieBase = sbBot;   // las horas de la pantalla con la misma serie fija que calcBot
+      let nQ = 0; const mk = h=>{ nQ++; const z = cuBot({fundo:FUCAP, nombre:"Cap "+nQ+" bot", anio:"2015", ha:1}); prepBot(z, {sectores:[{cod:"CAP-"+nQ, nom:"Sector 1", ha:1}]}); riegoCfg().cu[z.id].ppMed = calcBot(z).lamRiego/h; guardar(); return z; };
+      const A = mk(6), B = mk(5);   // 11 h cada lunes, miércoles y viernes, de a un sector (como el paso del 29-10)
+      riegoCfg().bombas[FUCAP] = {n:1, h:8}; guardar();
+      const base = JSON.stringify(D.riego);
+      for(const ancho of [1180, 375]){
+        const T = s=>"["+ancho+" px] "+s;
+        D.riego = JSON.parse(base); rc = riegoCfg(); A.anio = "2015"; window.riegoSerieBase = sbBot;
+        if(ancho===375){ D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar(); app.style.width = "375px"; app.style.maxWidth = "375px"; }
+        await irA("riego"); nav.riegoFundo = FUCAP; nav.riegoVista = "turnos"; riegoPintar(); await pausa(.5);
+        /* C17 (parte 1): las 3 casillas de Turnos son de texto con su teclado (Safari deja vacío un type=number escrito «7,5») */
+        const tipos = ["n","q","h"].map(k=>{ const e = IN(k+":"+FUCAP); return e? e.type+"/"+e.inputMode : "—"; }).join(", ");
+        chk(tipos==="text/numeric, text/decimal, text/decimal" && document.querySelector(`#riegoScroll .rgt-conf[data-rgt-eq="${FUCAP}"]`) && document.querySelectorAll(`#riegoScroll .rgt-dia[data-rgt-dia^="${FUCAP}|"]`).length===3,
+          T("Las casillas de Turnos no son de texto con inputmode (sectores numeric, caudal y horas decimal) o faltan sus marcas data-rgt-eq/data-rgt-dia: "+tipos), "media");
+        /* C1 · Horas 8 → 12 con «Listo»: se va la tarjeta roja de arriba y la casilla no se mueve */
+        chk(capDe().length===1 && capDe()[0].classList.contains("roj") && txtDe(capDe()[0].querySelector(".badge"))==="No alcanzan las horas disponibles" && bdg().length===3 && bdg().every(e=>txtDe(e)==="11,0 h de 8 h"),
+          T("C1 · antes de empezar no está el aviso rojo «No alcanzan las horas disponibles» con 3 insignias «11,0 h de 8 h» ("+capDe().length+" avisos, «"+bdg().map(txtDe).join(", ")+"»)"), "media");
+        let m = await caso("h:"+FUCAP, "12"); const d1 = m.rs0 - m.rs1;
+        if(d1 < 40) sinProbar(T("C1 · lo de arriba cambió solo "+r1(d1)+" px: la prueba no prueba nada"));
+        chk(rc.bombas[FUCAP].h===12 && !capDe().length && bdg().length===3 && bdg().every(e=>txtDe(e)==="11,0 h de 12 h" && e.classList.contains("b-verde")) && quieta(m)
+          && Math.abs((m.y0 - m.y1) - d1)<=2 && m.e1 && document.activeElement!==m.e1,
+          T("C1 · Horas 8 → 12 con «Listo»: la casilla no quedó en su lugar (±1 px), scrollY no bajó lo que se achicó lo de arriba, el aviso sigue o la casilla nueva quedó con el foco: "+dice(m)+", h = "+rc.bombas[FUCAP].h+", «"+bdg().map(txtDe).join(", ")+"»"), "grave");
+        /* C2 · de 12 a 8 otra vez: vuelve la tarjeta roja y scrollY crece lo que creció lo de arriba */
+        m = await caso("h:"+FUCAP, "8");
+        chk(rc.bombas[FUCAP].h===8 && capDe().length===1 && quieta(m) && Math.abs((m.y1 - m.y0) - (m.rs1 - m.rs0))<=2 && m.rs1 - m.rs0 >= 40,
+          T("C2 · Horas 12 → 8: la casilla se movió o scrollY no creció lo que creció lo de arriba: "+dice(m)+", "+capDe().length+" avisos"), "media");
+        /* C3 · con la página en el tope no se puede subir más: la casilla sube justo lo que se achicó lo de arriba */
+        window.scrollTo(0, 0); await esperar(40);
+        let e3 = IN("h:"+FUCAP); const p3 = top(e3), rs3 = rsH(); await listo(e3, "12");
+        chk(scrollY===0 && rc.bombas[FUCAP].h===12 && Math.abs((p3 - top(IN("h:"+FUCAP))) - (rs3 - rsH()))<=2,
+          T("C3 · página en el tope: scrollY "+scrollY+" o la casilla no subió justo lo que se achicó lo de arriba ("+r1(p3)+" → "+r1(top(IN("h:"+FUCAP)))+" px; arriba "+r1(rs3)+" → "+r1(rsH())+" px)"), "media");
+        /* C4 · escribir 12 en Horas y PASAR a «Sectores que riegan a la vez»: no se pinta hasta terminar; después, 1 sola pintada */
+        rc.bombas[FUCAP] = {n:1, h:8}; riegoPintar(); await esperar(40);
+        let eH = IN("h:"+FUCAP); await aY(eH, 400); const eS = IN("n:"+FUCAP), pS0 = top(eS), k4 = pint;
+        foco(eH); val(eH, "12"); eH.dispatchEvent(new Event("change", {bubbles:true}));
+        foco(eS); eS.dispatchEvent(new FocusEvent("focusin", {bubbles:true}));
+        await esperar(200);
+        chk(eS.isConnected && document.activeElement===eS && rc.bombas[FUCAP].h===12 && capDe().length===1 && pint===k4,
+          T("C4 · al pasar de Horas a Sectores la casilla de sectores se rehízo, perdió el foco o ya se recalculó (conectada "+eS.isConnected+", foco "+(document.activeElement===eS)+", h = "+rc.bombas[FUCAP].h+", "+capDe().length+" avisos, "+(pint-k4)+" pintadas)"), "media");
+        await listo(eS, "2");
+        chk(pint-k4===1 && rc.bombas[FUCAP].n===2 && !capDe().length && bdg().length===3 && bdg().every(e=>txtDe(e)==="6,0 h de 12 h") && Math.abs(top(IN("n:"+FUCAP)) - pS0)<=1,
+          T("C4 · Sectores 2 con «Listo» después de las horas: "+(pint-k4)+" pintadas (debía ser 1), n = "+rc.bombas[FUCAP].n+", "+capDe().length+" avisos, «"+bdg().map(txtDe).join(", ")+"», sectores "+r1(pS0)+" → "+r1(top(IN("n:"+FUCAP)))+" px"), "media");
+        /* C5 · Intro = listo: cierra el teclado (pierde el foco) y la casilla queda en su lugar */
+        rc.bombas[FUCAP] = {n:1, h:12}; riegoPintar(); await esperar(40);
+        eH = IN("h:"+FUCAP); const p5 = await aY(eH, 400), rs5 = rsH();
+        foco(eH); val(eH, "10");
+        const ev5 = new KeyboardEvent("keydown", {key:"Enter", bubbles:true, cancelable:true}); eH.dispatchEvent(ev5);
+        const sinFoco5 = document.activeElement!==eH;
+        eH.dispatchEvent(new Event("change", {bubbles:true})); eH.dispatchEvent(new FocusEvent("focusout", {bubbles:true})); await esperar(80);
+        chk(ev5.defaultPrevented && sinFoco5 && rc.bombas[FUCAP].h===10 && capDe().length===1 && Math.abs(top(IN("h:"+FUCAP)) - p5)<=1 && Math.abs(p5-400)<=1 && rsH() - rs5 >= 40,
+          T("C5 · Intro en Horas: "+(ev5.defaultPrevented? "" : "no se canceló, ")+(sinFoco5? "" : "no perdió el foco, ")+"h = "+rc.bombas[FUCAP].h+", "+capDe().length+" avisos, casilla "+r1(p5)+" → "+r1(top(IN("h:"+FUCAP)))+" px, arriba "+r1(rs5)+" → "+r1(rsH())+" px"), "media");
+        /* C6 · la misma casilla con el foco (Intro en el PC, o «change» sin salir): se pinta al tiro y le devuelve el foco */
+        eH = IN("h:"+FUCAP); const p6 = await aY(eH, 400);
+        foco(eH); val(eH, "12"); eH.dispatchEvent(new Event("change", {bubbles:true})); await esperar(80);
+        const a6 = document.activeElement;
+        chk(rc.bombas[FUCAP].h===12 && !capDe().length && a6 && a6!==eH && a6.getAttribute("data-rgin")==="h:"+FUCAP && Math.abs(top(a6) - p6)<=1 && Math.abs(p6-400)<=1,
+          T("C6 · «change» con la misma casilla enfocada: no se pintó, no le devolvió el foco o se movió (foco en «"+(a6 && a6.getAttribute? a6.getAttribute("data-rgin") : "—")+"», "+r1(p6)+" → "+r1(top(a6))+" px)"), "media");
+        soltar(); await esperar(60);
+        /* C7 · sin sectores a la vez (aviso ámbar arriba): Sectores vacío → 2, Caudal vacío → 40 */
+        rc.bombas[FUCAP] = {h:8}; riegoPintar(); await esperar(40);
+        const c7 = capDe()[0];
+        chk(capDe().length===1 && c7.classList.contains("amb") && txtDe(c7.querySelector(".badge"))==="Puede que no alcancen las horas" && IN("n:"+FUCAP).value==="" && IN("q:"+FUCAP).value==="",
+          T("C7 · sin sectores a la vez no está el aviso ámbar «Puede que no alcancen las horas» con las casillas vacías"), "media");
+        m = await caso("n:"+FUCAP, "2");
+        chk(rc.bombas[FUCAP].n===2 && !capDe().length && quieta(m), T("C7 · Sectores vacío → 2: "+dice(m)+", n = "+rc.bombas[FUCAP].n+", "+capDe().length+" avisos"), "media");
+        m = await caso("q:"+FUCAP, "40");
+        chk(rc.bombas[FUCAP].q===40 && IN("q:"+FUCAP).value==="40" && quieta(m), T("C7 · Caudal vacío → 40: "+dice(m)+", q = "+rc.bombas[FUCAP].q), "media");
+        /* C8 · Tabla: A de 2024 (huerto joven arriba) a «Manual» (ancla: su fila), Kc 0,3, ef 85, Repos. 70. «Manual» sin Kc anotado sigue con el Kc del mes
+           (riegoJoven no cambia); el aviso del huerto joven se va al anotar el Kc 0,3: ese es el caso que más mueve lo de arriba */
+        A.anio = "2024"; rc.bombas[FUCAP] = {n:1, h:12}; nav.riegoVista = "tabla"; riegoPintar(); await esperar(40);
+        const filaA = ()=>document.querySelector(`#riegoScroll tr[data-rgcu="${A.id}"]`), jov = ()=>!!document.querySelector('#riegoScroll [data-res="joven"]');
+        const sl = necesito(IN("modo:"+A.id), "el selector del Kc de A en la Tabla"), jov0 = jov(), pf0 = await aY(filaA(), 400), rs8 = rsH();
+        sl.value = "manual"; sl.dispatchEvent(new Event("change", {bubbles:true})); await esperar(60);
+        chk(jov0 && rc.cu[A.id].modo==="manual" && IN("kc:"+A.id) && Math.abs(top(filaA()) - pf0)<=1 && Math.abs(pf0-400)<=1,
+          T("C8 · Tabla, A a «Manual»: "+(jov0? "" : "no estaba «Kc de adulto en huerto joven» arriba, ")+(IN("kc:"+A.id)? "" : "no apareció la casilla del Kc, ")+"la fila "+r1(pf0)+" → "+r1(top(filaA()))+" px, arriba "+r1(rs8)+" → "+r1(rsH())+" px"), "media");
+        m = await caso("kc:"+A.id, "0,3");
+        chk(rc.cu[A.id].kc===0.3 && !jov() && quieta(m) && m.rs0 - m.rs1 >= 20, T("C8 · Kc de A 0,3 (se va «Kc de adulto en huerto joven»): "+(jov()? "sigue el aviso, " : "")+dice(m)+", kc = "+rc.cu[A.id].kc), "media");
+        m = await caso("ef:"+A.id, "85");
+        chk(rc.cu[A.id].ef===85 && quieta(m), T("C8 · ef de A 85: "+dice(m)+", ef = "+rc.cu[A.id].ef), "media");
+        m = await caso("rep:"+A.id, "70");
+        chk(rc.cu[A.id].rep===70 && quieta(m), T("C8 · Repos. de A 70: "+dice(m)+", rep = "+rc.cu[A.id].rep), "media");
+        /* C9 · Repone general 100 → 80 (cerca del tope: parte donde la página lo deje) */
+        nav.riegoVista = "turnos"; riegoPintar(); await esperar(40);
+        m = await caso("rep:0", "80");
+        chk(rc.rep===80 && IN("rep:0").value==="80" && Math.abs(m.p1 - m.p0)<=1, T("C9 · Repone 100 → 80: "+dice(m)+", rep = "+rc.rep+", casilla «"+(IN("rep:0")||{}).value+"»"), "media");
+        /* C10 · Configuración abierta: eficiencia 90 → 80, «Alerta si un riego pasa de» 8 → 3 (sale «riegos largos» arriba), balance «no cuentan los primeros» 3 → 5 → 3 */
+        const conf = ()=>[...document.querySelectorAll("#riegoScroll details.card")].find(d=>/Configuración del riego/.test(txtDe(d.querySelector("summary"))));
+        const dc = necesito(conf(), "«Configuración del riego y tablas de Kc»"); if(!dc.open){ dc.querySelector("summary").click(); await esperar(80); }
+        m = await caso("def:ef", "80");
+        chk(rc.def.ef===80 && conf().open && quieta(m), T("C10 · eficiencia 90 → 80: "+dice(m)+", abierta "+conf().open+", ef = "+rc.def.ef), "media");
+        m = await caso("umbral", "3");
+        chk(rc.umbralH===3 && conf().open && document.querySelector('#riegoScroll [data-res="largo"]') && quieta(m) && m.rs1 - m.rs0 >= 20,
+          T("C10 · alerta 8 → 3 h: "+dice(m)+", abierta "+conf().open+", umbral = "+rc.umbralH+(document.querySelector('#riegoScroll [data-res="largo"]')? "" : ", sin «riegos largos» arriba")), "media");
+        m = await caso("ll:umbral", "5");
+        chk(riegoLlCfg().umbral===5 && conf().open && quieta(m), T("C10 · balance «no cuentan los primeros» 3 → 5: "+dice(m)+", abierta "+conf().open+", umbral "+riegoLlCfg().umbral), "media");
+        m = await caso("ll:umbral", "3");
+        chk(riegoLlCfg().umbral===3 && !(rc.llCfg && "umbral" in rc.llCfg) && conf().open && quieta(m), T("C10 · balance 5 → 3 (el de origen): "+dice(m)+", abierta "+conf().open), "media");
+        /* C11 · «Esta semana en el campo»: el bloque del fundo nace abierto (hay pendientes); cerrado a mano sigue cerrado al recalcular, y la casilla queda en su lugar
+           (los plegables se reponen ANTES de medir; el MutationObserver llega tarde) */
+        const snapR = JSON.stringify(D.riego), snapW = JSON.stringify(D.wl||null), snapC = D.cuarteles.slice(), anioA = A.anio, hoyLl0 = RIEGO_LL_HOY;
+        window.riegoSerieBase = sbLl; delete _detEstado["rgsem:"+FUL];
+        await prepLl({bomba:{n:1, h:2}}); climaLl(LL.MIE, 2.0, 8.0);
+        nav.riegoFundo = FUL; nav.riegoVista = "turnos"; riegoPintar(); await esperar(60);
+        const bl = bloqueF(FUL), abierto0 = !!(bl && bl.open);
+        if(bl){ bl.open = false; await esperar(80); }   // como tocar su título: el evento «toggle» guarda «cerrado»
+        m = await caso("h:"+FUL, "12");
+        chk(abierto0 && bloqueF(FUL) && !bloqueF(FUL).open && quieta(m) && m.rs0 - m.rs1 >= 40 && riegoCfg().bombas[FUL].h===12,
+          T("C11 · bloque «"+FUL+"» de «Esta semana en el campo» "+(abierto0? "cerrado a mano" : "no nació abierto")+": "+(bloqueF(FUL) && bloqueF(FUL).open? "se volvió a abrir, " : "")+dice(m)), "media");
+        D.riego = JSON.parse(snapR); rc = riegoCfg(); const w = JSON.parse(snapW); if(w==null) delete D.wl; else D.wl = w; D.cuarteles.length = 0; snapC.forEach(q=>D.cuarteles.push(q)); A.anio = anioA;
+        RIEGO_LL_HOY = hoyLl0; window.riegoSerieBase = sbBot; delete _detEstado["rgsem:"+FUL]; nav.riegoFundo = FUCAP; guardar();
+        /* C12 · ficha ⚙: Por cuartel, A de 2024 con «Kc de adulto en huerto joven» arriba; tarjeta A a 300 px; anotar la Canopia y Guardar */
+        rc.cu[A.id].modo = "mes"; delete rc.cu[A.id].kc; A.anio = "2024"; nav.riegoVista = "cu"; riegoPintar(); await esperar(40);
+        const card = ()=>document.querySelector(`#riegoScroll .rgcard[data-rgcu="${A.id}"]`), jov12 = jov(), pc0 = await aY(necesito(card(), "la tarjeta de A"), 300);
+        riegoFicha(A.id); await pausa(); necesito(modalAbierto(), "la ficha de riego de A");
+        val(necesito(document.getElementById("rf_cob"), "la Canopia de la ficha"), "0,4");
+        const bG = [...document.querySelectorAll("#capaModal .mf .btn")].filter(visible).pop(); if(bG) bG.click(); await esperar(150);
+        chk(jov12 && !modalAbierto() && rc.cu[A.id].cob===0.4 && !jov() && Math.abs(top(card()) - pc0)<=1 && Math.abs(pc0-300)<=1,
+          T("C12 · ficha ⚙ → Canopia 0,4 → Guardar: "+(jov12? "" : "no estaba «Kc de adulto en huerto joven» arriba, ")+(jov()? "sigue el aviso del huerto joven, " : "")+"tarjeta A "+r1(pc0)+" → "+r1(top(card()))+" px, cob = "+rc.cu[A.id].cob), "media");
+        /* C13 · repintada automática (clima cada 15 min) escribiendo: espera a que termines; al salir, 1 pintada */
+        A.anio = "2015"; delete rc.cu[A.id].cob; rc.bombas[FUCAP] = {n:1, h:8}; nav.riegoVista = "turnos"; riegoPintar(); await esperar(40);
+        eH = IN("h:"+FUCAP); await aY(eH, 400); const k13 = pint;
+        foco(eH); val(eH, "1"); riegoPintarAuto(); await esperar(60);
+        chk(eH.isConnected && eH.value==="1" && pint===k13, T("C13 · la repintada automática borró lo que se escribía (conectada "+eH.isConnected+", «"+eH.value+"», "+(pint-k13)+" pintadas)"), "media");
+        eH.blur(); eH.dispatchEvent(new FocusEvent("focusout", {bubbles:true})); await esperar(80);
+        chk(pint-k13===1 && !eH.isConnected && IN("h:"+FUCAP).value==="8", T("C13 · al salir de la casilla no se hizo 1 pintada ("+(pint-k13)+") o la casilla no muestra lo guardado («"+(IN("h:"+FUCAP)||{}).value+"»)"), "media");
+        /* C14 · repintada automática sin escribir (llegó otro dato: arriba se va el aviso) y la copia que llega al celular (render): el miércoles queda a 250 px */
+        const dSel = `#riegoScroll [data-rgt-dia="${FUCAP}|3"]`, pd0 = await aY(necesito(document.querySelector(dSel), "la tarjeta del miércoles en Turnos"), 250);
+        rc.bombas[FUCAP].h = 12; const k14 = pint; riegoPintarAuto(); await esperar(40);
+        chk(pint-k14===1 && !capDe().length && Math.abs(top(document.querySelector(dSel)) - pd0)<=1 && Math.abs(pd0-250)<=1,
+          T("C14 · repintada automática: el miércoles "+r1(pd0)+" → "+r1(top(document.querySelector(dSel)))+" px ("+(pint-k14)+" pintadas, "+capDe().length+" avisos)"), "media");
+        const pG = riegoScrollGuardar(); rc.bombas[FUCAP].h = 8; render(); riegoScrollReponer(pG); await esperar(60);
+        chk(pG && capDe().length===1 && Math.abs(top(document.querySelector(dSel)) - pd0)<=1,
+          T("C14 · celular (riegoScrollGuardar + render + riegoScrollReponer): el miércoles "+r1(pd0)+" → "+r1(top(document.querySelector(dSel)))+" px (ancla "+(pG? pG.sel : "—")+")"), "media");
+        /* C15 · lo de antes: los días de un cuartel con su ancla (riegoDiaTgl) a 0 px, y 30 h en la casilla → 24 con el aviso, sin alert */
+        nav.riegoVista = "tabla"; riegoPintar(); await esperar(40);
+        const chip = ()=>document.querySelector(`#riegoScroll [data-rgd="${A.id}-2"]`), pch = await aY(necesito(chip(), "el martes de A en la Tabla"), 400);
+        riegoDiaTgl(A.id, 2); await esperar(40); const pch1 = top(chip()); riegoDiaTgl(A.id, 2); await esperar(40);
+        chk(Math.abs(pch1 - pch)<=1 && Math.abs(top(chip()) - pch)<=1 && JSON.stringify(rc.cu[A.id].dias)==="[1,3,5]", T("C15 · el martes de A (riegoDiaTgl) se movió: "+r1(pch)+" → "+r1(pch1)+" → "+r1(top(chip()))+" px"), "media");
+        nav.riegoVista = "turnos"; riegoPintar(); await esperar(40);
+        const nA0 = R.alerts.length; m = await caso("h:"+FUCAP, "30");
+        chk(rc.bombas[FUCAP].h===24 && IN("h:"+FUCAP).value==="24" && /Un día tiene 24 h: las horas disponibles quedaron en 24/.test(txtDe(document.getElementById("avisoCapa"))) && R.alerts.length===nA0 && quieta(m),
+          T("C15 · 30 h en la casilla: h = "+rc.bombas[FUCAP].h+", casilla «"+(IN("h:"+FUCAP)||{}).value+"», "+(R.alerts.length-nA0)+" alert, "+dice(m)), "media");
+        /* C17 · coma decimal: «7,5» en Horas y «2,6» en Sectores */
+        rc.bombas[FUCAP] = {n:1, h:8}; riegoPintar(); await esperar(40);
+        m = await caso("h:"+FUCAP, "7,5");
+        chk(rc.bombas[FUCAP].h===7.5 && bdg().length===3 && bdg().every(e=>/ de 7,5 h$/.test(txtDe(e))) && IN("h:"+FUCAP).value==="7,5" && quieta(m),
+          T("C17 · «7,5» en Horas: h = "+rc.bombas[FUCAP].h+", casilla «"+(IN("h:"+FUCAP)||{}).value+"», «"+bdg().map(txtDe).join(", ")+"», "+dice(m)), "media");
+        m = await caso("n:"+FUCAP, "2,6");
+        chk(rc.bombas[FUCAP].n===3 && IN("n:"+FUCAP).value==="3" && quieta(m), T("C17 · «2,6» en Sectores: n = "+rc.bombas[FUCAP].n+", casilla «"+(IN("n:"+FUCAP)||{}).value+"», "+dice(m)), "media");
+        /* revisión r1: con texto que no es número (o negativo) nada cambia: la casilla vuelve a lo guardado, avisa y no pinta. «0» y vacío sí borran (vuelven las 20 h). Y las 3 casillas miden 44 px con letra de 16 px */
+        rc.bombas[FUCAP] = {n:1, h:8}; riegoPintar(); await esperar(40);
+        for(const malo of ["abc", "-3"]){
+          const j0 = JSON.stringify(rc.bombas[FUCAP]), k0 = pint; m = await caso("h:"+FUCAP, malo);
+          const avM = txtDe(document.getElementById("avisoCapa"));
+          chk(JSON.stringify(rc.bombas[FUCAP])===j0 && IN("h:"+FUCAP).value==="8" && pint===k0 && avM.indexOf("«"+malo+"» no es un número válido: queda como estaba.")>=0 && quieta(m),
+            T("C17 · «"+malo+"» en Horas: bombas "+JSON.stringify(rc.bombas[FUCAP])+", casilla «"+IN("h:"+FUCAP).value+"», "+(pint-k0)+" pintadas, aviso «"+avM.slice(0,80)+"», "+dice(m)), "media");
+        }
+        const j7 = JSON.stringify(rc.bombas[FUCAP]); m = await caso("n:"+FUCAP, "abc");
+        chk(JSON.stringify(rc.bombas[FUCAP])===j7 && IN("n:"+FUCAP).value==="1" && quieta(m), T("C17 · «abc» en Sectores: bombas "+JSON.stringify(rc.bombas[FUCAP])+", casilla «"+IN("n:"+FUCAP).value+"»"), "media");
+        m = await caso("h:"+FUCAP, "0");
+        chk(rc.bombas[FUCAP].h===undefined && IN("h:"+FUCAP).value==="" && IN("h:"+FUCAP).placeholder==="20" && quieta(m), T("C17 · «0» en Horas no borró lo guardado (h = "+rc.bombas[FUCAP].h+", casilla «"+IN("h:"+FUCAP).value+"»)"), "media");
+        const tam = ["n","q","h"].map(k=>{ const e = IN(k+":"+FUCAP); return {h:e.getBoundingClientRect().height, f:parseFloat(getComputedStyle(e).fontSize), w:e.getBoundingClientRect().width}; });
+        chk(tam.every(x=>x.h>=44 && x.f>=16 && Math.abs(x.w-120)<=1), T("Las casillas de Turnos no miden 44 px de alto con letra de 16 px y 120 px de ancho: "+JSON.stringify(tam)), "media");
+        /* revisión r3: parseFloat dejaba pasar textos raros («Infinity» guardaba Infinity, «1e3» = 1000, «1.234,5» = 1,234, «12abc» = 12, «7 horas» = 7): se rechazan con el mismo aviso y la casilla vuelve a su valor. Lo normal sigue igual */
+        rc.bombas[FUCAP] = {n:1, q:40, h:8}; riegoPintar(); await esperar(40);
+        { const j3 = JSON.stringify(rc.bombas[FUCAP]);
+          for(const malo of ["Infinity", "1e3", "1.234,5", "12abc", "7 horas"]) for(const [k, g] of [["h","8"], ["n","1"], ["q","40"]]){
+            const k0 = pint; m = await caso(k+":"+FUCAP, malo);
+            const avM = txtDe(document.getElementById("avisoCapa"));
+            chk(JSON.stringify(rc.bombas[FUCAP])===j3 && IN(k+":"+FUCAP).value===g && pint===k0 && avM.indexOf("«"+malo+"» no es un número válido: queda como estaba.")>=0 && quieta(m),
+              T("r3 · «"+malo+"» en la casilla "+k+": bombas "+JSON.stringify(rc.bombas[FUCAP])+", casilla «"+IN(k+":"+FUCAP).value+"», "+(pint-k0)+" pintadas, aviso «"+avM.slice(0,80)+"», "+dice(m)), "media");
+          }
+        }
+        for(const [k, tx, g, cs] of [["h","7,5",7.5,"7,5"], ["h","7.5",7.5,"7,5"], ["q","2,6",2.6,"2,6"], ["h"," 12 ",12,"12"], ["n","2,6",3,"3"], ["h","0",undefined,""], ["h","",undefined,""], ["q","0",undefined,""], ["q","",undefined,""]]){
+          rc.bombas[FUCAP] = {n:1, q:40, h:8}; riegoPintar(); await esperar(40);
+          m = await caso(k+":"+FUCAP, tx);
+          chk(rc.bombas[FUCAP][k]===g && IN(k+":"+FUCAP).value===cs && quieta(m), T("r3 · «"+tx+"» en la casilla "+k+": guardado "+rc.bombas[FUCAP][k]+", casilla «"+IN(k+":"+FUCAP).value+"», "+dice(m)), "media");
+        }
+        /* revisión r3: «sectores a la vez» de fábrica (SEED_SIMULT, no está en r.bombas): con un texto raro la casilla vuelve a ese número, no queda vacía */
+        SEED_SIMULT[FUCAP] = 2; rc.bombas[FUCAP] = {h:8}; riegoPintar(); await esperar(40);
+        try{ m = await caso("n:"+FUCAP, "12abc");
+          chk(rc.bombas[FUCAP].n===undefined && IN("n:"+FUCAP).value==="2" && quieta(m), T("r3 · «12abc» en Sectores con el dato de fábrica: n = "+rc.bombas[FUCAP].n+", casilla «"+IN("n:"+FUCAP).value+"»"), "media");
+        } finally { delete SEED_SIMULT[FUCAP]; }
+        /* C16 · celular espejo: casillas de solo lectura con sus textos; las funciones que guardan no cambian nada y avisan */
+        rc.bombas[FUCAP] = {n:1, h:8}; riegoPintar(); await esperar(40); const bgN = getComputedStyle(IN("h:"+FUCAP)).backgroundColor;
+        D.sync = Object.assign({}, D.sync||{}, {rol:"receptor"}); uiAplicar(); riegoPintar(); await esperar(40);
+        const j16 = JSON.stringify(D.riego), roT = ["n","q","h"].map(k=>IN(k+":"+FUCAP)).filter(e=>e && e.readOnly && e.getAttribute("aria-readonly")==="true").length;
+        const tConf = txtDe(document.querySelector(`#riegoScroll .rgt-conf[data-rgt-eq="${FUCAP}"]`)), lbRep = txtDe(IN("rep:0") && IN("rep:0").closest("label")), lbUm = txtDe(IN("umbral") && IN("umbral").closest("label"));
+        const roC = ["rep:0","def:ef","umbral","ll:umbral","ll:pct","ll:tope"].filter(k=>IN(k) && IN(k).readOnly).length, roK = [...document.querySelectorAll('#riegoScroll [data-rgin^="kcm:"], #riegoScroll [data-rgin^="kcf:"]')];
+        chk(roT===3 && tConf.indexOf("En el celular solo se consulta: las horas, los sectores a la vez y el caudal se cambian en el iPad.")>=0 && /% de la ETc \(se cambian en el iPad\)$/.test(lbRep)
+          && /\(revisar Pp o Kc\) \(se cambian en el iPad\)$/.test(lbUm) && roC===6 && roK.length>0 && roK.every(e=>e.readOnly) && getComputedStyle(IN("h:"+FUCAP)).backgroundColor!==bgN,
+          T("C16 · espejo: casillas de Turnos de solo lectura "+roT+"/3, Repone y Configuración "+roC+"/6, Kc "+roK.filter(e=>e.readOnly).length+"/"+roK.length+"; textos «"+tConf.slice(-110)+"» · «"+lbRep+"» · «"+lbUm+"»"), "media");
+        nav.riegoVista = "tabla"; riegoPintar(); await esperar(40);
+        const tTab = txtDe([...document.querySelectorAll("#riegoScroll .muted")].find(e=>/Las letras y las casillas/.test(txtDe(e))));
+        chk(!/Toca las letras/.test(txtDe(document.getElementById("riegoScroll"))) && IN("modo:"+A.id) && IN("modo:"+A.id).disabled && IN("ef:"+A.id).readOnly && IN("rep:"+A.id).readOnly && tTab.indexOf("Las letras y las casillas muestran el valor de cada cuartel, vacío = el general (se cambian en el iPad).")>=0,
+          T("C16 · espejo, Tabla: el selector no está desactivado o ef/Repos. se pueden escribir, o falta «(se cambian en el iPad)»: «"+tTab.slice(0,140)+"»"), "media");
+        riegoBombaSet(FUCAP, "h", "12");
+        const av16 = txtDe(document.getElementById("avisoCapa"));
+        riegoSet(A.id, "ef", "70"); riegoRepSet(0, "50"); riegoRepSet(A.id, "50"); riegoDef("ef", "70"); riegoUmbralSet("2"); riegoSetModo(A.id, "manual");
+        chk(rc.bombas[FUCAP].h===8 && /En el celular solo se consulta: díctalo o anótalo y se envía al iPad/.test(av16) && JSON.stringify(D.riego)===j16,
+          T("C16 · espejo: riegoBombaSet u otra función de Riego cambió los datos o no avisó (h = "+rc.bombas[FUCAP].h+", D.riego "+(JSON.stringify(D.riego)===j16? "igual" : "CAMBIÓ")+", aviso «"+av16.slice(0,90)+"»)"), "media");
+        /* revisión r1: tampoco guardan las letras de los días, «usar los generales», el Kc ni los sectores de ejemplo. La base y el modo de Kc se pueden mirar, sin guardar */
+        { const gu16 = window.guardar, cm16 = window.cerrarModal, rf16 = window.riegoFicha; let nG16 = 0, nM16 = 0; window.guardar = function(){ nG16++; return gu16.apply(this, arguments); }; window.cerrarModal = function(){ nM16++; }; window.riegoFicha = function(){ nM16++; };
+          try{
+            const g0 = Object.keys(RIEGO_KC_DEF)[0], av0 = document.getElementById("avisoCapa"); if(av0) av0.innerHTML = "";
+            riegoDiaTgl(A.id, 2); const avD = txtDe(document.getElementById("avisoCapa"));
+            riegoDiaTgl(0, 2); riegoDiasReset(A.id); riegoKcSet(g0, 0, "0,5"); riegoKcReset(g0); riegoKcFenSet(g0, 0, "0,5"); riegoKcFenReset(g0); riegoSectSeed(A.id);
+            chk(nG16===0 && nM16===0 && JSON.stringify(D.riego)===j16 && /En el celular solo se consulta/.test(avD), T("C16 · espejo: los días, el Kc o los sectores guardaron algo ("+nG16+" veces guardar, D.riego "+(JSON.stringify(D.riego)===j16? "igual" : "CAMBIÓ")+", aviso «"+avD.slice(0,70)+"»)"), "media");
+            const b0 = rc.base, m0 = rc.modoKc;
+            riegoBase("prox"); const bEs = rc.base; riegoModoKc("fen"); const mEs = rc.modoKc;
+            chk(nG16===0 && bEs==="prox" && mEs==="fen", T("C16 · espejo: mirar otra semana o el modo de Kc llamó a guardar ("+nG16+" veces, base "+bEs+", modo "+mEs+")"), "media");
+            if(b0===undefined) delete rc.base; else rc.base = b0; if(m0===undefined) delete rc.modoKc; else rc.modoKc = m0;
+          } finally { window.guardar = gu16; window.cerrarModal = cm16; window.riegoFicha = rf16; }
+        }
+        D.sync.rol = rol0; uiAplicar(); nav.riegoVista = "turnos"; riegoPintar(); await esperar(40);
+        /* rendimiento (C1): riegoPintarYa no pasa 1,2 veces la pintada de la v165 (innerHTML + el ancla), promedio de 5 (+2 ms de margen por el reloj; revisión r1: con ×1,1 + 1 ms fallaba a veces por 1 ms de ruido).
+           Cierre: hasta 3 rondas de 5: el ruido solo suma tiempo (en una corrida completa una ronda dio 5,4 ms contra 3,5 ms; medidas 8 rondas seguidas con 13 ms de base, da de 1,0 a 1,2 veces) */
+        if(ancho===1180){
+          const s = `#riegoScroll [data-rgin="h:${FUCAP}"]`, c = document.getElementById("riegoScroll"), prom = a=>a.reduce((x, y)=>x+y, 0)/a.length;
+          let tYa = [], tV = [];
+          for(let k=0;k<3;k++){
+            tYa = []; tV = [];
+            for(let i=0;i<5;i++){
+              let t = performance.now(); riegoPintarYa([s]); tYa.push(performance.now()-t);
+              t = performance.now(); { const a0 = document.querySelector(s), t0 = a0.getBoundingClientRect().top; c.innerHTML = riegoCuerpoHTML(); const a1 = document.querySelector(s), d = a1.getBoundingClientRect().top - t0; if(Math.abs(d)>0.5) window.scrollBy(0, d); } tV.push(performance.now()-t);
+            }
+            if(prom(tYa) <= prom(tV)*1.2 + 2) break;
+            await esperar(50);
+          }
+          chk(prom(tYa) <= prom(tV)*1.2 + 2, T("Rendimiento: riegoPintarYa tarda "+r1(prom(tYa))+" ms y la pintada de la v165 "+r1(prom(tV))+" ms (promedio de 5, en la mejor de 3 rondas)"), "leve");
+        }
+        if(ancho===375){ app.style.width = ""; app.style.maxWidth = ""; D.ui = JSON.parse(ui0); uiAplicar(); }
+      }
+    } finally {
+      window.riegoCuerpoHTML = cu0; app.style.width = ""; app.style.maxWidth = ""; soltar(); _rgPend = null;
+      if(D.sync) D.sync.rol = rol0; D.ui = JSON.parse(ui0); try{ uiAplicar(); }catch(e){}
+      try{ delete _detEstado["rgsem:"+FUL]; }catch(e){} window.scrollTo(0, 0);
+    }
+  }));
   await paso("Ficha: validaciones de las líneas de riego (0,5–8 L/h y 0,1–2 m), Pp medida y cobertura (avisos dentro de la ficha, sin alert y sin guardar nada)", ()=>enCaja(async ()=>{
     await irA("riego");
     const q = cuBot({nombre:"Validaciones bot", marco:"5x2", anio:"2016"}); prepBot(q, {lin:2, dg:0.5, caudal:2});
@@ -3236,7 +3930,7 @@ async function estBotOMLimpio(){   // borra la caché de Open-Meteo de la base d
 }
 /* sincroniza como el botón: espera que no haya otra vuelta en curso y evita que el reloj de fondo (estTic) meta otra al medio */
 async function estBotSinc(){ await esperarQue(()=>!estDat.sinc, 60000); estDat.ultIntento = Date.now(); const n = await estSincronizar(true); estDat.ultIntento = Date.now(); return n; }
-async function estBotLimpio(){ await esperarQue(()=>!estDat.sinc, 60000); await estBorrarLocal(EST_BOT.st); }
+async function estBotLimpio(){ await esperarQue(()=>!estDat.sinc, 60000); await estBorrarLocal(EST_BOT.st); try{ localStorage.removeItem("agronotasAplLluvia"); localStorage.removeItem("agronotasAvisosOcultos"); }catch(e){} }   // v166: también la ✕ de la lluvia pronosticada (la caja de arena dura toda la corrida); v167: y lo oculto
 async function estBotCuenta(){ const recs = await _estRango("lect", EST_BOT.st + "|", EST_BOT.st + "|￿"); let n = 0; const s = new Set(); recs.forEach(r=>(r.filas || []).forEach(x=>{ n++; s.add(x[0]); })); return {n, u:s.size}; }
 async function estBotA(){
   const ST = EST_BOT.st;
@@ -3769,31 +4463,29 @@ async function estBotC(){
     } finally { if(est0 == null) delete D.est; else D.est = JSON.parse(est0); }
     revisarPantalla();
   });
-  await paso("Excel: «Lo que ves» del día → .xls con 24 filas y números como números; lecturas de 7 días → .xls; de 40 días → .csv con «;» y coma decimal; Descargar y Compartir entregan el archivo", async ()=>{
+  await paso("Excel: el día → .xlsx con Resumen, Por día, Por hora (24 filas) y Huecos, con números y fechas como números; lecturas de 7 días y de 40 días → .xlsx; Descargar y Compartir entregan el archivo", async ()=>{
     const F = EST_BOT.filas, hoyF = estHoyF(), fC = estSumarDias(hoyF, -3);
     await estBotInf("diario", fC, "vista");
-    let x = await estArchivoActual(), t = await x.blob.text();
-    const cab = (t.match(/<th>[^<]*<\/th>/g) || []).slice(0, EST_XL_HORA.length).map(z=>z.replace(/<\/?th>/g, ""));
-    chk(/^Estacion_por_hora_\d{4}-\d{2}-\d{2}\.xls$/.test(x.nombre) && x.n === 24 && (t.match(/<tr class="d/g) || []).length === 24, "El Excel del día no tiene 24 filas (" + x.nombre + ", " + x.n + ")");
-    chk(cab.join("|") === EST_XL_HORA.map(c=>esc(c[0])).join("|"), "Las columnas del Excel por hora no son las esperadas (" + cab.slice(0, 4).join(", ") + "…)");
-    const lim = estLimitesDia(fC), L = estDerivar(F.filter(z=>z[1] === fC), wlEtCfg()), g = L.filter(z=>z.ts >= lim.a && z.ts < lim.a + 3600), t0 = g.reduce((a, z)=>a + z.t, 0) / g.length;
-    chk(/mso-number-format/.test(t) && t.indexOf('class="n1" x:num="' + estXnum(t0) + '">' + t0.toFixed(1).replace(".", ",") + "<") >= 0 && /class="fe" x:num="\d{5}">\d{2}-\d{2}-\d{4}</.test(t), "El Excel no lleva los números y fechas como números (x:num) o la primera hora no cuadra");
+    let x = await estArchivoActual(), z = await estBotXlsx(x.blob);
+    chk(/^Estacion_informe_\d{4}-\d{2}-\d{2}\.xlsx$/.test(x.nombre) && !z.errores.length && z.hojas.map(h=>h.nom).join("|") === "Resumen|Por día|Por hora|Huecos", "El Excel del día no es el .xlsx esperado (" + x.nombre + ", " + z.hojas.map(h=>h.nom).join("|") + ", " + z.errores.join("; ") + ")");
+    const PH = z.hojas[2];
+    chk(PH.datos.length === 24, "El Excel del día no tiene 24 filas por hora (" + PH.datos.length + ")");
+    chk(PH.cab.join("|") === EST_XL_HORA.map(c=>c[0]).join("|"), "Las columnas de «Por hora» no son las esperadas (" + PH.cab.slice(0, 4).join(", ") + "…)");
+    const lim = estLimitesDia(fC), L = estDerivar(F.filter(q=>q[1] === fC), wlEtCfg()), g = L.filter(q=>q.ts >= lim.a && q.ts < lim.a + 3600), t0 = g.reduce((a, q)=>a + q.t, 0) / g.length;
+    chk(PH.datos[0][3] === +estXnum(t0) && PH.datos[0][0] === estXlSerial(fC) && z.fmt(PH.est[4][0]) === "dd\\-mm\\-yyyy" && z.fmt(PH.est[4][3]) === "0.0", "«Por hora» no lleva los números y fechas como números, o la primera hora no cuadra (" + PH.datos[0].slice(0, 4).join(", ") + ", formato " + z.fmt(PH.est[4][0]) + ")");
     let s0 = R.salidas.length; await tocar("#estBtnXls", "Descargar Excel"); await esperarQue(()=>R.salidas.length > s0, 8000);
-    chk(R.salidas.slice(s0).some(z=>z.tipo === "descarga" && z.archivo === x.nombre), "«Descargar Excel» no entregó " + x.nombre);
-    const lun = estLunes(estSumarDias(hoyF, -10)), n7 = F.filter(z=>z[1] >= lun && z[1] <= estSumarDias(lun, 6)).length;
+    chk(R.salidas.slice(s0).some(q=>q.tipo === "descarga" && q.archivo === x.nombre), "«Descargar Excel» no entregó " + x.nombre);
+    const lun = estLunes(estSumarDias(hoyF, -10)), n7 = F.filter(q=>q[1] >= lun && q[1] <= estSumarDias(lun, 6)).length;
     await estBotInf("semanal", lun, "lecturas");
-    x = await estArchivoActual(); t = await x.blob.text();
-    const cabL = (t.match(/<th>[^<]*<\/th>/g) || []).slice(0, EST_XL_LECT.length).map(z=>z.replace(/<\/?th>/g, ""));
-    chk(/\.xls$/.test(x.nombre) && x.n === n7 && (t.match(/<tr class="d/g) || []).length === n7, "El Excel de lecturas de 7 días no tiene una fila por lectura (" + x.n + " de " + n7 + ")");
-    chk(cabL.join("|") === EST_XL_LECT.map(c=>esc(c[0])).join("|") && /Huecos de datos/.test(t), "El Excel de lecturas no trae todas sus columnas o la sección «Huecos de datos»");
+    x = await estArchivoActual(); z = await estBotXlsx(x.blob);
+    chk(/^Estacion_lecturas_semana_\d{4}-\d{2}-\d{2}\.xlsx$/.test(x.nombre) && x.n === n7 && z.hojas[0].datos.length === n7, "El Excel de lecturas de 7 días no tiene una fila por lectura (" + x.nombre + ", " + x.n + " de " + n7 + ")");
+    chk(z.hojas[0].cab.join("|") === EST_XL_LECT.map(c=>c[0]).join("|") && z.hojas.map(h=>h.nom).join("|") === "Lecturas 15 min|Huecos", "El Excel de lecturas no trae todas sus columnas o la hoja «Huecos»");
     await estBotInf("temporada", estTemporadaIni(hoyF), "lecturas");
-    chk(/Descargar CSV/.test(txtDe(document.getElementById("estBtnXls"))) && /sale en CSV/.test(txtDe(document.getElementById("estKInf"))), "Con más de 31 días de lecturas el botón no dice «Descargar CSV» ni lo explica");
-    x = await estArchivoActual(); t = await x.blob.text();
-    const lin = t.replace(/^﻿/, "").split("\r\n").filter(Boolean);
-    chk(/^Estacion_lecturas_temporada_\d{4}-\d{2}\.csv$/.test(x.nombre) && (await estBotBom(x.blob)) && lin.length === F.length + 1 && lin[0].split(";").length === EST_XL_LECT.length, "El CSV de 40 días no tiene una línea por lectura más el encabezado (" + lin.length + " de " + (F.length + 1) + ")");
-    chk(/^\d{2}-\d{2}-\d{4};\d{2}:\d{2};-?\d+,\d;/.test(lin[1]) && !/\d\.\d/.test(lin[1]), "El CSV no usa «;» y coma decimal (" + lin[1].slice(0, 40) + ")");
+    chk(/Descargar Excel/.test(txtDe(document.getElementById("estBtnXls"))) && !/sale en CSV/.test(txtDe(document.getElementById("estKInf"))), "Con 40 días de lecturas el botón no sigue en «Descargar Excel» (hasta 92 días no es CSV)");
+    x = await estArchivoActual(); z = await estBotXlsx(x.blob);
+    chk(/^Estacion_lecturas_temporada_\d{4}-\d{2}\.xlsx$/.test(x.nombre) && !z.errores.length && z.hojas[0].datos.length === F.length, "Las lecturas de 40 días no salen en un .xlsx con una fila por lectura (" + x.nombre + ", " + z.hojas[0].datos.length + " de " + F.length + ")");
     s0 = R.salidas.length; await tocar("#estBtnComp", "Compartir"); await esperarQue(()=>R.salidas.length > s0, 8000);
-    chk(R.salidas.slice(s0).some(z=>z.tipo === "compartir" && z.archivo === x.nombre && z.kb > 0), "«Compartir» no mandó el archivo a la hoja de compartir");
+    chk(R.salidas.slice(s0).some(q=>q.tipo === "compartir" && q.archivo === x.nombre && q.kb > 0), "«Compartir» no mandó el archivo a la hoja de compartir");
   });
   await paso("Informe PDF de los 4 tipos: 1 página o más, más de 2 KB y nombre Estacion_<tipo>_<período>.pdf", async ()=>{
     const hoyF = estHoyF();
@@ -3812,6 +4504,7 @@ async function estBotC(){
       chk(est() === "ok,ok,ok,ok,ok", "Con el puente v3, la base y la tarea cada 5 min, Cómo funciona no marca los 5 pasos hechos (" + est() + ")");
       const vc = txtDe(document.getElementById("estVista"));
       chk(/Qué tan en vivo es/.test(vc) && /Lo que no se puede con el plan Basic/.test(vc) && /Desde que actives la base/.test(vc) && /Más adelante, en GesAgro/.test(vc) && !/Antes del 04-12-2026/.test(vc) && /no entra al historial del panel/.test(vc), "A Cómo funciona le falta una tarjeta o un texto del modelo (o quedó el aviso del 04-12)");
+      chk(/Diario, semanal, mensual, de temporada o del período que elijas; en Excel o PDF, desde el mismo iPad\./.test(vc) && !/mensual o de temporada;/.test(vc), "«Cómo funciona» no tiene el texto nuevo de los informes (v166)", "media");
       let c = await estBotDatos(), tc = txtDe(c);
       const faltaD = [[/Puente v3 · base D1 activa/, "«Puente v3 · base D1 activa»"], [/corrió (hace \d+ min|recién) · cada 5 min/, "la tarea cada 5 min"], [/Lecturas en la nube \d[\d.]* · desde el \d{2}-\d{2}-\d{4}/, "las lecturas en la nube"],
         [/wifi −61 dBm · batería 4,10 V/, "la consola"], [/Pasos en Cloudflare \(una vez\) · listos/, "los pasos listos"]].filter(z=>!z[0].test(tc)).map(z=>z[1]);
@@ -3894,8 +4587,8 @@ async function estBotC(){
       await estBotInf("diario", f3, "vista");
       const f16 = [...document.querySelectorAll("#estInfTabla tbody tr")].find(tr=>/^16:00/.test(txtDe(tr))), l16 = F.find(z=>z[0] === y40);
       chk(f16 && /^16:00 1 de 4/.test(txtDe(f16)) && txtDe(f16.children[1]) === estF1(l16[EST_I.t]) && txtDe(f16.children[2]) === estF0(l16[EST_I.hr]), "La hora del corte de 40 min no muestra solo su lectura de las 16:40 («1 de 4»)");
-      const x = await estArchivoActual(), t = await x.blob.text();
-      chk(/Huecos de datos: 1 corte, 40 min sin datos/.test(t) && /x:num="0\.666667">0,67</.test(t) && (t.match(/<tr class="d/g) || []).length === 24, "El Excel del día del corte de 40 min no trae la sección «Huecos» con el corte (o cambió las filas)");
+      const x = await estArchivoActual(), z = await estBotXlsx(x.blob), HH = z.hojas.find(h=>h.nom === "Huecos"), PH = z.hojas.find(h=>h.nom === "Por hora");
+      chk(HH && /1 corte, 40 min sin datos/.test(HH.filas[1][0]) && HH.datos.length === 1 && HH.datos[0][3] === 0.666667 && PH && PH.datos.length === 24, "El Excel del día del corte de 40 min no trae la hoja «Huecos» con el corte (o cambió las filas)");
     } finally { window.wlFetch = f0; await estEstadoPuente(true); }
     revisarPantalla();
   });
@@ -3905,7 +4598,7 @@ async function estBotC(){
     try{
       for(const [nom, u] of [["iPad", {movil:"no"}], ["celular", {movil:"si"}], ["sol", {movil:"no", sol:true}]]){
         D.ui = Object.assign({}, JSON.parse(ui0), {sol:false, grande:false}, u); uiAplicar(); render(); await pausa(.8);
-        for(const [t, xl] of [["diario", "vista"], ["semanal", "lecturas"], ["mensual", "vista"], ["temporada", "vista"]]){
+        for(const [t, xl] of [["diario", "vista"], ["semanal", "lecturas"], ["mensual", "vista"], ["temporada", "vista"], ["periodo", "vista"]]){
           estNav()[EST_INF_K[t]] = null; await estBotInf(t, null, xl);
           const t0 = performance.now(); vEstInformes(); lenta = Math.max(lenta, performance.now() - t0);
           estBotZona(document.getElementById("estRaiz"), "Estación › Informes " + t + " (" + nom + ")");
@@ -3917,6 +4610,594 @@ async function estBotC(){
     } finally { D.ui = JSON.parse(ui0); uiAplicar(); render(); }
     chk(lenta < 250, "Armar «Historial e informes» tardó " + Math.round(lenta) + " ms", "leve");
     log("Historial e informes se arma en " + Math.round(lenta) + " ms como máximo");
+  });
+}
+
+/* ===== v166: «Elegir período» en Historial e informes (contrato, sección D) ===== */
+/* lee un .xlsx como lo haría Excel: el directorio del ZIP, cada parte (firmas, CRC y tamaños), cada XML con DOMParser y las hojas.
+   → {partes, textos, metodos, errores, fmt(estilo), hojas:[{nom, filas (índice 0 = fila 1), est, cab, datos (desde la fila 5), pane}]} */
+async function estBotXlsx(blob){
+  const bytes = new Uint8Array(await blob.arrayBuffer()), dv = new DataView(bytes.buffer), dec = new TextDecoder("utf-8"), errores = [], textos = {}, partes = [], metodos = {}, docs = {};
+  if(!(bytes[0] === 0x50 && bytes[1] === 0x4B && bytes[2] === 3 && bytes[3] === 4)) errores.push("no empieza con PK");
+  let e = bytes.length - 22; while(e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if(e < 0) throw new Error("El .xlsx no tiene el fin del directorio del ZIP");
+  const n = dv.getUint16(e + 10, true); let c = dv.getUint32(e + 16, true);
+  if(c + dv.getUint32(e + 12, true) !== e) errores.push("el directorio central no calza con su fin");
+  for(let i = 0; i < n; i++){
+    if(dv.getUint32(c, true) !== 0x02014b50){ errores.push("firma del directorio"); break; }
+    const met = dv.getUint16(c + 10, true), crc = dv.getUint32(c + 16, true), cs = dv.getUint32(c + 20, true), us = dv.getUint32(c + 24, true), nl = dv.getUint16(c + 28, true), xl = dv.getUint16(c + 30, true), cl = dv.getUint16(c + 32, true), off = dv.getUint32(c + 42, true);
+    const nom = dec.decode(bytes.subarray(c + 46, c + 46 + nl));
+    if(dv.getUint32(off, true) !== 0x04034b50 || dv.getUint32(off + 14, true) !== crc || dv.getUint32(off + 18, true) !== cs || dv.getUint32(off + 22, true) !== us) errores.push("encabezado local de " + nom);
+    const ini = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true), dat = bytes.subarray(ini, ini + cs);
+    const cru = met === 8 ? new Uint8Array(await new Response(new Blob([dat]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer()) : dat;
+    if(cru.length !== us) errores.push("tamaño de " + nom);
+    if(_crc32(cru) !== crc) errores.push("CRC de " + nom);
+    const tx = dec.decode(cru), doc = new DOMParser().parseFromString(tx, "application/xml"), pe = doc.getElementsByTagName("parsererror");
+    if(pe.length) errores.push("XML de " + nom + ": " + String(pe[0].textContent).slice(0, 120));
+    partes.push(nom); textos[nom] = tx; metodos[nom] = met; docs[nom] = doc;
+    c += 46 + nl + xl + cl;
+  }
+  const cels = d=>d ? [...d.getElementsByTagName("si")].map(s=>[...s.getElementsByTagName("t")].map(t=>t.textContent).join("")) : [], ss = cels(docs["xl/sharedStrings.xml"]);
+  const st = docs["xl/styles.xml"], codigos = {}, xfs = [];
+  if(st){ [...st.getElementsByTagName("numFmt")].forEach(f=>{ codigos[f.getAttribute("numFmtId")] = f.getAttribute("formatCode"); });
+    const cx = st.getElementsByTagName("cellXfs")[0]; if(cx) [...cx.getElementsByTagName("xf")].forEach(f=>xfs.push(f.getAttribute("numFmtId"))); }
+  const fmt = s=>{ const id = xfs[+s]; return codigos[id] != null ? codigos[id] : {"0":"General", "1":"0", "2":"0.00", "49":"@"}[id]; };
+  const colDe = r=>{ let v = 0; for(const ch of r.replace(/\d+$/, "")) v = v * 26 + ch.charCodeAt(0) - 64; return v - 1; };
+  const rels = {}; if(docs["xl/_rels/workbook.xml.rels"]) [...docs["xl/_rels/workbook.xml.rels"].getElementsByTagName("Relationship")].forEach(r=>{ rels[r.getAttribute("Id")] = r.getAttribute("Target"); });
+  const hojas = docs["xl/workbook.xml"] ? [...docs["xl/workbook.xml"].getElementsByTagName("sheet")].map(s=>{
+    const doc = docs["xl/" + rels[s.getAttribute("r:id")]], filas = [], est = [];
+    if(!doc){ errores.push("la hoja " + s.getAttribute("name") + " no tiene su parte"); return {nom:s.getAttribute("name"), filas, est, cab:[], datos:[]}; }
+    [...doc.getElementsByTagName("row")].forEach(r=>{ const rn = +r.getAttribute("r") - 1, f = [], es = []; let ant = -1;
+      [...r.getElementsByTagName("c")].forEach(x=>{ const i = colDe(x.getAttribute("r")), v = x.getElementsByTagName("v")[0], tv = v ? v.textContent : null;
+        if(i <= ant) errores.push("celdas fuera de orden en " + x.getAttribute("r")); ant = i;
+        f[i] = x.getAttribute("t") === "s" ? ss[+tv] : tv == null ? null : +tv; es[i] = x.getAttribute("s"); });
+      filas[rn] = f; est[rn] = es; });
+    const pn = doc.getElementsByTagName("pane")[0];
+    return {nom:s.getAttribute("name"), filas, est, cab:filas[3] || [], datos:filas.slice(4), pane:pn ? {x:pn.getAttribute("xSplit"), y:pn.getAttribute("ySplit"), est:pn.getAttribute("state")} : null};
+  }) : [];
+  return {partes, textos, metodos, errores, fmt, hojas, ss};
+}
+/* abre el informe de un período elegido, como estBotInf con «Elegir período» y las dos fechas (ISO) */
+async function estBotInfRango(d, h, xls){
+  const N = estNav(); N.rango = {desde:d, hasta:h};
+  ["estIR_d", "estIR_h", "estIR_d_t", "estIR_h_t"].forEach(id=>{ const el = document.getElementById(id); if(el) el.value = el.defaultValue; });   // estPintar conserva lo escrito a medias: aquí se abre de nuevo
+  return estBotInf("periodo", null, xls);
+}
+async function estBotXP(){
+  const hoyF = estHoyF(), M = n=>estSumarDias(hoyF, n), dmy = f=>dmyDe(f);
+  const pon = (id, txt)=>{ const t = document.getElementById(id); t.value = txt; t.dispatchEvent(new Event("input", {bubbles:true})); return t; };   // escribe sin el cursor del bot (para medir los 600 ms)
+  const sub = ()=>txtDe(document.querySelector("#estInfCuerpo .est-inf-sub")), filasT = ()=>[...document.querySelectorAll("#estInfTabla tbody tr")];
+  const chipsTipo = ()=>[...document.querySelectorAll('.est-chips[aria-label="Tipo de informe"] .chip')];
+  const listoInf = ()=>esperarQue(()=>{ const p = estPeriodo(), X = estInfDatos(p); return X && X.k === estInfClave(p) && !_estInfEn && document.getElementById("estInfKpis"); }, 15000);
+  const hoja = (z, nom)=>necesito(z.hojas.find(h=>h.nom === nom), "la hoja «" + nom + "» del .xlsx");
+  const celda = (h, f, cab)=>{ const i = h.cab.indexOf(cab); return i < 0 ? undefined : f[i]; };
+  const noms = z=>z.hojas.map(h=>h.nom).join("|"), ayuda = ()=>txtDe(document.querySelector("#estInfAcc .est-g-ayuda"));
+  const guardarM = (nom, x)=>{ if(AB.muestras) AB.muestras[nom] = x.blob; };   // para revisar a mano los archivos: AgroBots.muestras = {} antes de comenzar
+  await paso("Excel .xlsx · ayudantes con valores exactos: CRC-32, número de serie, letras de columna, escape, nombres de hoja y seguro (D 1)", async ()=>{
+    chk(_crc32(new TextEncoder().encode("123456789")) === 0xCBF43926 && _crc32(new TextEncoder().encode("6789"), _crc32(new TextEncoder().encode("12345"))) === 0xCBF43926, "_crc32 no da CBF43926 (ni de una vez ni por partes)", "grave");
+    chk(estXlSerial("2026-11-03") === 46329 && estXlSerial("2026-01-01") === 46023, "estXlSerial no da 46329 y 46023", "grave");
+    chk(xlsxCol(0) === "A" && xlsxCol(25) === "Z" && xlsxCol(26) === "AA" && xlsxCol(32) === "AG", "xlsxCol no da A, Z, AA y AG", "grave");
+    chk(xlsxEsc('a<b>&"c"\u0007') === "a&lt;b&gt;&amp;&quot;c&quot;", "xlsxEsc no escapa bien («" + xlsxEsc('a<b>&"c"\u0007') + "»)", "grave");
+    chk(xlsxEsc("ñ ª 😀 \uD800 fin") === "ñ ª 😀  fin" && xlsxEsc("_x0041_") === "_x005F_x0041_", "xlsxEsc no deja los emojis enteros, no quita los sustitutos sueltos o deja «_x0041_» como una letra", "grave");
+    const nh = xlsxNombres(["Por día", "a:b/c?d*e[f]g\\h", "x".repeat(40), "x".repeat(40)]);
+    chk(nh[0] === "Por día" && nh[1] === "a b c d e f g h" && nh[2].length === 31 && nh[3].length === 31 && nh[2] !== nh[3], "xlsxNombres no deja nombres válidos de hoja: " + nh.join(" | "), "media");
+    chk(EST_XL.formato === "xlsx" && EST_XL.hora === 31 && EST_XL.lect === 92 && EST_XL.csv === 366, "EST_XL no tiene los cortes de D.3", "media");
+    chk(EST_XL_DIA.length === 34 && EST_XL_MES.length === 21 && EST_XL_LECT.length === 33 && EST_XL_HORA.length === 14, "Las columnas no son 34, 21, 33 y 14 (" + [EST_XL_DIA.length, EST_XL_MES.length, EST_XL_LECT.length, EST_XL_HORA.length].join(", ") + ")", "media");
+  });
+  await paso("Elegir período en Informes: 5.º chip; al tocarlo sin un período previo, los últimos 30 días, «Informe del período» y la nota, en vez de ◀ ▶ (v166, D 2)", async ()=>{
+    const F = estBotFilasAl(); EST_BOT.modo = "v3"; EST_BOT.filas = F; await estBotLimpio(); await estBotSinc();
+    delete estNav().rango; await estBotInf("diario", M(-3), "vista");
+    chk(chipsTipo().map(txtDe).join("|") === "Diario|Semanal|Mensual|Temporada|Elegir período", "Los chips de «Tipo de informe» no son los 5 esperados: " + chipsTipo().map(txtDe).join("|"), "media");
+    await tocar('.est-chips[aria-label="Tipo de informe"] .chip[data-v="periodo"]', "Elegir período"); await listoInf(); await pausa(.2);
+    chk(v("estIR_d_t") === dmy(M(-29)) && v("estIR_h_t") === dmy(hoyF), "«Elegir período» no abre con los últimos 30 días (" + v("estIR_d_t") + " a " + v("estIR_h_t") + ")", "media");
+    chk(txtDe(document.querySelector("#estInfCuerpo .est-inf-tit")) === "Informe del período" && /^Del \d{2}-\d{2}(-\d{4})? al \d{2}-\d{2}-\d{4} \(30 días\)/.test(sub()), "El título o el subtítulo del período no son los esperados («" + sub() + "»)", "media");
+    chk(txtDe(document.getElementById("estIRangoNota")) === "Cambia las fechas: el informe se arma solo." && document.getElementById("estIRangoErr").hidden, "La nota de las fechas no es «Cambia las fechas: el informe se arma solo.» (o se ve el error)", "media");
+    chk(!document.getElementById("estPerSel") && !document.getElementById("estPerAnt") && !document.querySelector("#estIRango button") && document.getElementById("estInfAcc") && document.getElementById("estInfCuerpo"), "Con «Elegir período» quedó el selector ◀ ▶ (o falta #estInfAcc o #estInfCuerpo)", "media");
+    const p = estPeriodo(); chk(p.tipo === "periodo" && p.nd === 30 && p.escala === "dia" && !p.corto && p.desde === M(-29) && p.hasta === hoyF, "estPeriodo no da el período de 30 días con su escala (" + JSON.stringify([p.tipo, p.nd, p.escala, p.corto]) + ")", "media");
+    const u = estNav().rango; estPer(-1); estPerSel(M(-1)); chk(estNav().rango === u && estNav().inf === "periodo", "estPer o estPerSel escribieron una opción del selector en el período elegido", "media");
+    chk(/^Del .* · hoy, hasta las \d{2}:\d{2}$/.test(sub()), "El período hasta hoy no dice «hoy, hasta las HH:MM» («" + sub() + "»)", "leve");
+    revisarPantalla();
+  });
+  await paso("Elegir período: se arma 600 ms después del último cambio, la tabla tiene 7 filas, y las casillas no se rehacen al llegar los datos (D 3); un día y las escalas de E.2", async ()=>{
+    const d0 = document.getElementById("estIR_d_t"), h0 = document.getElementById("estIR_h_t"), caja0 = document.getElementById("estIRango"), cu0 = document.getElementById("estInfCuerpo");
+    let vis = 0; const pv0 = window.estInfPintar; window.estInfPintar = function(){ vis++; return pv0.apply(this, arguments); };
+    try{
+      const ti = Date.now(); pon("estIR_d_t", dmy(M(-9))); pon("estIR_h_t", dmy(M(-3)));
+      await esperar(300);
+      chk(estPeriodo().desde === M(-29), "A los 300 ms el informe ya cambió de período (no esperó los 600 ms; " + (Date.now() - ti) + " ms)", "media");
+      await esperar(600); await listoInf(); await pausa(.15);
+      const p = estPeriodo();
+      chk(p.desde === M(-9) && p.hasta === M(-3) && p.nd === 7 && p.escala === "dia" && p.corto === true, "A los 900 ms el período no es de hoy−9 a hoy−3 con 7 días (" + p.desde + " a " + p.hasta + ", " + p.nd + ")", "media");
+      chk(filasT().length === 7, "La tabla del período de 7 días no tiene 7 filas (" + filasT().length + ")", "media");
+      const f5 = filasT().find(tr=>txtDe(tr).indexOf(estFCorta(M(-5))) >= 0);
+      chk(f5 && /80 de 96/.test(txtDe(f5)), "La fila del día del hueco no dice «80 de 96» (" + (f5 ? txtDe(f5).slice(-40) : "sin fila") + ")", "media");
+      chk(document.getElementById("estIR_d_t") === d0 && document.getElementById("estIR_h_t") === h0 && document.getElementById("estIRango") === caja0 && d0.value === dmy(M(-9)) && h0.value === dmy(M(-3)), "Al llegar los datos se rehicieron las casillas de fecha o se perdió lo escrito (se cerraría el calendario del iPad)", "grave");
+      chk(document.getElementById("estInfCuerpo") === cu0 && vis === 0, "Con «Elegir período» se repintó toda la vista en vez de #estInfCuerpo (" + vis + " veces)", "grave");
+      /* con el foco en una casilla: no se pierde cuando llegan datos; lo que se está escribiendo sigue */
+      d0.focus(); const foco = document.activeElement === d0; pon("estIR_d_t", "05/1"); estDat._inf = null; estInfPos(); await listoInf(); await pausa(.1);
+      chk(document.getElementById("estIR_d_t") === d0 && d0.value === "05/1" && (!foco || document.activeElement === d0), "Con el foco en «Desde», al llegar datos se perdió lo escrito o el foco", "grave");
+      pon("estIR_d_t", dmy(M(-9))); await esperar(700); await esperarQue(()=>estPeriodo().desde === M(-9), 1500); await listoInf();
+    } finally { window.estInfPintar = pv0; }
+    /* un día y el largo decide la forma */
+    await estBotInfRango(M(-2), M(-2), "vista");
+    chk(estPeriodo().escala === "hora" && filasT().length === 24 && /^El \d{2}-\d{2}-\d{4} \(1 día\)$/.test(sub()) && /Lluvia 12,4 mm intensidad máx\. 1,6 mm\/h/.test(txtDe(document.getElementById("estInfKpis"))), "El período de un día no se ve como el diario («" + sub() + "», " + filasT().length + " filas)", "media");
+    chk(txtDe(document.querySelector("#estKInfTabla .est-tit")).indexOf("Detalle por hora") >= 0, "El período de un día no trae «Detalle por hora»", "media");
+    const esc2 = (t, nd)=>estInfEscala({tipo:t, nd:nd});
+    chk(esc2("diario", 1) === "hora" && esc2("semanal", 7) === "dia" && esc2("mensual", 31) === "dia" && esc2("temporada", 365) === "mes" && esc2("periodo", 1) === "hora" && esc2("periodo", 2) === "dia" && esc2("periodo", 62) === "dia" && esc2("periodo", 63) === "semana" && esc2("periodo", 183) === "semana" && esc2("periodo", 184) === "mes" && esc2("periodo", 731) === "mes", "estInfEscala no sigue la tabla de E.2", "media");
+    await estBotInfRango(M(-14), M(-1), "vista"); chk(estPeriodo().corto === true && filasT().length === 14, "14 días: no es «corto» o la tabla no tiene 14 filas", "media");
+    await estBotInfRango(M(-15), M(-1), "vista"); chk(estPeriodo().corto === false && estPeriodo().escala === "dia", "15 días: debería ser por día, sin «corto»", "media");
+    /* período largo: «Resumen por mes» y, antes del historial, «Período incompleto» */
+    const hi = estDat.hist.desde, d70 = estSumarDias(hi, -40);
+    await estBotInfRango(d70, hoyF, "vista");
+    const pL = estPeriodo(), vt = txtDe(document.getElementById("estVista")), M3 = estMesesRango(pL, estInfDatos(pL));
+    chk(pL.nd > 62 && pL.escala !== "dia" && /Resumen por mes/.test(txtDe(document.getElementById("estKInfTabla"))) && /Período incompleto: el historial parte el /.test(vt) && pL.per === hi + "_al_" + hoyF, "El período largo no sale «Resumen por mes» con «Período incompleto» y las fechas efectivas (" + pL.per + ")", "media");
+    const lluviaM = M3.reduce((s, o)=>s + (o.ll && !o.sd ? o.ll.v : 0), 0), mn = M3.reduce((m, o)=>o.mn && (!m || o.mn.tmin < m.tmin) ? o.mn : m, null);
+    chk(Math.abs(lluviaM - 12.4) < 0.001 && mn && mn.tmin === -1.2 && mn.f === M(-10), "Los meses del período no suman 12,4 mm de lluvia o la mínima no es −1,2 el día de la helada (" + lluviaM + ", " + (mn && mn.tmin) + ", " + (mn && mn.f) + ")", "media");
+    const pie = [...document.querySelectorAll("#estInfTabla tfoot td")].map(txtDe); chk(pie[0] === "Período" && pie[1] === "12,4", "El pie de «Resumen por mes» no da el total del período (" + pie.slice(0, 2).join(" · ") + ")", "media");
+    /* todo el período antes del historial */
+    await estBotInfRango(estSumarDias(hi, -60), estSumarDias(hi, -50), "vista");
+    chk(/Sin datos de la estación en este período/.test(txtDe(document.getElementById("estVista"))) && !document.getElementById("estInfTabla"), "Un período antes del historial no dice «Sin datos de la estación en este período»", "media");
+    await estBotInfRango(M(-9), M(-3), "vista");
+    revisarPantalla();
+  });
+  await paso("Elegir período: con las fechas al revés o con error, «Descargar Excel» avisa junto a la fecha y no descarga nada; nunca alert (D 4 y D.8)", async ()=>{
+    await estBotInfRango(M(-9), M(-3), "vista");
+    /* revisión del cierre: al aplicar fechas y al descargar, la nota se queda y los botones no se mueven (antes la nota se iba y «Descargar Excel» subía 25 px bajo el dedo) */
+    const NB = "Cambia las fechas: el informe se arma solo.", topB = ()=>document.getElementById("estBtnXls").getBoundingClientRect().top - document.getElementById("estIRango").getBoundingClientRect().top;
+    const b0 = topB(); pon("estIR_d_t", dmy(M(-8))); await esperarQue(()=>estPeriodo().desde === M(-8), 3000); await listoInf(); await pausa(.2);
+    chk(txtDe(document.getElementById("estIRangoNota")) === NB && Math.abs(topB() - b0) <= 1, "Al aplicar una fecha, la nota no siguió siendo «" + NB + "» o «Descargar Excel» se movió (" + Math.round(b0) + " → " + Math.round(topB()) + " px; «" + txtDe(document.getElementById("estIRangoNota")) + "»)", "media");
+    await estExcel(); await pausa(.2);
+    chk(txtDe(document.getElementById("estIRangoNota")) === NB && Math.abs(topB() - b0) <= 1, "Al tocar «Descargar Excel», la nota se fue o el botón se movió (" + Math.round(b0) + " → " + Math.round(topB()) + " px)", "media");
+    await estBotInfRango(M(-9), M(-3), "vista");
+    const a0 = R.alerts.length, s0 = R.salidas.length, ya = async c=>{ await esperar(750); await esperarQue(c, 1500); }, errT = ()=>txtDe(document.getElementById("estIRangoErr"));   // revisión r2: una repintada de fondo reinicia los 600 ms de espera: 750 ms fijos a veces no alcanzan
+    pon("estIR_d_t", dmy(M(-3))); pon("estIR_h_t", dmy(M(-9))); await ya(()=>txtDe(document.getElementById("estIRangoNota")) === "«Desde» quedó después de «Hasta»: cambia una de las dos.");
+    chk(txtDe(document.getElementById("estIRangoNota")) === "«Desde» quedó después de «Hasta»: cambia una de las dos." && estPeriodo().desde === M(-9), "Con las fechas al revés no sale la nota o el informe cambió de período (" + txtDe(document.getElementById("estIRangoNota")) + ")", "media");
+    document.getElementById("estBtnXls").click(); await esperarQue(()=>/Revisa las fechas del período/.test(txtDe(document.getElementById("avisoCapa"))), 3000); await pausa(.2);
+    chk(/Revisa las fechas del período: «Desde» quedó después de «Hasta»: cambia una de las dos\./.test(txtDe(document.getElementById("avisoCapa"))), "Con las fechas al revés, «Descargar Excel» no avisó «Revisa las fechas del período…» (" + txtDe(document.getElementById("avisoCapa")) + ")", "media");
+    chk(R.salidas.length === s0 && R.alerts.length === a0, "Con las fechas al revés se descargó algo (o salió un alert)", "grave");
+    const pd0 = R.pdfs.length; document.getElementById("estBtnPdf").click(); await pausa(.4);
+    chk(R.pdfs.length === pd0 && /Revisa las fechas del período/.test(txtDe(document.getElementById("avisoCapa"))), "Con las fechas al revés, «Informe PDF» igual generó el archivo o no avisó", "media");
+    pon("estIR_d_t", dmy(M(5))); pon("estIR_h_t", dmy(M(5))); await ya(()=>/La fecha «Desde» es futura/.test(errT()));
+    chk(!document.getElementById("estIRangoErr").hidden && /La fecha «Desde» es futura/.test(txtDe(document.getElementById("estIRangoErr"))), "Una fecha futura no da el error en rojo", "media");
+    document.getElementById("estBtnXls").click(); await esperar(500);
+    chk(R.salidas.length === s0 && /Revisa las fechas del período: La fecha «Desde» es futura/.test(txtDe(document.getElementById("avisoCapa"))), "Con una fecha futura se descargó algo o no avisó", "media");
+    pon("estIR_d_t", dmy(M(-9))); pon("estIR_h_t", dmy(M(5))); await ya(()=>/La fecha «Hasta» era futura/.test(txtDe(document.getElementById("estIRangoNota")))); await listoInf();
+    chk(/La fecha «Hasta» era futura: el informe llega hasta hoy\./.test(txtDe(document.getElementById("estIRangoNota"))) && estPeriodo().hasta === hoyF && v("estIR_h") === hoyF, "«Hasta» futura no se ajustó a hoy con su nota (" + txtDe(document.getElementById("estIRangoNota")) + ")", "media");
+    const y = +hoyF.slice(0, 4);
+    pon("estIR_d_t", "31/12/" + (y - 4)); pon("estIR_h_t", dmy(hoyF)); await ya(()=>/Se puede mirar desde el 01-01-/.test(errT()));
+    chk(/Se puede mirar desde el 01-01-/.test(txtDe(document.getElementById("estIRangoErr"))), "Una fecha de hace más de 3 años no da el error", "media");
+    pon("estIR_d_t", dmy(M(-800))); await ya(()=>/este tiene 801 días/.test(errT()));
+    chk(/hasta 2 años \(731 días\); este tiene 801 días/.test(txtDe(document.getElementById("estIRangoErr"))), "Un período de más de 731 días no da el error", "media");
+    pon("estIR_d_t", ""); pon("estIR_h_t", dmy(hoyF)); document.getElementById("estIR_d").value = ""; document.getElementById("estIRango").dispatchEvent(new Event("change", {bubbles:true})); await ya(()=>/Escribe las dos fechas/.test(txtDe(document.getElementById("estIRangoNota"))));
+    chk(/Escribe las dos fechas \(dd\/mm\/aaaa\) o elígelas en el calendario: el informe cambia solo\./.test(txtDe(document.getElementById("estIRangoNota"))), "Sin «Desde» no sale la nota del informe (" + txtDe(document.getElementById("estIRangoNota")) + ")", "media");
+    await estBotInfRango(M(-9), M(-3), "vista");
+    chk(R.alerts.length === a0, "Salió un alert con las fechas", "grave");
+  });
+  await paso("Elegir período: si escribes «Hasta» y tocas «Descargar Excel» antes de 600 ms, el archivo es del período recién escrito (D 5)", async ()=>{
+    await estBotInfRango(M(-9), M(-3), "vista");
+    const s0 = R.salidas.length;
+    pon("estIR_h_t", dmy(M(-4))); document.getElementById("estBtnXls").click();
+    await esperarQue(()=>R.salidas.length > s0, 10000);
+    const sal = R.salidas.slice(s0).filter(z=>z.tipo === "descarga").pop();
+    chk(estPeriodo().hasta === M(-4) && sal && sal.archivo.indexOf(M(-9) + "_al_" + M(-4)) >= 0, "La descarga no aplicó primero la fecha recién escrita (" + (sal ? sal.archivo : "sin salida") + ", hasta " + estPeriodo().hasta + ")", "media");
+    await pausa(.2); await listoInf();
+  });
+  await paso("Elegir período: las fechas son las mismas en Informes y en Gráficos, y cada sección conserva su chip (D 6)", async ()=>{
+    await estBotInfRango(M(-9), M(-3), "vista");
+    const per0 = estNav().per;
+    estNav().per = "7d"; await estBotCampo("graf"); estGraf("temp", "rango"); await estBotGrafListo(); await pausa(.2);
+    const tit = txtDe(document.getElementById("estGTit"));
+    chk(v("estR_d") === M(-9) && v("estR_h") === M(-3) && tit.endsWith(estRangoTxt(M(-9), M(-3))), "En Gráficos «Elegir período» no trae las fechas de Informes (" + v("estR_d") + " a " + v("estR_h") + ", «" + tit + "»)", "media");
+    chk(txtDe(document.getElementById("estRangoNota")) === "Cambia las fechas: el gráfico se dibuja solo." && !document.getElementById("estIRango"), "La nota de Gráficos cambió o quedaron las casillas de Informes en Gráficos", "media");
+    pon("estR_d_t", dmy(M(-12))); await esperar(750); await esperarQue(()=>estNav().rango.desde === M(-12), 1500); await estBotGrafListo();
+    chk(estNav().rango.desde === M(-12), "Cambiar la fecha en Gráficos no cambió el período elegido", "media");
+    estNav().sec = "inf"; estPintar(); await listoInf(); await pausa(.2);
+    chk(v("estIR_d") === M(-12) && v("estIR_h") === M(-3) && estPeriodo().desde === M(-12) && estNav().inf === "periodo", "Informes no quedó con las fechas elegidas en Gráficos (" + v("estIR_d") + ")", "media");
+    estNav().per = per0;
+    revisarPantalla();
+  });
+  /* ===== el .xlsx (parte 5) ===== */
+  let z7 = null, x7 = null;
+  await paso("Excel .xlsx de 7 días: nombre, tipo, «PK», CRC y cada XML; las piezas conservadoras (docProps y sharedStrings, sin inlineStr) y las 4 hojas (D 7)", async ()=>{
+    await estBotInfRango(M(-9), M(-3), "vista");
+    const s0 = R.salidas.length; await tocar("#estBtnXls", "Descargar Excel"); await esperarQue(()=>R.salidas.length > s0, 8000);
+    x7 = await estArchivoActual(); z7 = await estBotXlsx(x7.blob); guardarM("informe_7_dias", x7);
+    chk(x7.nombre === "Estacion_informe_" + M(-9) + "_al_" + M(-3) + ".xlsx" && x7.blob.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "El nombre o el tipo del .xlsx no son los esperados (" + x7.nombre + ", " + x7.blob.type + ")", "grave");
+    chk(R.salidas.slice(s0).some(q=>q.tipo === "descarga" && q.archivo === x7.nombre), "«Descargar Excel» no entregó " + x7.nombre, "grave");
+    chk(/Listo: se descargó Estacion_informe_.*\.xlsx \(4 hojas: Resumen, Por día, Por hora y Huecos\)\./.test(txtDe(document.getElementById("avisoCapa"))), "El aviso no dice «Listo: se descargó … (4 hojas: Resumen, Por día, Por hora y Huecos).» (" + txtDe(document.getElementById("avisoCapa")) + ")", "media");
+    const u = new Uint8Array(await x7.blob.slice(0, 4).arrayBuffer());
+    chk(u[0] === 0x50 && u[1] === 0x4B && u[2] === 3 && u[3] === 4, "El archivo no empieza con «PK»", "grave");
+    const esp = ["[Content_Types].xml", "_rels/.rels", "docProps/app.xml", "docProps/core.xml", "xl/workbook.xml", "xl/_rels/workbook.xml.rels", "xl/styles.xml", "xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml", "xl/worksheets/sheet3.xml", "xl/worksheets/sheet4.xml", "xl/sharedStrings.xml"];
+    chk(z7.partes.join(",") === esp.join(","), "Las piezas del .xlsx no son las esperadas: " + z7.partes.join(", "), "grave");
+    chk(!z7.errores.length, "El .xlsx tiene errores: " + z7.errores.join("; "), "grave");
+    chk(noms(z7) === "Resumen|Por día|Por hora|Huecos", "Las hojas no son Resumen, Por día, Por hora y Huecos: " + noms(z7), "grave");
+    const ct = z7.textos["[Content_Types].xml"], hs = z7.partes.filter(n=>/worksheets/.test(n));
+    chk(hs.every(n=>ct.indexOf('PartName="/' + n + '"') > 0) && /sharedStrings\+xml/.test(ct) && /core-properties\+xml/.test(ct) && /extended-properties\+xml/.test(ct) && /styles\+xml/.test(ct), "[Content_Types].xml no declara todas las piezas", "grave");
+    chk(hs.every(n=>!/inlineStr/.test(z7.textos[n]) && /^<\?xml version="1\.0" encoding="UTF-8" standalone="yes"\?>/.test(z7.textos[n])), "Alguna hoja usa inlineStr o no parte con la declaración XML", "grave");
+    const ms = z7.textos["xl/sharedStrings.xml"].match(/count="(\d+)" uniqueCount="(\d+)"/), usos = hs.reduce((s, n)=>s + (z7.textos[n].match(/ t="s"/g) || []).length, 0);
+    chk(ms && +ms[1] === usos && +ms[2] === z7.ss.length, "sharedStrings no cuadra con las hojas (" + (ms && ms[1]) + " de " + usos + ")", "grave");
+    chk(z7.hojas.every((h, i)=>h.pane && h.pane.y === "4" && h.pane.est === "frozen" && h.pane.x === (i === 2 ? "2" : "1")), "Los encabezados no quedan congelados (fila 4 y 1 o 2 columnas)", "media");
+    chk(z7.hojas.every(h=>h.nom.length <= 31 && !/[:\\\/?*\[\]]/.test(h.nom)), "Algún nombre de hoja no es válido", "grave");
+  });
+  await paso("Excel .xlsx · «Por día» de 7 días: 34 columnas, fecha como número de serie con formato, el día del hueco y la ráfaga (D 8)", async ()=>{
+    const h = hoja(z7, "Por día");
+    chk(h.datos.length === 7 && h.cab.length === 34, "«Por día» no tiene 7 filas y 34 columnas (" + h.datos.length + ", " + h.cab.length + ")", "media");
+    chk(h.cab.join("|") === EST_XL_DIA.map(c=>c[0]).join("|"), "Los encabezados de «Por día» no son los de EST_XL_DIA", "media");
+    chk(h.datos[0][0] === estXlSerial(M(-9)) && z7.fmt(h.est[4][0]) === "dd\\-mm\\-yyyy", "La columna A no es el número de serie con formato dd-mm-aaaa (" + h.datos[0][0] + ", " + z7.fmt(h.est[4][0]) + ")", "grave");
+    const f = n=>h.datos.find(q=>q[0] === estXlSerial(M(n))), d5 = f(-5), d3 = f(-3);
+    chk(d5 && celda(h, d5, "Lecturas") === 80 && celda(h, d5, "Esperadas") === 96 && celda(h, d5, "Horas sin datos (huecos)") === 4 && celda(h, d5, "Origen") === "Estación (con huecos)", "La fila del hueco no dice 80 de 96, 4 h y «Estación (con huecos)» (" + (d5 ? [celda(h, d5, "Lecturas"), celda(h, d5, "Horas sin datos (huecos)"), celda(h, d5, "Origen")].join(", ") : "sin fila") + ")", "media");
+    chk(d3 && celda(h, d3, "Ráfaga máx. (km/h)") === 45, "La fila de hoy−3 no tiene la ráfaga de 45 km/h (" + (d3 && celda(h, d3, "Ráfaga máx. (km/h)")) + ")", "media");
+    chk(celda(h, h.datos[0], "Lluvia efectiva (mm)") === 0 && celda(h, h.datos[0], "Balance lluvia efectiva − ET₀ (mm)") === +estXnum(-estBotResDe(EST_BOT.filas, M(-9)).et0), "Las columnas de lluvia efectiva y balance no cuadran con la ET₀ del día", "media");
+  });
+  await paso("Excel .xlsx · «Por hora» de 7 días: 164 filas, sus encabezados, y «Huecos» con el corte de 4 h (D 9 y D 11)", async ()=>{
+    const h = hoja(z7, "Por hora");
+    chk(h.datos.length === 164 && h.cab.join("|") === EST_XL_HORA.map(c=>c[0]).join("|"), "«Por hora» no tiene 164 filas (7 × 24 − 4) con sus encabezados (" + h.datos.length + ")", "media");
+    chk(z7.fmt(h.est[4][1]) === "hh:mm" && h.datos[0][1] === 0, "La hora no es fracción del día con formato hh:mm", "media");
+    const H = hoja(z7, "Huecos"), f = H.datos[0] || [];
+    chk(H.datos.length === 1 && celda(H, f, "Duración (h)") === 4 && celda(H, f, "Lecturas faltantes") === 16, "«Huecos» no trae 1 corte de 4 h y 16 lecturas (" + H.datos.length + ", " + celda(H, f, "Duración (h)") + ", " + celda(H, f, "Lecturas faltantes") + ")", "media");
+    chk(Math.abs(celda(H, f, "Desde") - 585 / 1440) < 1e-6 && Math.abs(celda(H, f, "Hasta") - 840 / 1440) < 1e-6 && celda(H, f, "Fecha") === estXlSerial(M(-5)), "«Huecos» no tiene las horas del corte, 09:45 → 14:00 (" + celda(H, f, "Desde") + ", " + celda(H, f, "Hasta") + ")", "media");
+    chk(H.cab.join("|") === "Fecha|Desde|Hasta|Duración (h)|Lecturas faltantes|Causa probable|Con WeatherLink Pro", "Las columnas de «Huecos» no son las esperadas", "media");
+    /* revisión r2: la duración es la de todo el corte; si parte antes del período, «Resumen» cuenta menos */
+    chk(H.filas[2][0] === "Un corte es un salto de más de 20 minutos entre dos lecturas (la estación sube una cada 15): «Desde» es la última lectura antes del corte y «Hasta», la primera después. La duración es la de todo el corte; «Resumen» cuenta solo lo que cae dentro del período.", "La nota de «Huecos» no explica qué cuenta la duración («" + H.filas[2][0] + "»)", "leve");
+  });
+  await paso("Excel .xlsx · «Resumen» = las 8 cifras de la pantalla (filas 5 a 12) y las filas extra, con el valor como número (D 10)", async ()=>{
+    await estBotInfRango(M(-9), M(-3), "vista");
+    const h = hoja(z7, "Resumen"), kp = [...document.querySelectorAll("#estInfKpis > div")], p = estPeriodo(), X = estInfDatos(p), K = estKpisInforme(p, X, estHuecosDe(X.ts, estLimitesDia(p.desde).a, estLimitesDia(p.hasta).b));
+    chk(h.cab.join("|") === "Dato|Valor|Unidad|Detalle" && kp.length === 8 && K.length === 8, "«Resumen» no tiene sus 4 columnas o no hay 8 cifras", "media");
+    K.forEach((k, i)=>{
+      const f = h.filas[4 + i] || [], val = f[1], tx = /Mojamiento/.test(k[0]) ? estHm(val) : /Heladas/.test(k[0]) ? String(val) : estFu(val, k[5], k[4]);
+      chk(f[0] === k[0] && f[0] === txtDe(kp[i].querySelector("small")) && tx === txtDe(kp[i].querySelector("b")) && (f[3] || "") === txtDe(kp[i].querySelector("em")) && Math.abs(val - k[3]) < 1e-6, "La fila " + (5 + i) + " de «Resumen» no es la cifra de la pantalla: " + f.slice(0, 4).join(" · ") + " frente a " + txtDe(kp[i]), "media");
+    });
+    const fi = d=>h.datos.find(q=>q[0] === d), L = fi("Lluvia"), Rf = fi("Ráfaga más fuerte"), Lc = fi("Lecturas"), Hc = fi("Huecos");
+    chk(L && L[1] === 0, "«Lluvia» no es 0 (" + (L && L[1]) + ")", "media");
+    chk(Rf && Rf[1] === 45, "«Ráfaga más fuerte» no es 45 (" + (Rf && Rf[1]) + ")", "media");
+    chk(Lc && Lc[1] === 656 && Lc[3] === "de 672 esperadas (97,6 %)", "«Lecturas» no es 656 «de 672 esperadas (97,6 %)» (" + (Lc && Lc.join(" · ")) + ")", "media");
+    chk(Hc && Hc[1] === 1 && Hc[3] === "4 h sin datos (2,4 % del período)", "«Huecos» no es 1 con «4 h sin datos (2,4 % del período)» (" + (Hc && Hc.join(" · ")) + ")", "media");
+    const falta = ["Temperatura media", "Mínima media", "Máxima media", "Días de 30 °C o más", "Horas frío", "Grados-día base 12,5", "Radiación total", "Mojamiento", "Horas aptas para aplicar", "Días con datos", "Umbrales usados", "Fuente"].filter(d=>!fi(d));
+    chk(!falta.length, "A «Resumen» le faltan filas: " + falta.join(", "), "media");
+    const et = h.datos.map(q=>q[0]); chk(new Set(et).size === et.length, "En «Resumen» se repite una etiqueta: " + et.join(", "), "media");
+    chk(fi("Días con datos")[1] === 7 && fi("Días con datos")[3] === "de 7 días", "«Días con datos» no es 7 «de 7 días»", "media");
+    chk(/en los huecos no se inventa nada/.test(h.filas[2] && h.filas[2][0] || ""), "La fila 3 de «Resumen» no avisa que en los huecos no se inventa nada", "media");
+    chk(h.filas[0][0].indexOf("FUNDO STA SARA (bot)") >= 0 && /Del \d\d-\d\d.* \(7 días\)/.test(h.filas[1][0]) && /generado el/.test(h.filas[1][0]), "El título o el subtítulo de «Resumen» no dicen la estación y el período", "media");
+  });
+  await paso("Excel .xlsx de un día con lluvia: «Por hora» 24 filas que suman 12,4 mm y «Resumen» con su detalle (D 12)", async ()=>{
+    await estBotInfRango(M(-2), M(-2), "vista");
+    const x = await estArchivoActual(), z = await estBotXlsx(x.blob), Ph = hoja(z, "Por hora"), Rs = hoja(z, "Resumen"), Pd = hoja(z, "Por día");
+    chk(x.nombre === "Estacion_informe_" + M(-2) + ".xlsx" && noms(z) === "Resumen|Por día|Por hora|Huecos" && Pd.datos.length === 1 && !z.errores.length, "El .xlsx de un día no es el esperado (" + x.nombre + ", " + noms(z) + ")", "media");
+    const s = Ph.datos.reduce((a, f)=>a + (celda(Ph, f, "Lluvia (mm)") || 0), 0);
+    chk(Ph.datos.length === 24 && Math.abs(s - 12.4) <= 0.001, "«Por hora» no tiene 24 filas que sumen 12,4 mm (" + Ph.datos.length + ", " + s + ")", "media");
+    const L = Rs.datos.find(q=>q[0] === "Lluvia");
+    chk(L && Math.abs(L[1] - 12.4) < 0.001 && L[3] === "intensidad máx. 1,6 mm/h", "«Lluvia» del día no es 12,4 con «intensidad máx. 1,6 mm/h» (" + (L && L.join(" · ")) + ")", "media");
+    const p0 = R.pdfs.length; await tocar("#estBtnPdf", "Informe PDF del día elegido"); await esperarQue(()=>R.pdfs.length > p0, 20000);
+    chk(R.pdfs.length > p0 && R.pdfs[R.pdfs.length - 1].archivo === "Estacion_periodo_" + M(-2) + ".pdf" && R.pdfs[R.pdfs.length - 1].pags >= 1, "El PDF de un día elegido no se llama Estacion_periodo_<a>.pdf (" + JSON.stringify(R.pdfs[R.pdfs.length - 1]) + ")", "media");
+  });
+  await paso("Excel .xlsx de un período que parte antes del historial: se recorta y lo dice; hojas por mes, 21 columnas, lluvia 12,4 y mínima −1,2 (D 13)", async ()=>{
+    const hi = estDat.hist.desde;
+    await estBotInfRango(estSumarDias(hi, -20), hoyF, "vista");
+    chk(/Período incompleto: el historial parte el /.test(txtDe(document.getElementById("estVista"))) && /El historial de este equipo parte el \d\d-\d\d-\d{4}: el archivo empieza ese día\./.test(ayuda()), "No se ve «Período incompleto» o la ayuda no dice que el archivo empieza ese día (" + ayuda() + ")", "media");
+    const x = await estArchivoActual(), z = await estBotXlsx(x.blob), Pd = hoja(z, "Por día"), Pm = hoja(z, "Por mes"), Rs = hoja(z, "Resumen"); guardarM("informe_40_dias", x);
+    chk(x.nombre === "Estacion_informe_" + hi + "_al_" + hoyF + ".xlsx" && noms(z) === "Resumen|Por mes|Por día|Huecos" && !z.errores.length, "El .xlsx largo no es el esperado (" + x.nombre + ", " + noms(z) + ")", "media");
+    chk(Pd.datos.length === _estDiasEntre(hi, hoyF) + 1, "«Por día» no tiene una fila por día (" + Pd.datos.length + ")", "media");
+    const meses = new Set(); for(let f = hi; f <= hoyF; f = estSumarDias(f, 1)) meses.add(f.slice(0, 7));
+    chk(Pm.datos.length === meses.size && Pm.cab.length === 21, "«Por mes» no tiene " + meses.size + " filas y 21 columnas (" + Pm.datos.length + ", " + Pm.cab.length + ")", "media");
+    const sll = Pm.datos.reduce((a, f)=>a + (celda(Pm, f, "Lluvia (mm)") || 0), 0), mns = Pm.datos.map(f=>celda(Pm, f, "Mínima absoluta (°C)")), iMn = mns.indexOf(Math.min(...mns));
+    chk(Math.abs(sll - 12.4) < 0.001 && mns[iMn] === -1.2 && celda(Pm, Pm.datos[iMn], "Fecha de la mínima") === estXlSerial(M(-10)), "«Por mes» no suma 12,4 mm o la mínima no es −1,2 el día de la helada (" + sll + ", " + mns[iMn] + ")", "media");
+    const pe = Pm.datos.reduce((a, f)=>a + (celda(Pm, f, "Lluvia efectiva (mm)") || 0), 0), g = Pm.datos.reduce((a, f)=>a + (celda(Pm, f, "GD base 10 del mes (°C·día)") || 0), 0), uF = Pm.datos[Pm.datos.length - 1];
+    chk(Math.abs(pe - 7.05) < 0.001 && Math.abs(g - celda(Pm, uF, "GD base 10 acum. (°C·día)")) < 0.001, "La lluvia efectiva no da 7,05 (" + pe + ") o los grados-día del mes no suman el acumulado", "media");
+    const m0 = Pm.datos[0][0]; chk(/ \(del \d+ al \d+\)$/.test(m0), "El primer mes, incompleto, no dice «(del N al M)» (" + m0 + ")", "media");
+    chk(/El historial de este equipo parte el \d\d-\d\d-\d{4}: los días anteriores no están en este archivo\./.test(Rs.filas[2] && Rs.filas[2][0] || ""), "La fila 3 de «Resumen» no dice que los días anteriores no están en el archivo", "media");
+    const s0 = R.salidas.length; document.getElementById("estBtnXls").click(); await esperarQue(()=>R.salidas.length > s0, 8000); await pausa(.2);
+    chk(/Parte el \d\d-\d\d-\d{4}, cuando empieza el historial de este equipo\./.test(txtDe(document.getElementById("avisoCapa"))), "El aviso no dice que el archivo parte con el historial (" + txtDe(document.getElementById("avisoCapa")) + ")", "media");
+    const p0 = R.pdfs.length; await tocar("#estBtnPdf", "Informe PDF del período largo"); await esperarQue(()=>R.pdfs.length > p0, 20000);
+    chk(R.pdfs.length > p0 && R.pdfs[R.pdfs.length - 1].archivo === "Estacion_periodo_" + hi + "_al_" + hoyF + ".pdf" && R.pdfs[R.pdfs.length - 1].kb > 2, "El PDF del período no se llama Estacion_periodo_<a>_al_<b>.pdf (" + JSON.stringify(R.pdfs[R.pdfs.length - 1]) + ")", "media");
+    /* un mes completo antes del historial con lluvia anotada a mano lleva ese valor (D §3.8); en la cifra «Lluvia» siguen solo los días de la estación */
+    const mAnt = estSumarDias(hi.slice(0, 7) + "-01", -1).slice(0, 7), est0M = D.est ? JSON.stringify(D.est) : null;
+    try{
+      D.est = Object.assign({}, D.est || {}, {llManual:Object.assign({}, (D.est || {}).llManual || {}, {[mAnt]:18.4})});
+      await estBotInfRango(mAnt + "-01", hoyF, "vista");
+      const xM = await estArchivoActual(), zM = await estBotXlsx(xM.blob), PmM = hoja(zM, "Por mes"), f0 = PmM.datos[0] || [], pieM = [...document.querySelectorAll("#estInfTabla tfoot td")].map(txtDe);
+      chk(celda(PmM, f0, "Mes") === estMesNom(mAnt) && celda(PmM, f0, "Lluvia (mm)") === 18.4 && celda(PmM, f0, "Origen de la lluvia") === "anotada a mano; sin datos de la estación" && PmM.datos.length === meses.size + 1, "El mes antes del historial con lluvia a mano no quedó en «Por mes» (" + f0.filter(q=>q != null).slice(0, 3).join(" · ") + ", " + PmM.datos.length + " filas)", "media");
+      const LlM = hoja(zM, "Resumen").datos.find(q=>q[0] === "Lluvia");
+      chk(LlM && Math.abs(LlM[1] - 12.4) < 0.001, "La cifra «Lluvia» del período cambió con la anotada a mano (" + (LlM && LlM[1]) + ")", "media");
+      if(estPeriodo().escala !== "dia") chk(pieM[1] === "12,4 + 18,4 a mano", "El pie de «Resumen por mes» no separa la lluvia anotada a mano (" + pieM[1] + ")", "media");
+    } finally { if(est0M == null) delete D.est; else D.est = JSON.parse(est0M); }
+    /* si el historial se está bajando, la ayuda, el aviso y la fila 3 de «Resumen» lo advierten */
+    const tB = "Ojo: todavía se está bajando el historial de la estación (12.000 de 35.000 lecturas); el archivo puede quedar incompleto.";
+    try{
+      estDat.bajando = {n:12000, total:35000}; await estBotInfRango(M(-9), M(-3), "vista");
+      const xB = await estArchivoActual(), zB = await estBotXlsx(xB.blob);
+      chk(ayuda().indexOf(tB) >= 0 && (hoja(zB, "Resumen").filas[2][0] || "").indexOf(tB) >= 0, "Con el historial bajándose, la ayuda o la fila 3 de «Resumen» no lo advierten (" + ayuda() + ")", "media");
+    } finally { estDat.bajando = null; }
+    /* todo antes del historial: no descarga y lo dice */
+    const s1 = R.salidas.length, a1 = estSumarDias(hi, -60), b1 = estSumarDias(hi, -50); await estBotInfRango(a1, b1, "vista");
+    document.getElementById("estBtnXls").click(); await pausa(.5);
+    chk(R.salidas.length === s1 && txtDe(document.getElementById("avisoCapa")) === "No hay datos de la estación " + estRangoTxt(a1, b1) + ": el historial de este equipo parte el " + estFFecha(hi) + ".", "Un período antes del historial descargó algo o no lo dijo (" + txtDe(document.getElementById("avisoCapa")) + ")", "media");
+  });
+  await paso("Excel .xlsx · días sin lecturas: tienen fila en «Por día» (0 de 96, 24 h sin datos), ninguna en «Por hora» y salen en «Huecos» (D §3.3 y §3.8)", async ()=>{
+    const F0 = estBotFilasAl(), fS = M(-20); EST_BOT.filas = F0.filter(q=>q[1] !== fS); await estBotLimpio(); await estBotSinc();
+    await estBotInfRango(M(-22), M(-18), "vista");
+    const x = await estArchivoActual(), z = await estBotXlsx(x.blob), Pd = hoja(z, "Por día"), Ph = hoja(z, "Por hora"), Hu = hoja(z, "Huecos"), f = Pd.datos.find(q=>q[0] === estXlSerial(fS)) || [];
+    chk(Pd.datos.length === 5 && celda(Pd, f, "Lecturas") === 0 && celda(Pd, f, "Esperadas") === 96 && celda(Pd, f, "Horas sin datos (huecos)") === 24 && celda(Pd, f, "Origen") === EST_SIN_LECT, "El día sin lecturas no tiene su fila «0 de 96, 24 h, sin lecturas» en «Por día» (" + f.filter(q=>q != null).join(" · ") + ")", "media");
+    chk(celda(Pd, f, "T mín (°C)") === undefined && celda(Pd, f, "Dir. predominante") === undefined && celda(Pd, f, "Lluvia (mm)") === undefined, "El día sin lecturas inventa valores en «Por día»", "grave");
+    chk(Ph.datos.every(q=>celda(Ph, q, "Fecha") !== estXlSerial(fS)) && Ph.datos.length === 96, "El día sin lecturas tiene filas en «Por hora» (" + Ph.datos.length + ")", "media");
+    chk(Hu.datos.length === 1 && Math.abs(celda(Hu, Hu.datos[0], "Duración (h)") - 24) < 0.01, "El corte del día sin lecturas no sale en «Huecos» (" + Hu.datos.length + ")", "media");
+    EST_BOT.filas = F0; await estBotLimpio(); await estBotSinc();
+  });
+  await paso("Excel .xlsx de los tipos fijos: el diario y la temporada usan las mismas hojas según el largo (D 14)", async ()=>{
+    await estBotInf("diario", M(-3), "vista");
+    let x = await estArchivoActual(), z = await estBotXlsx(x.blob);
+    chk(x.nombre === "Estacion_informe_" + M(-3) + ".xlsx" && noms(z) === "Resumen|Por día|Por hora|Huecos" && hoja(z, "Por hora").datos.length === 24, "El .xlsx del diario no es el esperado (" + x.nombre + ", " + noms(z) + ")", "media");
+    const ti = estTemporadaIni(hoyF), y = +ti.slice(0, 4), hi = estDat.hist.desde, d0 = ti > hi ? ti : hi;
+    await estBotInf("temporada", ti, "vista");
+    x = await estArchivoActual(); z = await estBotXlsx(x.blob);
+    const Pm = hoja(z, "Por mes"), meses = new Set(); for(let f = d0; f <= hoyF; f = estSumarDias(f, 1)) meses.add(f.slice(0, 7));
+    chk(x.nombre === "Estacion_informe_temporada_" + y + "-" + String(y + 1).slice(2) + ".xlsx" && noms(z) === "Resumen|Por mes|Por día|Huecos" && Pm.datos.length === meses.size && !z.errores.length, "El .xlsx de la temporada no es el esperado (" + x.nombre + ", " + noms(z) + ", " + Pm.datos.length + " meses)", "media");
+    const Rs = hoja(z, "Resumen"); chk(Rs.filas[4][0] === "Lluvia de la temporada", "«Resumen» de la temporada no parte con «Lluvia de la temporada»", "media");
+  });
+  await paso("Lecturas cada 15 min: el chip y la ayuda dicen que es la base de datos del período; 7 días → .xlsx con 656 filas y 33 columnas; la temporada de 41 días sigue en .xlsx (D 15 y D 16)", async ()=>{
+    await estBotInfRango(M(-9), M(-3), "vista");
+    const ch = [...document.querySelectorAll('.est-chips[aria-label="Datos del Excel"] .chip')].map(txtDe).join("|");
+    chk(ch === "Resumen y tablas|Lecturas cada 15 min", "Los chips de «Excel con» no son «Resumen y tablas» y «Lecturas cada 15 min»: " + ch, "grave");
+    chk(ayuda().indexOf(estCap(estRangoTxt(M(-9), M(-3))) + ": resumen y tablas.") === 0 && ayuda().indexOf("Hojas: Resumen · Por día · Por hora · Huecos.") > 0 && ayuda().indexOf("Para bajar la base de datos tal cual (cada lectura), elige «Lecturas cada 15 min».") > 0, "La ayuda de «Resumen y tablas» no dice las fechas, las hojas y cómo bajar la base de datos (" + ayuda() + ")", "grave");
+    await tocar('.est-chips[aria-label="Datos del Excel"] .chip[data-v="lecturas"]', "Lecturas cada 15 min"); await pausa(.2);
+    chk(document.getElementById("estIR_d_t").value === dmy(M(-9)) && ayuda().indexOf(estCap(estRangoTxt(M(-9), M(-3))) + ": la base de datos tal cual.") === 0 && ayuda().indexOf("Una fila cada 15 minutos: 656 filas, en la hoja «Lecturas 15 min».") > 0, "La ayuda no dice «la base de datos tal cual» con las fechas, ni «Una fila cada 15 minutos: 656 filas, en la hoja «Lecturas 15 min».» (" + ayuda() + ")", "grave");
+    const s0 = R.salidas.length; await tocar("#estBtnXls", "Descargar Excel"); await esperarQue(()=>R.salidas.length > s0, 8000); await pausa(.2);
+    let x = await estArchivoActual(), z = await estBotXlsx(x.blob); guardarM("lecturas_7_dias", x);
+    const Lc = z.hojas[0];
+    chk(x.nombre === "Estacion_lecturas_" + M(-9) + "_al_" + M(-3) + ".xlsx" && noms(z) === "Lecturas 15 min|Huecos" && !z.errores.length, "El .xlsx de lecturas no es el esperado (" + x.nombre + ", " + noms(z) + ")", "grave");
+    chk(Lc.datos.length === 656 && Lc.cab.join("|") === EST_XL_LECT.map(c=>c[0]).join("|") && Lc.cab.length === 33, "«Lecturas 15 min» no tiene 656 filas y las 33 columnas (" + Lc.datos.length + ", " + Lc.cab.length + ")", "grave");
+    chk(Lc.pane && Lc.pane.x === "2" && Lc.datos[0][0] === estXlSerial(M(-9)) && Lc.datos[0][1] === 0, "La primera lectura no es el primer día a las 00:00 o no están congeladas 2 columnas", "media");
+    chk(/Listo: se descargó Estacion_lecturas_.*\.xlsx \(656 lecturas\)\./.test(txtDe(document.getElementById("avisoCapa"))), "El aviso no dice «(656 lecturas)» (" + txtDe(document.getElementById("avisoCapa")) + ")", "media");
+    const F = EST_BOT.filas, sx = F.find(q=>q[1] === M(-9)), tp = Lc.cab.indexOf("Temperatura (°C)"), hrp = Lc.cab.indexOf("Humedad (%)");
+    chk(Lc.datos[0][tp] === +estXnum(sx[EST_I.t]) && Lc.datos[0][hrp] === +estXnum(sx[EST_I.hr]), "La primera fila de «Lecturas 15 min» no es la lectura guardada", "media");
+    await estBotInf("temporada", estTemporadaIni(hoyF), "lecturas");
+    x = await estArchivoActual(); z = await estBotXlsx(x.blob);
+    chk(/\.xlsx$/.test(x.nombre) && !x.csv && z.hojas[0].datos.length === F.length, "La temporada con 41 días efectivos no sale en .xlsx (" + x.nombre + ", " + z.hojas[0].datos.length + ")", "media");
+  });
+  await paso("Lecturas de más de 92 días: el botón dice «Descargar CSV», la ayuda lo explica y sale con BOM, «;» y coma decimal; el cambio de hora da 92 esperadas (D 17)", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(100); await estBotLimpio(); await estBotSinc();
+    await estBotInfRango(M(-99), hoyF, "lecturas");
+    chk(/Descargar CSV/.test(txtDe(document.getElementById("estBtnXls"))) && /Como son más de 92 días, sale en CSV \(se abre en Excel; separado por punto y coma, con coma decimal\)\./.test(ayuda()), "El botón no dice «Descargar CSV» o la ayuda no lo explica (" + ayuda() + ")", "media");
+    const x = await estArchivoActual(), t = await x.blob.text(), lin = t.replace(/^﻿/, "").split("\r\n").filter(Boolean);
+    const n = EST_BOT.filas.filter(q=>q[1] >= M(-99)).length;
+    chk(/^Estacion_lecturas_\d{4}-\d{2}-\d{2}_al_\d{4}-\d{2}-\d{2}\.csv$/.test(x.nombre) && x.nombre.indexOf("_al_" + hoyF + ".csv") > 0 && x.csv && (await estBotBom(x.blob)), "El CSV no tiene el nombre esperado o le falta el BOM (" + x.nombre + ")", "media");
+    chk(lin.length === n + 1 && lin[0].split(";").length === 33 && lin[1].split(";").length === 33 && /^\d{2}-\d{2}-\d{4};\d{2}:\d{2};-?\d+,\d;/.test(lin[1]) && !/\d\.\d/.test(lin[1]), "El CSV no tiene una línea por lectura, 33 campos o coma decimal (" + lin.length + " de " + (n + 1) + ", «" + lin[1].slice(0, 40) + "»)", "media");
+    const s0 = R.salidas.length; document.getElementById("estBtnXls").click(); await esperarQue(()=>R.salidas.length > s0, 15000); await pausa(.2);
+    chk(/Listo: se descargó Estacion_lecturas_.*\.csv \([\d.]+ lecturas, en CSV\)\./.test(txtDe(document.getElementById("avisoCapa"))), "El aviso del CSV no dice «(N lecturas, en CSV)» (" + txtDe(document.getElementById("avisoCapa")) + ")", "media");
+    const fCambio = "2026-09-06";
+    if(M(-99) < fCambio && hoyF > fCambio){
+      await estBotInfRango(M(-99), hoyF, "vista");
+      const y = await estArchivoActual(), z = await estBotXlsx(y.blob), Pd = hoja(z, "Por día"), f = Pd.datos.find(q=>q[0] === estXlSerial(fCambio));
+      chk(f && celda(Pd, f, "Esperadas") === 92 && noms(z) === "Resumen|Por mes|Por día|Huecos", "El día del cambio de hora no tiene 92 esperadas en «Por día» (" + (f && celda(Pd, f, "Esperadas")) + ")", "media");
+    }
+  });
+  await paso("Más de un año de lecturas: el chip se apaga con su título y la elección vuelve a «Resumen y tablas»; la ayuda manda al Respaldo del clima (D 18)", async ()=>{
+    const h0 = estDat.hist.desde;
+    try{
+      estDat.hist.desde = M(-399);
+      await estBotInfRango(M(-399), hoyF, "lecturas");
+      const p = estPeriodo(), ch = document.querySelector('.est-chips[aria-label="Datos del Excel"] .chip[data-v="lecturas"]');
+      chk(estXlsPlan(p, estInfDatos(p)).lect === "no", "Con 400 días efectivos el plan no dice «no» a las lecturas (" + estXlsPlan(p, estInfDatos(p)).lect + ")", "media");
+      chk(ch && ch.getAttribute("aria-disabled") === "true" && ch.title === "Más de un año de lecturas: usa «Respaldo del clima (CSV)» en Datos → Conexiones" && !ch.getAttribute("onclick"), "El chip «Lecturas cada 15 min» no quedó apagado con su título (" + (ch && ch.title) + ")", "media");
+      chk(estNav().xls === "vista" && /Las lecturas cada 15 min salen hasta un año; para más, usa «Respaldo del clima \(CSV\)» en Datos → Conexiones\./.test(ayuda()), "La elección no volvió a «Resumen y tablas» o la ayuda no manda al respaldo (" + ayuda() + ")", "media");
+    } finally { estDat.hist.desde = h0; }
+    await estBotInfRango(M(-9), M(-3), "vista");
+  });
+  await paso("Sin señal: el informe, las lecturas y el CSV salen de lo guardado, con 0 pedidos al puente y a Open-Meteo (D 19)", async ()=>{
+    const fW = window.wlFetch, fO = window.estOMFetch; let nW = 0, nO = 0;
+    window.wlFetch = function(){ nW++; return fW.apply(this, arguments); }; window.estOMFetch = function(){ nO++; return fO.apply(this, arguments); };
+    try{
+      Object.defineProperty(navigator, "onLine", {configurable:true, get:()=>false});
+      const a = [];
+      await estBotInfRango(M(-9), M(-3), "vista"); a.push(await estArchivoActual());
+      await estBotInfRango(M(-9), M(-3), "lecturas"); a.push(await estArchivoActual());
+      await estBotInfRango(M(-99), hoyF, "lecturas"); a.push(await estArchivoActual());
+      chk(a.every(Boolean) && /\.xlsx$/.test(a[0].nombre) && /\.xlsx$/.test(a[1].nombre) && /\.csv$/.test(a[2].nombre), "Sin señal no salieron los 3 archivos (" + a.map(x=>x && x.nombre).join(", ") + ")", "grave");
+      chk(nW === 0 && nO === 0, "Armar los archivos sin señal hizo pedidos (puente " + nW + ", Open-Meteo " + nO + ")", "grave");
+    } finally { try{ delete navigator.onLine; }catch(e){} window.wlFetch = fW; window.estOMFetch = fO; }
+  });
+  await paso("Textos raros: el nombre de la estación con <, &, comillas y un carácter de control queda escapado en el XML, sin el carácter, y el XML parsea; ñ y emojis enteros (D 20)", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilasAl(); await estBotLimpio(); await estBotSinc();
+    await estBotInfRango(M(-9), M(-3), "vista");
+    const nE = window.estNombreEst; window.estNombreEst = ()=>'Fundo <b>"A&B"</b>\u0007 ñ ª 😀';
+    try{
+      const x = await estArchivoActual(), z = await estBotXlsx(x.blob), raw = z.textos["xl/sharedStrings.xml"], h = hoja(z, "Resumen");
+      chk(raw.indexOf('Fundo &lt;b&gt;&quot;A&amp;B&quot;&lt;/b&gt;') > 0 && raw.indexOf("\u0007") < 0 && !z.errores.length, "El nombre raro no quedó escapado en el XML (o sigue el carácter de control): " + z.errores.join("; "), "grave");
+      chk(h.filas[0][0].indexOf('Fundo <b>"A&B"</b> ñ ª 😀') >= 0, "Al leer el .xlsx, el título no trae el nombre con ñ, ª y el emoji enteros (" + h.filas[0][0] + ")", "grave");
+    } finally { window.estNombreEst = nE; }
+  });
+  await paso("Sin CompressionStream (iPad viejo): sale sin comprimir (método 0), se lee entero y el CRC coincide (D 21)", async ()=>{
+    const CS = window.CompressionStream;
+    try{
+      window.CompressionStream = undefined;
+      const x = await estArchivoActual(), z = await estBotXlsx(x.blob);
+      chk(Object.values(z.metodos).every(m=>m === 0) && !z.errores.length && hoja(z, "Por hora").datos.length === 164, "Sin CompressionStream el .xlsx no sale con método 0 o no se lee (" + JSON.stringify(z.metodos) + ", " + z.errores.join("; ") + ")", "grave");
+    } finally { window.CompressionStream = CS; }
+    const y = await estArchivoActual(), w = await estBotXlsx(y.blob);
+    chk(Object.values(w.metodos).some(m=>m === 8) && !w.errores.length, "Con CompressionStream el .xlsx no sale comprimido (" + JSON.stringify(w.metodos) + ")", "media");
+  });
+  await paso("El seguro: con EST_XL.formato = \"xls\" el diario sale como antes, una hoja .xls de 24 filas (D 22)", async ()=>{
+    try{
+      EST_XL.formato = "xls";
+      await estBotInf("diario", M(-3), "vista");
+      const x = await estArchivoActual(), t = await x.blob.text();
+      chk(x.nombre === "Estacion_por_hora_" + M(-3) + ".xls" && (t.match(/<tr class="d/g) || []).length === 24 && x.blob.type === "application/vnd.ms-excel", "Con el seguro, el diario no es el .xls de una hoja de antes (" + x.nombre + ")", "grave");
+      /* revisión r1: con el seguro, las lecturas de más de 31 días con datos salen en CSV: el botón lo dice */
+      await estBotInfRango(M(-35), M(-1), "lecturas");
+      const xC = await estArchivoActual();
+      chk(/Descargar CSV/.test(txtDe(document.getElementById("estBtnXls"))) && xC && /\.csv$/.test(xC.nombre), "Con el seguro y 35 días de lecturas el botón dice «" + txtDe(document.getElementById("estBtnXls")) + "» y sale " + (xC && xC.nombre), "leve");
+    } finally { EST_XL.formato = "xlsx"; }
+    await estBotInf("diario", M(-3), "vista");
+    chk(/\.xlsx$/.test((await estArchivoActual()).nombre), "Al volver a «xlsx» no sale el .xlsx", "grave");
+  });
+  await paso("Huecos (revisión r1): si el período parte o termina dentro de un corte de varios días, el corte se ve en «Huecos», «Por día», «Resumen» y la tarjeta (hasta 31 días y más largo); antes del historial no se inventa nada", async ()=>{
+    /* corte de 3 días justos, de las 10:00 de M(-20) a las 10:00 de M(-17): la última lectura antes es la de las 09:45 */
+    const A = estLimitesDia(M(-20)).a + 36000, B = estLimitesDia(M(-17)).a + 36000, HH = (B - A) / 3600, fS = f=>estXlSerial(f), HSD = "Horas sin datos (huecos)";
+    const dDe = (h, f)=>h.datos.find(q=>q[0] === fS(f)), huDe = ()=>{ const p = estPeriodo(), X = estInfDatos(p); return estHuecosDe(X.ts, estLimitesDia(p.desde).a, estLimitesDia(p.hasta).b); };
+    const pant = ()=>txtDe(document.getElementById("estInfCuerpo")).replace(/\s+/g, " "), txCorte = (seg, a, b)=>{ const pc = seg / (b - a) * 100; return "1 corte · " + estHm(seg / 3600) + " sin datos (" + estN(pc, pc < 10 ? 1 : 0) + " % del período)"; };
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilasAl().filter(x=>x[0] < A || x[0] >= B); await estBotLimpio(); await estBotSinc();
+    try{
+      /* parte 2 días adentro del corte */
+      await estBotInfRango(M(-18), M(-12), "vista"); await listoInf();
+      const a1 = estLimitesDia(M(-18)).a, b1 = estLimitesDia(M(-12)).b, s1 = B - a1; let hu = huDe();
+      let z = await estBotXlsx((await estArchivoActual()).blob), Hu = hoja(z, "Huecos"), Pd = hoja(z, "Por día"), Rs = hoja(z, "Resumen");
+      chk(hu.n === 1 && hu.lista[0].x === A - 900 && hu.lista[0].y === B && hu.seg === s1 && hu.ini === a1 && Hu.datos.length === 1 && celda(Hu, Hu.datos[0], "Fecha") === fS(M(-20)) && celda(Hu, Hu.datos[0], "Duración (h)") === HH && celda(Hu, Hu.datos[0], "Lecturas faltantes") === HH * 4,
+        "Parte dentro: el corte no se ve en «Huecos» (" + hu.n + " cortes, " + hu.seg + " s; hoja: " + JSON.stringify(Hu.datos[0] || Hu.filas[4]) + ")", "grave");
+      const hDia = f=>{ const l = estLimitesDia(f); return (l.b - l.a) / 3600; };
+      chk(celda(Pd, dDe(Pd, M(-18)), "Lecturas") === 0 && celda(Pd, dDe(Pd, M(-18)), HSD) === hDia(M(-18)) && celda(Pd, dDe(Pd, M(-17)), "Lecturas") === (hDia(M(-17)) - 10) * 4 && celda(Pd, dDe(Pd, M(-17)), HSD) === 10,
+        "Parte dentro, «Por día»: " + JSON.stringify([M(-18), M(-17)].map(f=>[celda(Pd, dDe(Pd, f), "Lecturas"), celda(Pd, dDe(Pd, f), HSD)])) + " (debía ser 0 y 24 h, 56 y 10 h)", "grave");
+      const fH = Rs.datos.find(q=>q[0] === "Huecos"), pc1 = s1 / (b1 - a1) * 100;
+      chk(fH && fH[1] === 1 && fH[2] === "corte" && fH[3] === estHm(s1 / 3600) + " sin datos (" + estN(pc1, 1) + " % del período)" && pant().indexOf(txCorte(s1, a1, b1)) >= 0 && pant().indexOf("Sin cortes en este período") < 0,
+        "Parte dentro, «Resumen» o la pantalla: " + JSON.stringify(fH) + " · «" + pant().slice(0, 120) + "»", "grave");
+      /* termina dentro del corte */
+      await estBotInfRango(M(-25), M(-19), "vista"); await listoInf();
+      const a2 = estLimitesDia(M(-25)).a, b2 = estLimitesDia(M(-19)).b, s2 = b2 - A; hu = huDe();
+      z = await estBotXlsx((await estArchivoActual()).blob); Hu = hoja(z, "Huecos"); Pd = hoja(z, "Por día");
+      chk(hu.n === 1 && hu.lista[0].x === A - 900 && hu.lista[0].y === B && hu.seg === s2 && !hu.lista[0].enCurso && Hu.datos.length === 1 && celda(Hu, Hu.datos[0], "Duración (h)") === HH
+        && celda(Pd, dDe(Pd, M(-20)), "Lecturas") === 40 && celda(Pd, dDe(Pd, M(-20)), HSD) === hDia(M(-20)) - 10 && celda(Pd, dDe(Pd, M(-19)), HSD) === hDia(M(-19)) && pant().indexOf(txCorte(s2, a2, b2)) >= 0,
+        "Termina dentro: " + JSON.stringify({n:hu.n, seg:hu.seg, enCurso:hu.lista[0] && hu.lista[0].enCurso, dia:[M(-20), M(-19)].map(f=>celda(Pd, dDe(Pd, f), HSD))}) + " · «" + pant().slice(0, 100) + "»", "grave");
+      /* el período entero dentro del corte: la tarjeta lo dice y no hay archivo */
+      { const N = estNav(); N.rango = {desde:M(-19), hasta:M(-18)}; ["estIR_d", "estIR_h", "estIR_d_t", "estIR_h_t"].forEach(id=>{ const el = document.getElementById(id); if(el) el.value = el.defaultValue; }); N.sec = "inf"; N.inf = "periodo"; estPintar();
+        await esperarQue(()=>{ const p = estPeriodo(), X = estInfDatos(p); return X && X.k === estInfClave(p) && !_estInfEn && /Sin lecturas guardadas en este período/.test(txtDe(document.getElementById("estVista"))); }, 15000); await pausa(.25); }
+      const a3 = estLimitesDia(M(-19)).a, b3 = estLimitesDia(M(-18)).b; hu = huDe();
+      const x3 = await estArchivoActual(), av3 = txtDe(document.getElementById("avisoCapa"));
+      chk(hu.n === 1 && hu.seg === b3 - a3 && hu.pct === 100 && pant().indexOf(txCorte(b3 - a3, a3, b3)) >= 0 && x3 === null && /No hay datos de la estación en ese período/.test(av3), "El período entero dentro del corte: " + JSON.stringify({n:hu.n, seg:hu.seg, pct:hu.pct, x:!!x3}) + " · «" + av3 + "» · «" + pant().slice(0, 100) + "»", "media");
+      /* control: el período cubre el corte entero (dos lecturas dentro, como siempre) */
+      await estBotInfRango(M(-22), M(-15), "vista"); await listoInf(); hu = huDe();
+      chk(hu.n === 1 && hu.lista[0].x === A - 900 && hu.lista[0].y === B && hu.seg === B - A, "El corte entero dentro del período: " + JSON.stringify({n:hu.n, seg:hu.seg}), "media");
+      /* antes del historial no se inventa nada: ni sin lecturas (la vecina de después no cuenta como lectura del período) ni con el período que parte antes */
+      const hi = estDat.hist.desde;
+      await estBotInfRango(estSumarDias(hi, -20), estSumarDias(hi, -10), null);
+      await esperarQue(()=>{ const p = estPeriodo(), X = estInfDatos(p); return X && X.k === estInfClave(p) && !_estInfEn; }, 8000); hu = huDe();
+      chk(hu.n === 0 && hu.ini === null && hu.seg === 0 && /Sin datos de la estación en este período/.test(txtDe(document.getElementById("estVista"))), "Antes del historial: " + JSON.stringify({n:hu.n, ini:hu.ini, seg:hu.seg}) + " (no debía haber cortes ni lecturas)", "media");
+      await estBotInfRango(estSumarDias(hi, -5), estSumarDias(hi, 5), "vista"); await listoInf(); hu = huDe();
+      chk(hu.n === 0 && hu.seg === 0 && hu.ini === EST_BOT.filas[0][0], "El período parte antes del historial: se inventó un corte (" + JSON.stringify({n:hu.n, seg:hu.seg, ini:hu.ini}) + ")", "media");
+      /* más largo que 31 días (el camino sin lecturas, como la temporada): la misma lectura vecina. Con 60 días de historial */
+      const A4 = estLimitesDia(M(-50)).a + 36000, B4 = estLimitesDia(M(-47)).a + 36000;
+      EST_BOT.filas = estBotFilas(60, Math.floor(Date.now() / 1000 / 900) * 900).filter(x=>x[0] < A4 || x[0] >= B4); await estBotLimpio(); await estBotSinc();
+      await estBotInfRango(M(-48), M(-6), "vista"); await listoInf();
+      const X4 = estInfDatos(estPeriodo()); hu = huDe();
+      chk(X4 && !X4.lect && hu.n === 1 && hu.lista[0].x === A4 - 900 && hu.lista[0].y === B4 && hu.seg === B4 - estLimitesDia(M(-48)).a, "Período largo que parte dentro: " + JSON.stringify({lect:!!(X4 && X4.lect), n:hu.n, seg:hu.seg}), "grave");
+    } finally { EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilasAl(); await estBotLimpio(); await estBotSinc(); }
+    await estBotInfRango(M(-9), M(-3), "vista");
+  });
+  await paso("Cifras (revisión r2): la pantalla redondea igual que el Excel, sin el ruido de las sumas (314,7499999999999 → 314,8)", async ()=>{
+    const ig = (a, b, m)=>chk(a === b, m + ": «" + a + "» en vez de «" + b + "»", "media");
+    ig(estN(314.7499999999999, 1), "314,8", "ET0 del caso que encontró la verificación"); ig(estN(65.64999999999999, 1), "65,7", "Suma con ruido, 1 decimal"); ig(estN(493.49999999999994, 0), "494", "Suma con ruido, sin decimales");
+    ig(estN(1.45, 1), "1,5", "1,45"); ig(estN(-1.45, 1), "−1,5", "−1,45"); ig(estN(14.24, 1), "14,2", "Lo que no está cerca de la mitad"); ig(estN(14.26, 1), "14,3", "Lo que no está cerca de la mitad");
+    ig(estN(0.04, 1), "0,0", "Casi cero"); ig(estN(-0.04, 1), "0,0", "Casi cero negativo"); ig(estN(0.05, 1), "0,1", "Justo la mitad"); ig(estN(1040, 0), "1.040", "Miles"); ig(estN(12.5, 2), "12,50", "Dos decimales");
+    ig(estN(null, 1), "—", "Sin dato"); ig(estN("", 1), "—", "Vacío"); ig(estN(NaN, 1), "—", "NaN"); ig(estN("7.25", 1), "7,3", "Número en texto");
+    const malos = [314.7499999999999, 65.64999999999999, 493.49999999999994, 1.45, 2.675, 7.005, 0.1 + 0.2, 1234.5678999, -3.3500000000000005].filter(x=>[0, 1, 2].some(d=>estN(x, d) !== estN(+estXnum(x), d)));
+    chk(!malos.length, "estN y estXnum no redondean igual: " + malos.join(", "), "media");
+  });
+  await paso("Lecturas y Resumen (revisión r1): las horas van con toda la precisión (ninguna queda bajo el minuto) y la fila «Fuente» sin el formato «@»", async ()=>{
+    await estBotInfRango(M(-9), M(-3), "lecturas"); await listoInf();
+    const zL = await estBotXlsx((await estArchivoActual()).blob), hL = hoja(zL, "Lecturas 15 min"), iH = hL.cab.indexOf("Hora"), vs = hL.datos.map(q=>q[iH]);
+    const raras = vs.filter(v=>Math.round(v * 1440) / 1440 !== v);
+    chk(vs.length > 600 && !raras.length && vs.indexOf(30 / 1440) >= 0 && (zL.textos["xl/worksheets/sheet1.xml"] || "").indexOf("<v>0.020833333333333332</v>") >= 0, "Las horas de las lecturas no van con toda la precisión (" + raras.slice(0, 3).join(", ") + " de " + vs.length + ")", "media");
+    await estBotInfRango(M(-9), M(-3), "vista"); await listoInf();
+    const zR = await estBotXlsx((await estArchivoActual()).blob), hR = hoja(zR, "Resumen"), iF = hR.datos.findIndex(q=>q[0] === "Fuente"), dF = hR.datos[iF] || [];
+    chk(iF >= 0 && String(dF[3]).length > 255 && zR.fmt(hR.est[4 + iF][3]) === "General", "La fila «Fuente» de Resumen sigue con formato «" + (iF >= 0 ? zR.fmt(hR.est[4 + iF][3]) : "—") + "» (" + String(dF[3]).length + " letras)", "leve");
+  });
+  await paso("iPad (revisión r1): «Descargar Excel» abre la hoja para compartir, no dice «se descargó» y no descarga; si la cierra, nada; si Safari no la deja, aviso con botón; sin hoja, descarga y lo dice. El enlace dura 60 s", async ()=>{
+    await estBotInfRango(M(-9), M(-3), "vista"); await listoInf();
+    const capa = ()=>document.getElementById("avisoCapa"), av = ()=>txtDe(capa()), limpia = ()=>{ if(capa()) capa().innerHTML = ""; }, er = n=>Object.assign(new Error("bot"), {name:n}), nom = "Estacion_informe_" + M(-9) + "_al_" + M(-3) + ".xlsx", TX = "En el iPad se abre la hoja para compartir: elige «Guardar en Archivos» y ábrelo desde ahí.";
+    chk(ayuda().indexOf(TX) < 0, "En el PC la ayuda habla de la hoja del iPad", "leve");
+    let dS = [], s0 = R.salidas.length;
+    await botComoIPad(async ()=>{ estInfPintarCuerpo(); chk(ayuda().indexOf(TX) >= 0, "En el iPad la ayuda no dice que se abre la hoja para compartir (" + ayuda() + ")", "media"); await estExcel(); }, {share:async d=>{ dS.push(d); }});
+    chk(dS.length === 1 && dS[0].files[0].name === nom && dS[0].files[0].type === XLSX_MIME && dS[0].title === nom && dS[0].text === undefined && R.salidas.length === s0, "iPad, «Descargar Excel»: no abrió la hoja con el archivo (" + dS.length + " veces, " + (dS[0] && dS[0].files[0].name) + ") o descargó además (" + (R.salidas.length - s0) + ")", "grave");
+    chk(av().indexOf("Listo: " + nom + " (4 hojas: Resumen, Por día, Por hora y Huecos).") >= 0 && !/se descargó/.test(av()), "iPad, «Descargar Excel»: el aviso dice «" + av() + "»", "media");
+    limpia(); await botComoIPad(()=>estExcel(), {share:async ()=>{ throw er("AbortError"); }});
+    chk(R.salidas.length === s0 && !av(), "iPad: al cerrar la hoja a propósito descargó o avisó («" + av() + "»)", "media");
+    limpia(); let nS = 0, tA = "", tB = "", dS2 = null;
+    await botComoIPad(async ()=>{ await estExcel(); tA = av(); const b = capa().querySelector(".aviso-acc"); tB = txtDe(b); b.click(); await esperar(60); }, {share:async d=>{ nS++; if(nS === 1) throw er("NotAllowedError"); dS2 = d; }});
+    chk(nS === 2 && dS2 && dS2.files[0].name === nom && tA.indexOf("Archivo listo: " + nom) >= 0 && tB === "Guardar o compartir" && R.salidas.length === s0, "iPad: si Safari no deja abrir la hoja no queda el aviso con su botón («" + tA + "», «" + tB + "», " + nS + " veces)", "media");
+    limpia(); nS = 0;
+    await botComoIPad(async ()=>{ await estExcel(); capa().querySelector(".aviso-acc").click(); await esperar(60); }, {share:async ()=>{ nS++; throw er(nS === 1 ? "NotAllowedError" : "TypeError"); }});
+    chk(nS === 2 && R.salidas.length === s0 + 1 && R.salidas[s0].tipo === "descarga" && R.salidas[s0].archivo === nom, "iPad: si el botón del aviso tampoco abre la hoja, no intenta descargar (" + JSON.stringify(R.salidas.slice(s0)) + ")", "media");
+    s0 = R.salidas.length; limpia();
+    await botComoIPad(()=>estExcel(), {canShare:()=>false});
+    chk(R.salidas.length === s0 + 1 && R.salidas[s0].tipo === "descarga" && R.salidas[s0].archivo === nom && !/se descargó/.test(av()) && av().indexOf("Si no aparece en Descargas, toca «Compartir».") >= 0, "iPad sin hoja: " + JSON.stringify(R.salidas.slice(s0)) + " · «" + av() + "»", "media");
+    /* el respaldo del clima sale igual */
+    let dR = []; s0 = R.salidas.length; limpia();
+    await botComoIPad(()=>estRespaldoCSV(), {share:async d=>{ dR.push(d); }});
+    chk(dR.length === 1 && /^Respaldo_clima_.*\.csv$/.test(dR[0].files[0].name) && R.salidas.length === s0 && /Respaldo listo:/.test(av()), "iPad, «Respaldo del clima»: no fue por la hoja (" + dR.length + " veces, " + (R.salidas.length - s0) + " descargas, «" + av() + "»)", "media");
+    /* en el PC: se descarga y lo dice. El enlace sigue vivo pasados unos segundos (Safari lo lee después del «¿Descargar?»): 60 s, como el PDF */
+    s0 = R.salidas.length; limpia(); await estExcel();
+    chk(R.salidas.length === s0 + 1 && R.salidas[s0].tipo === "descarga" && av().indexOf("Listo: se descargó " + nom) >= 0, "En el PC, «Descargar Excel»: " + JSON.stringify(R.salidas.slice(s0)) + " · «" + av() + "»", "media");
+    const st0 = window.setTimeout, cu0 = URL.createObjectURL, plazos = []; let uV = null;
+    window.setTimeout = function(f, t){ plazos.push(t); return st0.apply(this, arguments); }; URL.createObjectURL = function(b){ uV = cu0.call(URL, b); return uV; };
+    try{ estDescargar(new Blob(["vivo"], {type:"text/plain"}), "prueba_bot.txt"); } finally { window.setTimeout = st0; URL.createObjectURL = cu0; }
+    await new Promise(r=>st0(r, 4500));
+    const vivo = uV ? await ORIG.fetch.call(window, uV).then(r=>r.text()).catch(()=>null) : null;
+    chk(plazos.indexOf(60000) >= 0 && vivo === "vivo", "El enlace del archivo no dura 60 s (plazos " + plazos.join(", ") + ") o a los 4,5 s ya no se puede leer («" + vivo + "»)", "media");
+  });
+  await paso("Mientras se arma: «Armando… N %» y apagado, igual que «Compartir»; un segundo toque no hace nada; al terminar, vuelve el botón (D 23)", async ()=>{
+    await estBotInf("temporada", estTemporadaIni(hoyF), "lecturas");
+    const lt = window.estLectTramos; let suelta = null;
+    window.estLectTramos = async function(a, b, prog){ if(prog) prog(0.4); await new Promise(r=>{ suelta = r; }); return lt.apply(this, arguments); };
+    try{
+      const s0 = R.salidas.length, btn = ()=>document.getElementById("estBtnXls"), cmp = ()=>document.getElementById("estBtnComp");
+      btn().click();
+      await esperarQue(()=>/^Armando… \d+ %$/.test(txtDe(btn())), 3000);
+      chk(/^Armando… \d+ %$/.test(txtDe(btn())) && btn().disabled && cmp().disabled, "Mientras se arma el botón no dice «Armando… N %» o no quedan apagados los dos («" + txtDe(btn()) + "»)", "media");
+      btn().click(); await estExcel(); await estCompartir();
+      /* un repintado mientras se arma: siguen apagados */
+      estInfPintarCuerpo(); chk(btn().disabled && cmp().disabled, "Un repintado mientras se arma volvió a prender los botones", "media");
+      if(suelta) suelta();
+      await esperarQue(()=>R.salidas.length > s0, 10000); await pausa(.3);
+      chk(R.salidas.length === s0 + 1, "Tocar varias veces entregó " + (R.salidas.length - s0) + " archivos", "media");
+      chk(/Descargar Excel/.test(txtDe(btn())) && !btn().disabled && !cmp().disabled && !estDat._xlsEn, "Al terminar, el botón no volvió a «Descargar Excel» o sigue apagado («" + txtDe(btn()) + "»)", "media");
+    } finally { window.estLectTramos = lt; if(suelta) suelta(); }
+  });
+  await paso("Pantalla de «Elegir período» y los chips: nada se sale a 375 px, también con texto grande y modo sol; fechas una bajo la otra; todo mide 44 px; a 1180 van en la misma fila (D 24)", async ()=>{
+    const ui0 = JSON.stringify(D.ui || {});
+    await estBotInfRango(M(-9), M(-3), "vista");
+    if(innerWidth >= 1000){
+      const r1 = document.querySelector("#estIRango label:nth-child(1)").getBoundingClientRect(), r2 = document.querySelector("#estIRango label:nth-child(2)").getBoundingClientRect();
+      chk(Math.abs(r1.top - r2.top) < 2 && r2.left > r1.right - 1, "En el iPad «Desde» y «Hasta» no van en la misma fila", "media");
+    }
+    try{
+      for(const [nom, u] of [["celular", {movil:"si"}], ["celular, texto grande", {movil:"si", grande:true}], ["celular, sol", {movil:"si", sol:true}]]){
+        D.ui = Object.assign({}, JSON.parse(ui0), {sol:false, grande:false}, u); uiAplicar(); render(); await pausa(.4);
+        await estBotInfRango(M(-9), M(-3), "vista"); const rz = document.getElementById("estRaiz"); if(rz && innerWidth > 500){ rz.style.width = "375px"; rz.style.maxWidth = "375px"; } await pausa(.3);   // con la pantalla ancha, #estRaiz de 375 px; con 375 px de verdad, tal cual
+        const K = necesito(document.getElementById("estKInf"), "la tarjeta «Informe»");
+        chk(K.scrollWidth <= K.clientWidth + 1, "A 375 px (" + nom + ") la tarjeta «Informe» se sale del ancho (" + K.scrollWidth + " de " + K.clientWidth + ")", "media");
+        const tops = new Set(chipsTipo().map(c=>Math.round(c.getBoundingClientRect().top)));
+        chk(tops.size <= 2, "A 375 px (" + nom + ") los chips de Tipo ocupan " + tops.size + " líneas (máximo 2)", "media");
+        const r1 = document.querySelector("#estIRango label:nth-child(1)").getBoundingClientRect(), r2 = document.querySelector("#estIRango label:nth-child(2)").getBoundingClientRect();
+        chk(r2.top >= r1.bottom - 1 && Math.abs(r1.left - r2.left) < 2, "A 375 px (" + nom + ") «Desde» y «Hasta» no van una bajo la otra", "media");
+        const chicos = [...K.querySelectorAll("button, .chip, select, input[type=text]")].filter(visible).filter(b=>b.getBoundingClientRect().height < 44);
+        chk(!chicos.length, "A 375 px (" + nom + ") hay tocables de menos de 44 px: " + chicos.slice(0, 3).map(b=>"«" + (txtDe(b) || b.id).slice(0, 16) + "» " + Math.round(b.getBoundingClientRect().height)).join(", "), "media");
+        estBotZona(K, "Informes › Elegir período a 375 px (" + nom + ")");
+        await tocar('.est-chips[aria-label="Datos del Excel"] .chip[data-v="lecturas"]', "Lecturas cada 15 min"); await pausa(.2);
+        const K2 = document.getElementById("estKInf"); chk(K2.scrollWidth <= K2.clientWidth + 1, "A 375 px (" + nom + ") con «Lecturas cada 15 min» la tarjeta se sale", "media");
+      }
+    } finally { const rz = document.getElementById("estRaiz"); if(rz){ rz.style.width = ""; rz.style.maxWidth = ""; } D.ui = JSON.parse(ui0); uiAplicar(); render(); }
+  });
+  await paso("Rendimiento con un año de lecturas: informe de 365 días y lecturas de 92 días en 1,5 s o menos, CSV de 365 días en 3 s o menos, ninguna tarea larga (D 25)", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(365); await estBotLimpio(); await estBotSinc(); await pausa(.3);
+    const largas = []; let obs = null;
+    await estBotInfRango(M(-364), hoyF, "vista");   // los resúmenes ya guardados (la primera vez después de un cambio de cálculo puede tardar más)
+    try{ obs = new PerformanceObserver(l=>l.getEntries().forEach(e=>largas.push(Math.round(e.duration)))); obs.observe({type:"longtask"}); }catch(e){ obs = null; }
+    const med = async f=>{ const t0 = performance.now(); const x = await f(); return [Math.round(performance.now() - t0), x]; };
+    try{
+      const [t1, x1] = await med(()=>estArchivoActual());
+      chk(x1 && /\.xlsx$/.test(x1.nombre) && t1 <= 1500, "El informe de 365 días tardó " + t1 + " ms (tope 1.500)", "leve");
+      await estBotInfRango(M(-91), hoyF, "lecturas");
+      const [t2, x2] = await med(()=>estArchivoActual());
+      chk(x2 && /\.xlsx$/.test(x2.nombre) && x2.n > 8000 && t2 <= 1500, "Las lecturas de 92 días tardaron " + t2 + " ms (tope 1.500)", "leve");
+      await estBotInfRango(M(-364), hoyF, "lecturas");
+      const [t3, x3] = await med(()=>estArchivoActual());
+      chk(x3 && /\.csv$/.test(x3.nombre) && t3 <= 3000, "El CSV de 365 días tardó " + t3 + " ms (tope 3.000)", "leve");
+      log("Excel: informe de 365 días " + t1 + " ms (" + Math.round(x1.blob.size / 1024) + " KB), lecturas de 92 días " + t2 + " ms (" + Math.round(x2.blob.size / 1024) + " KB), CSV de 365 días " + t3 + " ms (" + Math.round(x3.blob.size / 1024) + " KB)");
+      AB.medXlsx = {informe365:t1, lect92:t2, csv365:t3, kb:[x1.blob.size, x2.blob.size, x3.blob.size].map(b=>Math.round(b / 1024))};   // para leerlas en la consola: AgroBots.medXlsx
+      await pausa(.2);
+    } finally { if(obs) obs.disconnect(); }
+    const lmax = largas.length ? Math.max(...largas) : 0; AB.medXlsx.tareaMax = lmax;
+    chk(lmax <= 200, "Hubo una tarea de " + lmax + " ms armando los archivos (tope 200)", "leve");
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); await estBotLimpio(); await estBotSinc();
+    estNav().xls = "vista"; estNav().inf = "diario";
   });
 }
 
@@ -4181,26 +5462,28 @@ async function estBotG(){
     const PD = estBotPorDia(F), hoyF = estHoyF(), tIni = estTemporadaIni(hoyF), fs = estBotDias(estSumarDias(hoyF, -91), hoyF), tem = estBotDias(tIni, hoyF);
     const fu = {}; [...new Set(fs.concat(tem))].forEach(f=>{ fu[f] = estBotFuente(PD, f, op); });
     const sumT = {};
+    /* revisión r1: las sumas salen en otro orden que en la app (por mes): si el total cae justo en ,50 el redondeo a 0 decimales puede dar uno u otro (falló una vez: 142 y 141). Vale cualquiera de los dos */
+    const f0s = v=>[estF0(v - 1e-6), estF0(v + 1e-6)];
     for(const b of [5, 10, 12.5]){
       estGraf("gd", "3m"); estGrafSub(String(b)); const G = await estBotGrafListo(), S = G.S;
       const malos = fs.filter((f, i)=>{ const z = fu[f], e = z.d ? EST_BOT_GD(z.d.tmax, z.d.tmin, b) : null, y = S.dias[i].y; return e == null ? y != null : (y == null || Math.abs(y - e) > 1e-9); });
       chk(estNav().gdBase === b && S.nombre === "Grados día base " + estN(b, b % 1 ? 1 : 0) && !malos.length, "Grados día base " + b + ": " + malos.length + " días no cuadran con la fórmula (" + malos.slice(0, 3).join(", ") + ")");
       sumT[b] = tem.reduce((a, f)=>a + (fu[f].d ? EST_BOT_GD(fu[f].d.tmax, fu[f].d.tmin, b) : 0), 0);
-      chk(txtDe(document.getElementById("estGKpi")).indexOf("Temporada (desde el " + estFCorta(tIni) + "): " + estF0(sumT[b]) + " °C·día") >= 0, "Grados día base " + b + ": el KPI de la temporada no es " + estF0(sumT[b]) + " («" + txtDe(document.getElementById("estGKpi")).slice(0, 160) + "»)");
+      chk(f0s(sumT[b]).some(t=>txtDe(document.getElementById("estGKpi")).indexOf("Temporada (desde el " + estFCorta(tIni) + "): " + t + " °C·día") >= 0), "Grados día base " + b + ": el KPI de la temporada no es " + estF0(sumT[b]) + " («" + txtDe(document.getElementById("estGKpi")).slice(0, 160) + "»)");
       chk(document.querySelector("#estGPrin .est-g-acum svg"), "Grados día: falta el mini gráfico del acumulado del período");
     }
     const malos10 = tem.filter(f=>fu[f].src === "est" && Math.abs(estResDia(f).gd10 - EST_BOT_GD(fu[f].d.tmax, fu[f].d.tmin, 10)) > 1e-9);
     chk(!malos10.length, "Base 10 del gráfico distinta del gd10 del resumen en " + malos10.join(", "));
     await estBotCampo("campo"); await estBotOMEspera(); await estBotCampo("campo");
     const card = necesito(document.getElementById("estKGD"), "la tarjeta de grados-día"), ms = [...card.querySelectorAll(".est-medio")].map(txtDe);
-    chk(ms.length === 3 && ms[0].indexOf(estF0(sumT[10])) === 0 && ms[1].indexOf(estF0(sumT[12.5])) === 0 && ms[2].indexOf(estF0(sumT[5])) === 0 && /Base 12,5 °C/.test(txtDe(card)) && !/base 13/i.test(txtDe(card)),
+    chk(ms.length === 3 && f0s(sumT[10]).some(t=>ms[0].indexOf(t) === 0) && f0s(sumT[12.5]).some(t=>ms[1].indexOf(t) === 0) && f0s(sumT[5]).some(t=>ms[2].indexOf(t) === 0) && /Base 12,5 °C/.test(txtDe(card)) && !/base 13/i.test(txtDe(card)),
       "La tarjeta de grados-día dice " + ms.join(" / ") + " y la temporada da " + [10, 12.5, 5].map(b=>estF0(sumT[b])).join(" / "));
     const nOM = tem.filter(f=>fu[f].src === "om").length;
     chk(nOM > 0 && txtDe(card).indexOf("Incluye " + nOM + " días estimados con Open-Meteo") >= 0, "La tarjeta no dice cuántos días se estimaron con Open-Meteo (" + nOM + ")");
     await estBotInf("temporada", tIni, "vista");
     const s125 = Object.keys(PD).filter(f=>f >= tIni && f <= hoyF).reduce((a, f)=>{ const d = estBotEstDia(PD, f); return a + EST_BOT_GD(d.tmax, d.tmin, 12.5); }, 0);
     const pie = [...document.querySelectorAll("#estInfTabla tfoot td")].map(txtDe), cab = [...document.querySelectorAll("#estInfTabla thead th")].map(txtDe), kp = txtDe(document.getElementById("estInfKpis"));
-    chk(/GD base 12,5/.test(cab[10] || "") && pie[10] === estF0(s125) && kp.indexOf("base 12,5: " + estF0(s125) + " °C·día") >= 0, "Informe de temporada: GD base 12,5 " + pie[10] + " (cabecera «" + cab[10] + "») y la estación suma " + estF0(s125));
+    chk(/GD base 12,5/.test(cab[10] || "") && f0s(s125).indexOf(pie[10]) >= 0 && f0s(s125).some(t=>kp.indexOf("base 12,5: " + t + " °C·día") >= 0), "Informe de temporada: GD base 12,5 " + pie[10] + " (cabecera «" + cab[10] + "») y la estación suma " + estF0(s125));
     revisarPantalla();
   });
   await paso("Frío: horas, Utah y porciones del gráfico = estFrioHoras sobre las medias por hora armadas aparte; Utah negativo hacia abajo; la tarjeta del invierno = el KPI del gráfico; 240 h a 6 °C = 7,82 / 240 / 240", async ()=>{
@@ -4367,6 +5650,30 @@ function estBotAptaA(x){
   if(m < s.mediodia && alt < 20) return false;               // mañana con el sol bajo 20°: la inversión no se rompe con 4 km/h (hace falta 7)
   return true;                                                // de día la calma con turbo es apta, con sol o nublado (corrector 28-10)
 }
+/* ---- v167 (pedido de Manuel, 05-11-2026; contrato_v167_avisos.md): el arranque fijo de los pasos del lavado y de los avisos, el mismo de la ✕ de la lluvia (v166). Hora fija (estBotEnHora) unas 2 h antes del
+   mediodía solar de ayer: H = la hora en punto, la última lectura a las hh:45 (fin), la evaluación a las hh:50 (T), FIN = T + 6 h. PF arma el pronóstico: la entrada k trae la lluvia entre H0 + (k − 1) h y H0 + k h
+   (k = 1 es la hora en curso, k = 2 la siguiente). Todo fuera de la pestaña Estación (su repintado de cada minuto lee lo guardado con la hora real y lo daría por vencido), salvo lo que va con la hora real.
+   cargar repone las ✕ guardadas (estBotLimpio las borra), para ver cómo vuelven solas cuando llegan lecturas nuevas ---- */
+function estBotAvKit(){
+  const KL = "agronotasAplLluvia", KA = "agronotasAvisosOcultos", f1 = estSumarDias(estHoyF(), -1), s1 = estSol(f1), a1 = estLimitesDia(f1).a;
+  const H = Math.floor((a1 + (s1.mediodia - 120) * 60) / 3600) * 3600, fin = H + 2700, H0 = H * 1000, T = (fin + 300) * 1000, FIN = T + 6 * 3600000, hm = ms=>estHoraMs(ms);
+  const fijas = (F, ultLl)=>{ for(let k = F.length - 8; k < F.length; k++){ const r = F[k]; r[EST_I.t] = 20; r[EST_I.hr] = 55; r[EST_I.pr] = null; r[EST_I.v10] = 6; r[EST_I.vu] = 6; r[EST_I.vr] = 10; r[EST_I.dv] = 200; r[EST_I.dr] = 205; r[EST_I.rs] = 650;
+      r[EST_I.ll15] = 0; r[EST_I.llr] = 0; r[EST_I.llrh] = 0; r[EST_I.lld] = F[k - 1][EST_I.lld]; }
+    if(ultLl){ const r = F[F.length - 1]; r[EST_I.lld] = Math.round((F[F.length - 2][EST_I.lld] + ultLl) * 100) / 100; r[EST_I.ll15] = ultLl; r[EST_I.llr] = 0.8; r[EST_I.llrh] = 0.8; }
+    return F; };
+  const cargar = async (finTs, ultLl, mod)=>{ const gL = localStorage.getItem(KL), gA = localStorage.getItem(KA), F = fijas(estBotFilas(3, finTs), ultLl); if(mod) mod(F); EST_BOT.modo = "v3"; EST_BOT.filas = F; await estBotLimpio(); await estBotSinc(); if(gL) localStorage.setItem(KL, gL); if(gA) localStorage.setItem(KA, gA); return F; };
+  const PF = (ll, pr, tC, sinProb, Hb)=>{ const b = Hb != null ? Hb : H, ks = []; for(let k = -2; k <= 96; k++) ks.push(k);
+    const Hh = {time:ks.map(k=>b + k * 3600)}, fijo = (n, v)=>{ Hh[n] = ks.map(()=>v); };
+    fijo("temperature_2m", 20); fijo("relative_humidity_2m", 55); fijo("dew_point_2m", 10.7); fijo("cloud_cover", 20); fijo("wind_speed_10m", 8); fijo("wind_gusts_10m", 14); fijo("wind_direction_10m", 200);
+    fijo("weather_code", 2); fijo("temperature_80m", 18); fijo("shortwave_radiation", 600); fijo("pressure_msl", 1015); fijo("cape", 0);
+    Hh.precipitation = ks.map(k=>(ll || {})[k] || 0); if(!sinProb) Hh.precipitation_probability = ks.map(k=>{ const p = (pr || {})[k]; return p != null ? p : 5; });
+    return estBotEnHora(tC, ()=>estPronNormalizar({hourly:Hh}, wlCoords())); };
+  const ev = (ms, eq)=>estBotEnHora(ms, ()=>{ const A = estAplicarAhora(eq || "turbo"), P48 = estPron48(eq || "turbo", A), c = document.createElement("div"); c.innerHTML = estCampoAplicar(A, P48);
+    const av = document.createElement("div"); av.innerHTML = estAvisosAhoraHTML(); return {A, P48, c, ct:c.textContent.replace(/\s+/g, " "), av, avt:av.textContent.replace(/\s+/g, " ")}; });
+  const btn = (R, id)=>R.c.querySelector("#" + id) || null, btnAv = (R, id)=>R.av.querySelector("#" + id) || null, tx = e=>e ? e.textContent.replace(/\s+/g, " ").trim() : "—";
+  const regA = ()=>{ const s = localStorage.getItem(KA); return s ? JSON.parse(s) : null; }, limpiar = ()=>{ localStorage.removeItem(KL); localStorage.removeItem(KA); };
+  return {KL, KA, H, fin, H0, T, FIN, hm, fijas, cargar, PF, ev, btn, btnAv, tx, regA, limpiar};
+}
 async function estBotAplicar(){
   const ST = EST_BOT.st, U = Object.assign({}, EST_UMB_DEF), f0 = EST_BOT_F0, ms = hm=>estBotMsDe(f0, hm);
   await paso("Aplicar · el sol y la tabla de casos de la investigación: calma de día con sol = Bien; amanecer, atardecer y noche calmos = No; ráfagas, Delta T, lluvia y equipo", async ()=>{
@@ -4411,9 +5718,15 @@ async function estBotAplicar(){
       ["Delta T 19 °C con barra", "13:00", {t:36, hr:12}, "barra", {dt:"ro"}, "ro", {dt:"muySeco"}],
       ["está lloviendo", "13:00", {llueve:true}, "turbo", {ll:"ro"}, "ro", {ll:"llueve"}],
       ["1,4 mm en las próximas 2 horas", "13:00", {ll2:1.4, ll6:1.4}, "turbo", {ll:"ro"}, "ro", {ll:"seca"}],
+      ["1,4 mm con 20 % de probabilidad (v166: bajo 30 %, «con cuidado»)", "13:00", {ll2:1.4, ll6:1.4, prob2:20}, "turbo", {ll:"am"}, "am", {ll:"secaDuda"}],
+      ["1,4 mm con 30 % de probabilidad (v166: no baja)", "13:00", {ll2:1.4, ll6:1.4, prob2:30}, "turbo", {ll:"ro"}, "ro", {ll:"seca"}],
       ["llovizna de 0,4 mm en 2 horas", "13:00", {ll2:0.4, ll6:0.4}, "turbo", {ll:"am"}, "am", {ll:"llovizna"}],
       ["2,1 mm entre 2 y 6 horas", "13:00", {ll6:2.1}, "turbo", {ll:"am"}, "am", {ll:"vieneLluvia"}],
       ["15 mm en 24 horas", "13:00", {ll24:15}, "turbo", {ll:"am"}, "am", {ll:"lava"}],
+      ["15 mm en 24 horas con el lavado quitado (v167)", "13:00", {ll24:15, lavaQuit:true}, "turbo", {ll:"ok"}, "ok", {ll:"seco"}],
+      ["15 mm en 24 horas con la lluvia ignorada y el lavado quitado (v167)", "13:00", {ll24:15, llIgn:true, lavaQuit:true}, "turbo", {ll:"ok"}, "ok", {ll:"ignorada"}],
+      ["1,4 mm en 2 horas y 15 mm en 24 con el lavado quitado (v167: la lluvia sigue contando)", "13:00", {ll2:1.4, ll6:1.4, ll24:15, lavaQuit:true}, "turbo", {ll:"ro"}, "ro", {ll:"seca"}],
+      ["está lloviendo con el lavado quitado (v167)", "13:00", {llueve:true, ll24:15, lavaQuit:true}, "turbo", {ll:"ro"}, "ro", {ll:"llueve"}],
       ["0,5 mm en 6 horas (bajo 1 mm)", "13:00", {ll6:0.5}, "turbo", {ll:"ok"}, "ok", {ll:"seco"}],
       ["sin pronóstico al día", "13:00", {sinPron:true}, "turbo", {ll:"am"}, "am", {ll:"sinPron"}],
       ["31 °C", "13:00", {t:31, hr:60}, "turbo", {t:"am"}, "am", {}],
@@ -4613,6 +5926,781 @@ async function estBotAplicar(){
       chk(/bajo 3: calma/.test(vt) && /3 a 10 km\/h: bien \(turbo\)/.test(vt) && /de día con sol no impide aplicar/.test(vt) && !/apto para aplicar/.test(vt), "La leyenda del viento de «Ahora» no explica el criterio nuevo (" + vt.slice(-200) + ")");
       revisarPantalla();
     } finally { estNav().eq = eq0 || "turbo"; }
+  });
+  /* ---- v166 (pedido de Manuel, 03-11-2026; contrato_v166 §B y B_aplicar_lluvia.md §5): la ✕ «Ignorar la lluvia pronosticada» (dura U.llHoras = 6 h),
+     cuándo vuelve sola, la hora en curso proporcional (estPronLlEntre) y la probabilidad bajo 30 % (secaDuda, «con cuidado»). Hora fija (estBotEnHora)
+     unas 2 h antes del mediodía solar de ayer: H = la hora en punto, la última lectura a las hh:45 (fin) y la evaluación a las hh:50 (T). Pronóstico armado
+     a mano (PF): la entrada k trae la lluvia entre H0 + (k − 1) h y H0 + k h (k = 1 es la hora en curso, k = 2 la siguiente). Todo fuera de la pestaña
+     Estación (su repintado de cada minuto lee el registro con la hora real y lo daría por vencido), salvo el caso 15, que va con la hora real ---- */
+  const H1 = 3600000, cambiosHora = [];
+  await paso("Aplicar · el chip largo «Sin ventanas aptas · con cuidado: …» baja de línea y no se sale a 375 px (revisión del cierre)", async ()=>{
+    const c = document.createElement("div"); c.className = "est-ventanas"; c.style.cssText = "width:300px;position:fixed;left:0;top:0;visibility:hidden";
+    c.innerHTML = "<span>Ventanas aptas de 2 horas o más:</span>" + estMb("am", "Sin ventanas aptas · con cuidado: jue 05-11, 08:00 a 12:00"); document.body.appendChild(c);
+    try{ const w = c.querySelector(".est-mb").getBoundingClientRect().width; chk(w <= 300.5, "El chip largo de las ventanas mide " + Math.round(w) + " px en 300 px", "media"); } finally { c.remove(); }
+  });
+  await paso("Aplicar · hora en curso proporcional (v166): en horas justas estPronLlEntre da lo mismo que estPronLl (que sigue igual para el barómetro) y se revisan los casos de antes", async ()=>{
+    EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(3); await estBotLimpio(); await estBotSinc(); await estPronCargar(true);   // el pronóstico falso de siempre (el de «Ahora con lecturas armadas» y la tarjeta)
+    const f1 = estSumarDias(estHoyF(), -1), s1 = estSol(f1), a1 = estLimitesDia(f1).a, U = estUmb(), malos = [];
+    const tAh = (Math.floor(Date.now() / 1000 / 900) * 900 + 300) * 1000;
+    for(const [nom, t] of [["calma de día", (Math.floor((a1 + (s1.mediodia - 120) * 60) / 900) * 900 + 300) * 1000], ["amanecer", (Math.floor((a1 + (s1.sale + 15) * 60) / 900) * 900 + 300) * 1000],
+      ["atardecer", (Math.floor((a1 + (s1.pone - 30) * 60) / 900) * 900 + 300) * 1000], ["noche", (Math.floor((a1 + (s1.pone + 180) * 60) / 900) * 900 + 300) * 1000], ["la tarjeta (hora real)", tAh]]){
+      estBotEnHora(t, ()=>{
+        const h0 = Math.ceil(t / H1) * H1;   // en una hora justa las dos cuentas tienen que dar lo mismo
+        [2, 6, 24].forEach(h=>{ const a = estPronLl(h0, h), b = estPronLlEntre(h0, h0 + h * H1, 0); if(Math.abs(a - b) > 1e-9) malos.push(nom + ": " + h + " h desde " + estHoraMs(h0) + " → " + estF2(a) + " y " + estF2(b)); });
+        const o = [estPronLl(t, U.llSecaH), estPronLl(t, U.llHoras), estPronLl(t, 24)], n = [U.llSecaH, U.llHoras, 24].map(h=>estPronLlEntre(t, t + h * H1, 0));
+        const S = x=>estSemaforo({ms:t, t:20, hr:55, v:6, vr:10, ll2:x[0], ll6:x[1], ll24:x[2]}, U, "turbo").k.ll, kO = S(o), kN = S(n);
+        if(kO !== kN) cambiosHora.push(nom + " (" + estHoraMs(t) + "): «" + kO + "» → «" + kN + "» (" + estF2(o[0]) + " → " + estF2(n[0]) + " mm en " + U.llSecaH + " h)");
+      });
+    }
+    chk(!malos.length, "En horas justas la lluvia proporcional no da lo mismo que estPronLl: " + malos.slice(0, 3).join(" · "), "media");
+    log("Hora en curso proporcional: casos de antes que cambian de nivel: " + (cambiosHora.length ? cambiosHora.join(" · ") : "ninguno"));
+  });
+  await paso("Aplicar · ignorar la lluvia pronosticada: la ✕, cuánto dura, cuándo vuelve sola, la hora en curso proporcional y la probabilidad (v166, casos 1 a 16; casos de antes que cambian por la hora proporcional: " + (cambiosHora.length ? cambiosHora.join(" · ") : "ninguno") + ")", async ()=>{
+    const K = "agronotasAplLluvia", reg = ()=>{ const s = localStorage.getItem(K); return s ? JSON.parse(s) : null; };
+    const est0 = D.est ? JSON.stringify(D.est) : null, sync0 = JSON.stringify(D.sync || {}), ui0 = JSON.stringify(D.ui || {});
+    localStorage.removeItem(K);
+    if(nav.tab === "estacion") await irA("panel");
+    let raiz = null;
+    try{
+      const f1 = estSumarDias(estHoyF(), -1), s1 = estSol(f1), a1 = estLimitesDia(f1).a;
+      const H = Math.floor((a1 + (s1.mediodia - 120) * 60) / 3600) * 3600, fin = H + 2700, H0 = H * 1000, T = (fin + 300) * 1000, FIN = T + 6 * H1, hm = ms=>estHoraMs(ms);
+      /* las 8 últimas lecturas fijas: 20 °C, 55 %, viento 6 (ráfaga 10), 650 W/m², sin lluvia; ultLl = lluvia de la última (llr 0,8) */
+      const fijas = (F, ultLl)=>{ for(let k = F.length - 8; k < F.length; k++){ const r = F[k]; r[EST_I.t] = 20; r[EST_I.hr] = 55; r[EST_I.pr] = null; r[EST_I.v10] = 6; r[EST_I.vu] = 6; r[EST_I.vr] = 10; r[EST_I.dv] = 200; r[EST_I.dr] = 205; r[EST_I.rs] = 650;
+          r[EST_I.ll15] = 0; r[EST_I.llr] = 0; r[EST_I.llrh] = 0; r[EST_I.lld] = F[k - 1][EST_I.lld]; }
+        if(ultLl){ const r = F[F.length - 1]; r[EST_I.lld] = Math.round((F[F.length - 2][EST_I.lld] + ultLl) * 100) / 100; r[EST_I.ll15] = ultLl; r[EST_I.llr] = 0.8; r[EST_I.llrh] = 0.8; }
+        return F; };
+      /* estBotLimpio borra la ✕ (v166): aquí se repone, para ver cómo vuelve sola cuando llegan lecturas nuevas */
+      const cargar = async (finTs, ultLl)=>{ const g = localStorage.getItem(K), F = fijas(estBotFilas(3, finTs), ultLl); EST_BOT.modo = "v3"; EST_BOT.filas = F; await estBotLimpio(); await estBotSinc(); if(g) localStorage.setItem(K, g); return F; };
+      /* pronóstico de Open-Meteo armado: k = −2…96 desde la hora Hb; lluvia y probabilidad por k (5 % donde no se dice); sinProb: sin precipitation_probability */
+      const PF = (ll, pr, tC, sinProb, Hb)=>{ const b = Hb != null ? Hb : H, ks = []; for(let k = -2; k <= 96; k++) ks.push(k);
+        const Hh = {time:ks.map(k=>b + k * 3600)}, fijo = (n, v)=>{ Hh[n] = ks.map(()=>v); };
+        fijo("temperature_2m", 20); fijo("relative_humidity_2m", 55); fijo("dew_point_2m", 10.7); fijo("cloud_cover", 20); fijo("wind_speed_10m", 8); fijo("wind_gusts_10m", 14); fijo("wind_direction_10m", 200);
+        fijo("weather_code", 2); fijo("temperature_80m", 18); fijo("shortwave_radiation", 600); fijo("pressure_msl", 1015); fijo("cape", 0);
+        Hh.precipitation = ks.map(k=>(ll || {})[k] || 0); if(!sinProb) Hh.precipitation_probability = ks.map(k=>{ const p = (pr || {})[k]; return p != null ? p : 5; });
+        return estBotEnHora(tC, ()=>estPronNormalizar({hourly:Hh}, wlCoords())); };
+      const ev = (ms, eq)=>estBotEnHora(ms, ()=>{ const A = estAplicarAhora(eq || "turbo"), P48 = estPron48(eq || "turbo", A), c = document.createElement("div"); c.innerHTML = estCampoAplicar(A, P48);
+        const av = document.createElement("div"); av.innerHTML = estAvisosAhoraHTML(); return {A, P48, c, ct:c.textContent.replace(/\s+/g, " "), av, avt:av.textContent.replace(/\s+/g, " ")}; });
+      const btn = (R, id)=>R.c.querySelector("#" + id) || null, btnAv = (R, id)=>R.av.querySelector("#" + id) || null, tx = e=>e ? e.textContent.replace(/\s+/g, " ").trim() : "—";
+      /* 1 · seco */
+      await cargar(fin); estDat.pron = PF({}, {}, T);
+      let R = ev(T);
+      chk(R.A.n === "ok" && R.A.llPuede === false && R.A.S.k.ll === "seco" && !btn(R, "estLlIgnBtn") && !btnAv(R, "estLlIgnBtn"), "1 · Con el pronóstico seco no da «Se puede aplicar» o sale la ✕ (" + R.A.titulo + ", " + R.A.S.k.ll + ")", "media");
+      /* 2 · «No» por el pronóstico: 1,4 mm con 70 % en la hora siguiente */
+      const P0 = PF({2:1.4}, {2:70}, T); estDat.pron = P0; R = ev(T);
+      const b2 = btn(R, "estLlIgnBtn"), a2 = btnAv(R, "estLlIgnBtn"), x2 = R.P48.find(x=>x.ms === H0 + H1);
+      chk(Math.abs(R.A.ll2 - 1.4) < 0.001 && R.A.S.k.ll === "seca" && R.A.n === "ro" && R.A.titulo === "No conviene aplicar ahora" && JSON.stringify(R.A.malos) === JSON.stringify(["lluvia en las próximas 2 horas (1,4 mm, 70 %)"])
+        && b2 && tx(b2) === "✕ Ignorar la lluvia pronosticada" && b2.getAttribute("aria-label") === "Ignorar la lluvia pronosticada hasta las " + hm(FIN) && R.ct.indexOf("1,4 mm entre las " + hm(H0 + H1) + " y las " + hm(H0 + 2 * H1) + ", 70 % de probabilidad") >= 0
+        && R.ct.indexOf("Es pronóstico (Open-Meteo de las " + hm(T) + ")") >= 0 && R.ct.indexOf("Estación: sin lluvia en la última hora.") >= 0
+        && R.avt.indexOf("No conviene aplicar ahora: lluvia en las próximas 2 horas (1,4 mm, 70 %)") >= 0 && a2 && tx(a2) === "✕ Ignorar lluvia" && a2.nextElementSibling && tx(a2.nextElementSibling) === "Ver" && x2 && x2.sem.k.ll === "llueve",
+        "2 · «No» por 1,4 mm pronosticados: " + JSON.stringify({ll2:R.A.ll2, k:R.A.S.k.ll, n:R.A.n, malos:R.A.malos, btn:tx(b2), av:tx(a2), franja:x2 && x2.sem.k.ll}) + " · «" + R.ct.slice(R.ct.indexOf("Es pronóstico"), R.ct.indexOf("Es pronóstico") + 160) + "»", "media");
+      /* 3 · la ✕: se guarda en el equipo (no en D) y queda «Se puede aplicar» con la lluvia ignorada; 8 · el historial no cambia */
+      const D3 = JSON.stringify(D), sem3 = estDat.lect.slice(-96).map(x=>x.sem).join();
+      estBotEnHora(T, estAplLluviaIgnorar);
+      let o = reg();
+      chk(o && o.st === EST_BOT.st && o.t === T && o.fin === FIN && o.mm === 1.4 && o.prob === 70 && o.pronT === P0.t && o.corte === null && JSON.stringify(D) === D3,
+        "3 · El registro de la ✕ no quedó como debía (o cambió el cuaderno): " + JSON.stringify(o), "grave");
+      R = ev(T);
+      const sello3 = [...R.c.querySelectorAll(".est-factores .est-mb.in")].map(tx), avAz = [...R.av.querySelectorAll(".est-av.in")];
+      chk(R.A.n === "ok" && R.A.titulo === "Se puede aplicar" && R.A.S.k.ll === "ignorada" && R.A.S.f.ll === "ok" && R.A.notas.indexOf("lluvia pronosticada ignorada hasta las " + hm(FIN)) >= 0
+        && tx(btn(R, "estLlIgnDes")) === "Volver a contar la lluvia" && !btn(R, "estLlIgnBtn") && sello3.indexOf("Ignorada") >= 0 && R.ct.indexOf("Lluvia: pronóstico ignorado hasta las " + hm(FIN)) >= 0
+        && R.ct.indexOf("Ignoraste 1,4 mm pronosticados entre las " + hm(H0 + H1) + " y las " + hm(H0 + 2 * H1) + " (70 %). Vuelve sola si la estación mide lluvia o si un pronóstico nuevo trae 2,8 mm o más antes de las " + hm(FIN) + ".") >= 0
+        && R.ct.indexOf("Hasta las " + hm(FIN) + " las horas se pintan sin la lluvia del pronóstico (la ignoraste).") >= 0
+        && !/No conviene aplicar/.test(R.avt) && avAz.length === 1 && tx(avAz[0].querySelector("b")) === "Lluvia pronosticada ignorada hasta las " + hm(FIN) && tx(btnAv(R, "estLlIgnDes")) === "Volver a contar"
+        && R.avt.indexOf("Ignoraste 1,4 mm entre las " + hm(H0 + H1) + " y las " + hm(H0 + 2 * H1) + ". Vuelve sola si la estación mide lluvia o si el pronóstico sube.") >= 0,
+        "3 · Con la lluvia ignorada: " + JSON.stringify({n:R.A.n, k:R.A.S.k.ll, notas:R.A.notas, sello:sello3, des:tx(btn(R, "estLlIgnDes")), azul:avAz.length, avDes:tx(btnAv(R, "estLlIgnDes"))}) + " · «" + R.avt.slice(0, 200) + "»", "grave");
+      chk(estDat.lect.slice(-96).map(x=>x.sem).join() === sem3, "8 · Ignorar la lluvia pronosticada cambió las horas aptas del historial", "media");
+      /* 4 · la franja de 48 h sin la lluvia ignorada (turbo y barra) */
+      const P4 = estBotEnHora(T, ()=>estPron48("turbo", estAplicarAhora("turbo"))), V4 = estBotEnHora(T, ()=>estVentanasAptas(P4)), PB = estBotEnHora(T, ()=>estPron48("barra", estAplicarAhora("barra")));
+      const malas4 = P4.filter(x=>x.ms < FIN && ["seca", "secaDuda", "llovizna", "vieneLluvia", "llueve"].indexOf(x.sem.k.ll) >= 0), h4 = P4.find(x=>x.ms === H0 + H1);
+      chk(!malas4.length && h4 && h4.sem.fin === "ok" && V4[0] && V4[0].ini <= H0 + H1 && PB.filter(x=>x.ms < FIN).length > 0 && PB.filter(x=>x.ms < FIN).every(x=>x.sem.k.ll === "ignorada"),
+        "4 · La franja de 48 h sigue pintando la lluvia ignorada: " + malas4.slice(0, 3).map(x=>hm(x.ms) + " " + x.sem.k.ll).join(", ") + " · " + (h4 ? hm(h4.ms) + " " + h4.sem.fin : "sin la hora") + " · ventana " + (V4[0] ? hm(V4[0].ini) : "ninguna") + " · barra: " + PB.filter(x=>x.ms < FIN && x.sem.k.ll !== "ignorada").map(x=>hm(x.ms) + " " + x.sem.k.ll).slice(0, 3).join(", "), "media");
+      /* 5 · Deshacer («Volver a contar») */
+      estBotEnHora(T + 60000, estAplLluviaContar);
+      chk(reg() === null && ev(T + 60000).A.S.k.ll === "seca", "5 · «Volver a contar» no borró la ✕ o la lluvia no volvió a «No» (" + JSON.stringify(reg()) + ")", "media");
+      /* 6 · vence a las 6 h (U.llHoras) */
+      estBotEnHora(T, estAplLluviaIgnorar);
+      const f6a = estBotEnHora(T + 21540000, ()=>[estLlIgnActiva(), estLlIgnFirma()]), f6b = estBotEnHora(T + 21600000, ()=>[estLlIgnActiva(), estLlIgnFirma()]);
+      chk(f6a[0] !== null && f6b[0] === null && reg() === null && f6a[1] !== f6b[1], "6 · La ✕ no vence justo a las 6 h (a las 5 h 59 min " + (f6a[0] ? "activa" : "vencida") + ", a las 6 h " + (f6b[0] ? "activa" : "vencida") + ", registro " + JSON.stringify(reg()) + ")", "media");
+      /* 7 · la estación mide lluvia: vuelve sola (y queda cortada aunque después pare) */
+      localStorage.removeItem(K); estDat.pron = P0; estBotEnHora(T, estAplLluviaIgnorar);
+      await cargar(fin + 900, 0.2); estDat.pron = P0; R = ev((fin + 1200) * 1000); o = reg();
+      chk(R.A.S.k.ll === "llueve" && R.A.n === "ro" && o && o.corte && o.corte.por === "estacion" && o.corte.mm === 0.2 && o.corte.t === H0 + H1,
+        "7 · Con 0,2 mm medidos después de la ✕ no volvió a contar la lluvia: " + JSON.stringify({k:R.A.S.k.ll, n:R.A.n, corte:o && o.corte}), "media");
+      await cargar(fin + 1800); estDat.pron = P0; R = ev((fin + 2100) * 1000);
+      const t7 = "Volvió a contar la lluvia pronosticada: la estación midió 0,2 mm a las " + hm(H0 + H1) + ".";
+      chk(Math.abs(R.A.ll2 - 1.4 * 40 / 60) < 0.001 && R.A.S.k.ll === "llovizna" && R.A.n === "am" && btn(R, "estLlIgnBtn") && R.ct.indexOf(t7) >= 0 && R.avt.indexOf(t7) >= 0,
+        "7 · Después de la lluvia medida: " + JSON.stringify({ll2:R.A.ll2, k:R.A.S.k.ll, n:R.A.n, x:!!btn(R, "estLlIgnBtn"), tarjeta:R.ct.indexOf(t7) >= 0, ahora:R.avt.indexOf(t7) >= 0}), "media");
+      /* 9 · el pronóstico sube: 2,6 mm no basta (2,6 < 2,8); 3,0 mm corta; si después baja, sigue cortada */
+      localStorage.removeItem(K); await cargar(fin); estDat.pron = P0; estBotEnHora(T, estAplLluviaIgnorar);
+      estDat.pron = PF({2:2.6}, {2:80}, T + 60000); R = ev(T + 60000);
+      chk(estBotEnHora(T + 60000, estLlIgnActiva) && R.A.S.k.ll === "ignorada", "9 · Un pronóstico de 2,6 mm (menos del doble y 1 mm) cortó la ✕ (" + R.A.S.k.ll + ")", "media");
+      estDat.pron = PF({2:3.0}, {2:90}, T + 120000); R = ev(T + 120000); o = reg();
+      const t9 = "el pronóstico de las " + hm(T + 120000) + " trae 3,0 mm antes de las " + hm(FIN) + " (ignoraste 1,4 mm)";
+      chk(estBotEnHora(T + 120000, estLlIgnActiva) === null && o && o.corte && o.corte.por === "pronostico" && o.corte.mm === 3 && R.A.S.k.ll === "seca" && R.A.n === "ro" && R.ct.indexOf(t9) >= 0 && R.avt.indexOf(t9) >= 0,
+        "9 · Un pronóstico de 3,0 mm no volvió a contar la lluvia: " + JSON.stringify({corte:o && o.corte, k:R.A.S.k.ll, n:R.A.n, txt:R.ct.indexOf(t9) >= 0}), "media");
+      estDat.pron = PF({2:0.5}, {2:40}, T + 180000); R = ev(T + 180000);
+      chk(estBotEnHora(T + 180000, estLlIgnActiva) === null && R.A.S.k.ll === "llovizna" && reg() && reg().corte.por === "pronostico", "9 · Con el pronóstico otra vez bajo (0,5 mm) la ✕ volvió a quedar activa (" + R.A.S.k.ll + ")", "media");
+      /* 10 · la hora en curso cuenta solo lo que falta: 1,5 mm en la hora en curso a las hh:50 = 0,25 mm (en la v165: 1,5 mm y «No») */
+      localStorage.removeItem(K); estDat.pron = PF({1:1.5}, {1:80}, T); R = ev(T);
+      chk(Math.abs(R.A.ll2 - 0.25) < 0.001 && R.A.S.k.ll === "llovizna" && R.A.n === "am" && Math.abs(estBotEnHora(T, ()=>estPronLl(T, 2)) - 1.5) < 1e-9,
+        "10 · 1,5 mm en la hora en curso a las " + hm(T) + " no cuentan 0,25 mm (" + estF2(R.A.ll2) + " mm, " + R.A.S.k.ll + ") o estPronLl (barómetro) cambió", "media");
+      /* 11 · probabilidad bajo 30 %: el «No» baja a «con cuidado» (respuesta 3 de Manuel: sí) */
+      estDat.pron = PF({2:1.4}, {2:20}, T); R = ev(T);
+      chk(R.A.S.k.ll === "secaDuda" && R.A.S.f.ll === "am" && R.A.titulo === "Aplicar con cuidado" && R.A.cuidado.indexOf("lluvia posible en las próximas 2 horas (1,4 mm, 20 %)") >= 0 && btn(R, "estLlIgnBtn")
+        && R.ct.indexOf("Lluvia posible en las próximas 2 horas (1,4 mm, solo 20 % de probabilidad)") >= 0,
+        "11 · 1,4 mm con 20 % no baja a «con cuidado»: " + JSON.stringify({k:R.A.S.k.ll, f:R.A.S.f.ll, t:R.A.titulo, cuidado:R.A.cuidado, x:!!btn(R, "estLlIgnBtn")}), "media");
+      estDat.pron = PF({2:1.4}, {2:30}, T); const k30 = ev(T).A.S.k.ll;
+      estDat.pron = PF({2:1.4}, null, T, true); const kSin = ev(T).A.S.k.ll;
+      D.est = Object.assign({v:1, llManual:{}}, JSON.parse(est0 || "{}"), {umb:Object.assign({}, (JSON.parse(est0 || "{}").umb) || {}, {llProb:0})}); estDat.pron = PF({2:1.4}, {2:20}, T); const k0 = ev(T).A.S.k.ll;
+      if(est0 == null) delete D.est; else D.est = JSON.parse(est0);
+      chk(k30 === "seca" && kSin === "seca" && k0 === "seca" && EST_UMB_DEF.llProb === 30 && EST_UMB_INFO.some(g=>g[1].some(z=>z[0] === "llProb" && z[3] === 0 && z[4] === 100)),
+        "11 · Con 30 %, sin probabilidad o con el umbral en 0 no queda «No» (" + [k30, kSin, k0].join(", ") + "), o falta llProb = 30 en los umbrales", "media");
+      /* 12 · sin ✕: la estación midiendo lluvia, sin pronóstico y con «Vienen 12 mm o más en 24 horas» */
+      await cargar(fin, 0.2); estDat.pron = PF({}, {}, T); R = ev(T);
+      const x12a = R.A.S.k.ll === "llueve" && !btn(R, "estLlIgnBtn") && !btnAv(R, "estLlIgnBtn");
+      await cargar(fin); estDat.pron = null; R = ev(T); const x12b = R.A.S.k.ll === "sinPron" && !btn(R, "estLlIgnBtn");
+      estDat.pron = PF({10:5, 11:5, 12:5}, {}, T); R = ev(T);
+      const x12c = R.A.ll2 === 0 && R.A.ll6 === 0 && Math.abs(R.A.ll24 - 15) < 0.001 && R.A.S.k.ll === "lava" && !btn(R, "estLlIgnBtn") && !btnAv(R, "estLlIgnBtn");
+      chk(x12a && x12b && x12c, "12 · La ✕ sale con lluvia medida, sin pronóstico o con «Vienen 12 mm o más en 24 horas» (" + [x12a, x12b, x12c].join(", ") + ")", "media");
+      /* 13 · otra estación: el registro no vale */
+      localStorage.setItem(K, JSON.stringify({v:1, st:"999999", t:T, fin:T + H1, mm:1.4, mm2:1.4, prob:70, ini:H0 + H1, finLl:H0 + 2 * H1, pronT:P0.t, k:"seca", corte:null})); estDat.pron = P0;
+      chk(estBotEnHora(T, estLlIgnActiva) === null && ev(T).A.S.k.ll === "seca", "13 · Una ✕ de otra estación se usa aquí", "media");
+      localStorage.removeItem(K);
+      /* 14 · celular espejo: la ✕ funciona (no escribe en D ni pide el iPad) */
+      D.sync = Object.assign({}, JSON.parse(sync0), {rol:"receptor"}); const D14 = JSON.stringify(D); estDat.pron = P0;
+      estBotEnHora(T, estAplLluviaIgnorar); const av14 = txtDe(document.getElementById("avisoCapa"));
+      chk(reg() && reg().t === T && JSON.stringify(D) === D14 && !/En el celular solo se consulta/.test(av14) && av14.indexOf("Lluvia pronosticada ignorada hasta las " + hm(FIN) + ". Vuelve sola si la estación mide lluvia o si el pronóstico sube.") >= 0,
+        "14 · En el celular espejo la ✕ no se guarda, cambia el cuaderno o pide el iPad («" + av14.slice(0, 120) + "»)", "media");
+      D.sync = JSON.parse(sync0); localStorage.removeItem(K);
+      /* 17 (revisión r1) · con la ✕ activa y lluvia nueva después de su término, el texto da la probabilidad de la lluvia que cuenta, no la de la hora ignorada. Mirada a T + 5 h (la ✕ termina a T + 6 h) */
+      localStorage.removeItem(K); await cargar(fin);
+      estDat.pron = PF({2:1.4, 6:0.5, 8:2.4}, {2:90, 6:90, 8:20}, T); estBotEnHora(T, estAplLluviaIgnorar);
+      await cargar(fin + 5 * 3600); estDat.pron = PF({2:1.4, 6:0.5, 8:2.4}, {2:90, 6:90, 8:20}, T);
+      R = ev(T + 5 * H1);
+      chk(reg() && !reg().corte && R.A.ign && R.A.S.k.ll === "secaDuda" && R.A.S.f.ll === "am" && Math.abs(R.A.ll2 - 2) < 0.001 && R.A.det2 && R.A.det2.prob === 20 && R.ct.indexOf("Lluvia posible en las próximas 2 horas (2,0 mm, solo 20 % de probabilidad)") >= 0 && R.ct.indexOf("solo 90 %") < 0 && R.A.cuidado.indexOf("lluvia posible en las próximas 2 horas (2,0 mm, 20 %)") >= 0,
+        "17 · Con la ✕ y lluvia nueva (secaDuda): " + JSON.stringify({k:R.A.S.k.ll, ll2:R.A.ll2, prob:R.A.det2 && R.A.det2.prob, cuidado:R.A.cuidado}), "media");
+      localStorage.removeItem(K); await cargar(fin);
+      estDat.pron = PF({2:1.4, 6:0.5, 11:2.4}, {2:90, 6:90, 11:40}, T); estBotEnHora(T, estAplLluviaIgnorar);
+      await cargar(fin + 5 * 3600); estDat.pron = PF({2:1.4, 6:0.5, 11:2.4}, {2:90, 6:90, 11:40}, T);
+      R = ev(T + 5 * H1);
+      chk(reg() && !reg().corte && R.A.ign && R.A.S.k.ll === "vieneLluvia" && R.A.S.f.ll === "am" && R.A.det && R.A.det.prob === 40 && R.ct.indexOf("Lluvia en 2 a 6 horas (2,4 mm, 40 %): solo con productos que resisten según el rótulo") >= 0,
+        "17 · Con la ✕ y lluvia nueva (vieneLluvia): " + JSON.stringify({k:R.A.S.k.ll, ll6:R.A.ll6, prob:R.A.det && R.A.det.prob, tit:R.A.T && R.A.T.ll && R.A.T.ll.tit}), "media");
+      localStorage.removeItem(K);
+      /* 18 (revisión r2) · con la ✕ activa y lluvia nueva después de su término, la tarjeta ofrece «Volver a contar» y también su propia ✕ (B §3.2), como «Ahora». Mirada a T + 5 h (termina a T + 6 h): de esa lluvia, 1,5 mm entre H + 7 y H + 8, entran 50 min en las 2 h */
+      localStorage.removeItem(K); await cargar(fin);
+      estDat.pron = PF({2:1.4, 8:1.5}, {2:70, 8:60}, T); estBotEnHora(T, estAplLluviaIgnorar);
+      await cargar(fin + 5 * 3600); estDat.pron = PF({2:1.4, 8:1.5}, {2:70, 8:60}, T);
+      const T18 = T + 5 * H1; R = ev(T18);
+      const t18 = "Es pronóstico (Open-Meteo de las " + hm(T) + ", hace 5 h): 1,3 mm entre las " + hm(H0 + 7 * H1) + " y las " + hm(H0 + 7 * H1 + 50 * 60000) + ", 60 % de probabilidad.";
+      chk(R.A.ign && R.A.llPuede === true && R.A.S.k.ll === "seca" && R.A.n === "ro" && Math.abs(R.A.ll2 - 1.25) < 0.001 && tx(btn(R, "estLlIgnDes")) === "Volver a contar la lluvia" && tx(btn(R, "estLlIgnBtn")) === "✕ Ignorar la lluvia pronosticada" && R.c.querySelectorAll(".est-llign").length === 2
+        && btn(R, "estLlIgnBtn").getAttribute("aria-label") === "Ignorar la lluvia pronosticada hasta las " + hm(T18 + 6 * H1) && R.ct.indexOf("Ignoraste 1,4 mm pronosticados") >= 0 && R.ct.indexOf(t18) >= 0 && btnAv(R, "estLlIgnBtn"),
+        "18 · Con la ✕ y lluvia nueva la tarjeta no ofrece las dos: " + JSON.stringify({ign:!!R.A.ign, puede:R.A.llPuede, k:R.A.S.k.ll, n:R.A.n, ll2:R.A.ll2, des:tx(btn(R, "estLlIgnDes")), x:tx(btn(R, "estLlIgnBtn")), bloques:R.c.querySelectorAll(".est-llign").length, texto:R.ct.indexOf(t18) >= 0}), "media");
+      estBotEnHora(T18, estAplLluviaIgnorar); o = reg(); R = ev(T18);
+      chk(o && o.t === T18 && o.fin === T18 + 6 * H1 && o.mm === 1.5 && o.prob === 60 && !o.corte && R.A.S.k.ll === "ignorada" && R.A.n === "ok" && btn(R, "estLlIgnDes") && !btn(R, "estLlIgnBtn"),
+        "18 · La ✕ de la lluvia nueva no la ignora: " + JSON.stringify({o, k:R.A.S.k.ll, n:R.A.n}), "media");
+      /* 19 (revisión r2) · una lectura de antes del toque que llega después (no se había visto) también corta la ✕: si llovió, el pronóstico tenía razón. Última lectura vista H + 30, toque H + 50, llega la de H + 45 con 0,4 mm */
+      localStorage.removeItem(K); await cargar(fin - 900); estDat.pron = P0; estBotEnHora(T, estAplLluviaIgnorar); o = reg();
+      chk(o && o.t === T && o.vis === (fin - 900) * 1000 && !o.corte, "19 · La ✕ no guarda la última lectura que se veía: " + JSON.stringify(o), "media");
+      estDat.lect[estDat.lect.length - 2].ll = 0.4; R = ev(T + 60000);
+      chk(reg() && !reg().corte && R.A.S.k.ll === "ignorada", "19 · Lluvia de una lectura que ya se veía al tocar cortó la ✕: " + JSON.stringify({corte:reg() && reg().corte, k:R.A.S.k.ll}), "media");
+      await cargar(fin, 0.4); estDat.pron = P0; R = ev(T + 300000); o = reg();
+      chk(R.A.S.k.ll === "llueve" && o && o.corte && o.corte.por === "estacion" && o.corte.mm === 0.4 && o.corte.t === fin * 1000, "19 · La lectura atrasada con 0,4 mm no cortó la ✕: " + JSON.stringify({k:R.A.S.k.ll, corte:o && o.corte}), "media");
+      await cargar(fin + 900); estDat.pron = P0; R = ev((fin + 960) * 1000); o = reg();
+      chk(R.A.S.k.ll === "seca" && !R.A.ign && o && o.corte && R.ct.indexOf("Volvió a contar la lluvia pronosticada: la estación midió 0,4 mm a las " + hm(fin * 1000) + ".") >= 0, "19 · Con la lectura siguiente seca la ✕ volvió a quedar activa: " + JSON.stringify({k:R.A.S.k.ll, ign:!!R.A.ign, corte:o && o.corte}), "media");
+      /* un registro sin «vis» (de antes de esta revisión) sigue contando desde el toque */
+      localStorage.removeItem(K); await cargar(fin - 900); estDat.pron = P0; estBotEnHora(T, estAplLluviaIgnorar); o = reg(); delete o.vis; localStorage.setItem(K, JSON.stringify(o));
+      await cargar(fin, 0.4); estDat.pron = P0; R = ev(T + 300000);
+      chk(reg() && !reg().corte, "19 · Un registro sin «vis» se cortó con una lectura de antes del toque: " + JSON.stringify(reg()), "leve");
+      localStorage.removeItem(K);
+      /* 15 · en pantalla (hora real): tocar la ✕ deja el foco en «Volver a contar la lluvia» sin mover la pantalla; a 375 px, botones de 44 px dentro */
+      const fR = Math.floor(Date.now() / 1000 / 900) * 900; await cargar(fR); estDat.pron = PF({2:1.4}, {2:70}, Date.now(), false, Math.floor(Date.now() / H1) * 3600);
+      await estBotCampo("campo");
+      const b15 = necesito(document.querySelector("#estKAplicar #estLlIgnBtn"), "«✕ Ignorar la lluvia pronosticada» en la tarjeta");
+      try{ b15.scrollIntoView({block:"center", behavior:"instant"}); }catch(e){} await esperar(150);
+      const y15 = scrollY; await tocar(b15, "✕ Ignorar la lluvia pronosticada"); await pausa(.4);
+      const ae15 = document.activeElement, dy15 = Math.abs(scrollY - y15);
+      chk(ae15 && ae15.id === "estLlIgnDes" && dy15 < 40 && reg() && !reg().corte && document.getElementById("estU_llProb"),
+        "15 · Al tocar la ✕ el foco no pasó a «Volver a contar la lluvia» o la pantalla se movió " + Math.round(dy15) + " px (foco en «" + (ae15 && ae15.id) + "»), o falta el umbral «llProb» en Ajustes", "media");
+      await tocar("#estKAplicar #estLlIgnDes", "Volver a contar la lluvia"); await pausa(.4);
+      chk(document.activeElement && document.activeElement.id === "estLlIgnBtn" && reg() === null, "15 · «Volver a contar la lluvia» no borró la ✕ o el foco no volvió a la ✕", "media");
+      /* revisión r2: en el aviso de «Ahora» el botón contrario también queda donde estaba el tocado (±1 px): el aviso azul es más alto que el rojo. Aquí con el ancho de la ventana y más abajo a 375 px */
+      const enAhora = async nom=>{
+        estNav().sec = "ahora"; estPintar(); await pausa(.3);
+        const qa = id=>document.querySelector("#estVista .est-avisos #" + id), bX = necesito(qa("estLlIgnBtn"), "la ✕ de «Ahora»" + nom);
+        try{ bX.scrollIntoView({block:"center", behavior:"instant"}); }catch(e){} await esperar(120);
+        const t0 = bX.getBoundingClientRect().top; bX.click(); await esperar(120);
+        const bD = necesito(qa("estLlIgnDes"), "«Volver a contar» de «Ahora»" + nom), t1 = bD.getBoundingClientRect().top, fD = document.activeElement === bD;
+        bD.click(); await esperar(120);
+        const bV = necesito(qa("estLlIgnBtn"), "la ✕ de vuelta en «Ahora»" + nom), t2 = bV.getBoundingClientRect().top, fV = document.activeElement === bV;
+        chk(Math.abs(t1 - t0) <= 1 && Math.abs(t2 - t1) <= 1 && fD && fV && reg() === null, "15 · En «Ahora»" + nom + " el botón bajo el dedo se movió: ✕ a " + Math.round(t0) + " px → «Volver a contar» a " + Math.round(t1) + " px → ✕ a " + Math.round(t2) + " px (foco " + fD + "/" + fV + ")", "media");
+      };
+      await enAhora("");
+      D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar(); render(); await pausa(.5); await irA("estacion");
+      estNav().sec = "campo"; estPintar(); await pausa(.3);
+      raiz = document.getElementById("estRaiz"); if(raiz){ raiz.style.width = "375px"; raiz.style.maxWidth = "375px"; } await pausa(.3);
+      /* revisión r1: a 375 px, normal y con texto grande, el botón contrario queda donde estaba el tocado (±1 px), con el foco: el párrafo de arriba y el texto del bloque cambian de largo */
+      for(const g of [false, true]){
+        D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:g}); uiAplicar(); estNav().sec = "campo"; estPintar(); await pausa(.3);
+        const qb = id=>document.querySelector("#estKAplicar #" + id), bX = necesito(qb("estLlIgnBtn"), "la ✕ a 375 px");
+        try{ bX.scrollIntoView({block:"center", behavior:"instant"}); }catch(e){} await esperar(120);
+        const t0 = bX.getBoundingClientRect().top; bX.click(); await esperar(120);
+        const bD = necesito(qb("estLlIgnDes"), "«Volver a contar la lluvia» a 375 px"), t1 = bD.getBoundingClientRect().top, fD = document.activeElement === bD;
+        bD.click(); await esperar(120);
+        const bV = necesito(qb("estLlIgnBtn"), "la ✕ de vuelta a 375 px"), t2 = bV.getBoundingClientRect().top, fV = document.activeElement === bV;
+        chk(Math.abs(t1 - t0) <= 1 && Math.abs(t2 - t1) <= 1 && fD && fV && reg() === null, "15 · A 375 px" + (g ? " con texto grande" : "") + " el botón bajo el dedo se movió: ✕ a " + Math.round(t0) + " px → «Volver a contar» a " + Math.round(t1) + " px → ✕ a " + Math.round(t2) + " px (foco " + fD + "/" + fV + ")", "media");
+        await enAhora(" a 375 px" + (g ? " con texto grande" : ""));
+      }
+      D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar(); estNav().sec = "campo"; estPintar(); await pausa(.3);
+      const dentro = e=>{ if(!e || !raiz) return false; const Rr = raiz.getBoundingClientRect(), r = e.getBoundingClientRect(); return e.offsetHeight >= 44 && r.right <= Rr.left + 375 + 1 && r.left >= Rr.left - 1; };
+      const c15 = dentro(document.querySelector("#estKAplicar #estLlIgnBtn")), w15 = raiz && raiz.scrollWidth <= raiz.clientWidth + 1;
+      estNav().sec = "ahora"; estPintar(); await pausa(.3);
+      const bA = document.querySelector("#estVista .est-avisos #estLlIgnBtn"), vA = bA && bA.nextElementSibling;
+      const a15 = dentro(bA) && vA && txtDe(vA) === "Ver" && dentro(vA) && Math.abs(bA.getBoundingClientRect().top - vA.getBoundingClientRect().top) < 2, w15b = raiz && raiz.scrollWidth <= raiz.clientWidth + 1;
+      chk(c15 && a15 && w15 && w15b, "15 · A 375 px la ✕ o «Ver» miden menos de 44 px, no quedan en una fila o se salen (tarjeta " + c15 + ", Ahora " + a15 + ", ancho " + w15 + "/" + w15b + ")", "media");
+      /* 16 · lo de antes: la tabla de casos, los otros pasos de «Aplicar», el barómetro (estPronLl, caso 10) y «2 h = No, 2 a 6 h = Cuidado» en la franja corren en sus pasos */
+    } finally {
+      localStorage.removeItem(K); if(est0 == null) delete D.est; else D.est = JSON.parse(est0); D.sync = JSON.parse(sync0);
+      if(raiz){ raiz.style.width = ""; raiz.style.maxWidth = ""; } D.ui = JSON.parse(ui0); try{ uiAplicar(); render(); }catch(e){}
+      EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(5); await estBotLimpio(); await estBotSinc(); await estPronCargar(true);
+    }
+    revisarPantalla();
+  });
+  /* ---- v167 (pedido de Manuel, 05-11-2026; contrato_v167_avisos.md, partes A y B): el riesgo de lavado no se va con la ✕ de la lluvia y tiene su propia ✕ por 6 horas. Comprobaciones 1 a 4 del contrato y lo del lavado de la 7, la 9 y la 10 ---- */
+  await paso("Aplicar · riesgo de lavado (v167): no se va con la ✕ de la lluvia, su propia ✕ por 6 horas, la franja de 48 h, cuándo vuelve, lo guardado en el equipo y nada de D, del historial ni del Excel", async ()=>{
+    const est0 = D.est ? JSON.stringify(D.est) : null, sync0 = JSON.stringify(D.sync || {}), ui0 = JSON.stringify(D.ui || {}), g0 = window.guardar;
+    let nG = 0, raiz = null; window.guardar = function(){ nG++; return g0.apply(this, arguments); };
+    if(nav.tab === "estacion") await irA("panel");
+    try{
+      const {H, fin, H0, T, FIN, hm, KA, cargar, PF, ev, btn, btnAv, tx, regA, limpiar} = estBotAvKit();
+      const ST = EST_BOT.st, TIT = "Riesgo de lavado: vienen 15 mm en 24 horas (pueden lavar los productos de contacto)", MOT = "riesgo de lavado (15 mm en 24 horas)", ARIA = "Quitar el aviso de lavado hasta las " + hm(FIN);
+      const TQ = "Aviso de lavado quitado hasta las " + hm(FIN) + ". Si a esa hora sigue el riesgo, vuelve a aparecer.", NQ = "aviso de lavado quitado hasta las " + hm(FIN), LEY = "Hasta las " + hm(FIN) + " las horas se pintan sin el riesgo de lavado (lo quitaste).";
+      const sello = R=>tx(R.c.querySelectorAll(".est-factores li")[3].querySelector(".est-mb")), av = ()=>txtDe(document.getElementById("avisoCapa")), semH = ()=>estDat.lect.slice(-96).map(x=>x.sem).join();
+      localStorage.setItem(KA, "{}"); await estBotLimpio(); chk(localStorage.getItem(KA) === null, "estBotLimpio no borra lo oculto («agronotasAvisosOcultos»)", "media");
+      limpiar(); await cargar(fin);
+      /* 1 · 15 mm dentro de las próximas 2 h, seco lo demás: «No»; con la ✕ de la lluvia, riesgo de lavado; con la ✕ del lavado, «Se puede aplicar» */
+      const P15 = PF({2:15}, {2:70}, T); estDat.pron = P15;
+      let R = ev(T);
+      chk(R.A.S.k.ll === "seca" && R.A.S.f.ll === "ro" && R.A.n === "ro" && R.A.titulo === "No conviene aplicar ahora" && Math.abs(R.A.ll24 - 15) < 1e-9 && R.A.llPuede === true && R.A.lavaPuede === false && !R.A.lavaQuit && JSON.stringify(R.A.malos) === JSON.stringify(["lluvia en las próximas 2 horas (15,0 mm, 70 %)"])
+        && btn(R, "estLlIgnBtn") && btnAv(R, "estLlIgnBtn") && !btn(R, "estLavaBtn") && !btnAv(R, "estLavaBtn") && !btn(R, "estLavaDes"),
+        "1 · 15 mm en 2 h sin tocar nada: " + JSON.stringify({k:R.A.S.k.ll, n:R.A.n, t:R.A.titulo, ll24:R.A.ll24, ll:R.A.llPuede, lava:R.A.lavaPuede, malos:R.A.malos}), "grave");
+      const D1 = JSON.stringify(D), sem1 = semH(); nG = 0;
+      estBotEnHora(T, estAplLluviaIgnorar); R = ev(T);
+      const bL = btn(R, "estLavaBtn"), aL = btnAv(R, "estLavaBtn");
+      chk(R.A.S.k.ll === "lava" && R.A.S.f.ll === "am" && R.A.n === "am" && R.A.titulo === "Aplicar con cuidado" && R.A.ll2 === 0 && R.A.ll6 === 0 && Math.abs(R.A.ll24 - 15) < 1e-9 && !R.A.malos.length && JSON.stringify(R.A.cuidado) === JSON.stringify([MOT]) && R.A.T.ll.tit === TIT && R.A.T.ll.mot === MOT && R.A.llPuede === false && R.A.lavaPuede === true && !R.A.lavaQuit && R.A.ign,
+        "1 · Con la ✕ de la lluvia no queda «Aplicar con cuidado» por el lavado: " + JSON.stringify({k:R.A.S.k.ll, f:R.A.S.f.ll, n:R.A.n, t:R.A.titulo, ll2:R.A.ll2, ll6:R.A.ll6, ll24:R.A.ll24, cuidado:R.A.cuidado, tit:R.A.T.ll.tit, ll:R.A.llPuede, lava:R.A.lavaPuede}), "grave");
+      chk(R.ct.indexOf("Esta ✕ no quita el riesgo de lavado: con 12 mm o más en 24 horas el aviso sigue, y se quita aparte con «✕ Quitar aviso de lavado», por 6 horas.") >= 0, "A · Las reglas plegadas no dicen que la ✕ de la lluvia no quita el riesgo de lavado", "media");
+      chk(estLavaMm(15) === "15 mm" && estLavaMm(15.3) === "15,3 mm" && estLavaMm(14.96) === "15 mm" && estLavaMm(null) === "—", "A · Los mm del lavado no se escriben como en el contrato: " + [estLavaMm(15), estLavaMm(15.3), estLavaMm(14.96), estLavaMm(null)].join(" · "), "media");
+      chk(R.ct.indexOf("Ojo con: " + MOT + ".") >= 0 && sello(R) === "Cuidado" && tx(btn(R, "estLlIgnDes")) === "Volver a contar la lluvia" && !btn(R, "estLlIgnBtn") && R.ct.indexOf("Ignoraste 15,0 mm pronosticados entre las " + hm(H0 + 3600000) + " y las " + hm(H0 + 7200000) + " (70 %).") >= 0
+        && bL && tx(bL) === "✕ Quitar aviso de lavado" && bL.getAttribute("aria-label") === ARIA && tx(bL.parentNode.querySelector("span")) === "Riesgo de lavado: vienen 15 mm en las próximas 24 horas. Sirve para elegir un producto que resista; manda el rótulo." && R.c.querySelectorAll(".est-llign").length === 2,
+        "1 · La tarjeta con la ✕ de la lluvia y 15 mm: " + JSON.stringify({sello:sello(R), des:tx(btn(R, "estLlIgnDes")), btn:tx(bL), aria:bL && bL.getAttribute("aria-label"), bloque:bL && tx(bL.parentNode.querySelector("span")), bloques:R.c.querySelectorAll(".est-llign").length}), "grave");
+      chk(R.avt.indexOf("Aplicar con cuidado: " + MOT) >= 0 && aL && tx(aL) === "✕ Quitar lavado" && aL.getAttribute("aria-label") === ARIA && aL.nextElementSibling && tx(aL.nextElementSibling) === "Ver" && !btnAv(R, "estLlIgnBtn") && R.avt.indexOf("Lluvia pronosticada ignorada hasta las " + hm(FIN) + ".") >= 0 && !/No conviene aplicar/.test(R.avt),
+        "1 · El aviso de «Ahora» con la ✕ de la lluvia y 15 mm: «" + R.avt.slice(0, 220) + "» · " + JSON.stringify({btn:tx(aL), aria:aL && aL.getAttribute("aria-label")}), "grave");
+      estBotEnHora(T, estLavaQuitar);
+      const o1 = regA(), z1 = o1 && o1.l && o1.l.lava, av1 = av(), acc1 = document.querySelector("#avisoCapa .aviso-acc");
+      chk(o1 && o1.v === 1 && o1.st === ST && z1 && z1.t === T && z1.fin === FIN && z1.n === "am" && z1.mm === 15 && z1.pronT === P15.t && !z1.corte && Object.keys(o1.l).length === 1,
+        "1 · Lo guardado por la ✕ del lavado no tiene la forma del contrato: " + JSON.stringify(o1), "grave");
+      chk(JSON.stringify(D) === D1 && nG === 0 && semH() === sem1, "7 y 10 · La ✕ de la lluvia o la del lavado cambiaron el cuaderno (" + (JSON.stringify(D) === D1) + "), llamaron a guardar() (" + nG + " veces) o cambiaron las horas aptas del historial (" + (semH() === sem1) + ")", "grave");
+      chk(av1.indexOf(TQ) >= 0 && acc1 && txtDe(acc1) === "Deshacer", "1 · El aviso flotante de la ✕ del lavado no es el del contrato («" + av1 + "»)", "media");
+      R = ev(T);
+      chk(R.A.n === "ok" && R.A.titulo === "Se puede aplicar" && R.A.S.k.ll === "ignorada" && R.A.S.f.ll === "ok" && R.A.lavaPuede === false && R.A.lavaQuit && R.A.lavaQuit.fin === FIN && R.A.notas.indexOf(NQ) >= 0 && R.A.notas.indexOf("lluvia pronosticada ignorada hasta las " + hm(FIN)) >= 0 && sello(R) === "Quitado" && R.c.querySelectorAll(".est-factores li")[3].querySelector(".est-mb.in"),
+        "1 · Con la ✕ del lavado no queda «Se puede aplicar» con la nota y el sello «Quitado»: " + JSON.stringify({n:R.A.n, t:R.A.titulo, k:R.A.S.k.ll, f:R.A.S.f.ll, notas:R.A.notas, sello:sello(R)}), "grave");
+      const bQ = btn(R, "estLavaDes");
+      chk(bQ && tx(bQ) === "Volver a mostrar" && tx(bQ.parentNode.querySelector("span")) === TQ && !btn(R, "estLavaBtn") && R.ct.indexOf(LEY) >= 0 && R.c.querySelector("[data-lava-ley]") && R.ct.indexOf("Nota: lluvia pronosticada ignorada hasta las " + hm(FIN) + ", " + NQ + ".") >= 0,
+        "1 · La tarjeta con el lavado quitado: " + JSON.stringify({btn:tx(bQ), bloque:bQ && tx(bQ.parentNode.querySelector("span")), ley:R.ct.indexOf(LEY) >= 0}), "media");
+      chk(!/Riesgo de lavado|riesgo de lavado \(/.test(R.avt) && !btnAv(R, "estLavaBtn") && R.av.querySelector(".est-av.in") && btnAv(R, "estLlIgnDes"), "1 · «Ahora» con el lavado quitado sigue con el aviso de lavado o sin el azul de la lluvia («" + R.avt.slice(0, 200) + "»)", "media");
+      /* «Deshacer» del aviso flotante: repone el lavado (la ✕ de la lluvia sigue) */
+      nG = 0; estBotEnHora(T + 60000, ()=>acc1.click()); R = ev(T + 60000);
+      chk(regA() === null && R.A.S.k.ll === "lava" && R.A.n === "am" && R.A.lavaPuede === true && !R.A.lavaQuit && R.A.ign && nG === 0 && JSON.stringify(D) === D1 && btn(R, "estLavaBtn") && av().indexOf("Vuelve a aparecer el aviso de lavado.") >= 0,
+        "1 · «Deshacer» no repuso el aviso de lavado: " + JSON.stringify({reg:regA(), k:R.A.S.k.ll, n:R.A.n, nG}) + " («" + av() + "»)", "media");
+      /* lavado solo (sin la ✕ de la lluvia): 15 mm después de las 6 h */
+      limpiar(); estDat.pron = PF({10:5, 11:5, 12:5}, {}, T); R = ev(T);
+      const x1 = R.A.S.k.ll === "lava" && R.A.ll2 === 0 && R.A.ll6 === 0 && R.A.llPuede === false && R.A.lavaPuede === true && R.ct.indexOf("Ojo con: " + MOT) >= 0 && btn(R, "estLavaBtn") && btnAv(R, "estLavaBtn");
+      estBotEnHora(T, estLavaQuitar); R = ev(T);
+      chk(x1 && R.A.n === "ok" && R.A.titulo === "Se puede aplicar" && R.A.S.k.ll === "seco" && JSON.stringify(R.A.notas) === JSON.stringify([NQ]) && sello(R) === "Quitado" && btn(R, "estLavaDes") && !/Aplicar con cuidado|No conviene aplicar/.test(R.avt) && !btnAv(R, "estLavaBtn"),
+        "1 · Lavado solo y su ✕: " + JSON.stringify({antes:!!x1, n:R.A.n, k:R.A.S.k.ll, notas:R.A.notas, sello:sello(R)}) + " «" + R.avt.slice(0, 120) + "»", "media");
+      /* con la estación atrasada no hay veredicto: sin ✕ y sin bloque; lo quitado se respeta en la franja */
+      const R9 = ev(T + 2 * 3600000);
+      limpiar(); const R9b = ev(T + 2 * 3600000);
+      chk(R9.A.sinDatos && R9.A.lavaPuede === false && !btn(R9, "estLavaBtn") && !btn(R9, "estLavaDes") && R9.c.querySelector("[data-lava-ley]") && R9b.A.sinDatos && R9b.A.lavaPuede === false && !btn(R9b, "estLavaBtn") && !btnAv(R9b, "estLavaBtn"),
+        "1 · Con la estación atrasada sale la ✕ del lavado o no se respeta lo quitado: " + JSON.stringify({sin:R9.A.sinDatos, lava:R9.A.lavaPuede, sin2:R9b.A.sinDatos, lava2:R9b.A.lavaPuede}), "media");
+      /* 2 · 0,8 mm dentro de 2 h y nada más: la ✕ de la lluvia da «Se puede aplicar», como antes, y no sale lavado */
+      limpiar(); estDat.pron = PF({2:0.8}, {2:70}, T); R = ev(T); const k2 = R.A.S.k.ll;
+      estBotEnHora(T, estAplLluviaIgnorar); R = ev(T);
+      chk(k2 === "llovizna" && R.A.n === "ok" && R.A.titulo === "Se puede aplicar" && R.A.S.k.ll === "ignorada" && R.A.S.f.ll === "ok" && R.A.lavaPuede === false && Math.abs(R.A.ll24 - 0.8) < 1e-9 && !btn(R, "estLavaBtn") && !btnAv(R, "estLavaBtn") && !btn(R, "estLavaDes") && sello(R) === "Ignorada" && R.ct.indexOf("Riesgo de lavado:") < 0,
+        "2 · 0,8 mm con la ✕ de la lluvia: " + JSON.stringify({antes:k2, n:R.A.n, t:R.A.titulo, k:R.A.S.k.ll, lava:R.A.lavaPuede, ll24:R.A.ll24, sello:sello(R)}), "media");
+      /* 3 · el mismo caso de 1 en la franja de 48 h: las horas pintadas con y sin cada ✕ */
+      const P48 = (eq, conA)=>estBotEnHora(T, ()=>estPron48(eq || "turbo", conA === false ? null : estAplicarAhora(eq || "turbo")));
+      const ks = (F, n)=>F.slice(0, n).map(x=>x.sem.k.ll).join(), fs = (F, n)=>F.slice(0, n).map(x=>x.sem.fin).join();
+      const celdas = F=>{ const c = document.createElement("div"); c.innerHTML = estBotEnHora(T, ()=>estFranja48(F, "turbo")); const f = c.querySelector(".est-h48-f .est-h48-c").children; return [0, 1, 2].map(j=>f[F[j].h].className).join(); };
+      const VENT = F=>estBotEnHora(T, ()=>estVentanasAptas(F))[0];
+      limpiar(); estDat.pron = P15;
+      const F0 = P48(), F0n = P48("turbo", false);
+      chk(F0[0].ms === H0 && F0[0].medido && ks(F0, 4) === "seca,llueve,seco,seco" && fs(F0, 3) === "ro,ro,ok" && celdas(F0) === "ro,ro,ok" && F0n[0].sem.k.ll === "seca" && VENT(F0).ini === H0 + 2 * 3600000,
+        "3 · La franja sin tocar nada: " + ks(F0, 4) + " · " + fs(F0, 3) + " · celdas " + celdas(F0) + " · ventana " + hm(VENT(F0) && VENT(F0).ini), "media");
+      estBotEnHora(T, estAplLluviaIgnorar);
+      const F1 = P48(), F1n = P48("turbo", false), F1b = P48("barra");
+      /* r1: la hora en que cae la lluvia también cuenta para el lavado (las 24 h desde el comienzo de la hora, como estAplicarAhora): antes la ✕ de la lluvia la dejaba «Apto» con los 15 mm cayendo en ella */
+      chk(ks(F1, 4) === "lava,lava,ignorada,ignorada" && fs(F1, 3) === "am,am,ok" && celdas(F1) === "am,am,ok" && F1n[0].sem.k.ll === "lava" && F1n[0].sem.f.ll === "am" && F1n[1].sem.k.ll === "lava" && F1n[1].sem.f.ll === "am" && F1n[2].sem.k.ll === "ignorada" && F1.find(x=>x.ms === H0 + 7 * 3600000).sem.k.ll === "seco" && VENT(F1).ini === H0 + 2 * 3600000 && F1b[1].sem.k.ll === "lava" && F1b[2].sem.k.ll === "ignorada",
+        "3 · La franja con la ✕ de la lluvia: " + ks(F1, 4) + " · " + fs(F1, 3) + " · celdas " + celdas(F1) + " · sin medido " + ks(F1n, 3) + " · barra " + ks(F1b, 3) + " · ventana " + hm(VENT(F1) && VENT(F1).ini), "media");
+      estBotEnHora(T, estLavaQuitar);
+      const F2 = P48(), F2n = P48("turbo", false);
+      chk(ks(F2, 4) === "ignorada,ignorada,ignorada,ignorada" && fs(F2, 3) === "ok,ok,ok" && celdas(F2) === "ok,ok,ok" && F2n[0].sem.k.ll === "ignorada" && VENT(F2).ini === H0 + 3600000,
+        "3 · La franja con las dos ✕: " + ks(F2, 4) + " · " + fs(F2, 3) + " · celdas " + celdas(F2) + " · sin medido " + ks(F2n, 2), "media");
+      /* la lluvia cruda: 8 mm en la hora ignorada y 8 mm después del término. Con el factor de la ✕ serían 8 mm y no habría lavado */
+      limpiar(); estDat.pron = PF({2:8, 8:8}, {2:70, 8:70}, T); estBotEnHora(T, estAplLluviaIgnorar); R = ev(T);
+      const Fc = P48("turbo", false);
+      chk(R.A.S.k.ll === "lava" && Math.abs(R.A.ll24 - 16) < 1e-9 && R.A.ll6 === 0 && Fc[0].sem.k.ll === "lava" && Fc[1].sem.k.ll === "vieneLluvia" && R.A.T.ll.mot === "riesgo de lavado (16 mm en 24 horas)",
+        "3 · El lavado no suma la lluvia cruda de cada hora: " + JSON.stringify({k:R.A.S.k.ll, ll24:R.A.ll24, ll6:R.A.ll6, franja:ks(Fc, 2), mot:R.A.T.ll.mot}), "media");
+      /* r1: la escena de la revisión, a las hh:50 con 8 mm en la hora siguiente y 7 mm en la otra. Sin tocar: «No» y la ventana apta después de la lluvia. Con la ✕ de la lluvia: lavado ahora y en la hora
+         de los 8 mm (15 mm desde su comienzo); la de los 7 mm queda apta (7 mm en 24 h). La «Próxima ventana apta» de «Ahora» ya no empieza justo cuando empieza la lluvia que da el lavado */
+      limpiar(); estDat.pron = PF({2:8, 3:7}, {2:70, 3:70}, T); R = ev(T);
+      const vTx = ms=>"Próxima ventana apta: " + estDiaCorto(estFechaLocal(ms / 1000)) + ", " + hm(ms) + " a ", r8 = {n:R.A.n, ks:ks(R.P48, 4), v:R.avt.indexOf(vTx(H0 + 3 * 3600000)) >= 0};
+      estBotEnHora(T, estAplLluviaIgnorar); R = ev(T);
+      chk(r8.n === "ro" && r8.ks === "seca,llueve,llueve,seco" && r8.v && R.A.n === "am" && R.A.S.k.ll === "lava" && Math.abs(R.A.ll24 - 15) < 1e-9 && ks(R.P48, 4) === "lava,lava,ignorada,ignorada" && fs(R.P48, 4) === "am,am,ok,ok" && celdas(R.P48) === "am,am,ok"
+        && R.avt.indexOf("Aplicar con cuidado: " + MOT) >= 0 && R.avt.indexOf(vTx(H0 + 2 * 3600000)) >= 0 && R.avt.indexOf(vTx(H0 + 3600000)) < 0,
+        "3 · Con 8 + 7 mm y la ✕ de la lluvia, la franja deja «Apto» la hora en que cae la lluvia del lavado o la ventana apta empieza con esa lluvia: " + JSON.stringify({antes:r8, n:R.A.n, k:R.A.S.k.ll, ll24:R.A.ll24, franja:ks(R.P48, 4), celdas:celdas(R.P48)}) + " «" + R.avt.slice(0, 220) + "»", "media");
+      /* r1: el borde de las 24 h, 15 mm entre H + 25 y H + 26: la hora H + 1 (sus 24 h llegan a H + 25) no tiene lavado y la H + 2 sí; ahora (hh:50 más 24 h) tampoco lo cuenta */
+      limpiar(); estDat.pron = PF({26:15}, {26:70}, T); R = ev(T); const Fb = P48("turbo", false);
+      chk(R.A.ll24 === 0 && R.A.S.k.ll === "seco" && ks(R.P48, 3) === "seco,seco,lava" && ks(Fb, 3) === "seco,seco,lava",
+        "3 · El lavado de cada hora no cuenta las 24 h desde su comienzo (15 mm entre H + 25 y H + 26): " + ks(R.P48, 3) + " · sin medido " + ks(Fb, 3) + " · ll24 de ahora " + R.A.ll24, "media");
+      /* el cambio exacto a la hora de término: 15 mm en H + 19 a H + 20. Sin tocar: lavado de H a H + 12. Con la ✕ a T (termina a H + 6:50): H a H + 6 sin lavado, H + 7 a H + 12 con lavado */
+      limpiar(); const P20 = PF({20:15}, {20:70}, T); estDat.pron = P20;
+      const hs = (F, a, b)=>F.filter(x=>x.ms >= H0 + a * 3600000 && x.ms <= H0 + b * 3600000);
+      const F3a = P48(), nLava = (F, a, b, k)=>hs(F, a, b).filter(x=>x.sem.k.ll === k).length;
+      chk(nLava(F3a, 0, 12, "lava") === 13 && nLava(F3a, 13, 16, "vieneLluvia") === 4 && nLava(F3a, 17, 18, "seca") === 2 && nLava(F3a, 19, 19, "llueve") === 1, "3 · La franja con 15 mm en H + 20: " + ks(F3a, 21), "media");
+      estBotEnHora(T, estLavaQuitar);
+      const F3b = P48();
+      chk(nLava(F3b, 0, 6, "seco") === 7 && hs(F3b, 0, 6).every(x=>x.sem.f.ll === "ok") && nLava(F3b, 7, 12, "lava") === 6 && hs(F3b, 7, 12).every(x=>x.sem.f.ll === "am") && nLava(F3b, 13, 16, "vieneLluvia") === 4 && nLava(F3b, 17, 18, "seca") === 2 && nLava(F3b, 19, 19, "llueve") === 1,
+        "3 · La ✕ del lavado no pinta distinto justo a la hora de término (" + hm(FIN) + "): " + ks(F3b, 21), "media");
+      /* con la hora de término justo en una hora en punto: esa hora ya cuenta (x.ms < fin) */
+      limpiar(); estBotEnHora(H0 + 3600000, estLavaQuitar); const F3c = estBotEnHora(H0 + 3600000, ()=>estPron48("turbo", estAplicarAhora("turbo")));
+      chk(regA() && regA().l.lava.fin === H0 + 7 * 3600000 && F3c.find(x=>x.ms === H0 + 6 * 3600000).sem.k.ll === "seco" && F3c.find(x=>x.ms === H0 + 7 * 3600000).sem.k.ll === "lava", "3 · Con el término en una hora en punto, esa hora no vuelve a contar: " + ks(F3c, 8), "media");
+      /* 4 · dura 6 h: a las 6 h − 1 ms sigue quitado; a las 6 h vuelve si sigue el riesgo. Con lecturas al día a esa hora */
+      limpiar(); estDat.pron = P20; estBotEnHora(T, estLavaQuitar);
+      await cargar(fin + 6 * 3600); estDat.pron = P20;
+      R = ev(FIN - 1); const f4a = estBotEnHora(FIN - 1, ()=>[estAvFirma(), estFirma()]);
+      chk(!R.A.sinDatos && R.A.lavaQuit && R.A.lavaQuit.fin === FIN && R.A.S.k.ll === "seco" && R.A.S.f.ll === "ok" && R.A.lavaPuede === false && R.A.notas.indexOf(NQ) >= 0 && btn(R, "estLavaDes") && f4a[0] === "lava:" + T + "a",
+        "4 · A las 6 h − 1 ms el lavado ya no está quitado: " + JSON.stringify({sin:R.A.sinDatos, k:R.A.S.k.ll, q:R.A.lavaQuit, firma:f4a[0]}), "media");
+      R = ev(FIN); const f4b = estBotEnHora(FIN, ()=>[estAvFirma(), estFirma()]);
+      chk(!R.A.lavaQuit && R.A.S.k.ll === "lava" && R.A.S.f.ll === "am" && R.A.lavaPuede === true && btn(R, "estLavaBtn") && !btn(R, "estLavaDes") && regA() === null && f4b[0] === "-" && f4a[1] !== f4b[1],
+        "4 · A las 6 h el lavado no volvió, no se borró o la firma no cambió: " + JSON.stringify({k:R.A.S.k.ll, q:R.A.lavaQuit, lava:R.A.lavaPuede, reg:regA(), firma:f4b[0], cambia:f4a[1] !== f4b[1]}), "media");
+      /* no vuelve si ya no hay 12 mm (y un pronóstico más bajo no corta nada) */
+      limpiar(); await cargar(fin); estDat.pron = P20; estBotEnHora(T, estLavaQuitar);
+      await cargar(fin + 6 * 3600); estDat.pron = PF({20:5}, {20:70}, T + 60000);
+      const r4c = ev(FIN - 1); R = ev(FIN);
+      chk(r4c.A.lavaQuit && r4c.A.S.k.ll === "seco" && !R.A.lavaQuit && R.A.S.k.ll === "seco" && R.A.S.f.ll === "ok" && R.A.lavaPuede === false && !btn(R, "estLavaBtn") && !btn(R, "estLavaDes") && regA() === null,
+        "4 · Sin 12 mm a las 6 h el lavado vuelve igual: " + JSON.stringify({antes:r4c.A.S.k.ll, k:R.A.S.k.ll, lava:R.A.lavaPuede}), "media");
+      /* un pronóstico más nuevo con el doble lo corta; igual de viejo, no. 15 mm al tocar: corta desde 30 mm */
+      limpiar(); await cargar(fin); estDat.pron = P20; estBotEnHora(T, estLavaQuitar);
+      const sigue = (ll, tC, ms)=>{ estDat.pron = PF({20:ll}, {20:80}, tC); const r = ev(ms); return !!r.A.lavaQuit && r.A.S.k.ll === "seco" && !regA().l.lava.corte; };
+      const s4 = [sigue(29.9, T + 60000, T + 60000), sigue(30, T, T + 60000), sigue(30, T - 60000, T + 60000)];
+      chk(s4.every(Boolean), "4 · Lo cortó un pronóstico de 29,9 mm, uno igual de viejo o uno más viejo: " + s4.join(), "media");
+      estDat.pron = PF({20:30}, {20:80}, T + 120000); R = ev(T + 120000); let c4 = regA().l.lava.corte;
+      const f4c = estBotEnHora(T + 120000, estAvFirma);
+      chk(c4 && c4.t === T + 120000 && c4.mm === 30 && !R.A.lavaQuit && R.A.S.k.ll === "lava" && R.A.lavaPuede === true && btn(R, "estLavaBtn") && !btn(R, "estLavaDes") && R.A.T.ll.mot === "riesgo de lavado (30 mm en 24 horas)" && R.A.notas.indexOf(NQ) < 0 && estBotEnHora(T + 120000, ()=>estAvActiva("lava")) === null && f4c === "lava:" + T + "c",
+        "4 · Un pronóstico más nuevo con el doble no cortó lo quitado: " + JSON.stringify({corte:c4, k:R.A.S.k.ll, q:R.A.lavaQuit, firma:f4c}), "media");
+      estDat.pron = PF({20:15}, {20:70}, T + 180000); R = ev(T + 180000); c4 = regA().l.lava.corte;
+      chk(c4 && c4.mm === 30 && !R.A.lavaQuit && R.A.S.k.ll === "lava", "4 · Con el pronóstico otra vez bajo volvió a quedar quitado: " + JSON.stringify({corte:c4, k:R.A.S.k.ll}), "media");
+      estBotEnHora(T + 180000, estLavaQuitar); const z4 = regA().l.lava; R = ev(T + 180000);
+      chk(z4.t === T + 180000 && z4.fin === T + 180000 + 21600000 && z4.mm === 15 && z4.pronT === T + 180000 && !z4.corte && R.A.lavaQuit && R.A.S.k.ll === "seco", "4 · Después del corte, la ✕ no vuelve a quitarlo: " + JSON.stringify(z4), "media");
+      /* con llProx mayor: manda mm + llProx (15 + 20 = 35), no el doble */
+      const Ux = Object.assign({}, estUmb(), {llProx:20}), Pn = {t:T + 240000};
+      chk(estBotEnHora(T + 240000, ()=>estLavaRevisar(Ux, Pn, 34.9)) && estBotEnHora(T + 240000, ()=>estLavaRevisar(Ux, Pn, 35)) === null && regA().l.lava.corte.mm === 35, "4 · El corte no es max(2 × mm, mm + llProx): " + JSON.stringify(regA().l.lava), "media");
+      /* con las dos ✕ y un pronóstico con el doble vuelven las dos */
+      limpiar(); estDat.pron = P15; estBotEnHora(T, estAplLluviaIgnorar); estBotEnHora(T, estLavaQuitar); estDat.pron = PF({2:30}, {2:90}, T + 60000); R = ev(T + 60000);
+      chk(R.A.S.k.ll === "seca" && R.A.n === "ro" && !R.A.ign && !R.A.lavaQuit && R.A.llPuede === true && R.A.lavaPuede === false, "4 · Con las dos ✕ y el doble de lluvia no volvió a «No»: " + JSON.stringify({k:R.A.S.k.ll, n:R.A.n, ign:!!R.A.ign, q:!!R.A.lavaQuit}), "media");
+      /* lo guardado: un JSON roto o de otra forma no rompe nada; lo vencido se borra al leerlo; otra estación no vale */
+      limpiar(); estDat.pron = P20;
+      const zB = {t:T, fin:FIN, n:"am", mm:15, pronT:T};
+      const raros = ["{roto", "[1,2]", "\"x\"", "5", "null", "true", JSON.stringify({v:2, st:ST, l:{lava:zB}}), JSON.stringify({v:1, st:"999999", l:{lava:zB}}), JSON.stringify({v:1, st:ST}), JSON.stringify({v:1, st:ST, l:[zB]}), JSON.stringify({v:1, st:ST, l:"x"}), JSON.stringify({v:1, st:ST, l:{lava:5}}), JSON.stringify({v:1, st:ST, l:{lava:null}}), JSON.stringify({v:1, st:ST, l:{lava:{t:"a", fin:null}}}), JSON.stringify({v:1, st:ST, l:{lava:{t:T}}}),
+        JSON.stringify({v:1, st:ST, l:{lava:{t:T + 3600000, fin:T + 7 * 3600000, n:"am", mm:15, pronT:T}}})];   // el último: tocado con el reloj adelantado 1 hora (termina 7 h después de ahora)
+      const malosJ = raros.filter(s=>{ localStorage.setItem(KA, s); try{ const r = ev(T); return !(r.A.S.k.ll === "lava" && !r.A.lavaQuit && r.A.lavaPuede === true && estBotEnHora(T, estAvFirma) === "-"); }catch(e){ return true; } });
+      chk(!malosJ.length, "Lo guardado raro rompe la pantalla o se toma como quitado: " + malosJ.join(" | "), "media");
+      /* el borde: termina justo 6 h después de ahora, vale; 1 ms más, no (y se borra) */
+      const borde = d=>{ localStorage.setItem(KA, JSON.stringify({v:1, st:ST, l:{lava:{t:T, fin:T + 6 * 3600000 + d, n:"am", mm:15, pronT:T}}})); const r = ev(T); return [!!r.A.lavaQuit, r.A.S.k.ll, regA() ? 1 : 0].join(); };
+      const b6 = [borde(0), borde(1)];
+      chk(b6[0] === "true,seco,1" && b6[1] === "false,lava,0", "Lo quitado que termina justo 6 h después no vale, o el que termina 1 ms más allá sí: " + b6.join(" | "), "media");
+      localStorage.setItem(KA, JSON.stringify({v:1, st:ST, l:{lava:{t:T, fin:FIN, n:"am"}}})); estDat.pron = PF({20:60}, {20:90}, T + 60000); R = ev(T + 60000);
+      chk(R.A.lavaQuit && R.A.S.k.ll === "seco", "Lo quitado sin «mm» ni «pronT» rompe la pantalla o se corta: " + R.A.S.k.ll, "leve");
+      localStorage.setItem(KA, JSON.stringify({v:1, st:ST, l:{lava:{t:T, fin:T + 1000, n:"am", mm:15, pronT:T}, cz:{t:T, fin:FIN, n:"am"}}}));
+      const v4 = estBotEnHora(T + 999, ()=>estAvEntrada("lava")), v5 = estBotEnHora(T + 1000, ()=>estAvEntrada("lava"));
+      chk(v4 && v5 === null && JSON.stringify(Object.keys(regA().l)) === JSON.stringify(["cz"]) && estBotEnHora(T + 1000, ()=>estAvEntrada("cz")), "Lo vencido no se borra al leerlo, o se lleva lo demás: " + JSON.stringify(regA()), "media");
+      /* sin localStorage: queda en memoria mientras la app esté abierta */
+      limpiar(); estDat.pron = P20;
+      const SP = Storage.prototype, si0 = SP.setItem, gi0 = SP.getItem;
+      SP.setItem = function(k, v){ if(this === localStorage && k === KA) throw new Error("sin espacio"); return si0.call(this, k, v); };
+      let m4 = null;
+      try{ estBotEnHora(T, estLavaQuitar); R = ev(T); m4 = [!!R.A.lavaQuit, R.A.S.k.ll, localStorage.getItem(KA)]; estBotEnHora(T + 60000, estLavaMostrar); m4.push(ev(T + 60000).A.S.k.ll); } finally { SP.setItem = si0; }
+      SP.getItem = function(k){ if(this === localStorage && k === KA) throw new Error("bloqueado"); return gi0.call(this, k); };
+      try{ estBotEnHora(T, estLavaQuitar); R = ev(T); m4.push(!!R.A.lavaQuit, R.A.S.k.ll); estBotEnHora(T + 60000, estLavaMostrar); m4.push(ev(T + 60000).A.S.k.ll); } finally { SP.getItem = gi0; }
+      chk(JSON.stringify(m4) === JSON.stringify([true, "seco", null, "lava", true, "seco", "lava"]), "Sin localStorage lo quitado no queda en memoria: " + JSON.stringify(m4), "media");
+      limpiar();
+      /* 7 · celular espejo: las dos ✕ funcionan, no escriben en D ni llaman a guardar() ni piden el iPad */
+      D.sync = Object.assign({}, JSON.parse(sync0), {rol:"receptor"}); const D7 = JSON.stringify(D); estDat.pron = P15; nG = 0;
+      estBotEnHora(T, estAplLluviaIgnorar); estBotEnHora(T, estLavaQuitar); const av7 = av(), q7 = !!(regA() && regA().l.lava);
+      estBotEnHora(T + 60000, estLavaMostrar); const av7b = av(); estBotEnHora(T + 60000, estLavaQuitar); estBotEnHora(T + 60000, estLavaMostrar);
+      chk(q7 && regA() === null && JSON.stringify(D) === D7 && nG === 0 && !/En el celular solo se consulta/.test(av7 + av7b) && av7.indexOf(TQ) >= 0, "7 · En el celular espejo la ✕ del lavado no se guarda, cambia el cuaderno, llama a guardar() (" + nG + ") o pide el iPad («" + av7.slice(0, 120) + "»)", "grave");
+      D.sync = JSON.parse(sync0); limpiar();
+      /* 9 y 10 · en pantalla, con la hora real: el botón contrario queda donde estaba el tocado (±1 px) con el foco; botones de 44 px dentro de la pantalla */
+      const HR = Math.floor(Date.now() / 3600000) * 3600, fR = Math.floor(Date.now() / 1000 / 900) * 900; await cargar(fR);
+      const PR = (ll, pr)=>PF(ll, pr, Date.now(), false, HR);
+      estDat.pron = PR({2:15}, {2:70}); await estBotCampo("campo");
+      const al = (b, ms)=>{ try{ b.scrollIntoView({block:"center", behavior:"instant"}); }catch(e){} return esperar(ms || 120); }, top = b=>b.getBoundingClientRect().top, dentro = (e, ancho)=>{ if(!e) return false; const Rr = raiz ? raiz.getBoundingClientRect() : {left:0}, r = e.getBoundingClientRect(); return e.offsetHeight >= 44 && r.left >= Rr.left - 1 && r.right <= Rr.left + (ancho || innerWidth) + 1; };
+      const enTarjeta = async (nom, ancho)=>{
+        limpiar(); estNav().sec = "campo"; estPintar(); await pausa(.3);
+        const qb = id=>document.querySelector("#estKAplicar #" + id), bI = necesito(qb("estLlIgnBtn"), "la ✕ de la lluvia en la tarjeta" + nom);
+        await al(bI); const t0 = top(bI); bI.click(); await esperar(120);
+        const bD = necesito(qb("estLlIgnDes"), "«Volver a contar la lluvia»" + nom), t1 = top(bD), fD = document.activeElement === bD;
+        const bX = necesito(qb("estLavaBtn"), "«✕ Quitar aviso de lavado»" + nom); await al(bX);
+        const t2 = top(bX), dX = dentro(bX, ancho); bX.click(); await esperar(120);
+        const bQ = necesito(qb("estLavaDes"), "«Volver a mostrar»" + nom), t3 = top(bQ), fQ = document.activeElement === bQ, dQ = dentro(bQ, ancho), q1 = !!(regA() && regA().l.lava);
+        bQ.click(); await esperar(120);
+        const bV = necesito(qb("estLavaBtn"), "«✕ Quitar aviso de lavado» de vuelta" + nom), t4 = top(bV), fV = document.activeElement === bV;
+        chk(Math.abs(t1 - t0) <= 1 && Math.abs(t3 - t2) <= 1 && Math.abs(t4 - t3) <= 1 && fD && fQ && fV && q1 && regA() === null && dX && dQ, "9 · En la tarjeta" + nom + " el botón bajo el dedo se movió o no recibió el foco: ✕ lluvia " + Math.round(t0) + " → " + Math.round(t1) + " px; ✕ lavado " + Math.round(t2) + " → " + Math.round(t3) + " → " + Math.round(t4) + " px (foco " + [fD, fQ, fV].join("/") + ", 44 px y dentro " + dX + "/" + dQ + ")", "media");
+        limpiar();
+      };
+      const enAhora = async (nom, ancho)=>{
+        limpiar(); estNav().sec = "ahora"; estPintar(); await pausa(.3);
+        const qa = id=>document.querySelector("#estVista .est-avisos #" + id), bI = necesito(qa("estLlIgnBtn"), "la ✕ de la lluvia en «Ahora»" + nom);
+        await al(bI); const t0 = top(bI); bI.click(); await esperar(120);
+        const bX = necesito(qa("estLavaBtn"), "«✕ Quitar lavado» en «Ahora»" + nom), t1 = top(bX), fX = document.activeElement === bX, vX = bX.nextElementSibling;
+        const fila = vX && txtDe(vX) === "Ver" && txtDe(bX) === "✕ Quitar lavado" && bX.getBoundingClientRect().right <= vX.getBoundingClientRect().left && dentro(bX, ancho) && dentro(vX, ancho);
+        chk(Math.abs(t1 - t0) <= 1 && fX && fila, "9 · En «Ahora»" + nom + " la ✕ del lavado no reemplaza a la de la lluvia bajo el dedo, sin el foco, o no queda a la izquierda de «Ver» con 44 px: " + Math.round(t0) + " → " + Math.round(t1) + " px (foco " + fX + ", fila " + fila + ")", "media");
+        await al(bX); const t2 = top(bX), y2 = scrollY; bX.click(); await esperar(120);
+        const bD = qa("estLlIgnDes"), q1 = !!(regA() && regA().l.lava);   // de día queda el azul de la lluvia, con «Volver a contar»; de noche, la inversión sin botón
+        chk(q1 && !qa("estLavaBtn") && (bD ? Math.abs(top(bD) - t2) <= 1 && document.activeElement === bD : Math.abs(scrollY - y2) <= 1), "9 · En «Ahora»" + nom + " al quitar el lavado la pantalla saltó o el foco no pasó al azul: " + (bD ? Math.round(t2) + " → " + Math.round(top(bD)) + " px" : "scrollY " + Math.round(y2) + " → " + Math.round(scrollY)), "media");
+        const acc = necesito(document.querySelector("#avisoCapa .aviso-acc"), "«Deshacer» del aviso flotante" + nom); acc.click(); await esperar(120);
+        const bV = qa("estLavaBtn");
+        chk(bV && document.activeElement === bV && regA() === null, "9 · En «Ahora»" + nom + " «Deshacer» no repuso «✕ Quitar lavado» con el foco: " + JSON.stringify(regA()), "media");
+        limpiar();
+      };
+      await enTarjeta(""); await enAhora("");
+      const conUi = async (g, s)=>{ D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:s, grande:g}); uiAplicar(); estPintar(); await pausa(.3); };
+      D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar(); render(); await pausa(.5); await irA("estacion"); estNav().sec = "campo"; estPintar(); await pausa(.3);
+      raiz = document.getElementById("estRaiz"); if(raiz){ raiz.style.width = "375px"; raiz.style.maxWidth = "375px"; } await pausa(.3);
+      for(const [g, s] of [[false, false], [true, false], [false, true], [true, true]]){
+        await conUi(g, s); const nom = " a 375 px" + (g ? " con texto grande" : "") + (s ? " con sol" : "");
+        await enTarjeta(nom, 375); chk(raiz.scrollWidth <= raiz.clientWidth + 1, "9 · La tarjeta" + nom + " se sale de la pantalla (" + raiz.scrollWidth + " de " + raiz.clientWidth + " px)", "media");
+        await enAhora(nom, 375); chk(raiz.scrollWidth <= raiz.clientWidth + 1, "9 · «Ahora»" + nom + " se sale de la pantalla (" + raiz.scrollWidth + " de " + raiz.clientWidth + " px)", "media");
+      }
+      if(raiz){ raiz.style.width = ""; raiz.style.maxWidth = ""; } raiz = null; D.ui = JSON.parse(ui0); uiAplicar(); render(); await pausa(.3);
+      /* 10 · estSemaforoLectura, el informe y el Excel: lo mismo con y sin el lavado quitado */
+      limpiar(); estDat.pron = PR({20:15}, {20:70});
+      const huella = async ()=>{ estDat._inf = null; await estBotInf("diario", estSumarDias(estHoyF(), -1), "vista"); const x = await estArchivoActual(), z = await estBotXlsx(x.blob), U = estUmb(), L = estDat.lect.slice(-96);
+        return JSON.stringify({sem:L.map(y=>y.sem), lec:L.map(y=>estSemaforoLectura(y, U, {}).fin), kpis:txtDe(document.getElementById("estInfKpis")), tabla:txtDe(document.getElementById("estInfTabla")), nom:x.nombre, filas:z.hojas.map(h=>[h.nom, h.filas])}).replace(/generado el [^"·]*/g, ""); };
+      const h0 = await huella(), A10 = estAplicarAhora();
+      estLavaQuitar(); const q10 = estAvActiva("lava"), h1 = await huella();
+      chk(A10.lavaPuede === true && q10 && estAvActiva("lava") && h0 === h1 && h0.length > 500, "10 · Con el lavado quitado cambió el historial, estSemaforoLectura, el informe o el Excel (" + JSON.stringify({puede:A10.lavaPuede, quitado:!!q10, iguales:h0 === h1, largo:h0.length}) + ")", "grave");
+      limpiar();
+    } finally {
+      window.guardar = g0; try{ localStorage.removeItem("agronotasAvisosOcultos"); localStorage.removeItem("agronotasAplLluvia"); }catch(e){}
+      if(est0 == null) delete D.est; else D.est = JSON.parse(est0); D.sync = JSON.parse(sync0);
+      if(raiz){ raiz.style.width = ""; raiz.style.maxWidth = ""; } D.ui = JSON.parse(ui0); try{ uiAplicar(); render(); }catch(e){}
+      EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(5); await estBotLimpio(); await estBotSinc(); await estPronCargar(true);
+    }
+    revisarPantalla();
+  });
+  /* ---- v167 parte C (contrato_v167_avisos.md, C): los avisos de «Ahora» y la franja del barómetro de Hoy se pueden quitar con su ✕ por 6 horas, sin cambiar el veredicto.
+     Comprobaciones 5, 6, 7, 8 y lo guardado raro con la hora fija (estBotAvKit, fuera de la pestaña Estación); la 9, la 10, lo de Hoy y el repintado al vencer, en pantalla con la hora real.
+     El barómetro naranja, los cerezos en cosecha y el anemómetro trabado van falsos (estBarAhora, estCerezosVentana y estAvisoAnemo): sus reglas se prueban en sus propios pasos ---- */
+  const estBotAvFalsos = (o0, cz, an)=>{
+    window.estBarAhora = o0 === false ? EST_BOT.ba0 : ()=>Object.assign({corr:{v:null}, P:null, R:null}, EST_BOT.baReal || {}, {est:o0.est, n:o0.n, aviso:true, ico:"rain", tit:o0.tit || "Lluvia probable", corto:"La presión bajó 4,2 hPa en 24 h (bot)."});
+    window.estCerezosVentana = cz ? ()=>({n:1, total:1, lista:[], txt:"1 cuartel de cerezo entre pinta y cosecha: Lapins (bot)"}) : EST_BOT.cv0;
+    window.estAvisoAnemo = an ? ()=>[an, "wind", "¿Anemómetro trabado? Marca 0 desde las 08:00 (bot)", "Revisa que las copas giren (bot).", ["ahora", "estKViento"]] : EST_BOT.an0;
+  };
+  await paso("Avisos · quitar avisos (v167): la ✕ de esquina por 6 horas sin cambiar el veredicto, cuándo vuelven (nivel, otro punto, a las 6 h), «Deshacer», «Mostrar» y la línea de lo quitado, una sola ✕ por aviso, el barómetro en Ahora y en Hoy, el espejo y el estado de los datos", async ()=>{
+    const est0 = D.est ? JSON.stringify(D.est) : null, sync0 = JSON.stringify(D.sync || {}), g0 = window.guardar, err0 = estDat.err;
+    EST_BOT.ba0 = window.estBarAhora; EST_BOT.cv0 = window.estCerezosVentana; EST_BOT.an0 = window.estAvisoAnemo;
+    let nG = 0; window.guardar = function(){ nG++; return g0.apply(this, arguments); };
+    if(nav.tab === "estacion") await irA("panel");
+    try{
+      const {H, fin, T, FIN, hm, KA, cargar, PF, ev, tx, regA, limpiar} = estBotAvKit();
+      const ST = EST_BOT.st, HM = 3600000, TQ = f=>"Aviso quitado hasta las " + hm(f) + ". Si a esa hora sigue el problema, vuelve a aparecer.", av = ()=>txtDe(document.getElementById("avisoCapa"));
+      const ids = R=>[...R.av.querySelectorAll(".est-av")].map(a=>a.getAttribute("data-av") || "-").join(), linea = R=>{ const q = R.av.querySelector(".est-av-q"); return q ? tx(q.querySelector("span")) : ""; };
+      const xDe = (R, id)=>R.av.querySelector('.est-av[data-av="' + id + '"] .est-av-x'), nX = R=>R.av.querySelectorAll(".est-av-x").length, acc = ()=>document.querySelector("#avisoCapa .aviso-acc");
+      const viento = (v, vr)=>F=>{ for(let k = F.length - 8; k < F.length; k++){ const r = F[k]; r[EST_I.v10] = v; r[EST_I.vu] = v; r[EST_I.vr] = vr; } };
+      const ARIA = "Quitar este aviso hasta las " + hm(FIN);
+      /* 5 · viento de 12 km/h (con cuidado) a media mañana: el aviso de aplicar con su ✕ de esquina */
+      limpiar(); await cargar(fin, 0, viento(12, 16)); estDat.pron = PF({}, {}, T);
+      let R = ev(T);
+      const A0 = R.A, ct0 = R.ct, sem0 = R.P48.map(x=>x.sem.fin).join(), x0 = xDe(R, "apl");
+      chk(A0.n === "am" && A0.titulo === "Aplicar con cuidado" && A0.S.f.v === "am" && A0.S.k.v === "alto" && A0.S.f.inv === "ok" && A0.S.f.dt === "ok" && A0.S.f.ll === "ok" && A0.S.f.t === "ok" && JSON.stringify(A0.cuidado) === JSON.stringify(["viento sobre 10 km/h"])
+        && ids(R) === "apl" && nX(R) === 1 && x0 && x0.getAttribute("aria-label") === ARIA && x0.parentNode.classList.contains("est-av-cx") && !x0.nextElementSibling && tx(x0.previousElementSibling) === "Ver" && !linea(R) && !R.av.querySelector("#estLlIgnBtn, #estLavaBtn, #estAvMostrar"),
+        "5 · Viento de 12 km/h: el aviso de aplicar no trae su ✕ de esquina después de «Ver» con el aria-label del contrato: " + JSON.stringify({n:A0.n, f:A0.S.f, cuidado:A0.cuidado, ids:ids(R), x:nX(R), aria:x0 && x0.getAttribute("aria-label")}), "grave");
+      const D5 = JSON.stringify(D); nG = 0;
+      estBotEnHora(T, ()=>estAvQuitar("apl"));
+      const o5 = regA(), z5 = o5 && o5.l && o5.l["apl:v"], av5 = av(), acc5 = acc();
+      chk(o5 && o5.v === 1 && o5.st === ST && Object.keys(o5.l).join() === "apl:v" && z5.t === T && z5.fin === FIN && z5.n === "am" && Object.keys(z5).sort().join() === "fin,n,t",
+        "5 · Lo guardado por la ✕ del aviso de aplicar no es {v:1, st, l:{\"apl:v\":{t, fin, n:\"am\"}}}: " + JSON.stringify(o5), "grave");
+      chk(av5.indexOf(TQ(FIN)) >= 0 && acc5 && txtDe(acc5) === "Deshacer", "5 · El aviso flotante de la ✕ no es el del contrato («" + av5 + "»)", "media");
+      R = ev(T);
+      chk(!R.av.querySelector(".est-av") && linea(R) === "1 aviso quitado hasta las " + hm(FIN) + "." && R.av.querySelector(".est-av-q[data-av-q='1'] #estAvMostrar") && tx(R.av.querySelector("#estAvMostrar")) === "Mostrar",
+        "5 · Con el aviso quitado sigue a la vista o falta la línea «1 aviso quitado hasta las " + hm(FIN) + ".» con «Mostrar»: «" + R.avt.slice(0, 160) + "»", "grave");
+      chk(R.A.n === A0.n && R.A.titulo === A0.titulo && JSON.stringify(R.A.cuidado) === JSON.stringify(A0.cuidado) && JSON.stringify(R.A.malos) === JSON.stringify(A0.malos) && JSON.stringify(R.A.notas) === JSON.stringify(A0.notas) && JSON.stringify(R.A.S) === JSON.stringify(A0.S) && R.ct === ct0 && R.P48.map(x=>x.sem.fin).join() === sem0,
+        "5 · Quitar el aviso cambió el sello, A.n, la tarjeta «¿Se puede aplicar ahora?» o la franja de 48 h: " + JSON.stringify({n:R.A.n, t:R.A.titulo, cuidado:R.A.cuidado, tarjeta:R.ct === ct0, franja:R.P48.map(x=>x.sem.fin).join() === sem0}), "grave");
+      chk(JSON.stringify(D) === D5 && nG === 0, "7 · La ✕ de esquina cambió el cuaderno o llamó a guardar() (" + nG + " veces)", "grave");
+      /* «Deshacer» repone solo ese */
+      estBotEnHora(T + 60000, ()=>acc5.click()); R = ev(T + 60000);
+      chk(regA() === null && ids(R) === "apl" && xDe(R, "apl") && !linea(R) && av().indexOf("Vuelve a aparecer el aviso.") >= 0 && nG === 0 && JSON.stringify(D) === D5,
+        "5 · «Deshacer» no repuso el aviso de aplicar: " + JSON.stringify(regA()) + " · «" + R.avt.slice(0, 120) + "» («" + av() + "»)", "media");
+      /* quitado en amarillo y el viento sube a rojo: vuelve; quitado en rojo y baja a amarillo: sigue quitado (nivel igual o mayor) */
+      estBotEnHora(T, ()=>estAvQuitar("apl"));
+      await cargar(fin, 0, viento(17, 22)); estDat.pron = PF({}, {}, T); R = ev(T + 60000);
+      chk(R.A.S.f.v === "ro" && R.A.n === "ro" && ids(R) === "apl" && xDe(R, "apl") && !linea(R) && regA() && regA().l["apl:v"].n === "am",
+        "5 · El viento quitado en amarillo subió a rojo (17 km/h) y el aviso no volvió: " + JSON.stringify({f:R.A.S.f.v, n:R.A.n, ids:ids(R), linea:linea(R), reg:regA()}), "grave");
+      estBotEnHora(T + 60000, ()=>estAvQuitar("apl")); const z5b = regA().l["apl:v"];
+      await cargar(fin, 0, viento(12, 16)); estDat.pron = PF({}, {}, T); R = ev(T + 120000);
+      chk(z5b.n === "ro" && z5b.t === T + 60000 && z5b.fin === FIN + 60000 && R.A.S.f.v === "am" && !R.av.querySelector(".est-av") && linea(R) === "1 aviso quitado hasta las " + hm(FIN + 60000) + ".",
+        "5 · Quitado en rojo, con el viento de vuelta en amarillo el aviso volvió a salir: " + JSON.stringify({z:z5b, f:R.A.S.f.v, ids:ids(R), linea:linea(R)}), "media");
+      /* a las 6 h − 1 ms sigue quitado; a las 6 h vuelve solo si sigue el viento (lo guardado se borra y estFirma cambia). Con lecturas al día a esa hora */
+      limpiar(); estBotEnHora(T, ()=>estAvQuitar("apl"));
+      await cargar(fin + 6 * 3600, 0, viento(12, 16)); estDat.pron = PF({}, {}, FIN - 60000, false, H + 6 * 3600);
+      const r5a = ev(FIN - 1), f5a = estBotEnHora(FIN - 1, ()=>[estAvFirma(), estFirma()]), r5b = ev(FIN), f5b = estBotEnHora(FIN, ()=>[estAvFirma(), estFirma()]);
+      chk(!r5a.A.sinDatos && r5a.A.S.f.v === "am" && !r5a.av.querySelector(".est-av") && f5a[0] === "apl:v:" + T + "a" && r5b.A.S.f.v === "am" && ids(r5b) === "apl" && !linea(r5b) && regA() === null && f5b[0] === "-" && f5a[1] !== f5b[1],
+        "5 · A las 6 h el aviso no volvió solo, lo guardado no se borró o estFirma no cambió: " + JSON.stringify({antes:ids(r5a), despues:ids(r5b), firma:[f5a[0], f5b[0]], cambia:f5a[1] !== f5b[1], reg:regA()}), "grave");
+      /* aparece la inversión (prontoTarde, la tarde de ayer) con el viento quitado: vuelve el aviso completo con los dos motivos */
+      const f1 = estSumarDias(estHoyF(), -1), s1 = estSol(f1), a1 = estLimitesDia(f1).a, finN = Math.floor((a1 + (s1.pone - 75) * 60) / 900) * 900, TN = (finN + 300) * 1000, fin5 = finN - 3 * 3600, T5 = (fin5 + 300) * 1000;
+      limpiar(); await cargar(fin5, 0, viento(12, 16)); estDat.pron = PF({}, {}, T5, false, Math.floor(T5 / HM) * 3600);
+      R = ev(T5); const ok5 = R.A.n === "am" && R.A.S.f.inv === "ok" && R.A.S.f.v === "am" && ids(R) === "apl";
+      estBotEnHora(T5, ()=>estAvQuitar("apl"));
+      await cargar(finN, 0, viento(12, 16)); estDat.pron = PF({}, {}, TN, false, Math.floor(TN / HM) * 3600);
+      R = ev(TN); const mot5 = R.A.cuidado;
+      chk(ok5 && R.A.S.f.inv === "am" && R.A.S.k.inv === "prontoTarde" && R.A.S.f.v === "am" && mot5.length === 2 && mot5[0] === "viento sobre 10 km/h" && mot5[1] === R.A.T.inv.mot && ids(R) === "apl" && R.avt.indexOf("Aplicar con cuidado: " + mot5.join(", ")) >= 0 && xDe(R, "apl") && !linea(R) && regA().l["apl:v"] && !regA().l["apl:inv"],
+        "5 · Con el viento quitado apareció la inversión y el aviso no volvió completo con los dos motivos: " + JSON.stringify({antes:ok5, inv:R.A.S.k.inv, cuidado:mot5, ids:ids(R), linea:linea(R)}), "grave");
+      /* la ✕ con los dos puntos: los oculta a los dos; «Mostrar» repone todo */
+      estBotEnHora(TN, ()=>estAvQuitar("apl")); const o5c = regA(); R = ev(TN); const q5 = !R.av.querySelector(".est-av") && o5c.l["apl:v"].t === TN && o5c.l["apl:inv"].t === TN && o5c.l["apl:inv"].n === "am";
+      estBotEnHora(TN + 60000, estAvMostrar); R = ev(TN + 60000);
+      chk(q5 && regA() === null && ids(R) === "apl" && av().indexOf("Vuelve a aparecer el aviso quitado.") >= 0, "5 · La ✕ con dos puntos no los quitó a los dos o «Mostrar» no repuso: " + JSON.stringify({q5, reg:regA(), ids:ids(R)}), "media");
+      /* una sola ✕ por aviso: con «✕ Ignorar lluvia», sin la de esquina; viento y lluvia: la ✕ de la lluvia deja el aviso del viento con su ✕ de esquina; con «✕ Quitar lavado», sin la de esquina */
+      limpiar(); await cargar(fin, 0, viento(12, 16)); estDat.pron = PF({2:0.8}, {2:70}, T); R = ev(T);
+      const u1 = R.A.llPuede && R.A.S.k.ll === "llovizna" && R.A.cuidado.length === 2 && nX(R) === 0 && R.av.querySelector('.est-av[data-av="apl"] #estLlIgnBtn') && !R.av.querySelector(".est-av-cx");
+      estBotEnHora(T, estAplLluviaIgnorar); R = ev(T);
+      chk(u1 && R.A.S.k.ll === "ignorada" && JSON.stringify(R.A.cuidado) === JSON.stringify(["viento sobre 10 km/h"]) && ids(R) === "apl" && nX(R) === 1 && xDe(R, "apl") && !R.av.querySelector("#estLlIgnBtn, #estLavaBtn") && regA() === null,
+        "5 · Viento y lluvia: el aviso trae dos ✕ o, después de la ✕ de la lluvia, el del viento queda sin su ✕ de esquina: " + JSON.stringify({antes:!!u1, k:R.A.S.k.ll, cuidado:R.A.cuidado, ids:ids(R), x:nX(R)}), "grave");
+      limpiar(); await cargar(fin); estDat.pron = PF({2:15}, {2:70}, T); R = ev(T); const u2 = R.A.llPuede && nX(R) === 0 && R.av.querySelector("#estLlIgnBtn");
+      estBotEnHora(T, estAplLluviaIgnorar); R = ev(T);
+      chk(u2 && R.A.lavaPuede && nX(R) === 0 && R.av.querySelector('.est-av[data-av="apl"] #estLavaBtn') && !R.av.querySelector(".est-av-q"), "5 · Con «✕ Ignorar lluvia» o «✕ Quitar lavado» sale también la ✕ de esquina: " + JSON.stringify({u2:!!u2, lava:R.A.lavaPuede, x:nX(R)}), "grave");
+      /* el lavado quitado cuenta en la línea y «Mostrar» lo repone; el azul de la lluvia ignorada (ign) tiene su ✕ de esquina junto a «Volver a contar» */
+      estBotEnHora(T, estLavaQuitar); R = ev(T); const xi = xDe(R, "ign");
+      chk(ids(R) === "ign" && xi && R.av.querySelector('.est-av.in[data-av="ign"] #estLlIgnDes') && tx(xi.previousElementSibling) === "Ver" && linea(R) === "1 aviso quitado hasta las " + hm(FIN) + "." && R.A.lavaQuit,
+        "5 · Con el lavado quitado falta la línea, o el azul de la lluvia ignorada sin su ✕ de esquina: " + JSON.stringify({ids:ids(R), linea:linea(R), x:!!xi}), "media");
+      estBotEnHora(T + 60000, ()=>estAvQuitar("ign")); R = ev(T + 60000);
+      const okI = !R.av.querySelector(".est-av") && linea(R) === "2 avisos quitados, el primero vuelve a las " + hm(FIN) + "." && regA().l.ign && regA().l.ign.n === "in" && regA().l.lava;
+      estBotEnHora(T + 120000, estAvMostrar); R = ev(T + 120000);
+      chk(okI && regA() === null && R.A.S.k.ll === "lava" && R.A.lavaPuede && ids(R) === "apl" && R.av.querySelector("#estLavaBtn") && localStorage.getItem("agronotasAplLluvia") && av().indexOf("Vuelven a aparecer los avisos quitados.") >= 0,
+        "5 · «Mostrar» no repuso todo, también el lavado (o se llevó la ✕ de la lluvia): " + JSON.stringify({okI, reg:regA(), k:R.A.S.k.ll, ids:ids(R)}), "media");
+      /* r1: el lavado quitado cuenta en la línea y en «Mostrar» solo si el riesgo se vería sin su ✕ (12 mm o más en 24 h, con veredicto). Si un pronóstico más nuevo ya no lo trae, no hay nada oculto:
+         sin línea, sin sello «Quitado» y «Mostrar» no lo cuenta; si el pronóstico vuelve a traerlo (sin el doble, que lo corta), vuelve a contar. Con la estación atrasada no hay veredicto: tampoco cuenta */
+      const selloLl = R=>tx(R.c.querySelectorAll(".est-factores li")[3].querySelector(".est-mb")), PL = t=>PF({10:5, 11:5, 12:5}, {}, t);
+      limpiar(); await cargar(fin); estDat.pron = PL(T); estBotEnHora(T, estLavaQuitar); R = ev(T);
+      const q9 = {linea:linea(R), av:ids(R), sello:selloLl(R)};
+      estDat.pron = PF({}, {}, T + 60000); R = ev(T + 60000);
+      chk(q9.linea === "1 aviso quitado hasta las " + hm(FIN) + "." && q9.av === "" && q9.sello === "Quitado" && R.A.lavaQuit && R.A.ll24 === 0 && R.A.n === "ok" && !R.av.querySelector(".est-av, .est-av-q, #estAvMostrar") && selloLl(R) === "Bien" && !R.c.querySelector(".est-factores .est-mb.in"),
+        "5 · Con el lavado quitado y un pronóstico más nuevo sin lluvia sigue «1 aviso quitado…» con «Mostrar», o el sello «Quitado», sin nada oculto: " + JSON.stringify({antes:q9, quitado:!!R.A.lavaQuit, ll24:R.A.ll24, linea:linea(R), mostrar:!!R.av.querySelector("#estAvMostrar"), sello:selloLl(R)}), "media");
+      estDat.pron = PL(T + 120000); R = ev(T + 120000); const r9s = ev(T + 2 * HM);
+      chk(linea(R) === "1 aviso quitado hasta las " + hm(FIN) + "." && R.A.lavaQuit && !regA().l.lava.corte && selloLl(R) === "Quitado" && r9s.A.sinDatos && r9s.A.lavaQuit && r9s.A.ll24 >= 12 && linea(r9s) === "",
+        "5 · El lavado quitado no vuelve a contar cuando el pronóstico lo trae otra vez, o cuenta con la estación atrasada (sin veredicto): " + JSON.stringify({linea:linea(R), corte:regA().l.lava.corte || null, sello:selloLl(R), atrasada:linea(r9s)}), "media");
+      await cargar(fin, 0, viento(12, 16)); estDat.pron = PF({}, {}, T + 60000); estBotEnHora(T + 60000, ()=>estAvQuitar("apl")); R = ev(T + 60000);
+      const l9 = linea(R), k9 = Object.keys(regA().l).sort().join();
+      estBotEnHora(T + 120000, estAvMostrar); R = ev(T + 120000);
+      chk(l9 === "1 aviso quitado hasta las " + hm(FIN + 60000) + "." && k9 === "apl:v,lava" && regA() === null && ids(R) === "apl" && av().indexOf("Vuelve a aparecer el aviso quitado.") >= 0,
+        "5 · Con el viento quitado y el lavado quitado sin riesgo, la línea o «Mostrar» cuentan el lavado: «" + l9 + "» " + JSON.stringify({k9, reg:regA(), ids:ids(R)}) + " («" + av() + "»)", "media");
+      /* r2: el lavado quitado tampoco cuenta si una lluvia más cercana lo tapa igual (vieneLluvia, seca, secaDuda, llovizna y llueve van antes que el lavado en estSemaforo: sin su ✕
+         tampoco se vería). Cuenta solo con el punto Lluvia en «ok», la misma condición del sello «Quitado». (a) Los mismos 15 mm, 3 h después y con lecturas al día, entran a las 6 h:
+         sin línea ni «Mostrar»; con el barómetro también quitado, la línea y «Mostrar» cuentan solo ese. (b) Un pronóstico más nuevo los adelanta a la ventana de 3 a 6 h (sin el doble:
+         no corta): sin línea y sello «Cuidado»; con «✕ Ignorar lluvia» el lavado vuelve a ser lo que tapa su ✕ y vuelve a contar */
+      const T3 = T + 3 * HM;
+      limpiar(); await cargar(fin); estDat.pron = PL(T); estBotEnHora(T, estLavaQuitar); const l10 = linea(ev(T));
+      await cargar(fin + 3 * 3600); estDat.pron = PL(T); R = ev(T3);
+      chk(l10 === "1 aviso quitado hasta las " + hm(FIN) + "." && !R.A.sinDatos && R.A.S.k.ll === "vieneLluvia" && R.A.S.f.ll === "am" && R.A.n === "am" && R.A.lavaQuit && !regA().l.lava.corte && R.A.ll24 === 15 && ids(R) === "apl"
+        && R.avt.indexOf("Aplicar con cuidado: lluvia en 2 a 6 horas (4,2 mm, 5 %)") >= 0 && R.av.querySelector('.est-av[data-av="apl"] #estLlIgnBtn') && linea(R) === "" && !R.av.querySelector(".est-av-q, #estAvMostrar") && selloLl(R) === "Cuidado",
+        "5 · r2: con el lavado quitado y los 15 mm ya a menos de 6 h (vieneLluvia) sigue «1 aviso quitado…» con «Mostrar», aunque sin su ✕ se vería lo mismo: " + JSON.stringify({antes:l10, k:R.A.S.k.ll, f:R.A.S.f.ll, n:R.A.n, ll24:R.A.ll24, ids:ids(R), linea:linea(R), sello:selloLl(R), av:R.avt.slice(0, 90)}), "media");
+      EST_BOT.baReal = estBotEnHora(T3, ()=>EST_BOT.ba0()); estBotAvFalsos({est:"lluvia", n:"na"});
+      estBotEnHora(T3, ()=>estAvQuitar("bar")); R = ev(T3); const l10b = linea(R), k10 = Object.keys(regA().l).sort().join();
+      estBotEnHora(T3 + 60000, estAvMostrar); R = ev(T3 + 60000); const av10 = av();
+      estBotAvFalsos(false);
+      chk(l10b === "1 aviso quitado hasta las " + hm(T3 + 6 * HM) + "." && k10 === "bar:lluvia,lava" && regA() === null && ids(R) === "bar,apl" && av10.indexOf("Vuelve a aparecer el aviso quitado.") >= 0,
+        "5 · r2: con el barómetro y el lavado quitados y la lluvia a menos de 6 h, la línea o «Mostrar» cuentan el lavado: «" + l10b + "» " + JSON.stringify({k10, reg:regA(), ids:ids(R)}) + " («" + av10 + "»)", "media");
+      limpiar(); await cargar(fin); estDat.pron = PL(T); estBotEnHora(T, estLavaQuitar); estDat.pron = PF({4:5, 5:5, 6:5}, {}, T + 60000); R = ev(T + 60000);
+      const b10 = {k:R.A.S.k.ll, f:R.A.S.f.ll, ll6:R.A.ll6, ll24:R.A.ll24, q:!!R.A.lavaQuit, corte:!!regA().l.lava.corte, ids:ids(R), btn:!!R.av.querySelector('.est-av[data-av="apl"] #estLlIgnBtn'), linea:linea(R), mostrar:!!R.av.querySelector(".est-av-q, #estAvMostrar"), sello:selloLl(R)};
+      chk(b10.k === "vieneLluvia" && b10.f === "am" && b10.ll6 === 15 && b10.ll24 === 15 && b10.q && !b10.corte && b10.ids === "apl" && b10.btn && b10.linea === "" && !b10.mostrar && b10.sello === "Cuidado" && R.avt.indexOf("Aplicar con cuidado: lluvia en 2 a 6 horas (15,0 mm, 5 %)") >= 0,
+        "5 · r2: con el lavado quitado y un pronóstico más nuevo que adelanta los 15 mm a la ventana de 3 a 6 h sigue «1 aviso quitado…» con «Mostrar», o el sello de la Lluvia no es «Cuidado»: " + JSON.stringify(b10) + " «" + R.avt.slice(0, 90) + "»", "media");
+      estBotEnHora(T + 120000, estAplLluviaIgnorar); R = ev(T + 120000);
+      chk(R.A.S.k.ll === "ignorada" && R.A.S.f.ll === "ok" && R.A.ll24 === 15 && R.A.lavaQuit && R.A.ign && ids(R) === "ign" && linea(R) === "1 aviso quitado hasta las " + hm(FIN) + "." && R.av.querySelector(".est-av-q[data-av-q='1'] #estAvMostrar") && selloLl(R) === "Quitado",
+        "5 · r2: después de «✕ Ignorar lluvia» el lavado quitado no vuelve a contar («1 aviso quitado hasta las " + hm(FIN) + ".») o el sello no es «Quitado»: " + JSON.stringify({k:R.A.S.k.ll, ll24:R.A.ll24, ign:!!R.A.ign, ids:ids(R), linea:linea(R), sello:selloLl(R)}), "media");
+      /* 6 · barómetro: la misma clave en Ahora y en Hoy (bar:lluvia); otro estado (amarillo) es otro aviso */
+      limpiar(); await cargar(fin); estDat.pron = PF({}, {}, T);
+      EST_BOT.baReal = estBotEnHora(T, ()=>EST_BOT.ba0()); estBotAvFalsos({est:"lluvia", n:"na"});
+      R = ev(T); const h6 = estBotEnHora(T, hoyBaroHTML), d6 = document.createElement("div"); d6.innerHTML = h6; const x6 = d6.querySelector(".hoy-baro.hoy-baro-cx .est-av-x");
+      chk(ids(R) === "bar" && R.av.querySelector('.est-av.na[data-av="bar"] .est-av-x') && x6 && x6.getAttribute("aria-label") === ARIA && x6.getAttribute("onclick") === "hoyBaroQuitar()" && d6.querySelector('.hoy-baro button[onclick="estIrBaro()"]'),
+        "6 · El barómetro naranja no trae su ✕ en Ahora y en Hoy: " + JSON.stringify({ids:ids(R), hoy:!!x6}), "grave");
+      estBotEnHora(T, ()=>estAvQuitar("bar")); R = ev(T);
+      chk(JSON.stringify(regA().l) === JSON.stringify({"bar:lluvia":{t:T, fin:FIN, n:"na"}}) && !R.av.querySelector(".est-av") && linea(R) === "1 aviso quitado hasta las " + hm(FIN) + "." && estBotEnHora(T, hoyBaroHTML) === "",
+        "6 · Quitar el barómetro en Ahora no lo quita en Hoy: " + JSON.stringify(regA()), "grave");
+      estBotEnHora(T, estAvMostrar);
+      const m6 = estBotEnHora(T, hoyBaroHTML) === h6 && ids(ev(T)) === "bar";
+      nG = 0; estBotEnHora(T, hoyBaroQuitar); R = ev(T); const acc6 = acc();
+      chk(m6 && JSON.stringify(regA().l) === JSON.stringify({"bar:lluvia":{t:T, fin:FIN, n:"na"}}) && !R.av.querySelector(".est-av") && linea(R) === "1 aviso quitado hasta las " + hm(FIN) + "." && estBotEnHora(T, hoyBaroHTML) === "" && av().indexOf(TQ(FIN)) >= 0 && acc6 && nG === 0,
+        "6 · Quitar la franja en Hoy no quita el aviso en Ahora (o «Mostrar» no la repuso): " + JSON.stringify({m6, reg:regA()}) + " («" + av() + "»)", "grave");
+      estBotAvFalsos({est:"frente", n:"am", tit:"Sistema frontal acercándose"}); R = ev(T);
+      chk(ids(R) === "bar" && R.av.querySelector('.est-av.am[data-av="bar"] .est-av-x') && linea(R) === "" && estBotEnHora(T, hoyBaroHTML) === "",
+        "6 · Con el naranja quitado, el amarillo (otro estado del barómetro) no sale en Ahora, sale en Hoy o la línea cuenta el naranja que ya no está: " + JSON.stringify({ids:ids(R), linea:linea(R)}), "media");
+      estBotAvFalsos({est:"lluvia", n:"na"}); estBotEnHora(T + 60000, ()=>acc6.click());
+      chk(regA() === null && estBotEnHora(T + 60000, hoyBaroHTML) !== "" && ids(ev(T + 60000)) === "bar", "6 · «Deshacer» de Hoy no repuso la franja ni el aviso: " + JSON.stringify(regA()), "media");
+      /* cosecha de cerezas y anemómetro: su ✕, el nivel que sube y la línea con varios (el primero que vuelve) */
+      estBotAvFalsos({est:"lluvia", n:"na"}, true, "am"); estDat.pron = PF({40:3}, {40:60}, T); R = ev(T);
+      chk(ids(R) === "bar,cz,anemo" && nX(R) === 3 && R.av.querySelector('.est-av.am[data-av="cz"]') && R.av.querySelector('.est-av.am[data-av="anemo"]') && R.A.n === "ok", "Avisos · No salen el barómetro, la cosecha y el anemómetro, cada uno con su ✕: " + ids(R) + " · " + nX(R), "media");
+      estBotEnHora(T, ()=>estAvQuitar("cz")); estBotEnHora(T + 60000, ()=>estAvQuitar("anemo")); estBotEnHora(T + 120000, ()=>estAvQuitar("bar")); R = ev(T + 120000);
+      const l3 = linea(R), q3 = R.av.querySelector(".est-av-q");
+      chk(!R.av.querySelector(".est-av") && l3 === "3 avisos quitados, el primero vuelve a las " + hm(FIN) + "." && q3 && q3.getAttribute("data-av-q") === "3" && regA().l.cz.n === "am" && regA().l.anemo.n === "am" && regA().l["bar:lluvia"].fin === FIN + 120000,
+        "Avisos · La línea con tres quitados no dice «3 avisos quitados, el primero vuelve a las " + hm(FIN) + ".»: «" + l3 + "» " + JSON.stringify(regA()), "media");
+      estDat.pron = PF({40:6}, {40:60}, T + 120000); estBotAvFalsos({est:"lluvia", n:"na"}, true, "ro"); R = ev(T + 180000);
+      chk(ids(R) === "cz,anemo" && R.av.querySelector('.est-av.ro[data-av="cz"]') && R.av.querySelector('.est-av.ro[data-av="anemo"]') && linea(R) === "1 aviso quitado hasta las " + hm(FIN + 120000) + ".",
+        "Avisos · La cosecha (3 → 6 mm) y el anemómetro (amarillo → rojo) quitados en amarillo no volvieron al subir a rojo: " + ids(R) + " · «" + linea(R) + "»", "media");
+      /* 8 · el estado de los datos no tiene ✕: estación demorada o atrasada, sin señal, errores del puente; el anemómetro de Datos tampoco */
+      const e8 = [estBotEnHora(T + 35 * 60000, estEstadoAvisoHTML), estBotEnHora(T + 2 * HM, estEstadoAvisoHTML)];
+      estDat.err = {msg:"error de prueba (bot)"}; e8.push(estBotEnHora(T, estPuenteAvisoHTML)); estDat.err = err0;
+      const d8 = document.createElement("div"); d8.innerHTML = e8.join("");
+      chk(/Estación demorada/.test(e8[0]) && /Estación atrasada/.test(e8[1]) && /No se pudo consultar el puente/.test(e8[2]) && d8.querySelectorAll(".est-av").length === 3 && !d8.querySelector(".est-av-x, [data-av], .est-av-cx, .est-av-q"),
+        "8 · Un aviso del estado de los datos (demorada, atrasada o el puente) tiene ✕ o falta: " + d8.querySelectorAll(".est-av").length + " avisos, " + d8.querySelectorAll(".est-av-x").length + " ✕", "grave");
+      /* lo guardado raro (de las claves de C) no oculta nada ni rompe la pantalla */
+      const zz = (k, z)=>JSON.stringify({v:1, st:ST, l:{[k]:z}});
+      const raros = [zz("bar:lluvia", {t:T, fin:FIN, n:"zz"}), zz("bar:lluvia", {t:T, fin:FIN}), zz("bar:lluvia", {t:T, fin:FIN, n:"am"}), zz("bar:lluvia", {t:T, fin:FIN, n:null}), zz("bar:lluvia", {t:T, fin:FIN, n:"toString"}), zz("bar:lluvia", {t:T, fin:FIN, n:"__proto__"}),
+        zz("cz", {t:"x", fin:FIN, n:"ro"}), zz("cz", {t:T, fin:"x", n:"ro"}), zz("cz", 7), zz("bar:lluvia", {t:T, fin:T + 180000 + 6 * HM + 1, n:"ro"}), JSON.stringify({v:1, st:"999999", l:{"bar:lluvia":{t:T, fin:FIN, n:"ro"}, cz:{t:T, fin:FIN, n:"ro"}}})];
+      const malosR = raros.filter(s=>{ localStorage.setItem(KA, s); try{ const r = ev(T + 180000); return !(ids(r) === "bar,cz,anemo" && !linea(r)); }catch(e){ return true; } });
+      chk(!malosR.length, "Lo guardado raro de los avisos oculta algo o rompe «Ahora»: " + malosR.join(" | "), "media");
+      localStorage.setItem(KA, zz("bar:lluvia", {t:T, fin:FIN, n:"ro"})); R = ev(T + 180000);
+      chk(ids(R) === "cz,anemo" && linea(R) === "1 aviso quitado hasta las " + hm(FIN) + ".", "Quitado en rojo, el barómetro naranja (más bajo) volvió a salir: " + ids(R), "leve");
+      /* 7 · celular espejo: cada ✕, «Deshacer» y «Mostrar» funcionan, sin escribir en D, sin guardar() y sin pedir el iPad */
+      limpiar(); await cargar(fin, 0, viento(12, 16)); estDat.pron = PF({2:0.8, 40:3}, {2:70, 40:60}, T); estBotAvFalsos({est:"lluvia", n:"na"}, true, "am");
+      D.sync = Object.assign({}, JSON.parse(sync0), {rol:"receptor"}); const D7 = JSON.stringify(D), av7 = []; nG = 0;
+      estBotEnHora(T, estAplLluviaIgnorar); const i7 = ids(ev(T));
+      ["apl", "bar", "cz", "anemo"].forEach((id, i)=>{ estBotEnHora(T + i * 1000, ()=>estAvQuitar(id)); av7.push(av()); });
+      const n7 = Object.keys((regA() || {l:{}}).l).sort().join(), acc7 = acc(); estBotEnHora(T + 5000, ()=>acc7.click());
+      const n7b = Object.keys((regA() || {l:{}}).l).length; estBotEnHora(T + 6000, estAvMostrar); const n7c = regA();
+      estBotEnHora(T + 7000, hoyBaroQuitar); av7.push(av()); const n7d = !!(regA() && regA().l["bar:lluvia"]); estBotEnHora(T + 8000, estAvMostrar);
+      chk(i7 === "bar,cz,anemo,apl" && n7 === "anemo,apl:v,bar:lluvia,cz" && n7b === 3 && n7c === null && n7d && regA() === null && JSON.stringify(D) === D7 && nG === 0 && !/En el celular solo se consulta/.test(av7.join(" ")) && av7.every(t=>t.indexOf("Aviso quitado hasta las") >= 0),
+        "7 · En el celular espejo una ✕, «Deshacer» o «Mostrar» no funcionan, cambian el cuaderno, llaman a guardar() (" + nG + ") o piden el iPad: " + JSON.stringify({i7, n7, n7b, n7c, n7d}) + " «" + av7.join(" | ").slice(0, 200) + "»", "grave");
+      D.sync = JSON.parse(sync0); limpiar();
+    } finally {
+      window.guardar = g0; estDat.err = err0; window.estBarAhora = EST_BOT.ba0; window.estCerezosVentana = EST_BOT.cv0; window.estAvisoAnemo = EST_BOT.an0;
+      try{ localStorage.removeItem("agronotasAvisosOcultos"); localStorage.removeItem("agronotasAplLluvia"); }catch(e){}
+      if(est0 == null) delete D.est; else D.est = JSON.parse(est0); D.sync = JSON.parse(sync0);
+      EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(5); await estBotLimpio(); await estBotSinc(); await estPronCargar(true);
+    }
+    revisarPantalla();
+  });
+  await paso("Avisos · quitar avisos en pantalla (v167): la ✕ de 44 px arriba a la derecha sin encimarse con el texto ni con «Ver», «Mostrar» de 44 px, scrollY igual y el foco al siguiente, a 1180, 820 y 375 px con texto grande y sol; la franja de Hoy; vuelven solos al vencer; el historial, el informe y el Excel iguales", async ()=>{
+    const est0 = D.est ? JSON.stringify(D.est) : null, ui0 = JSON.stringify(D.ui || {}), sync0 = JSON.stringify(D.sync || {});
+    EST_BOT.ba0 = window.estBarAhora; EST_BOT.cv0 = window.estCerezosVentana; EST_BOT.an0 = window.estAvisoAnemo;
+    let raiz = null;
+    try{
+      const {cargar, PF, regA, limpiar} = estBotAvKit();
+      const HR = Math.floor(Date.now() / 3600000) * 3600, fR = Math.floor(Date.now() / 1000 / 900) * 900;
+      limpiar(); await cargar(fR, 0, F=>{ for(let k = F.length - 8; k < F.length; k++){ const r = F[k]; r[EST_I.v10] = 12; r[EST_I.vu] = 12; r[EST_I.vr] = 16; } });
+      estDat.pron = PF({40:3}, {40:60}, Date.now(), false, HR);
+      EST_BOT.baReal = EST_BOT.ba0(); estBotAvFalsos({est:"lluvia", n:"na"}, true, "am");
+      const rc = e=>e.getBoundingClientRect(), cruza = (a, b)=>a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+      const qAv = id=>document.querySelector('#estVista .est-av[data-av="' + id + '"]'), qX = id=>{ const a = qAv(id); return a ? a.querySelector(".est-av-x") : null; };
+      const idsV = ()=>[...document.querySelectorAll("#estVista .est-av[data-av]")].map(a=>a.getAttribute("data-av"));
+      /* nada se encima ni se sale: la ✕ (44 × 44, arriba a la derecha) contra el ícono, el texto y los botones; «Mostrar» de 44 px; Ahora sin scroll de lado */
+      const revisa = ()=>{
+        const malos = [], Rz = document.getElementById("estRaiz"), Rr = rc(Rz), der = Rr.right;   // con el ancho fijo, la caja de «Ahora» ya lo trae (con el texto grande, ese ancho por su zoom)
+        document.querySelectorAll("#estVista .est-avisos .est-av").forEach(a=>{
+          const id = a.getAttribute("data-av") || "?", x = a.querySelector(".est-av-x"), ra = rc(a);
+          if(ra.right > der + 1 || ra.left < Rr.left - 1) malos.push(id + ": el aviso se sale de la pantalla");
+          [...a.querySelectorAll(".est-av-i, .est-av-t, .est-av-t > *, .btn, .est-av-x")].forEach(e=>{ const r = rc(e); if(r.right > ra.right + 0.5 || r.left < ra.left - 0.5 || r.top < ra.top - 0.5 || r.bottom > ra.bottom + 0.5) malos.push(id + ": «" + (txtDe(e) || e.className).slice(0, 24) + "» se sale del aviso"); });
+          a.querySelectorAll(".btn").forEach(b=>{ if(rc(b).height < 43.5) malos.push(id + ": «" + txtDe(b) + "» de " + rc(b).height.toFixed(1) + " px"); });
+          if(!x) return;
+          const rx = rc(x);
+          if(rx.width < 43.5 || rx.height < 43.5) malos.push(id + ": la ✕ de " + rx.width.toFixed(1) + " × " + rx.height.toFixed(1) + " px");
+          if(ra.right - rx.right > 12 || rx.top - ra.top > 12) malos.push(id + ": la ✕ no está arriba a la derecha (" + (ra.right - rx.right).toFixed(1) + " / " + (rx.top - ra.top).toFixed(1) + " px)");
+          [...a.querySelectorAll(".est-av-i, .est-av-t, .est-av-t > *, .btn")].forEach(e=>{ if(cruza(rx, rc(e))) malos.push(id + ": la ✕ se encima con «" + (txtDe(e) || e.className).slice(0, 24) + "»"); });
+        });
+        const q = document.querySelector("#estVista .est-av-q"), m = document.getElementById("estAvMostrar");
+        if(q){ const rq = rc(q), rm = rc(m), rs = rc(q.querySelector("span")); if(rm.height < 43.5) malos.push("«Mostrar» de " + rm.height.toFixed(1) + " px"); if(rq.right > der + 1 || rm.right > rq.right + 0.5 || rs.right > rq.right + 0.5) malos.push("la línea de lo quitado se sale"); if(cruza(rm, rs)) malos.push("«Mostrar» se encima con el texto"); }
+        if(Rz.scrollWidth > Rz.clientWidth + 1) malos.push("«Ahora» se sale por el costado (" + Rz.scrollWidth + " de " + Rz.clientWidth + " px)");
+        return malos;
+      };
+      /* la ✕ del primero: scrollY igual y el foco a la ✕ del siguiente; la del último: el foco a «Mostrar»; «Deshacer» repone solo ese (foco a su ✕); «Mostrar» repone todos */
+      const flujo = async (nom, ancho)=>{
+        limpiar(); estNav().sec = "ahora"; estPintar(); await pausa(.3);
+        const ids0 = idsV(), malos = revisa();
+        chk(ids0.join() === "bar,cz,anemo,apl" && ids0.every(id=>qX(id)), "9 · En «Ahora»" + nom + " no salen los 4 avisos, cada uno con su ✕: " + ids0.join(), "media");
+        chk(!malos.length, "9 · En «Ahora»" + nom + ": " + malos.slice(0, 4).join("; "), "media");
+        const x0 = necesito(qX(ids0[0]), "la ✕ del primer aviso" + nom); try{ x0.scrollIntoView({block:"center", behavior:"instant"}); }catch(e){} await esperar(120);
+        const y0 = scrollY; x0.click(); await esperar(150);
+        const f1 = document.activeElement === qX(ids0[1]), y1 = scrollY, g1 = idsV().join() === ids0.slice(1).join(), m1 = revisa();
+        const xl = necesito(qX(ids0[ids0.length - 1]), "la ✕ del último aviso" + nom); try{ xl.scrollIntoView({block:"center", behavior:"instant"}); }catch(e){} await esperar(120);
+        const y2 = scrollY; xl.click(); await esperar(150);
+        const M = document.getElementById("estAvMostrar"), f2 = !!M && document.activeElement === M, y3 = scrollY, l2 = txtDe(document.querySelector("#estVista .est-av-q span")), m2 = revisa();
+        const a3 = necesito(document.querySelector("#avisoCapa .aviso-acc"), "«Deshacer» del aviso flotante" + nom); a3.click(); await esperar(150);
+        const f3 = document.activeElement === qX(ids0[ids0.length - 1]), g3 = idsV().join() === ids0.slice(1).join();
+        const M2 = necesito(document.getElementById("estAvMostrar"), "«Mostrar»" + nom); const y4 = scrollY; M2.click(); await esperar(150);
+        const g4 = idsV().join() === ids0.join() && !document.getElementById("estAvMostrar") && regA() === null, f4 = document.activeElement === qX(ids0[0]), y5 = scrollY;
+        chk(y1 === y0 && y3 === y2 && y5 === y4 && f1 && f2 && f3 && f4 && g1 && g3 && g4 && /^2 avisos quitados, el primero vuelve a las \d\d:\d\d\.$/.test(l2) && !m1.length && !m2.length,
+          "9 · En «Ahora»" + nom + " la pantalla saltó o el foco no pasó bien: scrollY " + [y0, y1, y2, y3, y4, y5].map(Math.round).join("/") + ", foco " + [f1, f2, f3, f4].join("/") + ", avisos " + [g1, g3, g4].join("/") + " «" + l2 + "» " + m1.concat(m2).slice(0, 3).join("; "), "media");
+        limpiar();
+      };
+      await estBotCampo("ahora"); raiz = document.getElementById("estRaiz");
+      const nat = raiz ? raiz.getBoundingClientRect().width : 0, conUi = async (g, s, mv)=>{ D.ui = Object.assign({}, JSON.parse(ui0), {movil:mv ? "si" : "no", sol:s, grande:g}); uiAplicar(); estPintar(); await pausa(.3); };
+      /* 820: 677 px, el ancho de «Ahora» en una ventana de 820 px de verdad (el menú con íconos; medido el 09-11-2026); 375: el celular (como en la ✕ de la lluvia) */
+      for(const [ancho, nomA] of [[null, " a " + Math.round(innerWidth) + " px"], [677, " a 820 px"], [375, " a 375 px"]]){
+        if(ancho && ancho >= nat - 1) continue;
+        if(raiz){ raiz.style.width = ancho ? ancho + "px" : ""; raiz.style.maxWidth = ancho ? ancho + "px" : ""; }
+        for(const [g, s] of [[false, false], [true, false], [false, true], [true, true]]){
+          await conUi(g, s, ancho === 375 || innerWidth < 640); await flujo(nomA + (g ? " con texto grande" : "") + (s ? " con sol" : ""), ancho);
+        }
+      }
+      if(raiz){ raiz.style.width = ""; raiz.style.maxWidth = ""; } D.ui = JSON.parse(ui0); uiAplicar(); render(); await pausa(.3);
+      /* al vencer vuelve solo con el repintado de cada minuto (estRepintarSiCambio: estFirma lleva lo oculto) */
+      limpiar(); await estBotCampo("ahora"); const xv = necesito(qX("cz"), "la ✕ de la cosecha"); xv.click(); await esperar(120);
+      const o9 = JSON.parse(localStorage.getItem("agronotasAvisosOcultos")), sinCz = !qAv("cz");
+      o9.l.cz.fin = Date.now() + 300; localStorage.setItem("agronotasAvisosOcultos", JSON.stringify(o9)); await esperar(450); estRepintarSiCambio(); await esperar(120);
+      chk(sinCz && qAv("cz") && qX("cz") && regA() === null && !document.getElementById("estAvMostrar"), "5 · Al vencer, el aviso quitado no vuelve solo con el repintado de cada minuto: " + JSON.stringify({sinCz, cz:!!qAv("cz"), reg:regA()}), "media");
+      /* Hoy: la franja con su ✕ (44 px, arriba a la derecha, sin encimarse); quitarla aquí la quita en Ahora y al revés; al vencer vuelve sola (hoyBaroRefrescar) */
+      for(const [g, s] of [[false, false], [true, true]]){
+        limpiar(); D.ui = Object.assign({}, JSON.parse(ui0), {sol:s, grande:g}); uiAplicar(); await irA("panel"); await pausa(.4);
+        const nom = g ? " con texto grande y sol" : "", hb = necesito(document.querySelector("#hoyBaro .hoy-baro.hoy-baro-cx"), "la franja del barómetro en Hoy" + nom), hx = hb.querySelector(".est-av-x"), rh = rc(hb), rx = rc(hx);
+        const enc = [...hb.querySelectorAll(".hoy-baro-i, .hoy-baro-t, .hoy-baro-t > *, .btn")].filter(e=>cruza(rx, rc(e))).map(e=>txtDe(e).slice(0, 20) || e.className);
+        chk(rx.width >= 43.5 && rx.height >= 43.5 && rh.right - rx.right <= 12 && rx.top - rh.top <= 12 && rx.right <= rh.right && !enc.length && document.documentElement.scrollWidth <= innerWidth + 1 && /^Quitar este aviso hasta las \d\d:\d\d$/.test(hx.getAttribute("aria-label")),
+          "9 · La ✕ de la franja de Hoy" + nom + " no mide 44 px, no está arriba a la derecha, se encima con " + JSON.stringify(enc) + " o algo se sale (" + rx.width.toFixed(1) + " × " + rx.height.toFixed(1) + ")", "media");
+        estBotZona(hb, "Hoy, franja del barómetro con su ✕" + nom);
+        try{ hb.scrollIntoView({block:"center", behavior:"instant"}); }catch(e){} await esperar(120);
+        const y0 = scrollY; hx.click(); await esperar(150);
+        const ae = document.activeElement, sig = document.querySelector("#hoyBaro ~ * button, #hoyBaro ~ button");
+        chk(!document.querySelector("#hoyBaro .hoy-baro") && scrollY === y0 && ae && ae === sig && regA() && regA().l["bar:lluvia"], "9 · En Hoy" + nom + " la ✕ no quitó la franja, la pantalla saltó (" + Math.round(y0) + " → " + Math.round(scrollY) + ") o el foco no pasó a lo que sigue", "media");
+        if(!g){
+          await estBotCampo("ahora");
+          chk(!qAv("bar") && /^1 aviso quitado hasta las \d\d:\d\d\.$/.test(txtDe(document.querySelector("#estVista .est-av-q span"))), "6 · Quitada en Hoy, el barómetro sigue en «Ahora» (en pantalla)", "media");
+          document.getElementById("estAvMostrar").click(); await esperar(120); const xb = necesito(qX("bar"), "la ✕ del barómetro en «Ahora»"); xb.click(); await esperar(120);
+          await irA("panel"); await pausa(.4);
+          chk(!document.querySelector("#hoyBaro .hoy-baro") && regA() && regA().l["bar:lluvia"], "6 · Quitado en «Ahora», la franja sigue en Hoy (en pantalla)", "media");
+          const o6 = JSON.parse(localStorage.getItem("agronotasAvisosOcultos")); o6.l["bar:lluvia"].fin = Date.now() + 300; localStorage.setItem("agronotasAvisosOcultos", JSON.stringify(o6)); await esperar(450);
+          if(document.querySelector("#app .hoy-est")) hoyEstRefrescar(); else hoyBaroRefrescar();   // el repintado de cada minuto (wlTic → hoyEstRefrescar → hoyBaroRefrescar)
+          await esperar(120); const h2 = document.querySelector("#hoyBaro .hoy-baro .est-av-x");
+          chk(h2 && regA() === null, "6 · Al vencer, la franja de Hoy no vuelve sola con el repintado de cada minuto (hoyBaroRefrescar)", "media");
+          if(h2){ h2.click(); await esperar(120); necesito(document.querySelector("#avisoCapa .aviso-acc"), "«Deshacer» en Hoy").click(); await esperar(150);
+            chk(document.activeElement === document.querySelector("#hoyBaro .est-av-x") && regA() === null, "9 · «Deshacer» en Hoy no repuso la franja con el foco en su ✕", "media"); }
+        }
+      }
+      D.ui = JSON.parse(ui0); uiAplicar(); render(); await pausa(.3);
+      /* 10 · estSemaforoLectura, el informe y el Excel: lo mismo con y sin avisos quitados */
+      limpiar();
+      const huella = async ()=>{ estDat._inf = null; await estBotInf("diario", estSumarDias(estHoyF(), -1), "vista"); const x = await estArchivoActual(), z = await estBotXlsx(x.blob), U = estUmb(), L = estDat.lect.slice(-96);
+        return JSON.stringify({sem:L.map(y=>y.sem), lec:L.map(y=>estSemaforoLectura(y, U, {}).fin), kpis:txtDe(document.getElementById("estInfKpis")), tabla:txtDe(document.getElementById("estInfTabla")), nom:x.nombre, filas:z.hojas.map(h=>[h.nom, h.filas])}).replace(/generado el [^"·]*/g, ""); };
+      const h0 = await huella(), L10 = estAvisosAhoraLista().map(a=>a[6] && a[6].id).filter(Boolean);
+      L10.forEach(id=>estAvQuitar(id)); const n10 = Object.keys((regA() || {l:{}}).l).length, h1 = await huella(); estAvMostrar(); const h2 = await huella();
+      chk(L10.join() === "bar,cz,anemo,apl" && n10 >= 4 && h0 === h1 && h1 === h2 && h0.length > 500, "10 · Con avisos quitados cambió el historial, estSemaforoLectura, el informe o el Excel (" + JSON.stringify({avisos:L10, claves:n10, iguales:[h0 === h1, h1 === h2], largo:h0.length}) + ")", "grave");
+      limpiar();
+    } finally {
+      window.estBarAhora = EST_BOT.ba0; window.estCerezosVentana = EST_BOT.cv0; window.estAvisoAnemo = EST_BOT.an0;
+      try{ localStorage.removeItem("agronotasAvisosOcultos"); localStorage.removeItem("agronotasAplLluvia"); }catch(e){}
+      if(est0 == null) delete D.est; else D.est = JSON.parse(est0); D.sync = JSON.parse(sync0);
+      if(raiz){ raiz.style.width = ""; raiz.style.maxWidth = ""; } D.ui = JSON.parse(ui0); try{ uiAplicar(); render(); }catch(e){}
+      EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(5); await estBotLimpio(); await estBotSinc(); await estPronCargar(true);
+    }
+    revisarPantalla();
   });
 }
 
@@ -5217,15 +7305,16 @@ async function estBotGR(){
       chk(rg && v("estR_d") === d29 && v("estR_h") === hoyF && tit().endsWith("· " + estRangoTxt(d29, hoyF)) && /el gráfico se dibuja solo/.test(nota()) && !rg.querySelector("button") && err().hidden,
         "«Elegir período» no abre con los últimos 30 días, su título, la nota de ayuda y sin botón «Ver» («" + tit() + "»)", "media");
       /* una sola vez: «Desde» y, antes de 200 ms, «Hasta» → un solo dibujo */
-      dib = 0; pon("estR_d_t", dmy(M(hoyF, -20))); await esperar(120); pon("estR_h_t", dmy(M(hoyF, -10))); await esperar(800);
+      const ya = async c=>{ await esperar(750); await esperarQue(c, 1500); };   // revisión r2: una repintada de fondo reinicia los 600 ms de espera: 750 ms fijos a veces no alcanzan (lo que debe esperar 600 ms se mide aparte, a los 300 ms)
+      dib = 0; pon("estR_d_t", dmy(M(hoyF, -20))); await esperar(120); pon("estR_h_t", dmy(M(hoyF, -10))); await ya(()=>dib >= 1); await esperar(50);
       chk(dib === 1 && tit().endsWith("· " + estRangoTxt(M(hoyF, -20), M(hoyF, -10))), "Cambiar las dos fechas seguidas dibujó " + dib + " veces (se esperaba 1) o el título no es el del período («" + tit() + "»)", "media");
       /* escribir «Desde» como una persona: a los 300 ms no cambió nada, a los 750 sí */
       let tEv = 0; const marca = ()=>{ tEv = Date.now(); }; document.getElementById("estRango").addEventListener("input", marca, true);
       const ti0 = tit(); await escribir("estR_d_t", dmy(R1[0]), "Desde"); const t0 = tEv || Date.now();
       await esperar(Math.max(0, t0 + 300 - Date.now())); const a300 = tit();
-      await esperar(Math.max(0, t0 + 750 - Date.now())); const a750 = tit();
+      await esperar(Math.max(0, t0 + 750 - Date.now())); await esperarQue(()=>tit().endsWith("· del 05-03 al " + estFFecha(M(hoyF, -10))), 1500); const a750 = tit();
       chk(a300 === ti0 && a750.endsWith("· del 05-03 al " + estFFecha(M(hoyF, -10))), "Al escribir «Desde» el gráfico no esperó los 600 ms (a los 300 ms «" + a300 + "», a los 750 ms «" + a750 + "»)", "media");
-      await listo(); await escribir("estR_h_t", dmy(R1[1]), "Hasta"); await esperar(750); await listo(); await pausa(.3);
+      await listo(); await escribir("estR_h_t", dmy(R1[1]), "Hasta"); await ya(()=>tit().endsWith("· del 05-03 al 10-07-" + Y)); await listo(); await pausa(.3);
       const G1 = EST_GRAF.estGPrin;
       chk(tit() === "Temperatura máxima y mínima · del 05-03 al 10-07-" + Y && G1 && G1.S.dias && G1.S.dias.length === 128, "Del 05-03 al 10-07-" + Y + " el gráfico no tiene el título y los 128 días («" + tit() + "», " + (G1 && G1.S.dias ? G1.S.dias.length : "—") + " días)", "media");
       try{ document.activeElement && document.activeElement.blur(); }catch(e){}
@@ -5233,37 +7322,37 @@ async function estBotGR(){
       dib = 0; pon("estR_d_t", "05/04/20"); await esperar(750);
       const y2 = String(Y).slice(2);
       chk(dib === 0 && err().hidden && tit().indexOf("del 05-03") > 0, "Con el año a medio escribir («05/04/20») el gráfico se dibujó o salió un error", "media");
-      pon("estR_d_t", "05/04/20" + y2); await esperar(750);
+      pon("estR_d_t", "05/04/20" + y2); await ya(()=>tit().indexOf("· del 05-04 al 10-07-" + Y) > 0);
       chk(dib >= 1 && tit().indexOf("· del 05-04 al 10-07-" + Y) > 0, "Al completar el año el gráfico no se dibujó con el 05-04 («" + tit() + "»)", "media");
       /* año de 2 cifras y salir de la casilla: dibuja 06-04-<año> */
-      let t = pon("estR_d_t", "06/04/" + y2); salir(t); await esperar(750);
+      let t = pon("estR_d_t", "06/04/" + y2); salir(t); await ya(()=>tit().indexOf("· del 06-04 al 10-07-" + Y) > 0 && v("estR_d_t") === "06/04/" + Y);
       chk(tit().indexOf("· del 06-04 al 10-07-" + Y) > 0 && v("estR_d_t") === "06/04/" + Y, "«06/04/" + y2 + "» al salir de la casilla no dibujó el 06-04-" + Y + " («" + tit() + "», casilla «" + v("estR_d_t") + "»)", "media");
       /* Enter: al tiro */
       t = pon("estR_h_t", "09/07/" + Y); t.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter", bubbles:true}));
       chk(tit().indexOf("al 09-07-" + Y) > 0, "Enter en «Hasta» no dibujó al tiro («" + tit() + "»)", "leve");
       /* al revés: nota, sin dibujo, las casillas como se escribieron */
-      await esperar(700); dib = 0; pon("estR_d_t", "10/07/" + Y); pon("estR_h_t", "05/03/" + Y); await esperar(750);
+      await esperar(700); dib = 0; pon("estR_d_t", "10/07/" + Y); pon("estR_h_t", "05/03/" + Y); await ya(()=>/«Desde» quedó después de «Hasta»/.test(nota()));
       chk(dib === 0 && /«Desde» quedó después de «Hasta»: cambia una de las dos\./.test(nota()) && v("estR_d_t") === "10/07/" + Y && v("estR_h_t") === "05/03/" + Y, "Con las fechas al revés no sale la nota (o se dibujó, o se ordenaron solas): «" + nota() + "»", "media");
       /* «Hasta» futura: llega hasta hoy (y la casilla lo dice) */
-      pon("estR_d_t", "05/03/" + Y); t = pon("estR_h_t", dmy(M(hoyF, 5))); await esperar(750);
+      pon("estR_d_t", "05/03/" + Y); t = pon("estR_h_t", dmy(M(hoyF, 5))); await ya(()=>/La fecha «Hasta» era futura/.test(nota()) && v("estR_h") === hoyF && v("estR_h_t") === dmy(hoyF) && tit().endsWith("· del 05-03 al " + estFFecha(hoyF)));
       chk(/La fecha «Hasta» era futura: el gráfico llega hasta hoy\./.test(nota()) && v("estR_h") === hoyF && v("estR_h_t") === dmy(hoyF) && tit().endsWith("· del 05-03 al " + estFFecha(hoyF)), "Con «Hasta» futura no sale la nota, o la casilla no queda en hoy («" + v("estR_h_t") + "»)", "media");
       await listo();
       /* «Desde» futura, antes del mínimo, más de 2 años y 731 días exactos */
-      const ti1 = tit(); dib = 0; pon("estR_d_t", dmy(M(hoyF, 3))); await esperar(750);
+      const ti1 = tit(); dib = 0; pon("estR_d_t", dmy(M(hoyF, 3))); await ya(()=>/La fecha «Desde» es futura/.test(txtDe(err())));
       chk(!err().hidden && /La fecha «Desde» es futura: elige un día de hoy hacia atrás\./.test(txtDe(err())) && tit() === ti1 && dib === 0 && getComputedStyle(err()).display !== "none", "Con «Desde» futura no sale el error en rojo, o el gráfico cambió", "media");
-      const aH = +hoyF.slice(0, 4); pon("estR_d_t", "31/12/" + (aH - 4)); pon("estR_h_t", dmy(hoyF)); await esperar(750);
+      const aH = +hoyF.slice(0, 4); pon("estR_d_t", "31/12/" + (aH - 4)); pon("estR_h_t", dmy(hoyF)); await ya(()=>/^Se puede mirar desde el/.test(txtDe(err())));
       chk(txtDe(err()) === "Se puede mirar desde el 01-01-" + (aH - 3) + " (hasta 3 años atrás).", "Antes del mínimo no sale «Se puede mirar desde el 01-01-" + (aH - 3) + " (hasta 3 años atrás).» («" + txtDe(err()) + "»)", "media");
-      pon("estR_d_t", dmy(M(hoyF, -800))); await esperar(750);
+      pon("estR_d_t", dmy(M(hoyF, -800))); await ya(()=>/este tiene 801 días/.test(txtDe(err())));
       chk(/El período puede ser de hasta 2 años \(731 días\); este tiene 801 días\. Acorta las fechas\./.test(txtDe(err())), "Con 801 días no sale el error de 2 años («" + txtDe(err()) + "»)", "media");
-      pon("estR_d_t", dmy(M(hoyF, -730))); await esperar(750); await listo();
+      pon("estR_d_t", dmy(M(hoyF, -730))); await ya(()=>err().hidden && estNav().rango.desde === M(hoyF, -730)); await listo();
       chk(err().hidden && estNav().rango.desde === M(hoyF, -730) && tit().endsWith("· " + estRangoTxt(M(hoyF, -730), hoyF)), "731 días exactos no se dibujaron («" + tit() + "», «" + txtDe(err()) + "»)", "media");
       /* solo «05/03» al salir de la casilla: la nota pide las dos fechas */
-      t = pon("estR_d_t", "05/03"); salir(t); await esperar(750);
+      t = pon("estR_d_t", "05/03"); salir(t); await ya(()=>/Escribe las dos fechas/.test(nota()));
       chk(/Escribe las dos fechas \(dd\/mm\/aaaa\) o elígelas en el calendario: el gráfico cambia solo\./.test(nota()), "Con «05/03» la nota no pide las dos fechas («" + nota() + "»)", "leve");
       /* repintado de fondo con la fecha a medio camino: la casilla se conserva y después dibuja */
       await listo(); const raiz0 = document.getElementById("estRaiz");
       pon("estR_d_t", "05/03/" + Y); estPintar(); await pausa(.1);
-      const sigue = v("estR_d_t"), mismaRaiz = document.getElementById("estRaiz") === raiz0; await esperar(800); await listo();
+      const sigue = v("estR_d_t"), mismaRaiz = document.getElementById("estRaiz") === raiz0; await ya(()=>tit().endsWith("· del 05-03 al " + estFFecha(hoyF))); await listo();
       chk(sigue === "05/03/" + Y && tit().endsWith("· del 05-03 al " + estFFecha(hoyF)), "Un repintado antes de los 600 ms perdió la fecha escrita o no se dibujó después («" + sigue + "», «" + tit() + "»" + (mismaRaiz ? "" : ", la sección se armó de nuevo") + ")", "media");
       chk(R.alerts.length === nA0, "«Elegir período» mostró " + (R.alerts.length - nA0) + " alert()", "media");
     } finally { window.estGrafPos = gp0; }
@@ -5405,7 +7494,7 @@ BOTS.push({id:"estacion", modulo:"Estación", nombre:"Valentina, encargada de la
   EST_BOT.modo = "v3"; EST_BOT.filas = estBotFilas(40); EST_BOT.pedidos = []; EST_BOT.omPedidos = [];
   try{
     await estBotLimpio(); await estBotOMLimpio();
-    await estBotA(); await estBotB(); await estBotC(); await estBotD(); await estBotG(); await estBotGR(); await estBotAplicar(); await estBotV162(); await estBotBaro(); await estBotRiegoLl();
+    await estBotA(); await estBotB(); await estBotC(); await estBotXP(); await estBotD(); await estBotG(); await estBotGR(); await estBotAplicar(); await estBotV162(); await estBotBaro(); await estBotRiegoLl();
   } finally {
     try{ delete navigator.onLine; }catch(e){}
     try{ await estBotLimpio(); await estBotOMLimpio(); }catch(e){}
@@ -5625,9 +7714,15 @@ BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"�
         { const todo = D.fenologia, pv0 = window.estPronVigente, lp0 = window.estLluviaProx; D.fenologia = todo.filter(x=>x===e);
           window.estPronVigente = ()=>({bot:true}); window.estLluviaProx = ()=>null;   // con pronóstico (sin lluvia): el semáforo dice lo suyo
           try{ const d2 = document.createElement("div"); d2.innerHTML = estCampoCosecha(); const td = txtDe(d2), sem = txtDe(d2.querySelector(".est-sem"));
-            chk(!/tiene en Fenología un estado entre 09/.test(td) && /tiene en Fenología un estado principal entre 09 Color pajizo y pinta/.test(td) && /Anota la pinta como estado principal en Fenología/.test(td)
-              && /Ningún cerezo con la pinta como estado principal/.test(sem) && /También hay fruta en 09 Color pajizo y pinta/.test(td),
-              "Con 75 + también 81 la tarjeta se contradice (dice «ningún cuartel… un estado entre 09…» sin «principal», o no pide anotarla como estado principal): «"+sem+"» · «"+td.slice(0,300)+"»", "media");
+            chk(!/tiene en Fenología un estado entre 09/.test(td) && /tiene en Fenología un estado principal entre 09 Color pajizo y pinta/.test(td) && /si esa fruta es la que predomina, anótala como estado principal en Fenología/.test(td)
+              && /Fruta entre pinta y cosecha solo como «también hay»/.test(sem) && /También hay fruta en 09 Color pajizo y pinta/.test(td) && !/Anota la pinta/.test(td),
+              "Con 75 + también 81 la tarjeta se contradice (dice «ningún cuartel… un estado entre 09…» sin «principal», o no dice que, si esa fruta predomina, se anote como principal): «"+sem+"» · «"+td.slice(0,300)+"»", "media");
+            /* revisión 3 de la v164: un cuartel ya en 91 Postcosecha con fruta tardía en 87 («también hay»): ni el título ni el consejo piden «anotar la pinta» */
+            e.bbch = "91"; e.estado = "Postcosecha"; e.bbchSec = ["87"]; d2.innerHTML = estCampoCosecha();
+            { const td3 = txtDe(d2), sem3 = txtDe(d2.querySelector(".est-sem"));
+              chk(/Fruta entre pinta y cosecha solo como «también hay»/.test(sem3) && /También hay fruta en 10 Maduración de fruto/.test(td3) && /si esa fruta es la que predomina, anótala como estado principal/.test(td3) && !/Anota la pinta/.test(td3) && !/Ningún cerezo con la pinta/.test(sem3),
+                "Con 91 Postcosecha + también 87 el título y el consejo de la tarjeta se contradicen con la línea «También hay fruta…»: «"+sem3+"» · «"+td3.slice(0,300)+"»", "leve"); }
+            e.bbch = "75"; e.estado = "Fruto en desarrollo"; e.bbchSec = ["81"];
             delete e.bbchSec; d2.innerHTML = estCampoCosecha();
             chk(/Anota la pinta en Fenología/.test(txtDe(d2)) && !/como estado principal en Fenología/.test(txtDe(d2)) && /Ningún cerezo entre pinta y cosecha/.test(txtDe(d2.querySelector(".est-sem"))), "Sin «también hay» en pinta la tarjeta no dice «Ningún cerezo entre pinta y cosecha» y «Anota la pinta en Fenología»: «"+txtDe(d2.querySelector(".est-sem"))+"»", "leve");
             e.bbchSec = ["81"];
@@ -5640,8 +7735,23 @@ BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"�
         /* revisión 2 de la v164: una variedad tardía a medio cosechar (el principal ya en 91 Postcosecha y fruta todavía en 87, «también hay»): la línea sale y la ventana no se enciende */
         e.bbch = "91"; e.estado = "Postcosecha"; e.bbchSec = ["87"]; guardar();
         { const CZ3 = estCerezosVentana(), SP3 = estCerezosSecPinta(); d.innerHTML = estCampoCosecha(); const t3 = txtDe(d);
-          chk(!CZ3.lista.some(z=>z.q===T.QC) && SP3.lista.some(z=>z.q===T.QC && z.c==="87") && /También hay fruta en 10 Maduración de fruto en [^;]*Cerezo bot/.test(t3),
-            "Con 91 Postcosecha + también 87 la tarjeta no dice «También hay fruta en 10 Maduración de fruto en … Cerezo bot» (o el cerezo entró a la ventana): «"+t3.slice(0,300)+"»", "media"); }
+          chk(!CZ3.lista.some(z=>z.q===T.QC) && SP3.lista.some(z=>z.q===T.QC && z.c==="87") && /También hay fruta en 10 Maduración de fruto en [^;]*Cerezo bot/.test(t3) && !/BBCH 87 \(/.test(t3),
+            "Con 91 Postcosecha + también 87 la tarjeta no dice «También hay fruta en 10 Maduración de fruto en … Cerezo bot» (o el cerezo entró a la ventana, o nombró el código sin hacer falta): «"+t3.slice(0,300)+"»", "media"); }
+        /* revisión 3 de la v164: el principal en 89 («10 Maduración de fruto», fuera de la ventana 81–87) con «también hay» 85 u 87: ese «también hay» se guarda
+           (antes fenSecLimpiar lo quitaba por ser del mismo estado del boletín) y la tarjeta lo dice; dentro de la ventana, otro código del mismo estado sigue sin guardarse */
+        { const L = (b, l)=>JSON.stringify(fenSecLimpiar("Cerezo", b, l).sec);
+          chk(L("89", ["87"])==='["87"]' && L("89", ["85","87"])==='["85"]' && L("85", ["87"])==='[]' && L("75", ["79","85","87","67"])==='["67","85"]' && L("88", ["81"])==='["81"]',
+            "fenSecLimpiar en cerezo: 89 + [87] → "+L("89",["87"])+" · 89 + [85, 87] → "+L("89",["85","87"])+" · 85 + [87] → "+L("85",["87"])+" · 75 + [79, 85, 87, 67] → "+L("75",["79","85","87","67"])+" (se esperaba [87], [85], [], [67, 85])", "media");
+          e.bbch = "89"; e.estado = fenEstadoTxt("Cerezo", "89"); e.bbchSec = fenSecLimpiar("Cerezo", "89", ["87"]).sec; guardar();
+          const CZ5 = estCerezosVentana(), SP5 = estCerezosSecPinta(); d.innerHTML = estCampoCosecha(); const t5 = txtDe(d);
+          /* revisión 1 de la v165: el principal (89) y el «también hay» (87) son el mismo estado del boletín: la línea nombra el código, «BBCH 87 (10 Maduración de fruto)» */
+          chk(!CZ5.lista.some(z=>z.q===T.QC) && SP5.lista.some(z=>z.q===T.QC && z.c==="87") && /También hay fruta en BBCH 87 \(10 Maduración de fruto\) en [^;]*Cerezo bot/.test(t5),
+            "Con 89 + también 87 la tarjeta de cosecha no dice «También hay fruta en BBCH 87 (10 Maduración de fruto) en … Cerezo bot» (o el cerezo entró a la ventana): «"+t5.slice(0,300)+"»", "media");
+          const n0 = fenAll().length;   // lo mismo por el asistente (Claude puede proponer 89 + 87)
+          asisAplicarTodos([{tipo:"fenologia", fecha:HOY(), fundo:T.QC.fundo, cuarteles:[T.QC.nombre], bbch:"89", bbch_sec:["87"], texto:"Bot FN5 asistente 89", asisLote:"alBotFN5"}], "ipad");
+          const ra = fenAll().length===n0+1? fenAll()[fenAll().length-1] : null;
+          chk(ra && ra.bbch==="89" && JSON.stringify(ra.bbchSec)==='["87"]', "Por el asistente, 89 + también 87 no guardó el «también hay»: "+JSON.stringify(ra && {bbch:ra.bbch, sec:ra.bbchSec}), "media");
+          D.fenologia = fenAll().filter(x=>x!==ra && x.asisLote!=="alBotFN5"); guardar(); }
         quitarDe(T.QC);
       } finally { devolver(l); }
     });
@@ -5652,7 +7762,7 @@ BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"�
       chk(e && /^BBCH 65 · /.test(e.tit) && /también 57, 69$/.test(e.tit) && e.grupo==="fen:65+57,69", "El evento de FN1 no trae «BBCH 65 … también 57, 69» o su grupo no es fen:65+57,69: "+JSON.stringify(e && {tit:e.tit, grupo:e.grupo}), "media");
       chk(e && e.txt.indexOf(gtNorm("Botón Blanco"))>=0, "Buscar «botón blanco» (sin tildes ni mayúsculas) no encuentra el registro con ese «también hay»", "media");
       chk(e && e2 && e2.grupo==="fen:65" && lcGrupoK(e)!==lcGrupoK(e2), "Un registro igual sin secundarios quedó en la misma fila que el de FN1", "media");
-      nav.lc = {v:"dia", fundo:FB, per:"30"}; await irA("bitacora");
+      nav.lc = {v:"dia", fundo:FB, per:"3m"}; await irA("bitacora");
       const tf = [...document.querySelectorAll("#lcVista .lc-it")].map(el=>txtDe(el.querySelector(".lc-it-t b")));
       chk(tf.indexOf("BBCH 65 · Plena floración (50%+) · también 57, 69")>=0 && tf.indexOf("BBCH 65 · Plena floración (50%+)")>=0, "Día a día no muestra las dos filas («… · también 57, 69» y la sin secundarios): "+tf.filter(t=>/BBCH 65/.test(t)).join(" | "), "media");
       D.fenologia = fenAll().filter(x=>x!==igual && x!==igual2); guardar();
@@ -5674,6 +7784,18 @@ BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"�
       const f1 = fil.find(c=>c[2]===T.QD.nombre && c[4]==="65" && c[6]), fc = fil.find(c=>c[2]===T.QC.nombre && c[4]==="65");
       chk(f1 && f1[6]==="57 Botón blanco / rosado, 69 Fin de floración" && f1[5]==="Plena floración (50%+)" && f1[7]==="" && f1[10]==="iPad", "La fila de FN1 no trae 65 y «57 Botón blanco / rosado, 69 Fin de floración»: "+JSON.stringify(f1), "media");
       chk(fc && fc[7]==="05" && fc[5]==="Plena flor" && fc[3]==="Cerezo", "La fila del cerezo con 65 no trae «05» en N.º del boletín: "+JSON.stringify(fc), "media");
+      /* revisión 3 de la v164: un texto que empieza con = + - @ (lo puede escribir un celular: la nota, «Quién») va con un apóstrofo adelante, para que Excel
+         no lo tome como fórmula; los números y los textos que son solo números (el GPS) quedan igual */
+      { const c = csvCelda, TAB = String.fromCharCode(9);
+        const ok1 = c("=1+1")==="'=1+1" && c("+Juan 9 1234")==="'+Juan 9 1234" && c("-2+3")==="'-2+3" && c("@SUMA(A1)")==="'@SUMA(A1)" && c(TAB+"x")==="'"+TAB+"x" && c("=A1;B1")==="\"'=A1;B1\"";
+        const ok2 = c(-2.5)==="-2.5" && c(12)==="12" && c("-33.41, -71.14")==="-33.41, -71.14" && c("+56 9 1234 5678")==="+56 9 1234 5678" && c("-5")==="-5" && c("Normal")==="Normal" && c("a;b")==='"a;b"' && c(null)==="";
+        chk(ok1 && ok2, "csvCelda no neutraliza las fórmulas o cambió los números: "+JSON.stringify(["=1+1","+Juan 9 1234","+56 9 1234 5678","-2+3","@SUMA(A1)","=A1;B1",-2.5,"-33.41, -71.14","-5"].map(c)), "media"); }
+      { const ef = reg(T.QC, {bbch:"65", estado:"Plena flor", nota:"=1+1", autor:"@Pía", equipo:"celular"}); guardar();
+        const cu1 = URL.createObjectURL; let b2 = null;
+        URL.createObjectURL = function(b){ if(b instanceof Blob) b2 = b; return cu1.apply(this, arguments); };
+        try{ csvExport("fenologia"); } finally { URL.createObjectURL = cu1; D.fenologia = fenAll().filter(x=>x!==ef); guardar(); }
+        const f2 = b2? (await b2.text()).split(/\r\n/).slice(1).map(x=>x.split(";")).find(x=>x[8]==="'=1+1") : null;
+        chk(f2 && f2[11]==="'@Pía" && f2[10]==="celular" && f2[4]==="65", "En el CSV de Fenología la nota «=1+1» o «Quién» «@Pía» no quedaron con el apóstrofo adelante: "+JSON.stringify(f2), "media"); }
       D.fenologia = fenAll().filter(x=>x!==ec); guardar();
     });
     await paso("FN8 · Cerezo: 10 tarjetas del boletín + 2 de después de la cosecha, 05 Plena flor → 65, el subestado 61, la insignia «05 · Plena flor · BBCH 65» y tarjetas de 44 px o más a 375 px", async ()=>{
@@ -5728,7 +7850,7 @@ BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"�
         const ix = lcIdx(), e65 = ix.ev.find(x=>x.st==="fenologia" && x.id===v65.id), e09 = ix.ev.find(x=>x.st==="fenologia" && x.id===v09.id);
         chk(e65 && e65.fenNb==="05" && e65.tit==="Plena flor" && e65.txt.indexOf(gtNorm("Plena floración"))>=0, "En la Bitácora el 65 viejo no sale como «[05] Plena flor» (o no se encuentra por su nombre guardado): "+JSON.stringify(e65 && {nb:e65.fenNb, tit:e65.tit}), "media");
         chk(e09 && /Punta verde/.test(e09.tit) && /\(fuera de los 10 del boletín\)/.test(e09.tit) && !e09.fenNb, "El 09 no sale con su nombre BBCH y «(fuera de los 10 del boletín)»: "+JSON.stringify(e09 && e09.tit), "media");
-        nav.lc = {v:"dia", fundo:FB, per:"30"}; await irA("bitacora");
+        nav.lc = {v:"dia", fundo:FB, per:"3m"}; await irA("bitacora");
         const fil = [...document.querySelectorAll("#lcVista .lc-it")].find(el=>/Plena flor$/.test(txtDe(el.querySelector(".lc-it-t b"))) && /Cerezo bot/.test(txtDe(el)) && txtDe(el.querySelector(".lc-it-t b .fen-nb"))==="05");
         chk(fil && /BBCH 65/.test(txtDe(fil.querySelector(".lc-it-m"))), "Día a día no muestra la fila «[05] Plena flor» con «BBCH 65» aparte", "media");
         await irA("fenologia"); fenNav().fundo = FB; fenNav().cuartel = T.QC.nombre; fenNav().vista = "hist"; render(); await pausa();
@@ -5807,10 +7929,10 @@ BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"�
       T.fn1 = fenAll().find(x=>x.fundo===FB && x.cuartel===T.QD.nombre && JSON.stringify(x.bbchSec)==='["57","69"]') || null;
     });
     await paso("FN12 · «Sugerir con Claude» con secundarios: deja los 3 primeros válidos, sin repetir ni el principal y ordenados; en cerezo la lista empieza con los nombres del boletín", async ()=>{
-      const s = syncCfg(), s0 = {url:s.url, clave:s.clave, rol:s.rol}; let pedido = null;
+      const s = syncCfg(), s0 = {url:s.url, clave:s.clave, rol:s.rol}; let pedido = null, resp = {bbch:"65", secundarios:["57","57","65","99","69","67","61"]};
       window.syncFetch = async function(ruta, opt){
         if(ruta==="asistente"){ pedido = asisCuerpoLeer(opt.body); await esperar(80);
-          return {ok:true, modelo:"claude-opus-5-5", adjuntos:(pedido.adjuntos||[]).length, usage:{input_tokens:2500, output_tokens:140}, datos:{bbch:"65", secundarios:["57","57","65","99","69","67","61"], confianza:"media", explicacion:"Bot: flores abiertas y botones", foto_recibida:true}}; }
+          return {ok:true, modelo:"claude-opus-5-5", adjuntos:(pedido.adjuntos||[]).length, usage:{input_tokens:2500, output_tokens:140}, datos:Object.assign({confianza:"media", explicacion:"Bot: flores abiertas y botones", foto_recibida:true}, resp)}; }
         throw new Error("bots: ruta "+ruta+" no simulada");
       };
       try{
@@ -5834,6 +7956,18 @@ BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"�
         necesito(pedido, "el pedido a Claude del cerezo");
         const sy = pedido.system, iL = sy.indexOf("ESTADOS DE LA LISTA"), iC = sy.indexOf("Cerezo (usa estos nombres): 00 Yema dormida, 51 Yema hinchada"), i00 = sy.indexOf("00 · Receso");
         chk(iL>=0 && iC>iL && i00>iC && (((pedido.schema||{}).properties||{}).bbch||{}).enum.length===fenLista("Cerezo").length, "En el cerezo la lista para Claude no empieza con «Cerezo (usa estos nombres): 00 Yema dormida, …» (o el enum ya no es la escala completa)", "media");
+        /* revisión 2 de la v165: Claude propone 89 + también 87 (o 85 y 87) en un cerezo: el «también hay» que cuenta para la lluvia en cosecha queda marcado
+           y se guarda, igual que en el formulario corto del celular y en el asistente (antes fenSel lo sacaba por ser del mismo estado del boletín que el 89) */
+        resp = {bbch:"89", secundarios:["85","87"]}; await fenSugerir(); await pausa();
+        chk(FEN && FEN.bbch==="89" && JSON.stringify(FEN.sec)==='["85"]', "Claude 89 + [85, 87] en un cerezo: en «También hay» debía quedar [85] y quedó "+JSON.stringify(FEN && FEN.sec), "media");
+        resp = {bbch:"89", secundarios:["87"]}; await fenSugerir(); await pausa();
+        { const c87 = document.querySelector('#fenSec [data-sec="87"]');
+          chk(FEN && FEN.bbch==="89" && JSON.stringify(FEN.sec)==='["87"]' && c87 && c87.getAttribute("aria-pressed")==="true" && !c87.disabled,
+            "Claude 89 + [87] en un cerezo: el 87 no quedó marcado en «También hay» (se puede desmarcar): "+JSON.stringify({sec:FEN && FEN.sec, chip:c87? [c87.getAttribute("aria-pressed"), c87.disabled] : "no está"}), "media"); }
+        { const n0 = fenAll().length; chk(await guardarModal_(), "No se guardó el 89 + también 87 que sugirió Claude", "media");
+          const r89 = fenAll().length===n0+1? fenAll()[fenAll().length-1] : null;
+          chk(r89 && r89.cuartel===T.QC.nombre && r89.bbch==="89" && JSON.stringify(r89.bbchSec)==='["87"]', "El 89 + también 87 de Claude no se guardó así: "+JSON.stringify(r89 && {bbch:r89.bbch, bbchSec:r89.bbchSec}), "media");
+          if(r89){ D.fenologia = fenAll().filter(x=>x!==r89); guardar(); } }
         await cancelarModal();
       } finally { window.syncFetch = sfF; s.url = s0.url; s.clave = s0.clave; s.rol = s0.rol; guardar(); }
     });
@@ -5881,6 +8015,35 @@ BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"�
         chk(!modalAbierto() && r && r.fecha===masDias(HOY(),1), "Con la fecha de mañana no se guardó (o quedó otra fecha)", "leve");
       } finally { if(modalAbierto()){ try{ cerrarModal(); }catch(e){} } if(r) D.fenologia = fenAll().filter(x=>x!==r); guardar(); }
     });
+    /* revisión 2 de la v165: en el celular el semáforo de la tarjeta «Lluvia en cosecha», con la pinta anotada solo como «también hay», no cabía en una línea
+       («Fruta entre pinta y cosecha solo como «también hay»»): se salía de la tarjeta y de la pantalla. Ahora baja a otra línea. La tarjeta se arma en una caja
+       con el contenedor «est» (como #estRaiz) de 375, 343 y 320 px, en el iPad y en el celular, con y sin texto grande; el texto del semáforo no pasa el borde
+       derecho de la tarjeta y la tarjeta no se ensancha */
+    await paso("FN16 · Tarjeta «Lluvia en cosecha» a 375 px con la pinta solo como «también hay»: el semáforo baja a otra línea y no se sale (iPad y celular, con y sin texto grande)", async ()=>{
+      const l = aparte(T.QC), todo = D.fenologia, pv0 = window.estPronVigente, lp0 = window.estLluviaProx, uiF = JSON.stringify(D.ui||{});
+      const caja = document.createElement("div"); caja.className = "est"; caja.style.cssText = "container:est / inline-size; position:absolute; left:0; top:0; z-index:-1; pointer-events:none;";
+      let e = null;
+      try{
+        e = reg(T.QC, {fecha:masDias(HOY(),-3), bbch:"75", estado:"Fruto en desarrollo", bbchSec:["81"]});
+        D.fenologia = [e];   // solo este cerezo: ninguno en ventana (no se guarda)
+        window.estPronVigente = ()=>({bot:true}); window.estLluviaProx = ()=>null;   // con pronóstico y sin lluvia
+        document.body.appendChild(caja); const malos = []; let dos = 0;
+        for(const [nom, u] of [["iPad", {movil:"no", grande:false}], ["iPad con texto grande", {movil:"no", grande:true}], ["celular", {movil:"si", grande:false}], ["celular con texto grande", {movil:"si", grande:true}]]){
+          D.ui = Object.assign({}, JSON.parse(uiF), {sol:false}, u); uiAplicar(); await pausa(.2);
+          for(const w of [375, 343, 320]){
+            caja.style.width = w+"px"; caja.innerHTML = '<div class="est-rej">'+estCampoCosecha()+'</div>'; await pausa(.05);
+            const card = caja.querySelector("#estKCosecha"), sem = card && card.querySelector(".est-sem");
+            if(!sem){ malos.push(nom+" a "+w+" px: sin semáforo"); continue; }
+            const C = card.getBoundingClientRect(), S = sem.getBoundingClientRect(), K = caja.getBoundingClientRect(), rg = document.createRange(); rg.selectNodeContents(sem); const X = rg.getBoundingClientRect();
+            if(!/^Fruta entre pinta y cosecha solo como «también hay»$/.test(txtDe(sem))) malos.push(nom+" a "+w+" px: el semáforo dice «"+txtDe(sem)+"»");
+            if(S.right>C.right+1 || X.right>C.right+1 || C.right>K.right+1 || card.scrollWidth>card.clientWidth+1 || sem.scrollWidth>sem.clientWidth+1)
+              malos.push(nom+" a "+w+" px: el texto llega a "+Math.round(X.right)+" px, el semáforo a "+Math.round(S.right)+" y la tarjeta termina en "+Math.round(C.right));
+            if(S.height>40) dos++;
+          }
+        }
+        chk(!malos.length && dos>0, "La tarjeta «Lluvia en cosecha» con la pinta solo como «también hay» se sale a lo angosto: "+(malos.slice(0, 4).join(" · ") || "el semáforo nunca bajó a otra línea"), "media");
+      } finally { caja.remove(); D.fenologia = todo.filter(x=>x!==e); window.estPronVigente = pv0; window.estLluviaProx = lp0; D.ui = JSON.parse(uiF); uiAplicar(); devolver(l); }
+    });
   } finally {
     try{ if(modalAbierto()) cerrarModal(); }catch(e){} try{ cerrarVisor(); }catch(e){}
     window.syncFetch = sfF;
@@ -5894,7 +8057,7 @@ BOTS.push({id:"fenologa", modulo:"Fenología", nombre:"Ana, fenóloga", ico:"�
 }});
 
 /* 📓 BITÁCORA ---------------------------------------------------------------------------- */
-BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitácora", ico:"📓", que:"Bitácora de campo (Día a día): + Anotar › Labor del día (validación, cuartel, cantidad, personas, rendimiento, Gantt, decimales), la fila bajo su día y fundo, filtros en chips (fundo, cuartel, período, rango, qué, ★) sin repintar la cabecera, búsqueda en toda la historia, aplicaciones (la del asistente y un lote de 3 cuarteles en una fila), «Por confirmar», detalle en el lugar, destacar y quitar, Editar, editar y borrar el día con Deshacer, nota de las 22:30 en su día, espejo sin botones que escriben, avances en Exportar y código inyectado que no se ejecuta", correr: async ()=>{
+BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitácora", ico:"📓", que:"Bitácora de campo (Día a día): + Anotar › Labor del día (validación, cuartel, cantidad, personas, rendimiento, Gantt, decimales), la fila bajo su día y fundo, filtros en chips (fundo, cuartel, período, qué, ★) sin repintar la cabecera, un solo período con flechas ‹ › y «Hoy» (Día, Semana, Mes, 3 meses, 6 meses, 1 año) con títulos y columnas a fecha fija, valores viejos y migración, «Elegir período» con el calendario (casillas sin repintar, fechas al revés, un solo día, varios años, atajos de temporada), saltos automáticos pasajeros, búsqueda en toda la historia, aplicaciones (la del asistente y un lote de 3 cuarteles en una fila), «Por confirmar», detalle en el lugar, destacar y quitar, Editar, editar y borrar el día con Deshacer, nota de las 22:30 en su día, espejo sin botones que escriben, avances en Exportar y código inyectado que no se ejecuta", correr: async ()=>{
   const fu = fundosConCuarteles()[0], qs = plantados(fu), q1 = qs[0], H = HOY();
   const lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null, p0 = localStorage.getItem("agronotasBitacora");
   const T = {bit:null, asis:null, regs:[], notas:[], fens:[], ap:"apBotLc"+Date.now(), prod:"Bot Movento Lote"};
@@ -5903,6 +8066,7 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
   const fila = re=>filas(re)[0] || null;
   const cusDe = el=>el? [...el.querySelectorAll(".lc-it-t .lc-cu:not(.mas):not(.mas-m)")].map(c=>c.textContent.trim()) : [];
   const chipLc = (acc, re)=>buscar({texto:re, sel:`#lcVista [data-acc="${acc}"]`});
+  const enAyer = async ()=>{ await tocar(chipLc("per", /^Día$/), "Día"); await tocar('#lcVista [data-acc="pmov"][data-v="-1"]', "‹ Día anterior (ayer)"); };   // no depende de que hoy no sea lunes, como dependería «Semana»
   const abrir = async (el, desc)=>{ el = necesito(el, desc); const b = el.querySelector(".lc-it-b"); if(b.getAttribute("aria-expanded")!=="true") await tocar(b, "abrir "+desc); return necesito(document.getElementById(el.id), desc+" abierta"); };
   const limpiarFiltros = async ()=>{ const b = buscar('#lcVista [data-acc="limpiar"]'); if(b) await tocar(b, "Limpiar filtros"); };
   const filaBit = ()=>{ const b = T.bit && (D.bitacora||[]).find(x=>x.id===T.bit); if(!b) return null; const t = b.lineas[0].tipo;
@@ -6080,13 +8244,14 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
       await tocar(chipLc("cu", reExacto(q1.nombre)), "cuartel "+q1.nombre);
       chk(nav.lc.cu===q1.nombre && filas(/./).every(el=>cusDe(el).indexOf(q1.nombre)>=0), "Con el cuartel elegido aparecen filas de otros cuarteles");
       chk(!!filaBit(), "Con el cuartel elegido no aparece la labor anotada hoy en él");
-      await tocar(chipLc("per", /^7 días$/), "7 días"); chk(nav.lc.per==="7" && !!filaBit(), "Con «7 días» no aparece lo de hoy");
-      await tocar(chipLc("per", /^Temporada$/), "Temporada"); chk(nav.lc.per==="temp" && !!filaBit(), "Con «Temporada» no aparece lo de hoy");
-      await tocar(chipLc("per", /^Rango/), "Rango…");
-      chk(document.getElementById("lcR_d_t"), "«Rango…» no muestra las fechas");
+      await tocar(chipLc("per", /^Semana$/), "Semana"); chk(nav.lc.per==="sem" && !!filaBit(), "Con «Semana» no aparece lo de hoy");
+      await tocar(chipLc("per", /^Elegir período$/), "Elegir período");
+      await tocar(chipLc("ptemp", /^Esta temporada/), "Esta temporada"); chk(nav.lc.per==="temp" && !!filaBit(), "Con «Esta temporada» no aparece lo de hoy");
+      await tocar(chipLc("per", /^Elegir período$/), "Elegir período");
+      chk(document.getElementById("lcR_d_t"), "«Elegir período» no muestra las fechas");
       await fecha("lcR_d", masDias(H,-3), "desde"); await fecha("lcR_h", masDias(H,-1), "hasta");
-      chk(nav.lc.per==="rango" && nav.lc.rango.desde===masDias(H,-3) && nav.lc.rango.hasta===masDias(H,-1) && !document.querySelector(`#lcVista .lc-dia[data-dia="${H}"]`), "El rango (de hace 3 días a ayer) no filtra: sigue apareciendo hoy");
-      await tocar(chipLc("per", /^30 días$/), "30 días");
+      chk(nav.lc.per==="rango" && nav.lc.rango.desde===masDias(H,-3) && nav.lc.rango.hasta===masDias(H,-1) && !document.querySelector(`#lcVista .lc-dia[data-dia="${H}"]`), "El período elegido (de hace 3 días a ayer) no filtra: sigue apareciendo hoy");
+      await tocar(chipLc("per", /^3 meses$/), "3 meses");
       await tocar(chipLc("cu", /^Todos los cuarteles$/), "Todos los cuarteles");
       await tocar(chipLc("cat", /^Aplicaciones$/), "Aplicaciones");
       chk(filas(/./).length && filas(/./).every(el=>el.classList.contains("c-apl")), "Con «Aplicaciones» aparecen filas de otro tipo (o ninguna)");
@@ -6097,35 +8262,205 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
       chk(nav.lc.dest && filas(/./).every(el=>el.querySelector(".lc-it-t .lc-star")), "Con «★ Destacados» aparecen filas sin estrella");
       await tocar(chipLc("solodest", /Destacados/), "★ Destacados (quitar)");
       await tocar('#lcVista [data-acc="limpiar"]', "Limpiar");
-      chk(!nav.lc.fundo && !nav.lc.cu && nav.lc.per==="30" && !nav.lc.cat && !nav.lc.dest && !buscar('#lcVista [data-acc="limpiar"]'), "Limpiar no quitó todos los filtros");
-      chk(/"per":"30"/.test(localStorage.getItem("agronotasBitacora")||""), "Los filtros no se recuerdan en este equipo (localStorage «agronotasBitacora»)", "leve");
+      chk(!nav.lc.fundo && !nav.lc.cu && nav.lc.per==="3m" && !nav.lc.ref && !nav.lc.cat && !nav.lc.dest && !buscar('#lcVista [data-acc="limpiar"]'), "Limpiar no quitó todos los filtros (o no dejó «3 meses»)");
+      chk(/"per":"3m"/.test(localStorage.getItem("agronotasBitacora")||""), "Los filtros no se recuerdan en este equipo (localStorage «agronotasBitacora»)", "leve");
     });
-    await paso("«Rango…» sin «Desde» y sin resultados (★ Destacados en un cuartel): la vista no se cuelga y el campo «Hasta» conserva el foco", async ()=>{
+    await paso("«Elegir período» sin «Desde» y sin resultados (★ Destacados en un cuartel): la vista no se cuelga y el campo «Hasta» conserva el foco", async ()=>{
       await irA("bitacora"); await limpiarFiltros();
-      await tocar(chipLc("per", /^Rango/), "Rango…");
+      await tocar(chipLc("per", /^Elegir período$/), "Elegir período");
       await fecha("lcR_d", "", "desde (vacío)");
       const ht = document.getElementById("lcR_h_t"); if(ht) ht.focus();
       await fecha("lcR_h", masDias(H,-400), "hasta hace 400 días");
-      chk(document.getElementById("lcR_h_t")===ht, "Al cambiar una fecha del rango se repintaron sus campos (en el iPad se cerraría el teclado)", "media");
-      chk(nav.lc.per==="rango" && !nav.lc.rango.desde && nav.lc.rango.hasta===masDias(H,-400), "Al borrar «Desde» el rango no quedó sin piso (o no tomó «Hasta»)");
+      chk(document.getElementById("lcR_h_t")===ht, "Al cambiar una fecha de «Elegir período» se repintaron sus campos (en el iPad se cerraría el teclado)", "media");
+      chk(nav.lc.per==="rango" && !nav.lc.rango.desde && nav.lc.rango.hasta===masDias(H,-400), "Al borrar «Desde» el período no quedó sin piso (o no tomó «Hasta»)");
       await tocar(chipLc("fundo", reExacto(fu)), "fundo "+fu);
       await tocar(chipLc("cu", reExacto(q1.nombre)), "cuartel "+q1.nombre);
       const t0 = performance.now(); await tocar(chipLc("solodest", /Destacados/), "★ Destacados"); const ms = performance.now()-t0;
       chk(ms<4000 && (document.querySelector("#lcVista .vacio") || filas(/./).length), "Con un rango sin «Desde» y sin resultados la vista tardó "+Math.round(ms)+" ms o quedó en blanco", "grave");
-      chk(/hasta el/i.test(txtDe(document.querySelector("#lcVista .lc-mir"))), "«Mirando» no dice «hasta el …» con un rango sin «Desde»", "leve");
+      chk(/hasta el/i.test(txtDe(document.querySelector("#lcVista .lc-mir"))), "«Mirando» no dice «hasta el …» con «Elegir período» sin «Desde»", "leve");
       const L0 = JSON.stringify(nav.lc);   // directo: rango vacío por los dos lados, solo destacados de fenología en un cuartel
       try{ nav.lc = {v:"dia", per:"rango", rango:{desde:"", hasta:""}, dest:true, cat:"fen", fundo:fu, cu:q1.nombre};
         const t1 = performance.now(), html = lcCuerpoHTML(), ms1 = performance.now()-t1;
-        chk(typeof html==="string" && ms1<1500, "lcCuerpoHTML con «Rango…» vacío y sin resultados tardó "+Math.round(ms1)+" ms", "grave");
+        chk(typeof html==="string" && ms1<1500, "lcCuerpoHTML con «Elegir período» vacío y sin resultados tardó "+Math.round(ms1)+" ms", "grave");
       } finally { nav.lc = JSON.parse(L0); }
       await limpiarFiltros(); await irA("bitacora");
+    });
+    /* v166 (pedido 03-11): un solo período con flechas y «Elegir período». Lo de fecha fija llama a las funciones con H = martes 03-11-2026: no depende del día en que corre el bot */
+    await paso("Períodos con fecha fija (hoy = martes 03-11-2026): desde y hasta, títulos, flechas y columnas de cada botón", async ()=>{
+      const H0 = "2026-11-03", ig = (a, b, m)=>{ const x = JSON.stringify(a), y = JSON.stringify(b); chk(x===y, m+": "+x+" en vez de "+y); };
+      const rg = o=>lcRango(o, H0), de = (r, ...ks)=>ks.map(k=>r[k]), vt = (o, op)=>lcVentana(o, H0, op);
+      ig(de(rg({per:"dia",ref:""}),"desde","hasta","tit","frase"), [H0,H0,"Hoy · martes 03-11","hoy"], "Día, hoy");
+      ig(de(rg({per:"dia",ref:"2026-11-02"}),"hasta","tit","frase"), ["2026-11-02","Ayer · lunes 02-11","ayer"], "Día, ayer");
+      ig(de(rg({per:"dia",ref:"2026-10-30"}),"tit","frase","nom"), ["Viernes 30-10","el viernes 30-10","viernes 30-10"], "Día, otro día");
+      ig(rg({per:"dia",ref:"2025-10-30"}).tit, "Jueves 30-10-2025", "Día, otro año");
+      ig(de(rg({per:"sem",ref:""}),"desde","hasta","ref","tit","fin"), ["2026-11-02","",H0,"Esta semana · del 02 al 08-11","2026-11-08"], "Semana actual");
+      ig(de(rg({per:"sem",ref:"2026-10-26"}),"desde","hasta","tit","frase"), ["2026-10-26","2026-11-01","Semana pasada · del 26-10 al 01-11","la semana pasada"], "Semana pasada");
+      ig(rg({per:"sem",ref:"2026-10-21"}).tit, "Semana del 19 al 25-10", "Semana más atrás");
+      ig(de(rg({per:"sem",ref:"2026-01-01"}),"desde","tit"), ["2025-12-29","Semana del 29-12-2025 al 04-01-2026"], "Semana entre dos años");
+      ig(de(rg({per:"mes",ref:""}),"desde","tit","frase"), ["2026-11-01","Este mes · noviembre 2026","este mes"], "Mes actual");
+      ig(de(rg({per:"mes",ref:"2026-10-15"}),"desde","hasta","tit","frase"), ["2026-10-01","2026-10-31","Octubre 2026","en octubre 2026"], "Mes pasado");
+      ig(de(rg({per:"3m",ref:""}),"desde","tit","frase"), ["2026-08-10","Últimos 3 meses · semanas del 10-08 al 08-11","en los últimos 3 meses"], "3 meses");
+      ig(de(rg({per:"3m",ref:"2026-08-03"}),"desde","hasta","tit","frase","nom"), ["2026-05-11","2026-08-09","3 meses · semanas del 11-05 al 09-08","en las semanas del 11-05 al 09-08","3 meses hasta el 09-08"], "3 meses anteriores");
+      ig(de(rg({per:"6m",ref:""}),"desde","tit"), ["2026-06-01","Últimos 6 meses · junio a noviembre 2026"], "6 meses");
+      ig(de(rg({per:"6m",ref:"2026-05-01"}),"tit","frase","nom"), ["6 meses · diciembre 2025 a mayo 2026","de diciembre 2025 a mayo 2026","6 meses hasta mayo 2026"], "6 meses anteriores");
+      ig(de(rg({per:"1a",ref:""}),"desde","tit"), ["2025-12-01","Último año · diciembre 2025 a noviembre 2026"], "1 año");
+      ig(de(rg({per:"1a",ref:"2025-11-01"}),"tit","frase","nom"), ["1 año · diciembre 2024 a noviembre 2025","de diciembre 2024 a noviembre 2025","1 año hasta noviembre 2025"], "1 año anterior");
+      const AT = {dia:"2026-11-02", sem:"2026-10-26", mes:"2026-10-01", "3m":"2026-08-03", "6m":"2026-05-01", "1a":"2025-11-01"};
+      Object.keys(AT).forEach(p=>{ ig(lcPerRefMover({per:p, ref:""}, H0, -1), AT[p], "‹ en "+p); ig(lcPerRefMover({per:p, ref:AT[p]}, H0, 1), "", "› de vuelta en "+p); });
+      ig(lcPerRefMover({per:"mes", ref:"2026-01-31"}, H0, 1), "2026-02-01", "› desde un 31 no se salta febrero");
+      let W = vt({per:"sem"});
+      ig(W.map(w=>w.k), ["2026-11-02","2026-11-03","2026-11-04","2026-11-05","2026-11-06","2026-11-07","2026-11-08"], "Semana: columnas"); ig(W.map(w=>w.bot), ["L 2","M 3","M 4","J 5","V 6","S 7","D 8"], "Semana: rótulos");
+      ig(W.map(w=>w.hoy), [false,true,false,false,false,false,false], "Semana: hoy en la 2.ª"); ig(W.map(w=>w.fut), [false,false,true,true,true,true,true], "Semana: lo que no llega");
+      W = vt({per:"mes"}); ig(W.map(w=>w.bot), ["1","2–8","9–15","16–22","23–29","30"], "Mes: rótulos"); ig(W.map(w=>w.full), [false,true,true,true,true,false], "Mes: semanas recortadas");
+      W = vt({per:"3m"}); ig([W.length, W[0].k, W[12].k, W.filter(w=>w.hoy).length, W[12].hoy], [13,"2026-08-10","2026-11-02",1,true], "3 meses: columnas");
+      ig(vt({per:"6m"}).map(w=>w.k), ["2026-06","2026-07","2026-08","2026-09","2026-10","2026-11"], "6 meses: columnas");
+      W = vt({per:"1a"}); ig([W.length, W[0].k, W[11].k, W[0].top, W[1].top], [12,"2025-12","2026-11","2025","2026"], "1 año: columnas");
+      W = vt({per:"rango", rango:{desde:"2026-10-28", hasta:H0}}); ig([W.length, W.every(w=>w.t==="dia")], [7,true], "Elegir período: 7 días");
+      W = vt({per:"rango", rango:{desde:"2026-03-05", hasta:"2026-07-10"}}); ig([W.map(w=>w.k), W.every(w=>w.t==="mes"), W[0].full, W[4].full, W[0].d, W[4].h], [["2026-03","2026-04","2026-05","2026-06","2026-07"],true,false,false,"2026-03-05","2026-07-10"], "Elegir período: del 05-03 al 10-07");
+      W = vt({per:"rango", rango:{desde:"2026-08-01", hasta:H0}}); ig([W.length, W[0].t, W[0].d, W[0].h], [15,"sem","2026-08-01","2026-08-02"], "Elegir período: del 01-08 al 03-11");
+      if(lcTempIni()===9){ W = vt({per:"temp"}); ig([W.length, W[0].t, W[0].k, W[11].k], [12,"mes","2026-09","2027-08"], "Esta temporada"); }
+      W = vt({per:"rango", rango:{desde:"2023-01-01", hasta:H0}}); ig([W.length, W[0].t, W[0].k, W[15].k, W[15].full], [16,"tri","2023-T1","2026-T4",false], "Elegir período: casi 4 años");
+      W = vt({per:"rango", rango:{desde:"2021-02-10", hasta:H0}}); ig([W[0].t, W.map(w=>w.k).join(), W[0].d], ["anio","2021,2022,2023,2024,2025,2026","2021-02-10"], "Elegir período: más de 16 trimestres");
+      W = vt({per:"rango", rango:{desde:"2026-03-05", hasta:"2026-03-05"}}); ig([W.length, W[0].t], [1,"dia"], "Elegir período: un solo día");
+      ig(vt({per:"rango", rango:{desde:"2026-07-10", hasta:"2026-03-05"}}).map(w=>w.k), ["2026-03","2026-04","2026-05","2026-06","2026-07"], "Elegir período: Desde después de Hasta");
+      W = vt({per:"dia"}, {ficha:true}); ig([W.length, W.filter(w=>w.sel).map(w=>w.k)], [7,[H0]], "Día en la ficha");
+      ig(vt({per:"dia"}).length, 1, "Día en la portada");
+      /* revisión r2: solo «Hasta», anterior a lo más antiguo: la columna de «Hasta», no una fecha fuera del período; «Desde» futura sigue dando su columna. La nota con punto de miles, como la Estación */
+      ig(vt({per:"rango", rango:{desde:"", hasta:"1990-01-01"}}).map(w=>[w.d, w.h, w.t]), [["1990-01-01","1990-01-01","dia"]], "Solo «Hasta», antes de todo");
+      W = vt({per:"rango", rango:{desde:"2030-05-05", hasta:""}}); ig(W.map(w=>[w.d, w.h, w.fut]), [["2030-05-05","2030-05-05",true]], "Solo «Desde», futura");
+      ig(lcRangoNota({per:"rango", rango:{desde:"2020-01-01", hasta:"2026-12-31"}}, H0), "Del 01-01-2020 al 31-12-2026 · 2.557 días.", "La nota de un período largo");
+      ig(lcRangoNota({per:"rango", rango:{desde:"2026-10-28", hasta:H0}}, H0), "Del 28-10 al 03-11-2026 · 7 días.", "La nota de un período corto");
+      /* lcCelda: una semana recortada no cuenta otro mes y no toca los conteos del índice */
+      const c1 = {apl:1, lab:0, fen:0, nota:0, riego:0, dest:0, n:1}, c2 = {apl:0, lab:2, fen:0, nota:0, riego:1, dest:1, n:3}, m1 = {apl:1, lab:2, fen:0, nota:0, riego:1, dest:1, n:4};
+      const ix = {porDiaC:new Map([["F|C|2026-10-31",c1],["F|C|2026-11-01",c1],["F|C|2026-11-02",c2]]), porSem:new Map([["F|C|2026-11-02",c2],["F|C|2026-10-26",{apl:2,lab:0,fen:0,nota:0,riego:0,dest:0,n:2}]]), porMes:new Map([["F|C|2026-11",m1]])};
+      ig(lcCelda(ix, "F|C", {t:"sem", d:"2026-11-01", h:"2026-11-01", k:"2026-10-26", full:false}).n, 1, "Semana recortada al mes");
+      ig(lcCelda(ix, "F|C", {t:"sem", d:"2026-11-02", h:"2026-11-08", k:"2026-11-02", full:true}).n, 3, "Semana completa");
+      ig(lcCelda(ix, "F|C", {t:"anio", d:"2026-10-31", h:"2026-11-30", k:"2026", full:false}).n, 1+4, "Año recortado");
+      ig([m1.n, c1.n], [4,1], "Sumar no cambia los conteos del índice");
+    });
+    await paso("Valores viejos: «7», «30», temporada y rango; las preferencias se migran una sola vez y ref nunca se guarda", async ()=>{
+      const lc1 = JSON.stringify(nav.lc||null), p1 = localStorage.getItem("agronotasBitacora"), vj = masDias(H,-120);
+      const rv = {id:nid(), tipo:"Riego", fecha:vj, fundo:fu, cuartel:q1.nombre, horas:"2", sector:"", obs:"", pin:"baja", gps:null, fotos:[], docs:[], audios:[]};
+      D.registros.push(rv); T.regs.push(rv.id); T.vj = vj; guardar();   // algo anotado hace tiempo: ‹ queda activa y el pie ofrece el período anterior
+      try{
+        const rd = o=>{ nav.lc = o; return lcNav(); };
+        chk(rd({v:"dia", per:"7"}).per==="sem" && rd({v:"dia", per:"30"}).per==="3m" && rd({v:"dia", per:"raro"}).per==="3m" && rd({v:"dia"}).per==="3m", "Un período viejo o desconocido no se traduce («7» → Semana, «30» y lo demás → 3 meses)");
+        chk(rd({v:"dia", per:"sem", ref:"no es fecha"}).ref==="" && rd({v:"dia", per:"sem", ref:H}).ref==="" && rd({v:"dia", per:"sem", ref:masDias(H,5)}).ref==="" && rd({v:"dia", per:"sem", ref:masDias(H,-8)}).ref===masDias(H,-8), "Un ref que no es fecha, o de hoy o del futuro, no se deja vacío");
+        nav.lc = {v:"dia", per:"temp"}; await irA("bitacora");
+        chk(nav.lc.per==="temp" && buscar('#lcVista [data-acc="per"][data-v="rango"]').getAttribute("aria-pressed")==="true" && chipLc("ptemp", /^Esta temporada/).getAttribute("aria-pressed")==="true", "Con la temporada guardada, «Elegir período» y «Esta temporada» no quedan marcados");
+        const mig = o=>{ lcPrefsGuardar(o); delete nav.lc; const L = lcNav(), p = lcPrefs(); return {per:L.per, v:L.v, rango:L.rango, pPer:p.per, e4:p.e4, ven:"ven" in p}; };
+        let m = mig({v:"dia", per:"7", e2:1}); chk(m.per==="sem" && m.pPer==="sem" && m.e4===1 && !m.ven, "«7 días» en Día a día no pasa a Semana con la marca e4: "+JSON.stringify(m));
+        m = mig({v:"cu", ven:"mes", e2:1}); chk(m.per==="1a" && m.e4===1 && !m.ven, "«12 meses» no pasa a 1 año: "+JSON.stringify(m));
+        m = mig({v:"cu", ven:"sem", e2:1}); chk(m.per==="3m" && !m.ven, "«12 semanas» no pasa a 3 meses: "+JSON.stringify(m));
+        m = mig({v:"dia", per:"temp", ven:"mes", e2:1}); chk(m.per==="temp", "La temporada guardada se perdió: "+JSON.stringify(m));
+        m = mig({v:"dia", per:"rango", rango:{desde:"2026-03-05", hasta:"2026-07-10"}, e2:1}); chk(m.per==="rango" && m.rango.desde==="2026-03-05" && m.rango.hasta==="2026-07-10", "El rango guardado se perdió: "+JSON.stringify(m));
+        m = mig({v:"dia", per:"7", aviso1:true}); chk(m.per==="sem" && m.v==="cu" && lcPrefs().e2===1 && lcPrefs().aviso1===true, "La migración no usa la vista de antes de e2 (o perdió lo demás): "+JSON.stringify(m));
+        m = mig({v:"cu", per:"mes", ven:"mes", e2:1, e4:1}); chk(m.per==="mes", "La migración corrió dos veces: "+JSON.stringify(m));
+        lcPrefsGuardar({v:"dia", per:"sem", e2:1, e4:1, aviso1:true}); delete nav.lc; await irA("bitacora");
+        await tocar('#lcVista [data-acc="pmov"][data-v="-1"]', "‹ Semana anterior");
+        chk(nav.lc.ref && !/"ref"/.test(localStorage.getItem("agronotasBitacora")||""), "Después de ‹, «ref» quedó guardado en el equipo (al abrir otro día no mostraría hoy)");
+        delete nav.lc; chk(lcNav().ref==="" && lcNav().per==="sem", "Al abrir de nuevo no vuelve a hoy en el período guardado");
+        const b0 = JSON.stringify(lcPrefs()); chk(!/"ven"/.test(b0), "«ven» sigue en las preferencias");
+      } finally { if(p1==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", p1); nav.lc = JSON.parse(lc1) || {v:"dia"}; }
+      await irA("bitacora");
+    });
+    await paso("Flechas ‹ › y «Hoy» en Día a día: títulos, › apagada en el actual, botón al pie e «Ir al último día con registros»", async ()=>{
+      await irA("bitacora"); await limpiarFiltros(); nav.lc.v = "dia"; lcPintar(); await pausa();
+      const mv = async d=>tocar(`#lcVista [data-acc="pmov"][data-v="${d}"]`, d<0? "‹" : "›"), tit = ()=>txtDe(document.querySelector("#lcVista .lc-pnav-t")), pHoy = ()=>buscar('#lcVista [data-acc="phoy"]'), sig = ()=>document.querySelector('#lcVista [data-acc="pmov"][data-v="1"]'), ant = ()=>document.querySelector('#lcVista [data-acc="pmov"][data-v="-1"]');
+      chk(sig() && sig().disabled && !pHoy() && /^Últimos 3 meses · semanas del /.test(tit()), "En «3 meses» de hoy, › no está apagada, sale «Hoy» o el título no calza: «"+tit()+"»");
+      chk(!!buscar('#lcVista [data-acc="anteriores"]') && /Ver meses anteriores/.test(txtDe(buscar('#lcVista [data-acc="anteriores"]'))), "Con 3 meses no está «Ver meses anteriores»");
+      await tocar(chipLc("per", /^Semana$/), "Semana");
+      chk(/^Esta semana · /.test(tit()) && sig().disabled && !pHoy(), "«Esta semana» no tiene su título, › apagada y sin «Hoy»: «"+tit()+"»");
+      await mv(-1);
+      const lun = lcSem(H);
+      chk(nav.lc.ref===masDias(lun,-7) && /^Semana pasada · del /.test(tit()) && !sig().disabled && !!pHoy(), "‹ en Semana no lleva a la semana pasada: ref «"+nav.lc.ref+"», «"+tit()+"»");
+      chk(/aria-live/.test(document.querySelector("#lcVista .lc-pnav-t").outerHTML) && document.activeElement===ant(), "El título no avisa al lector o el foco no se queda en la flecha", "leve");
+      const pie = ()=>buscar('#lcVista [data-acc="pant"]');
+      chk(!buscar('#lcVista [data-acc="anteriores"]') && pie() && /^‹ Semana anterior \(del /.test(txtDe(pie())), "Con Semana el pie no dice «‹ Semana anterior (…)» o sigue «Ver meses anteriores»: «"+txtDe(pie())+"»");
+      await tocar(pHoy(), "Hoy");
+      chk(nav.lc.ref==="" && /^Esta semana/.test(tit()) && sig().disabled, "[Hoy] no vuelve a la semana actual");
+      await mv(-1); await tocar(chipLc("per", /^Semana$/), "Semana (otra vez)");
+      chk(nav.lc.ref==="", "Tocar otra vez el chip activo no vuelve a hoy");
+      await tocar(chipLc("per", /^Mes$/), "Mes"); await mv(-1); await mv(-1);
+      const d2 = new Date(+H.slice(0,4), +H.slice(5,7)-3, 1), t2 = MESES_L[d2.getMonth()]+" "+d2.getFullYear();
+      chk(tit()===t2, "Mes ‹‹ no da «"+t2+"»: «"+tit()+"»");
+      chk(/^‹ Mes anterior \(.+ \d{4}\)$/.test(txtDe(pie()||{})), "Con Mes el pie no dice «‹ Mes anterior (…)»: «"+txtDe(pie())+"»");
+      const r0 = nav.lc.ref; await tocar(pie(), "‹ Mes anterior (al pie)"); await esperar(120);
+      const ll = document.getElementById("lcLista").getBoundingClientRect();
+      chk(nav.lc.ref<r0 && ll.top>=-2 && ll.top<innerHeight/2, "El botón al pie no hace lo de ‹ o no sube al comienzo de la lista ("+Math.round(ll.top)+" px)");
+      await tocar(chipLc("per", /^Día$/), "Día");
+      chk(/^Hoy · /.test(tit()) && nav.lc.ref==="" && sig().disabled, "«Día» no parte en hoy: «"+tit()+"»");
+      Object.assign(nav.lc, {ref:lcIdx().f0}); lcPintarCuerpo(); await pausa();
+      chk(ant().disabled && !sig().disabled, "En lo más antiguo, ‹ no se apaga (no hay nada antes)");
+      const vc = masDias(T.vj, 20); if(!(lcIdx().porDia.get(vc)||[]).length && !(lcIdx().ev.some(e=>e.fecha>T.vj && e.fecha<vc))){
+        nav.lc.ref = vc; lcPintarCuerpo(); await pausa();
+        const ult = buscar('#lcVista [data-acc="pult"]');
+        chk(/^No hay nada anotado el /.test(txtDe(document.querySelector("#lcVista .vacio"))), "Un día sin nada no lo dice: «"+txtDe(document.querySelector("#lcVista .vacio"))+"»");
+        chk(ult && /^Ir al último día con registros \(/.test(txtDe(ult)) && ult.getAttribute("data-v")===T.vj, "Falta «Ir al último día con registros» (el "+T.vj+")");
+        if(ult){ await tocar(ult, "Ir al último día con registros"); chk(nav.lc.ref===T.vj && !!document.querySelector(`#lcVista .lc-dia[data-dia="${T.vj}"]`), "«Ir al último día» no llevó a ese día"); }
+      }
+      await limpiarFiltros();
+      chk(nav.lc.per==="3m" && nav.lc.ref==="", "«Limpiar» no vuelve a 3 meses de hoy");
+    });
+    await paso("Flechas ‹ › en Día a día (revisión r2): el segundo toque en el mismo punto también mueve el período, y las flechas y lo de abajo no se corren", async ()=>{
+      await irA("bitacora"); await limpiarFiltros(); nav.lc.v = "dia"; lcPintar(); await pausa();
+      await botFlechasRevisar("Día a día");
+      await limpiarFiltros();
+    });
+    await paso("«Elegir período» en Día a día: a la vista, Desde y Hasta sin repintar las casillas (el calendario no se cierra), fechas al revés, un solo día, varios años y atajos de temporada", async ()=>{
+      await irA("bitacora"); await limpiarFiltros(); nav.lc.v = "dia"; lcPintar(); await pausa();
+      const chip = necesito(chipLc("per", /^Elegir período$/), "el chip «Elegir período»");
+      chk(chip.getAttribute("aria-pressed")==="false", "«Elegir período» marcado sin haberlo elegido", "leve");
+      await tocar(chip, "Elegir período");
+      const dN = necesito(document.getElementById("lcR_d"), "«Desde»"), hN = necesito(document.getElementById("lcR_h"), "«Hasta»"), dT = document.getElementById("lcR_d_t"), hT = document.getElementById("lcR_h_t"), nota = ()=>txtDe(document.getElementById("lcRN"));
+      const iguales = ()=>document.getElementById("lcR_d")===dN && document.getElementById("lcR_h")===hN && document.getElementById("lcR_d_t")===dT && document.getElementById("lcR_h_t")===hT;
+      chk(dN.type==="date" && hN.type==="date", "«Elegir período» no ofrece el calendario del equipo", "media");
+      chk(!buscar('#lcVista [data-acc="pmov"]'), "Con «Elegir período» no deberían ir las flechas", "leve");
+      const a0 = masDias(H,-10), b0 = masDias(H,-1);
+      await fecha("lcR_h", b0, "hasta");   // «Hasta» antes: lo de un paso anterior podría dejar las fechas al revés
+      dN.focus();   // como con el calendario abierto en el iPad: el foco en la casilla nativa, y cada cambio dispara «change» (iOS, a veces, mientras gira la rueda)
+      dN.value = a0; dN.dispatchEvent(new Event("change", {bubbles:true})); await pausa(.3);
+      chk(iguales() && (document.activeElement===dN || document.activeElement===document.body) && nav.lc.rango.desde===a0, "Cambiar «Desde» con el calendario repintó las casillas (en el iPad se cerraría)", "grave");
+      chk(dT.value===dmyDe(a0), "Elegir en el calendario no actualizó el texto de «Desde»", "media");
+      chk(/^Del .+ · \d+ días\.$/.test(nota()), "La nota de las fechas no dice el período: «"+nota()+"»", "leve");
+      if(document.activeElement===dN){ let n = 0;
+        chk(lcAlSalirDeFechas(()=>{ n++; })===true, "Una repintada automática (sincronización) no espera al calendario abierto", "media");
+        chipLc("per", /^Elegir período$/).focus(); document.dispatchEvent(new Event("focusout")); await esperar(60);   // con la ventana sin foco, blur() no suelta la casilla ni avisa
+        chk(n===1 && lcAlSalirDeFechas(()=>{ n += 10; })===false && n===1, "Al salir de la casilla no se hizo la repintada que esperaba (o se hizo con la casilla cerrada)", "media");
+      }
+      chk(iguales() && nav.lc.rango.hasta===b0 && !document.querySelector(`#lcVista .lc-dia[data-dia="${H}"]`), "«Hasta» repintó las casillas o no filtró", "media");
+      /* Desde después de Hasta: se dan vuelta solas y lo dice; las casillas quedan como se escribieron */
+      await fecha("lcR_d", b0, "desde"); await fecha("lcR_h", a0, "hasta");
+      chk(iguales() && lcRango(nav.lc, H).desde===a0 && lcRango(nav.lc, H).hasta===b0 && /al revés/.test(nota()), "Desde después de Hasta no se da vuelta (o no lo dice): «"+nota()+"»");
+      /* un solo día */
+      await fecha("lcR_d", T.vj, "desde"); await fecha("lcR_h", T.vj, "hasta");
+      const ds = [...document.querySelectorAll("#lcVista .lc-dia")].map(d=>d.getAttribute("data-dia"));
+      chk(iguales() && ds.length===1 && ds[0]===T.vj && /^Solo el /.test(nota()), "Un solo día no muestra solo ese día: "+JSON.stringify(ds)+" «"+nota()+"»");
+      const unDia = masDias(T.vj,1); if(!(lcIdx().porDia.get(unDia)||[]).length){ await fecha("lcR_d", unDia, "desde"); await fecha("lcR_h", unDia, "hasta"); chk(/^No hay nada anotado el /.test(txtDe(document.querySelector("#lcVista .vacio"))), "Un día sin nada no lo dice bien: «"+txtDe(document.querySelector("#lcVista .vacio"))+"»", "leve"); }
+      /* varios años */
+      const y4 = (+H.slice(0,4)-4)+"-01-01"; await fecha("lcR_d", y4, "desde"); await fecha("lcR_h", H, "hasta");
+      chk(iguales() && nota()==="Del "+fmtF(y4)+" al "+fmtF(H)+" · "+(gtDif(y4,H)+1).toLocaleString("es-CL")+" días." && /\d\.\d{3} días\.$/.test(nota()) && !!document.querySelector("#lcVista .lc-it, #lcVista .lc-blq"), "Un período de varios años no muestra nada o su nota no lleva el punto de miles («"+nota()+"»)", "media");
+      /* atajos: la temporada es un chip dentro de «Elegir período» y las casillas muestran sus fechas */
+      await tocar(chipLc("ptemp", /^Esta temporada \(/), "Esta temporada");
+      const tR = lcTempRango(lcTemp(H)), tP = lcTempRango(lcTemp(masDias(tR.desde,-1))), pr = re=>chipLc("ptemp", re).getAttribute("aria-pressed");
+      chk(nav.lc.per==="temp" && v("lcR_d")===tR.desde && v("lcR_h")===tR.hasta && pr(/^Esta temporada/)==="true" && pr(/^Temporada /)==="false", "«Esta temporada» no deja temp con sus dos fechas en las casillas");
+      const d1 = document.getElementById("lcR_d"); await fecha("lcR_h", masDias(tR.desde,10), "hasta (editar con temporada)");
+      chk(nav.lc.per==="rango" && nav.lc.rango.desde===tR.desde && nav.lc.rango.hasta===masDias(tR.desde,10) && document.getElementById("lcR_d")===d1 && pr(/^Esta temporada/)==="false", "Editar una fecha con temporada puesta no pasa a «rango» con esas fechas");
+      await tocar(chipLc("ptemp", /^Temporada /), "Temporada anterior");
+      chk(nav.lc.per==="rango" && nav.lc.rango.desde===tP.desde && nav.lc.rango.hasta===tP.hasta && pr(/^Temporada /)==="true", "«Temporada anterior» no deja sus dos fechas marcadas");
+      await tocar(chipLc("ptemp", /^Esta temporada/), "Esta temporada"); await tocar(chipLc("per", /^Elegir período$/), "Elegir período (otra vez)");
+      chk(nav.lc.per==="temp", "Tocar «Elegir período» con la temporada puesta no la deja", "leve");
+      await limpiarFiltros();
+      /* la compatibilidad bitSetF('desde' | 'hasta') sigue poniendo «rango», también con temporada */
+      Object.assign(lcNav(), {per:"temp"}); bitSetF("desde", masDias(H,-4)); chk(nav.lc.per==="rango" && nav.lc.rango.desde===masDias(H,-4), "bitSetF('desde') no deja el período en «rango»", "leve");
+      await limpiarFiltros();
     });
     await paso("Búsqueda en toda la historia (fuera del período, sin tildes y sin perder el teclado)", async ()=>{
       const vieja = {id:nid(), tipo:"Aplicación", aplId:"", estado:"aplicado", fecha:masDias(H,-50), fechaPlan:masDias(H,-50), fechaReal:masDias(H,-50), fundo:fu, cuartel:qs[2].nombre,
         producto:"Esterón Bot 10-10", dosis:"2 L/ha", objetivo:"Malezas", carencia:"", obs:"", pin:"baja", gps:null, fotos:[], docs:[], audios:[]};
       D.registros.push(vieja); T.regs.push(vieja.id); guardar();
       await irA("bitacora"); await limpiarFiltros();
-      chk(!fila(/^Esterón Bot 10-10$/), "Una aplicación de hace 50 días aparece abierta con el período «30 días»", "leve");
+      chk(!fila(/^Esterón Bot 10-10$/), "Una aplicación de hace 50 días aparece abierta con el período «3 meses» (va en una semana plegada)", "leve");
       const inp = necesito(document.getElementById("lcQ"), "el buscador");
       await escribir(inp, "esteron bot", "buscar"); await esperar(450);
       chk(document.getElementById("lcQ")===inp && document.activeElement===inp, "Al buscar se repintó el buscador (se pierde el teclado)", "media");
@@ -6139,28 +8474,68 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
       await tocar('#lcVista [data-acc="qx"]', "Borrar la búsqueda");
       chk(!nav.lc.q && !document.getElementById("lcQ").value, "× no borró la búsqueda");
     });
+    await paso("Buscar con un día pasado: encuentra en toda la historia, sin la línea ‹ ›, y al borrar vuelve el mismo día", async ()=>{
+      await irA("bitacora"); await limpiarFiltros(); nav.lc.v = "dia"; lcPintar(); await pausa();
+      await tocar(chipLc("per", /^Día$/), "Día");
+      const r10 = masDias(H,-10); nav.lc.ref = r10; lcPintarCuerpo(); await pausa();
+      const t0 = txtDe(document.querySelector("#lcVista .lc-pnav-t"));
+      await escribir(necesito(document.getElementById("lcQ"), "el buscador"), "esteron bot", "buscar"); await esperar(450);
+      chk(!!fila(/^Esterón Bot 10-10$/), "Con un día pasado, buscar no encuentra lo de hace 50 días", "grave");
+      chk(!document.querySelector("#lcVista .lc-pnav"), "Mientras hay texto en el buscador sigue la línea ‹ título ›", "leve");
+      await tocar('#lcVista [data-acc="qx"]', "Borrar la búsqueda");
+      chk(!!document.querySelector("#lcVista .lc-pnav") && txtDe(document.querySelector("#lcVista .lc-pnav-t"))===t0 && nav.lc.ref===r10, "Al borrar la búsqueda no vuelve la línea con el mismo día: «"+txtDe(document.querySelector("#lcVista .lc-pnav-t"))+"»");
+      await limpiarFiltros();
+    });
+    await paso("«Por confirmar» en un período pasado va plegado, también en el iPad; en el actual, abierto", async ()=>{
+      const rp = {id:nid(), tipo:"Aplicación", aplId:"apBotPerPas"+Date.now(), estado:"pendiente", fecha:masDias(H,2), fechaPlan:masDias(H,2), fundo:fu, cuartel:q1.nombre, producto:"Bot Pendiente Período", dosis:"", objetivo:"", carencia:"", obs:"", pin:"baja", gps:null, fotos:[], docs:[], audios:[]};
+      D.registros.push(rp); T.regs.push(rp.id); guardar();
+      await irA("bitacora"); await limpiarFiltros(); nav.lc.v = "dia"; lcPintar(); await pausa();
+      chk(!!buscar("#lcVista h2.lc-pend-t") && !!document.querySelector("#lcVista .lc-pend-it") && !document.querySelector('#lcVista [data-acc="pend"]'), "En el período actual «Por confirmar» no va abierto con su título");
+      await tocar(chipLc("per", /^Semana$/), "Semana"); await tocar('#lcVista [data-acc="pmov"][data-v="-1"]', "‹ Semana pasada");
+      const pb = buscar('#lcVista [data-acc="pend"]');
+      chk(pb && pb.getAttribute("aria-expanded")==="false" && !document.querySelector("#lcVista .lc-pend-it") && !document.querySelector("#lcVista h2.lc-pend-t") && /^Por confirmar ahora \(\d+\)/.test(txtDe(pb)), "Mirando la semana pasada, «Por confirmar» no va plegado en una línea «Por confirmar ahora (n)»: «"+txtDe(pb)+"»");
+      if(pb){ await tocar(pb, "Por confirmar ahora"); chk(!!document.querySelector("#lcVista .lc-pend-it"), "«Por confirmar ahora» no se despliega"); await tocar('#lcVista [data-acc="pend"]', "Por confirmar ahora (plegar)"); }
+      await limpiarFiltros();
+    });
+    await paso("Saltos automáticos: Día a día vuelve a la fila nueva en una Semana pasajera; el período elegido no se pierde", async ()=>{
+      const lc1 = JSON.stringify(nav.lc), H2 = masDias(H,-40), g = "bot|grupo";
+      Object.assign(lcNav(), {per:"6m", ref:"", q:""}); lcGuardarPrefs(nav.lc); delete nav.lc;
+      lcVerNueva(g, H); chk(nav.lc.per==="6m" && nav.lc.v==="dia" && nav.lc.resalta===g && !nav.lc.ref, "Con una fila de hoy el período guardado debería quedarse: "+JSON.stringify(nav.lc));
+      lcVerNueva(g, H2); chk(nav.lc.per==="sem" && nav.lc.ref===H2 && nav.lc.perPref==="6m", "Una fila vieja no pasa a Semana en su fecha con perPref: "+JSON.stringify(nav.lc));
+      lcNav(); lcGuardarPrefs(nav.lc); chk(lcPrefs().per==="6m" && !("ref" in lcPrefs()), "El salto automático cambió el período guardado («"+lcPrefs().per+"»)");
+      const r = lcRango(nav.lc, H); chk(H2>=r.desde && H2<=r.hasta, "La fila vieja no queda dentro de la Semana del salto");
+      await irA("bitacora"); await tocar('#lcVista [data-acc="vista"][data-v="cu"]', "Cuarteles");
+      chk(nav.lc.per==="6m" && nav.lc.ref==="" && !nav.lc.perPref, "Al pasar a Cuarteles no vuelve el período elegido: "+JSON.stringify([nav.lc.per, nav.lc.ref, nav.lc.perPref]));
+      nav.lc = {v:"dia", per:"dia", ref:""}; const L1 = lcNav(); lcIrAFecha(L1, H2, H); chk(L1.per==="dia" && L1.ref===H2 && !L1.perPref, "Con «Día», el salto no mueve la fecha sin cambiar de período");
+      Object.assign(lcNav(), {v:"dia", per:"sem", ref:"", perPref:"1a"}); await irA("bitacora"); await tocar(chipLc("per", /^Mes$/), "Mes");
+      chk(nav.lc.per==="mes" && !nav.lc.perPref && lcPrefs().per==="mes", "Tocar un chip no deja de lado el período de antes del salto");
+      nav.lc = JSON.parse(lc1); lcGuardarPrefs(nav.lc); await irA("bitacora");
+    });
     await paso("Una nota de las 22:30 (hora local) cae en su día", async ()=>{
       const ayer = masDias(H,-1), dt = gtD(ayer); dt.setHours(22,30,0,0);
       const n = {id:nid(), fh:dt.toISOString(), titulo:"Bot nota de las 22:30 "+XSS, texto:"Bot: revisar el riego de noche "+XSS, fundo:fu, cuartel:q1.nombre, cat:catsNota()[0]||"",
         aviso:"", avisoFin:"", fijada:false, fotos:[], docs:[], audios:[], check:[{t:"Bot ítem "+XSS, ok:false}], pins:[], gps:null, pin:"baja", resuelta:false};
       D.notas.push(n); T.notas.push(n.id); guardar();
-      await irA("bitacora"); await limpiarFiltros(); await tocar(chipLc("per", /^7 días$/), "7 días");
+      await irA("bitacora"); await limpiarFiltros(); await enAyer();
       const f = fila(/^Bot nota de las 22:30/), dia = f && f.closest(".lc-dia");
-      chk(dia && dia.getAttribute("data-dia")===ayer && /^Ayer · /.test(txtDe(dia.querySelector(".lc-dia-t"))), "La nota de las 22:30 de ayer no cae bajo «Ayer» (cayó en "+(dia? dia.getAttribute("data-dia") : "ninguno")+")", "grave");
+      chk(dia && dia.getAttribute("data-dia")===ayer && /^Ayer · /.test(txtDe(dia.querySelector(".lc-dia-t"))) && /^Ayer · /.test(txtDe(document.querySelector("#lcVista .lc-pnav-t"))), "La nota de las 22:30 de ayer no cae bajo «Ayer» (cayó en "+(dia? dia.getAttribute("data-dia") : "ninguno")+")", "grave");
+      chk(!!buscar('#lcVista [data-acc="phoy"]'), "Mirando ayer no aparece «Hoy»", "leve");
       const el = await abrir(f, "la nota");
       chk(/revisar el riego de noche/.test(txtDe(el.querySelector(".lc-det"))) && /Bot ítem/.test(txtDe(el.querySelector(".lc-det"))), "El detalle de la nota no muestra el texto completo y su lista");
+      await tocar('#lcVista [data-acc="pmov"][data-v="1"]', "› a hoy");
+      chk(nav.lc.ref==="" && document.querySelector('#lcVista [data-acc="pmov"][data-v="1"]').disabled && !buscar('#lcVista [data-acc="phoy"]'), "› desde ayer no vuelve a hoy con › apagada y sin «Hoy»");
       await limpiarFiltros();
     });
     await paso("★ en una nota usa «fijada» (no dest) y editarla con formNota la conserva", async ()=>{
       const n = necesito(D.notas.find(x=>x.id===T.notas[0]), "la nota de prueba");
-      await irA("bitacora"); await limpiarFiltros(); await tocar(chipLc("per", /^7 días$/), "7 días");
+      await irA("bitacora"); await limpiarFiltros(); await enAyer();
       let el = await abrir(fila(/^Bot nota de las 22:30/), "la nota");
       await tocar(el.querySelector('.lc-acc [data-acc="estrella"]'), "★ Destacar la nota");
       chk(n.fijada===true && !("dest" in n), "Destacar una nota no la dejó fijada (o le puso dest)");
       el = fila(/^Bot nota de las 22:30/);
       if(el && el.querySelector('.lc-acc [data-acc="editar"]')){ await tocar(el.querySelector('.lc-acc [data-acc="editar"]'), "Editar la nota"); if(modalAbierto()) await guardarModal_(); }
       chk((D.notas.find(x=>x.id===n.id)||{}).fijada===true, "Al guardar la nota con formNota se perdió «fijada»", "media");
-      await irA("bitacora"); await tocar(chipLc("per", /^7 días$/), "7 días");
+      await irA("bitacora"); await enAyer();
       el = await abrir(fila(/^Bot nota de las 22:30/), "la nota");
       await tocar(el.querySelector('.lc-acc [data-acc="estrella"]'), "Quitar destacado de la nota");
       chk(!(D.notas.find(x=>x.id===n.id)||{}).fijada, "Quitar el destacado no le quitó «fijada» a la nota");
@@ -6198,12 +8573,16 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
         await cancelarModal();
       } finally { D.sync = JSON.parse(s0); uiAplicar(); render(); }
     });
-    await paso("Celular: [Período ▾] [Qué ▾] [★] a la vista, «Por confirmar» plegado y el detalle en una hoja desde abajo", async ()=>{
+    await paso("Celular: [Período ▾] [Elegir período] [Qué ▾] [★] a la vista, «Por confirmar» plegado y el detalle en una hoja desde abajo", async ()=>{
       const u0 = JSON.stringify(D.ui||{});
       try{
         D.ui = Object.assign({}, D.ui||{}, {movil:"si"}); uiAplicar(); await irA("bitacora"); await limpiarFiltros();
-        const fbs = [...document.querySelectorAll("#lcVista .lc-fbs button")].filter(visible);
-        chk(fbs.length===3 && fbs.every(b=>{ const r = b.getBoundingClientRect(); return r.left>=0 && r.right<=innerWidth+1 && r.height>=34; }), "En el celular no se ven los 3 botones [Período ▾] [Qué ▾] [★] (o se salen de la pantalla)", "media");
+        const adentro = b=>{ const r = b.getBoundingClientRect(), w = document.getElementById("lcVista").getBoundingClientRect(); return r.left>=w.left-1 && r.right<=w.right+1 && r.height>=34; };
+        const fbs = [...document.querySelectorAll('#lcVista [data-acc="hper"], #lcVista [data-acc="hcat"], #lcVista [data-acc="solodest"]')].filter(visible);
+        chk(fbs.length===3 && fbs.every(adentro), "En el celular no se ven los 3 botones [Período ▾] [Qué ▾] [★] (o se salen de la pantalla)", "media");
+        const pe = buscar('#lcVista .lc-fbs [data-acc="per"][data-v="rango"]');
+        chk(pe && txtDe(pe)==="Elegir período" && adentro(pe) && pe.scrollWidth<=pe.clientWidth+1, "En el celular «Elegir período» no está a la vista y entero (lo pidió Manuel)", "grave");
+        chk(![...document.querySelectorAll('#lcVista [data-acc="pmov"]')].filter(visible).length, "Con 3 meses, en el celular no van las flechas", "leve");
         const pb = buscar('#lcVista [data-acc="pend"]');
         if(pb){
           chk(pb.getAttribute("aria-expanded")==="false" && !document.querySelector("#lcVista .lc-pend-it"), "«Por confirmar» no parte plegado en una línea en el celular", "leve");
@@ -6215,19 +8594,49 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
         if(modalAbierto()) await tocar({texto:/^Aplicaciones$/, sel:"#capaModal .lc-chip"}, "Aplicaciones");
         chk(!modalAbierto() && nav.lc.cat==="apl" && /Aplicaciones/.test(txtDe(buscar('#lcVista [data-acc="hcat"]'))), "Elegir en la hoja de [Qué ▾] no aplicó «Aplicaciones»");
         await tocar('#lcVista [data-acc="hper"]', "Período ▾");
-        if(modalAbierto()) await tocar({texto:/^7 días$/, sel:"#capaModal .lc-chip"}, "7 días");
-        chk(nav.lc.per==="7", "Elegir «7 días» en la hoja de [Período ▾] no cambió el período");
+        chk(modalAbierto() && document.querySelectorAll("#capaModal .lc-hoja-chips .lc-chip").length===7, "[Período ▾] no abrió la hoja con los 7 chips");
+        if(modalAbierto()) await tocar({texto:/^Semana$/, sel:"#capaModal .lc-chip"}, "Semana");
+        chk(nav.lc.per==="sem", "Elegir «Semana» en la hoja de [Período ▾] no cambió el período");
+        const fl = [...document.querySelectorAll('#lcVista [data-acc="pmov"]')].filter(visible);
+        chk(fl.length===2 && fl.every(adentro), "Con Semana, en el celular no hay 2 flechas dentro de la pantalla y de 34 px o más", "media");
         const f = fila(/^Bot Esterón dictado$/) || filas(/./)[0];
         if(f){
           await tocar(f.querySelector(".lc-it-b"), "una fila (celular)");
           chk(modalAbierto() && buscar("#capaModal .lc-hdet .lc-dl") && !document.querySelector("#lcVista .lc-det"), "En el celular la fila no abrió el detalle en una hoja desde abajo");
           await cancelarModal();
         }
+        await tocar('#lcVista [data-acc="pmov"][data-v="-1"]', "‹ (celular)");
+        await tocar('#lcVista [data-acc="hper"]', "Período ▾ (con ‹)");
+        chk(modalAbierto() && !!buscar({texto:/^Volver a hoy$/, sel:"#capaModal button"}), "La hoja del período no ofrece «Volver a hoy» mirando el pasado", "leve");
+        if(modalAbierto()) await tocar({texto:/^Volver a hoy$/, sel:"#capaModal button"}, "Volver a hoy");
+        chk(!modalAbierto() && nav.lc.ref==="", "«Volver a hoy» no volvió a hoy");
+        await tocar(pe.isConnected? pe : buscar('#lcVista .lc-fbs [data-acc="per"][data-v="rango"]'), "Elegir período (celular)");
+        const dT = document.getElementById("lcR_d_t"), hT = document.getElementById("lcR_h_t");
+        chk(nav.lc.per==="rango" && dT && hT && visible(dT) && visible(hT) && adentro(dT) && adentro(hT), "En el celular «Elegir período» no muestra Desde y Hasta dentro de la pantalla", "grave");
+        await fecha("lcR_d", masDias(H,-3), "desde (celular)");
+        chk(document.getElementById("lcR_d_t")===dT && document.getElementById("lcR_h_t")===hT && nav.lc.rango.desde===masDias(H,-3), "En el celular, cambiar una fecha repintó las casillas (se cerraría el calendario)", "media");
+        chk(!!chipLc("ptemp", /^Esta temporada/) && adentro(chipLc("ptemp", /^Esta temporada/)), "En el celular faltan los atajos de temporada (o se salen)", "leve");
+        chk(![...document.querySelectorAll('#lcVista [data-acc="pmov"]')].filter(visible).length, "Con «Elegir período» no van las flechas (celular)", "leve");
+        await irA("bitacora"); await limpiarFiltros(); nav.lc.v = "dia"; lcPintar(); await pausa();
+        await botFlechasRevisar("Día a día (celular)");
+        /* revisión r2: a 375 px con texto grande, [Semana ▾] [Elegir período] [Qué ▾] [★] sin cortarse («Sema…», «Q…»), con cualquier período. El ancho de la vista se fija como en un celular de 375 px (#app va con zoom 1,12) */
+        D.ui = Object.assign({}, D.ui||{}, {movil:"si", grande:true}); uiAplicar(); await irA("bitacora"); await limpiarFiltros();
+        const vLc = document.getElementById("lcVista"), w0 = vLc.style.width, cortes = [];
+        try{
+          vLc.style.width = (375 / 1.12 - 24) + "px";
+          for(const pc of ["dia", "sem", "mes", "3m", "6m", "1a", "rango"]){
+            nav.lc.per = pc; nav.lc.ref = ""; lcPintar(); await esperar(60);
+            const vw = document.getElementById("lcVista"); vw.style.width = (375 / 1.12 - 24) + "px"; await esperar(40);
+            const R0 = vw.getBoundingClientRect();
+            [...vw.querySelectorAll(".lc-fbs .lc-fb")].forEach(b=>{ const sp = b.querySelector("span"), r = b.getBoundingClientRect(); if((sp && sp.scrollWidth > sp.clientWidth) || r.right > R0.right + 1) cortes.push(pc + ": «" + txtDe(b) + "» (" + (sp ? sp.clientWidth + " de " + sp.scrollWidth + " px" : "") + ")"); });
+          }
+        } finally { const vw = document.getElementById("lcVista"); if(vw) vw.style.width = w0; nav.lc.per = LC_PER_DEF; nav.lc.ref = ""; }
+        chk(!cortes.length, "A 375 px con texto grande se cortan los botones de la Bitácora: " + cortes.join(" · "), "leve");
       } finally { D.ui = JSON.parse(u0); uiAplicar(); render(); }
       await irA("bitacora"); await limpiarFiltros();
     });
     await paso("Otro registro (riego) desde «+ Anotar» y su fila en Día a día (se quedan el fundo y el período elegidos)", async ()=>{
-      await irA("bitacora"); Object.assign(lcNav(), {v:"dia", fundo:fu, cu:"", per:"30", cat:"", dest:false, q:""}); lcPintar(); await pausa();
+      await irA("bitacora"); Object.assign(lcNav(), {v:"dia", fundo:fu, cu:"", per:"3m", ref:"", cat:"", dest:false, q:""}); lcPintar(); await pausa();
       await tocar('#lcVista [data-acc="anotar"]', "+ Anotar");
       await tocar('#capaModal .lc-op[data-op="reg"]', "Riego, fertilización, lluvia u otro");
       await elegir("m_tipo", "Riego"); await pausa();
@@ -6236,7 +8645,7 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
       chk(D.registros.length===n0+1, "No se guardó el registro de riego (mensajes: "+msgsDesde(a0).join(" / ").slice(0,120)+")");
       const r = D.registros[D.registros.length-1]; if(D.registros.length===n0+1 && r) T.regs.push(r.id);
       chk(nav.tab==="bitacora" && nav.lc.v==="dia" && document.querySelector("#lcVista .lc-it.nueva"), "Después de guardar desde la hoja no se vuelve a Día a día con la fila nueva resaltada", "leve");
-      chk(nav.lc.fundo===fu && nav.lc.per==="30", "Al volver a Día a día se perdieron el fundo o el período elegidos (fundo «"+nav.lc.fundo+"», período «"+nav.lc.per+"»)", "leve");
+      chk(nav.lc.fundo===fu && nav.lc.per==="3m", "Al volver a Día a día se perdieron el fundo o el período elegidos (fundo «"+nav.lc.fundo+"», período «"+nav.lc.per+"»)", "leve");
       await irA("bitacora");
       chk(r && filas(/^Riego/).some(el=>el.closest(".lc-dia") && el.closest(".lc-dia").getAttribute("data-dia")===r.fecha && el.classList.contains("c-riego")), "El riego no aparece en Día a día bajo su día", "media");
       await limpiarFiltros();
@@ -6322,7 +8731,7 @@ BOTS.push({id:"bitacora", modulo:"Bitácora", nombre:"Raúl, encargado de bitác
       bug("La bitácora lee «2.5» como 25 (el punto se toma como miles)", bitNum("2.5")===25, "bitNum(«2.5») = "+bitNum("2.5"), "media");
     });
     await paso("El código inyectado (nota, dictado, búsqueda) no se ejecuta", async ()=>{
-      await irA("bitacora"); await limpiarFiltros(); await tocar(chipLc("per", /^7 días$/), "7 días");
+      await irA("bitacora"); await limpiarFiltros(); await enAyer();
       const f = fila(/^Bot nota de las 22:30/); if(f) await abrir(f, "la nota con código");
       await esperar(600);
       chk(!window.__xss, "Un texto con código se ejecutó en la Bitácora (falta escapar)", "grave");
@@ -6652,6 +9061,23 @@ BOTS.push({id:"mapa", modulo:"Mapa", nombre:"Claudia, agrónoma", ico:"🗺", qu
     await escribir("m_texto", "Bot: nota desde el mapa");
     await guardarModal_(); const n = D.notas[D.notas.length-1];
     chk(n && /desde el mapa/.test(n.texto) && (n.pins||[]).length && Math.abs(n.pins[0].lat-c.lat)<1e-4, "La nota desde el mapa no guardó el punto donde se apretó");
+  });
+  /* revisión 2 de la v165: el popup de una nota en el mapa y «Próximas acciones» de Hoy cortan a 80 letras ENTERAS: un emoji justo en la letra 80 ya no
+     queda partido por la mitad (se veía «�» antes del «…») */
+  await paso("Popup del mapa y «Próximas acciones»: el corte a 80 letras no parte un emoji en la letra 80", async ()=>{
+    if(typeof mapaP==="undefined" || !mapaP) throw new SinProbar("El mapa no cargó");
+    const c = mapaP.getCenter(), fu = fundosConCuarteles()[0], tx = "Bot popup "+"x".repeat(69)+"🍒 y sigue el texto de la nota", H = HOY();   // 79 letras y el emoji en la 80
+    const roto = s=>/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(String(s||""));
+    const n = {id:nid(), fh:ahora(), titulo:tx, fundo:fu, cuartel:"", cat:"Observación", texto:tx, aviso:H, avisoFin:"", fijada:false, fotos:[], docs:[], audios:[], check:[], pins:[{lat:c.lat, lng:c.lng}], gps:null, pin:"baja", resuelta:false};
+    D.notas.push(n); guardar();
+    try{
+      await irA("panel"); render(); let pop = null;
+      for(let i=0; i<6 && !pop; i++){ await pausa(.8); if(typeof mapaP!=="undefined" && mapaP) mapaP.eachLayer(l=>{ const p = l.getPopup && l.getPopup(); const h = p? String(p.getContent()||"") : ""; if(h.indexOf("verNota("+n.id+")")>=0) pop = h; }); }
+      const d = document.createElement("div"); d.innerHTML = pop || ""; const t = txtDe(d);
+      chk(pop && !roto(t) && t.indexOf("x".repeat(69)+"🍒…")>=0 && t.indexOf("y sigue")<0, "El popup de la nota en el mapa parte el emoji de la letra 80 (o no corta en 80): «"+t.slice(0, 120)+"»", "leve");
+      const it = hoyProximas("", null, []).find(x=>x.on==="verNota("+n.id+")");
+      chk(it && !roto(it.t) && Array.from(it.t).length===80 && /🍒$/.test(it.t), "En «Próximas acciones» el aviso de la nota parte el emoji de la letra 80: «"+(it && it.t)+"»", "leve");
+    } finally { D.notas = D.notas.filter(x=>x!==n); guardar(); render(); }
   });
   await paso("Información de un área dibujada", async ()=>{
     const p = (D.mapoly||[]).find(x=>x.tipo==="Cuartel"); if(!p) throw new SinProbar("No hay cuarteles dibujados");
@@ -7294,10 +9720,20 @@ BOTS.push({id:"asistente", modulo:"Asistente con Claude", nombre:"Felipe, dicta 
     await paso("AS4 · Una fenología que llega del celular con fecha de pasado mañana (el reloj mal puesto) se guarda con la de hoy y lo dice en la nota; mañana todavía vale; lo del iPad no se toca", async ()=>{
       lotesAdj.push("alBotAS4");
       const mk = (f, eq, tx)=>{ const f0 = fenAll().length; asisAplicarTodos([Object.assign({}, base, {tipo:"fenologia", fecha:f, fundo:fu, cuarteles:[qf.nombre], bbch:bb, bbch_sec:[], texto:tx, asisLote:"alBotAS4"})], eq); return fenAll().length===f0+1? fenAll()[fenAll().length-1] : null; };
-      const f3 = masDias(HOY(),3), r1 = mk(f3, "celular", "Bot AS4 futuro"), r2 = mk(masDias(HOY(),1), "celular", "Bot AS4 mañana"), r3 = mk(f3, "ipad", "Bot AS4 iPad");
+      const f3 = masDias(HOY(),3), r1 = mk(f3, "celular", "Bot AS4 futuro"), r2 = mk(masDias(HOY(),1), "celular", "Bot AS4 mañana"), nn0 = D.notas.length, r3 = mk(f3, "ipad", "Bot AS4 iPad");
       chk(r1 && r1.fecha===HOY() && (r1.nota||"").indexOf("Bot AS4 futuro\nOjo: la fecha venía en el futuro ("+fmtF(f3)+"): se guardó con la de hoy.")===0, "Del celular con fecha "+fmtF(f3)+" no quedó con la de hoy y «Ojo: la fecha venía en el futuro…» en la nota: "+JSON.stringify(r1 && {fecha:r1.fecha, nota:r1.nota}), "media");
       chk(r2 && r2.fecha===masDias(HOY(),1) && r2.nota==="Bot AS4 mañana", "Del celular con la fecha de mañana (diferencia de horario) se cambió la fecha o la nota: "+JSON.stringify(r2 && {fecha:r2.fecha, nota:r2.nota}), "leve");
-      chk(r3 && r3.fecha===f3 && r3.nota==="Bot AS4 iPad", "En el iPad (dictado) se cambió la fecha: "+JSON.stringify(r3 && {fecha:r3.fecha, nota:r3.nota}), "leve");
+      /* revisión 3 de la v164: en el iPad el asistente tiene el mismo control que fenGuardar: una fenología con fecha después de mañana no se guarda como tal
+         (la revisión la marca y, si se guarda igual, queda como nota para revisar con el aviso); mañana todavía vale */
+      const n3 = D.notas.length===nn0+1? D.notas[D.notas.length-1] : null;
+      chk(!r3 && n3 && /\(revisar\)/.test(n3.titulo||"") && /Bot AS4 iPad/.test(n3.texto||"") && /la fecha \d{2}-\d{2}-\d{4} está en el futuro: el estado fenológico se anota con el día en que lo viste/.test(n3.texto||""),
+        "En el iPad (asistente) una fenología con fecha de pasado mañana se guardó igual, o no quedó como nota para revisar con el aviso: "+JSON.stringify({fen:r3 && r3.fecha, nota:n3 && {t:n3.titulo, x:n3.texto}}), "media");
+      /* revisión 1 de la v165: esa nota «(revisar)» es de HOY (antes quedaba con la fecha del futuro y en Día a día salía ese día); la fecha dicha va en el texto.
+         asisComoNota es la misma en la revisión del celular, así que lo que manda un celular con la v165 también llega como nota de hoy */
+      chk(n3 && fhDia(n3.fh)===HOY() && (n3.texto||"").indexOf(fmtF(f3))>=0 && asisComoNota(asisNorm(Object.assign({}, base, {tipo:"fenologia", fecha:f3, fundo:fu, cuarteles:[qf.nombre], bbch:bb})), ["x"]).fecha===HOY(),
+        "La nota «(revisar)» de una fenología con fecha de pasado mañana no quedó con la fecha de hoy (o el texto no dice la fecha que se dijo): "+JSON.stringify(n3 && {fh:n3.fh, x:n3.texto}), "media");
+      { const fz = d=>asisFaltan(asisNorm(Object.assign({}, base, {tipo:"fenologia", fecha:d, fundo:fu, cuarteles:[qf.nombre], bbch:bb})));
+        chk(fz(f3).some(t=>/está en el futuro/.test(t)) && !fz(masDias(HOY(),1)).some(t=>/futuro/.test(t)) && !fz(HOY()).length, "La revisión del asistente no marca una fenología con fecha de pasado mañana (o marca la de mañana u hoy): "+JSON.stringify({pasado:fz(f3), manana:fz(masDias(HOY(),1)), hoy:fz(HOY())}), "media"); }
       const it = asisNorm(Object.assign({}, base, {tipo:"fenologia", fecha:masDias(HOY(),5), fundo:fu, cuarteles:[qf.nombre], bbch:bb})); asisFechaCel(it);
       chk(it.fecha===HOY() && /la fecha venía en el futuro/.test(it.faltante||""), "asisFechaCel no dejó la fecha de hoy y el aviso en faltante: "+JSON.stringify({fecha:it.fecha, faltante:it.faltante}), "leve");
     });
@@ -7563,6 +9999,19 @@ BOTS.push({id:"indice", modulo:"Bitácora: índice", nombre:"Inés, auditora del
       R.lentas.push({tab:"índice de la Bitácora con "+nEv+" eventos (lcIdx, mediana de 5)", max:Math.round(med), n:ms.length});
       chk(nEv>=5000, "Los datos sintéticos dieron solo "+nEv+" eventos (se esperaban 5.000 o más)", "leve");
       if(med>60) avisar("Índice lento", "lcIdx() tardó "+Math.round(med)+" ms con "+nEv+" eventos (meta: menos de 60 ms en el PC, 30 ms en el iPad)", "media"); else R.verif++;
+      /* v166: con «1 año» (el peor caso de los fijos) pintar Día a día y Cuarteles no debe pasar de 300 ms, y Día a día no dibuja más de 150 filas abiertas */
+      const lc1 = ("lc" in nav)? JSON.stringify(nav.lc) : null, pr1 = localStorage.getItem("agronotasBitacora");
+      try{
+        D = Object.assign({}, S); const ab = {}; (D.cuarteles||[]).forEach(q=>{ ab[q.fundo] = true; });
+        const med3 = fn=>{ const x = []; for(let k=0;k<3;k++){ const t0 = performance.now(); fn(); x.push(performance.now()-t0); } return x.sort((a,b)=>a-b)[1]; };
+        lcIdx(); let hD = ""; nav.lc = {v:"dia", per:"1a"};
+        const msD = med3(()=>{ hD = lcCuerpoHTML(); }), nF = (hD.match(/class="lc-it[ "]/g)||[]).length;
+        nav.lc = {v:"cu", per:"1a", fuAb:ab};
+        const msC = med3(()=>{ lcCuerpoHTML(); });
+        log("⏱ con «1 año»: Día a día "+Math.round(msD)+" ms ("+nF+" filas abiertas), Cuarteles "+Math.round(msC)+" ms");
+        chk(msD<300 && msC<300, "Con 5.000 eventos y «1 año», pintar tardó "+Math.round(msD)+" ms (Día a día) y "+Math.round(msC)+" ms (Cuarteles); la meta es menos de 300 ms", "media");
+        chk(nF>0 && nF<=150, "Con 5.000 eventos y «1 año», Día a día dibujó "+nF+" filas abiertas (el tope es 150)", "media");
+      } finally { D = D0; if(lc1) nav.lc = JSON.parse(lc1); else delete nav.lc; if(pr1==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", pr1); }
       chk(lcIdx().D===D0, "Después de medir, el índice no volvió a los datos reales");
     });
   } finally {
@@ -7573,7 +10022,7 @@ BOTS.push({id:"indice", modulo:"Bitácora: índice", nombre:"Inés, auditora del
 }});
 
 /* 🗂️ CUARTELES (portada de la Bitácora, Etapa 2) ------------------------------------------ */
-BOTS.push({id:"cuarteles", modulo:"Bitácora", nombre:"Inés, revisa los cuarteles", ico:"🗂️", que:"Portada Cuarteles de la Bitácora: abre en Cuarteles, una fila por cuartel plantado en cada fundo, estado de carencia en texto (en carencia, por confirmar, sin dato, libre), letras y número de la semana, ★, 12 meses, los 4 órdenes, ★ Destacados, búsqueda, «Todo el fundo», por plantar, cuarteles que ya no existen, fila y celda abren la ficha y se vuelve al mismo punto, medidas a 920, 1.052 y 700 px y el celular en dos líneas", correr: async ()=>{
+BOTS.push({id:"cuarteles", modulo:"Bitácora", nombre:"Inés, revisa los cuarteles", ico:"🗂️", que:"Portada Cuarteles de la Bitácora: abre en Cuarteles, una fila por cuartel plantado en cada fundo, estado de carencia en texto (en carencia, por confirmar, sin dato, libre), letras y número de cada columna, ★, 1 año, Semana, Mes, Día («Lo de hoy» en texto) y «Elegir período» con sus fechas, los 4 órdenes, ★ Destacados, búsqueda, «Todo el fundo», por plantar, cuarteles que ya no existen, fila y celda abren la ficha y se vuelve al mismo punto, medidas a 920, 1.052 y 700 px y el celular en dos líneas", correr: async ()=>{
   const H = HOY(), lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null, p0 = localStorage.getItem("agronotasBitacora"), ui0 = JSON.stringify(D.ui||{});
   const porPlantar = q=>/por plantar/i.test(q.especie||""), dm = iso=>String(iso).slice(8,10)+"-"+String(iso).slice(5,7);
   const libres = f=>plantados(f).filter(q=>typeof carenciaDe==="function" && !carenciaDe(q));
@@ -7591,6 +10040,7 @@ BOTS.push({id:"cuarteles", modulo:"Bitácora", nombre:"Inés, revisa los cuartel
   const ultDe = (f, cu)=>{ let m = ""; (lcIdx().porCu.get(f+"|"+cu)||[]).forEach(x=>{ if(x.fecha && x.fecha<=H && efF(x)>m) m = efF(x); }); return m; };
   const celda = (el, k)=>{ const i = (typeof _lcCuW!=="undefined"? _lcCuW : []).findIndex(w=>w.k===k); return i<0? null : el.querySelectorAll(".lc-tira .lc-c")[i] || null; };
   const enSemana = (f, cu, k, mes)=>(lcIdx().porCu.get(f+"|"+cu)||[]).filter(e=>e.fecha && (mes? e.fecha.slice(0,7)===k : lcSem(e.fecha)===k)).length;
+  const chipLcCu = (acc, re)=>buscar({texto:re, sel:`#lcVista [data-acc="${acc}"]`}), chipPer = re=>chipLcCu("per", re);
   try{
     await paso("La portada de la Bitácora abre en «Cuarteles»", async ()=>{
       if(typeof lcCuHTML!=="function") throw new SinProbar("La app no tiene la portada Cuarteles");
@@ -7666,13 +10116,73 @@ BOTS.push({id:"cuarteles", modulo:"Bitácora", nombre:"Inés, revisa los cuartel
       chk(/aplicaci/.test(c.getAttribute("aria-label")||"") && /destacad/.test(c.getAttribute("aria-label")||""), "La celda no lee lo que hay (aria-label): «"+(c.getAttribute("aria-label")||"")+"»", "leve");
       chk(!!el.querySelector(".lc-tira .lc-c.hoy:last-child"), "La semana actual no va en el borde derecho con su fondo", "leve");
     });
-    await paso("12 meses cambia la tira (y se recuerda)", async ()=>{
-      await tocar({texto:/^12 meses$/, sel:'#lcVista [data-acc="ven"]'}, "12 meses");
-      const el = necesito(fila(fu, q1.nombre), "la fila en 12 meses"), k = T.fApl.slice(0,7), c = celda(el, k), n = enSemana(fu, q1.nombre, k, true);
-      chk(nav.lc.ven==="mes" && c && tieneNum(txtDe(c.querySelector(".lc-c-n")), n, 0) && /mes/.test(txtDe(document.querySelector("#lcVista .lc-ley"))||"mes"), "Con «12 meses» la celda del mes no cuenta los "+n+" registros del mes");
-      chk(/"ven":"mes"/.test(localStorage.getItem("agronotasBitacora")||""), "La ventana elegida no se recuerda en el equipo", "leve");
-      await tocar({texto:/^12 semanas$/, sel:'#lcVista [data-acc="ven"]'}, "12 semanas");
-      chk(nav.lc.ven==="sem", "No se volvió a 12 semanas");
+    await paso("1 año cambia la tira (y se recuerda)", async ()=>{
+      const cab0 = txtDe(bloque(fu).querySelector(".lc-cf-b"));
+      await tocar(chipPer(/^1 año$/), "1 año");
+      const el = necesito(fila(fu, q1.nombre), "la fila en 1 año"), k = T.fApl.slice(0,7), c = celda(el, k), n = enSemana(fu, q1.nombre, k, true), ley = txtDe(document.querySelector("#lcVista .lc-ley"));
+      chk(nav.lc.per==="1a" && _lcCuW.length===12 && c && tieneNum(txtDe(c.querySelector(".lc-c-n")), n, 0) && /del mes/.test(ley) && /mes actual/.test(ley), "Con «1 año» la celda del mes no cuenta los "+n+" registros del mes (o la leyenda no dice «del mes»)");
+      chk(/"per":"1a"/.test(localStorage.getItem("agronotasBitacora")||""), "El período elegido no se recuerda en el equipo", "leve");
+      chk(txtDe(bloque(fu).querySelector(".lc-cf-b"))===cab0, "La cabecera del fundo cambió con el período (es el pulso de esta semana): «"+txtDe(bloque(fu).querySelector(".lc-cf-b")).slice(0,100)+"»");
+      await tocar(chipPer(/^3 meses$/), "3 meses");
+      chk(nav.lc.per==="3m" && _lcCuW.length===13 && !!fila(fu, q1.nombre).querySelector(".lc-tira .lc-c.hoy:last-child"), "«3 meses» no da 13 columnas con la actual en el borde derecho");
+    });
+    await paso("Semana, Mes y Día en la tira: las celdas calzan con los registros y «Lo de hoy» va en texto", async ()=>{
+      const ev1 = ()=>lcIdx().porCu.get(fu+"|"+q1.nombre)||[], cuenta = (a, b)=>ev1().filter(e=>e.fecha && e.fecha>=a && e.fecha<=b).length;
+      await tocar(chipPer(/^Semana$/), "Semana");
+      const nS = gtDif(lcSem(T.fApl), lcSem(H))/7;
+      for(let i=0;i<nS;i++) await tocar('#lcVista [data-acc="pmov"][data-v="-1"]', "‹ Semana anterior");
+      chk(_lcCuW.length===7 && _lcCuW.every(w=>w.t==="dia") && _lcCuW.some(w=>w.k===T.fApl), "Con Semana y ‹ no aparece el día de la aplicación en la tira");
+      let c = necesito(celda(fila(fu, q1.nombre), T.fApl), "la celda del día de la aplicación");
+      chk(/^A/.test(txtDe(c.querySelector(".lc-c-l"))) && !!c.querySelector(".lc-c-s") && txtDe(c.querySelector(".lc-c-n"))===String(cuenta(T.fApl, T.fApl)), "La celda del día no lleva «A» primero, ★ y el número de ese día: «"+txtDe(c)+"»");
+      if(!nS){ const fu0 = _lcCuW.filter(w=>w.fut); chk(fu0.every(w=>w.d>H) && [...fila(fu, q1.nombre).querySelectorAll(".lc-tira .lc-c.fut")].length===fu0.length && [...document.querySelectorAll('#lcVista .lc-cr-h .lc-ch.fut')].length>=fu0.length, "Los días que no llegan no van en más claro", "leve"); }
+      await tocar(chipPer(/^Mes$/), "Mes");
+      const malos = [], cs = [...fila(fu, q1.nombre).querySelectorAll(".lc-tira .lc-c")];
+      _lcCuW.forEach((w,i)=>{ const n = cuenta(w.d, w.h), t = cs[i]? txtDe(cs[i].querySelector(".lc-c-n")) : ""; if(+(t||0)!==n) malos.push(w.bot+": "+t+" en vez de "+n); });
+      chk(_lcCuW.every(w=>w.t==="sem" && w.d.slice(0,7)===H.slice(0,7) && w.h.slice(0,7)===H.slice(0,7)) && cs.length===_lcCuW.length && !malos.length, "Con Mes las columnas no van recortadas al mes o no cuadran: "+malos.join(" · "));
+      await tocar(chipPer(/^Día$/), "Día");
+      const hc = ()=>txtDe(document.querySelector("#lcVista .lc-cr-h .lc-h-cd"));
+      chk(!document.querySelector("#lcVista .lc-tira .lc-c") && hc()==="Lo de hoy", "Con Día siguen las celdas de la tira o la cabecera no dice «Lo de hoy»: «"+hc()+"»");
+      chk(/Riego|R/.test(txtDe(filas(fu).pop().querySelector(".lc-cd"))), "«Todo el fundo» no muestra lo de hoy con Día: «"+txtDe(filas(fu).pop().querySelector(".lc-cd"))+"»");
+      const nD = gtDif(T.fApl, H); for(let i=0;i<nD;i++) await tocar('#lcVista [data-acc="pmov"][data-v="-1"]', "‹ Día anterior");
+      const el = necesito(fila(fu, q1.nombre), "la fila en Día"), cd = el.querySelector(".lc-cd");
+      chk(cd && /Bot Cu Karate/.test(txtDe(cd)) && /★/.test(txtDe(cd)) && /Aplicación Bot Cu Karate/.test(cd.getAttribute("aria-label")||""), "Con Día en la fecha de la aplicación la celda no dice «Bot Cu Karate»: «"+txtDe(cd)+"»");
+      chk(!/^Lo de hoy$/.test(hc()) && /Carencia y fenología \(hoy\)/.test(txtDe(document.querySelector("#lcVista .lc-cr-h .lc-h-e"))), "Mirando un día pasado, la cabecera no dice «Carencia y fenología (hoy)» o sigue «Lo de hoy»", "leve");
+      await tocar(cd, "lo de ese día en la fila");
+      await esperar(300);
+      const dd = document.querySelector(`#lcVista .lc-fi-dia[data-dia="${T.fApl}"]`), rd = dd && dd.getBoundingClientRect();
+      chk(nav.lc.v==="ficha" && dd && rd.bottom>0 && rd.top<innerHeight, "Tocar lo de ese día no abre la ficha con ese día a la vista");
+      await tocar('#lcVista [data-acc="volver"]', "‹ Cuarteles");
+      await tocar(chipPer(/^3 meses$/), "3 meses");
+      chk(nav.lc.per==="3m" && nav.lc.ref==="", "El chip no deja «3 meses» de hoy");
+    });
+    await paso("Flechas ‹ › en Cuarteles (revisión r2): el segundo toque en el mismo punto también mueve el período, y ni ‹ ni › se corren", async ()=>{
+      await irA("bitacora"); nav.lc.v = "cu"; lcPintar(); await pausa();
+      await botFlechasRevisar("Cuarteles");
+    });
+    await paso("«Elegir período» en Cuarteles: a la vista, las columnas se arman solas y las casillas no se repintan (fechas al revés, un solo día, varios años)", async ()=>{
+      const chip = necesito(chipPer(/^Elegir período$/), "el chip «Elegir período» en Cuarteles");
+      chk(!document.getElementById("lcR_d"), "Sin elegir, las fechas no deberían verse", "leve");
+      await tocar(chip, "Elegir período");
+      const dN = necesito(document.getElementById("lcR_d"), "«Desde»"), hN = necesito(document.getElementById("lcR_h"), "«Hasta»"), dT = document.getElementById("lcR_d_t");
+      const iguales = ()=>document.getElementById("lcR_d")===dN && document.getElementById("lcR_h")===hN && document.getElementById("lcR_d_t")===dT;
+      const y = H.slice(0,4), tira = ()=>[...fila(fu, q1.nombre).querySelectorAll(".lc-tira .lc-c")];
+      await fecha("lcR_d", masDias(H,-6), "desde"); await fecha("lcR_h", H, "hasta");
+      chk(iguales() && _lcCuW.length===7 && _lcCuW.every(w=>w.t==="dia") && tira().length===7, "7 días no dan 7 columnas por día ("+_lcCuW.length+") o se repintaron las casillas");
+      await fecha("lcR_d", y+"-03-05", "desde"); await fecha("lcR_h", y+"-07-10", "hasta");
+      chk(iguales() && _lcCuW.length===5 && _lcCuW.every(w=>w.t==="mes") && tira().length===5 && !_lcCuW[0].full, "Del 05-03 al 10-07 no da 5 columnas por mes ("+_lcCuW.length+")");
+      await fecha("lcR_d", y+"-07-10", "desde"); await fecha("lcR_h", y+"-03-05", "hasta");
+      chk(iguales() && _lcCuW.length===5 && _lcCuW[0].k===y+"-03" && /al revés/.test(txtDe(document.getElementById("lcRN"))), "Desde después de Hasta no se da vuelta en la tira");
+      await fecha("lcR_d", T.fApl, "desde"); await fecha("lcR_h", T.fApl, "hasta");
+      chk(iguales() && _lcCuW.length===1 && tira().length===1 && /^A/.test(txtDe(tira()[0].querySelector(".lc-c-l"))), "Un solo día no da una columna con lo de ese día");
+      await fecha("lcR_d", (+y-3)+"-01-01", "desde"); await fecha("lcR_h", H, "hasta");
+      const nT = _lcCuW.length, t0 = _lcCuW[0].t, cT = _lcCuW.findIndex(w=>w.d<=T.fApl && T.fApl<=w.h), nC = (lcIdx().porCu.get(fu+"|"+q1.nombre)||[]).filter(e=>e.fecha && e.fecha>=_lcCuW[cT].d && e.fecha<=_lcCuW[cT].h).length;
+      chk(iguales() && t0==="tri" && nT<=16 && tieneNum(txtDe(tira()[cT].querySelector(".lc-c-n")), nC, 0), "Varios años no dan columnas por trimestre con su conteo ("+t0+", "+nT+")");
+      chk(/trimestre/.test(txtDe(document.querySelector("#lcVista .lc-ley"))), "La leyenda no dice «del trimestre» con esas columnas", "leve");
+      const v0 = ver(), vr0 = v0.getBoundingClientRect(), fuera = [...v0.querySelectorAll(".lc-fil *")].filter(e=>{ const r = e.getBoundingClientRect(); return r.width>0 && r.right>vr0.right+1 && !e.closest(".lc-chips, .lc-menu"); });
+      chk(!fuera.length, "En Cuarteles las fechas de «Elegir período» se salen por el costado («"+(fuera[0]? (fuera[0].className||fuera[0].tagName) : "")+"»)", "media");
+      await tocar(chipLcCu("ptemp", /^Esta temporada/), "Esta temporada");
+      chk(nav.lc.per==="temp" && !!buscar('#lcVista [data-acc="per"][data-v="rango"][aria-pressed="true"]') && _lcCuW[0].t==="mes", "«Esta temporada» en Cuarteles no deja las columnas por mes con «Elegir período» marcado");
+      await tocar(chipPer(/^3 meses$/), "3 meses");
     });
     await paso("Los 4 órdenes: catálogo, última actividad, sin movimiento y carencia primero", async ()=>{
       const pos = n=>cuartelesDe(fu).findIndex(q=>q.nombre===n), nombres = ()=>filas(fu).filter(el=>!el.classList.contains("fu")).map(nomDe);
@@ -7759,12 +10269,38 @@ BOTS.push({id:"cuarteles", modulo:"Bitácora", nombre:"Inés, revisa los cuartel
         chk(a && /^En carencia hasta/.test(txtDe(a.querySelector(".lc-crm-2"))) && d && /^Libre · BBCH 71 · 9 d/.test(txtDe(d.querySelector(".lc-crm-2"))), "En el celular la segunda línea no dice lo más urgente («En carencia hasta…», «Libre · BBCH 71 · 9 d»)");
         const cabM = txtDe(bloque(fu) && bloque(fu).querySelector(".lc-cf-b"));
         chk(/1 en carencia/.test(cabM) && !/plantados|esta semana/.test(cabM), "En el celular la cabecera del fundo no deja solo lo urgente: «"+cabM.slice(0,120)+"»", "leve");
-        const fbs = [...document.querySelectorAll("#lcVista .lc-fbs button")].filter(visible);
-        chk(fbs.length===2 && fbs.every(b=>{ const r = b.getBoundingClientRect(); return r.left>=0 && r.right<=innerWidth+1; }), "En el celular no están [Orden ▾] y [★] completos en la pantalla", "leve");
+        const fbs = [...document.querySelectorAll("#lcVista .lc-fbs button")].filter(visible), w0 = ver().getBoundingClientRect();
+        chk(fbs.length===3 && fbs.every(b=>{ const r = b.getBoundingClientRect(); return r.left>=w0.left-1 && r.right<=w0.right+1; }), "En el celular no están [Orden ▾], [Elegir período] y [★] completos en la pantalla", "leve");
+        const pe = buscar('#lcVista .lc-fbs [data-acc="per"][data-v="rango"]');
+        chk(pe && txtDe(pe)==="Elegir período" && pe.scrollWidth<=pe.clientWidth+1, "En el celular «Elegir período» no está a la vista y entero en Cuarteles (lo pidió Manuel)", "grave");
         await tocar('#lcVista [data-acc="hord"]', "Orden ▾ (celular)");
-        chk(modalAbierto() && document.querySelectorAll("#capaModal .lc-chip").length===LC_ORDS.length+LC_VENS.length, "El chip-menú del celular no abre la hoja con el orden y la ventana", "leve");
-        if(modalAbierto()) await cancelarModal();
-        await tocar(a, "la fila (celular)");
+        chk(modalAbierto() && document.querySelectorAll("#capaModal .lc-chip").length===LC_ORDS.length+6 && /Orden y período/.test(txtDe(modalAbierto())), "El chip-menú del celular no abre la hoja «Orden y período» con el orden y los 6 períodos fijos", "leve");
+        if(modalAbierto()) await tocar({texto:/^1 año$/, sel:"#capaModal .lc-chip"}, "1 año (celular)");
+        chk(nav.lc.per==="1a" && !modalAbierto(), "Elegir «1 año» en la hoja no cambió el período", "leve");
+        const n1 = enSemana(fu, q1.nombre, T.fApl.slice(0,7), true), fA = fila(fu, q1.nombre), lin = fA && fA.querySelector(".lc-crm-3");
+        chk(lin && /en este período/.test(txtDe(lin)) && [...document.querySelectorAll("#lcVista .lc-tira")].length===0, "En el celular, sin tira, el período elegido no se nota en la fila: «"+txtDe(lin)+"»", "media");
+        if(n1>0) chk(tieneNum(txtDe(lin), (lcIdx().porCu.get(fu+"|"+q1.nombre)||[]).filter(e=>e.fecha && e.fecha>=_lcCuW[0].d && e.fecha<=_lcCuW[11].h).length, 0), "La línea del período no cuenta los registros de ese período: «"+txtDe(lin)+"»");
+        /* revisión del cierre: «Nada en este período» no decía cuál: con un período distinto del de siempre va la línea ‹ título › [Hoy], como en Día a día */
+        const tCu = ()=>txtDe(document.querySelector("#lcVista .lc-pnav-t"));
+        chk(tCu()===lcRango(lcNav(), H).tit, "En el celular, Cuarteles con «1 año» no dice qué período se mira («"+tCu()+"»)", "media");
+        await tocar('#lcVista [data-acc="hord"]', "Orden ▾ (celular, Semana)");
+        if(modalAbierto()) await tocar({texto:/^Semana$/, sel:"#capaModal .lc-chip"}, "Semana (celular)");
+        const tSem = tCu(); chk(nav.lc.per==="sem" && /^Esta semana · /.test(tSem), "En el celular, Cuarteles con «Semana» no dice «Esta semana · …» («"+tSem+"»)", "media");
+        await tocar('#lcVista [data-acc="pmov"][data-v="-1"]', "‹ Semana anterior (Cuarteles, celular)");
+        const f2 = fila(fu, q1.nombre), lin2 = f2 && f2.querySelector(".lc-crm-3");
+        chk(!!nav.lc.ref && /^Semana pasada · /.test(tCu()) && !!buscar('#lcVista [data-acc="phoy"]') && lin2 && /este período$/.test(txtDe(lin2)) && document.documentElement.scrollWidth<=innerWidth+1, "En el celular, ‹ en Cuarteles no pasa a «Semana pasada · …» con «Hoy» y la línea de la fila («"+tCu()+"», ref "+nav.lc.ref+")", "media");
+        await tocar('#lcVista [data-acc="phoy"]', "Hoy (Cuarteles, celular)");
+        chk(!nav.lc.ref && tCu()===tSem, "En el celular, «Hoy» en Cuarteles no vuelve a esta semana («"+tCu()+"»)", "media");
+        await tocar(buscar('#lcVista .lc-fbs [data-acc="per"][data-v="rango"]'), "Elegir período (celular)");
+        chk(!document.querySelector("#lcVista .lc-pnav"), "En el celular, Cuarteles con «Elegir período» no debería llevar la línea ‹ ›: las fechas son el control", "leve");
+        const dT = document.getElementById("lcR_d_t"), hT = document.getElementById("lcR_h_t");
+        chk(nav.lc.per==="rango" && dT && hT && visible(dT) && visible(hT), "En el celular, Cuarteles: «Elegir período» no muestra Desde y Hasta", "grave");
+        await fecha("lcR_d", masDias(H,-6), "desde (celular)"); await fecha("lcR_h", H, "hasta (celular)");
+        chk(document.getElementById("lcR_d_t")===dT && document.getElementById("lcR_h_t")===hT && _lcCuW.length===7, "En el celular, cambiar una fecha repintó las casillas o no cambió el período", "media");
+        await tocar('#lcVista [data-acc="hord"]', "Orden ▾ (celular, 2)");
+        if(modalAbierto()) await tocar({texto:/^3 meses$/, sel:"#capaModal .lc-chip"}, "3 meses (celular)");
+        chk(nav.lc.per==="3m" && !document.querySelector("#lcVista .lc-crm-3") && !document.querySelector("#lcVista .lc-pnav"), "Con «3 meses» sigue la línea del período en las filas del celular o la línea ‹ ›", "leve");
+        await tocar(fila(fu, q1.nombre), "la fila (celular)");
         chk(nav.lc.v==="ficha" && nav.lc.ficha.cu===q1.nombre, "En el celular tocar la fila no abre la ficha");
       } finally { D.ui = JSON.parse(ui0); uiAplicar(); render(); }
     });
@@ -7777,7 +10313,7 @@ BOTS.push({id:"cuarteles", modulo:"Bitácora", nombre:"Inés, revisa los cuartel
 }});
 
 /* 📗 FICHA DEL CUARTEL (Bitácora, Etapa 2) ---------------------------------------------- */
-BOTS.push({id:"ficha", modulo:"Bitácora", nombre:"Tomás, mira un cuartel", ico:"📗", que:"Ficha del cuartel: se abre desde la portada con su nombre y las 4 casillas (carencia, BBCH, última aplicación con n.ª, última labor), ‹ › y los chips cambian de cuartel, una casilla filtra el libro, meses que se pliegan y se arman al abrir con su resumen, la minimatriz cuadra con los registros, los destacados llevan a su fila, «Incluir lo de todo el fundo», la temporada anterior (sep-ago), el resumen por unidad, los chips y enlaces de Día a día, el mapa, Hoy y Fenología abren la ficha, cuartel que ya no existe y «Todo el fundo», y el celular en una columna y en el espejo sin botones que escriben", correr: async ()=>{
+BOTS.push({id:"ficha", modulo:"Bitácora", nombre:"Tomás, mira un cuartel", ico:"📗", que:"Ficha del cuartel: se abre desde la portada con su nombre y las 4 casillas (carencia, BBCH, última aplicación con n.ª, última labor), ‹ › y los chips cambian de cuartel, una casilla filtra el libro, meses que se pliegan y se arman al abrir con su resumen, la minimatriz cuadra con los registros en cada período y con «Elegir período» a la vista, los destacados llevan a su fila, «Incluir lo de todo el fundo», la temporada anterior (sep-ago), el resumen por unidad, los chips y enlaces de Día a día, el mapa, Hoy y Fenología abren la ficha, cuartel que ya no existe y «Todo el fundo», y el celular en una columna y en el espejo sin botones que escriben", correr: async ()=>{
   const H = HOY(), lc0 = ("lc" in nav)? JSON.stringify(nav.lc) : null, p0 = localStorage.getItem("agronotasBitacora"), ui0 = JSON.stringify(D.ui||{}), rol0 = D.sync? D.sync.rol : undefined;
   const fn = typeof fenNav==="function"? fenNav() : null, fn0 = fn? JSON.stringify(fn) : null;
   const dm = iso=>String(iso).slice(8,10)+"-"+String(iso).slice(5,7), porPlantar = q=>/por plantar/i.test(q.especie||"");
@@ -7882,24 +10418,72 @@ BOTS.push({id:"ficha", modulo:"Bitácora", nombre:"Tomás, mira un cuartel", ico
       const f1 = q(".lc-fm-c .lc-fi-dia"), ds = qa(`#lcFm${m} .lc-fi-dia`).map(d=>d.getAttribute("data-dia"));
       chk(f1 && /\d/.test(txtDe(f1.querySelector(".lc-fi-f"))) && ds.length===new Set(ds).size, "La fecha no va una sola vez por día a la izquierda de sus filas", "leve");
     });
-    await paso("La minimatriz cuadra con los registros de cada semana", async ()=>{
-      await abrirFicha(q1.nombre, q1.nombre);
-      const W = (typeof _lcFi!=="undefined" && _lcFi.W)||[], cols = qa(".lc-mx .lc-mx-c"), malos = [], evs = lcIdx().porCu.get(fu+"|"+q1.nombre)||[], mes = nav.lc.ven==="mes";
-      const kDe = f=>mes? f.slice(0,7) : lcSem(f);   // la ventana de la portada: 12 semanas (lunes) o 12 meses
-      chk(cols.length===12 && W.length===12, "La minimatriz no tiene 12 columnas");
-      const cats = ["apl","lab","fen","nota","riego"];
+    /* la minimatriz contra el conteo directo de los registros del cuartel, columna por columna (sirve para cualquier período) */
+    const mxCuadra = (etq)=>{
+      const W = (typeof _lcFi!=="undefined" && _lcFi.W)||[], cols = qa(".lc-mx .lc-mx-c"), malos = [], evs = lcIdx().porCu.get(fu+"|"+q1.nombre)||[], cats = ["apl","lab","fen","nota","riego"];
+      chk(W.length>0 && cols.length===W.length, etq+": la minimatriz tiene "+cols.length+" columnas para "+W.length+" del período");
       W.forEach((w,i)=>{
-        const c = {apl:0, lab:0, fen:0, nota:0, riego:0}; evs.forEach(e=>{ if(e.fecha && kDe(e.fecha)===w.k){ const g = e.cat==="fert"? "riego" : e.cat; if(g in c) c[g]++; } });
+        const c = {apl:0, lab:0, fen:0, nota:0, riego:0}; evs.forEach(e=>{ if(e.fecha && e.fecha>=w.d && e.fecha<=w.h){ const g = e.cat==="fert"? "riego" : e.cat; if(g in c) c[g]++; } });
         const ns = cols[i]? [...cols[i].querySelectorAll(".lc-mx-n")].map(n=>txtDe(n)==="·"? 0 : +txtDe(n)) : [];
         cats.forEach((k,j)=>{ if(ns[j]!==c[k]) malos.push(w.k+" "+k+": "+ns[j]+" en vez de "+c[k]); });
       });
-      chk(!malos.length, "La minimatriz no cuadra con los registros: "+malos.slice(0,4).join(" · "));
-      const k = kDe(T.d12), a = mes? k+"-01" : k, b = mes? lcMesFin(a) : masDias(k,6), wi = W.findIndex(w=>w.k===k), col = cols[wi];
+      chk(!malos.length, etq+": la minimatriz no cuadra con los registros: "+malos.slice(0,4).join(" · "));
+      return W;
+    };
+    const perFi = async (re, d)=>tocar(necesito(buscar({texto:re, sel:'#lcVista .lc-fi-mx [data-acc="per"]'}), "el chip «"+(d||re)+"» de la Actividad"), d||String(re));
+    const bajaA = async (W, f, etq)=>{   // tocar la columna de la fecha f baja el libro a esa columna
+      const wi = W.findIndex(w=>w.d<=f && f<=w.h), col = qa(".lc-mx .lc-mx-c")[wi];
       if(col && col.tagName==="BUTTON"){
-        await tocar(col, "la columna de "+(mes? "ese mes" : "la semana del "+dm(k))); await esperar(300);
-        const d = qa(".lc-fi-dia").find(x=>{ const f = x.getAttribute("data-dia"); return f>=a && f<=b; });
-        chk(d && enPantalla(d), "Tocar una columna no baja el libro a "+(mes? "ese mes" : "esa semana"));
+        const a = W[wi].d, b = W[wi].h;
+        await tocar(col, "la columna de "+etq); await esperar(300);
+        const d = qa(".lc-fi-dia").find(x=>{ const g = x.getAttribute("data-dia"); return g>=a && g<=b; });
+        chk(d && enPantalla(d), "Tocar una columna no baja el libro a "+etq);
       }
+    };
+    await paso("La minimatriz cuadra con los registros de cada columna, con cada período", async ()=>{
+      await abrirFicha(q1.nombre, q1.nombre);
+      let W = mxCuadra("3 meses");
+      chk(W.length===13 && W.every(w=>w.t==="sem") && /^Actividad · Últimos 3 meses$/.test(txtDe(q(".lc-fi-mx .lc-fi-st"))), "La Actividad en «3 meses» no tiene 13 columnas por semana con su título: «"+txtDe(q(".lc-fi-mx .lc-fi-st"))+"»");
+      await bajaA(W, T.d12, "la semana de hace 12 días");
+      await abrirFicha(q1.nombre, q1.nombre);
+      const ps = qa('.lc-fi-mx [data-acc="per"]').map(txtDe);
+      chk(JSON.stringify(ps)===JSON.stringify(["Día","Semana","Mes","3 meses","6 meses","1 año","Elegir período"]), "La Actividad no tiene los 7 chips con «Elegir período» a la vista: "+JSON.stringify(ps), "grave");
+      await perFi(/^1 año$/, "1 año"); W = mxCuadra("1 año");
+      chk(W.length===12 && W[11].hoy, "Con «1 año» la minimatriz no tiene 12 columnas con el mes actual al final");
+      await bajaA(W, T.d12, "ese mes");
+      await abrirFicha(q1.nombre, q1.nombre);
+      await perFi(/^Mes$/, "Mes"); W = mxCuadra("Mes"); chk(W.every(w=>w.t==="sem" && w.d.slice(0,7)===H.slice(0,7)), "Con «Mes» las columnas no van por semana recortada al mes");
+      await perFi(/^Semana$/, "Semana"); W = mxCuadra("Semana"); chk(W.length===7 && W.every(w=>w.t==="dia"), "Con «Semana» no van los 7 días");
+      await perFi(/^Día$/, "Día"); W = mxCuadra("Día");
+      chk(W.length===7 && qa(".lc-mx-c.sel").length===1 && W.filter(w=>w.sel).map(w=>w.k)[0]===H && /^Actividad · Hoy$/.test(txtDe(q(".lc-fi-mx .lc-fi-st"))), "Con «Día» no van los 7 días de la semana con hoy marcado: «"+txtDe(q(".lc-fi-mx .lc-fi-st"))+"»");
+      await perFi(/^3 meses$/, "3 meses");
+      chk(nav.lc.per==="3m", "El chip no dejó «3 meses»");
+    });
+    await paso("«Elegir período» en la Actividad de la ficha: a la vista, Desde y Hasta repintan solo la matriz (el calendario no se cierra), fechas al revés, un solo día y varios años", async ()=>{
+      await abrirFicha(q1.nombre, q1.nombre);
+      chk(!document.getElementById("lcR_d"), "Sin elegir, las fechas no deberían verse", "leve");
+      await perFi(/^Elegir período$/, "Elegir período");
+      const dN = necesito(document.getElementById("lcR_d"), "«Desde» en la ficha"), hN = necesito(document.getElementById("lcR_h"), "«Hasta» en la ficha"), dT = document.getElementById("lcR_d_t"), q0 = q(".lc-fi-acs");
+      const iguales = ()=>document.getElementById("lcR_d")===dN && document.getElementById("lcR_h")===hN && document.getElementById("lcR_d_t")===dT && q(".lc-fi-acs")===q0;
+      chk(!!dN.closest(".lc-fi-mx"), "Las fechas no van junto a la Actividad", "leve");
+      const y = H.slice(0,4);
+      dN.focus(); dN.value = masDias(H,-6); dN.dispatchEvent(new Event("change", {bubbles:true})); await pausa(.3);
+      await fecha("lcR_h", H, "hasta");
+      let W = mxCuadra("7 días");
+      chk(iguales() && W.length===7 && W.every(w=>w.t==="dia") && /^Actividad · Período elegido: del /.test(txtDe(q(".lc-fi-mx .lc-fi-st"))), "Cambiar las fechas en la ficha repintó las casillas o no armó 7 columnas: «"+txtDe(q(".lc-fi-mx .lc-fi-st"))+"»", "grave");
+      await bajaA(W, T.d5, "ese día");
+      await abrirFicha(q1.nombre, q1.nombre);
+      await fecha("lcR_d", y+"-03-05", "desde"); await fecha("lcR_h", y+"-07-10", "hasta");
+      W = mxCuadra("Del 05-03 al 10-07"); chk(W.length===5 && W.every(w=>w.t==="mes"), "Del 05-03 al 10-07 no da 5 columnas por mes en la ficha");
+      await fecha("lcR_d", y+"-07-10", "desde"); await fecha("lcR_h", y+"-03-05", "hasta");
+      W = mxCuadra("Al revés"); chk(W.length===5 && W[0].k===y+"-03" && /al revés/.test(txtDe(document.getElementById("lcRN"))), "Desde después de Hasta no se da vuelta en la ficha");
+      await fecha("lcR_d", T.d5, "desde"); await fecha("lcR_h", T.d5, "hasta");
+      W = mxCuadra("Un solo día"); chk(W.length===1 && /^Solo el /.test(txtDe(document.getElementById("lcRN"))), "Un solo día no da una columna en la ficha");
+      await fecha("lcR_d", (+y-3)+"-01-01", "desde"); await fecha("lcR_h", H, "hasta");
+      W = mxCuadra("Varios años"); chk(W[0].t==="tri" && W.length<=16, "Varios años no dan trimestres en la ficha ("+W[0].t+", "+W.length+")");
+      await tocar(buscar({texto:/^Esta temporada/, sel:'#lcVista .lc-fi-mx [data-acc="ptemp"]'}), "Esta temporada");
+      W = mxCuadra("Esta temporada"); chk(nav.lc.per==="temp" && W[0].t==="mes" && /temporada/.test(txtDe(q(".lc-fi-mx .lc-fi-st"))), "«Esta temporada» no funciona en la ficha");
+      await perFi(/^3 meses$/, "3 meses");
     });
     await paso("Un destacado lleva a su fila (abre su mes) y la resalta", async ()=>{
       await abrirFicha(q1.nombre, q1.nombre);
@@ -8065,7 +10649,24 @@ BOTS.push({id:"ficha", modulo:"Bitácora", nombre:"Tomás, mira un cuartel", ico
         D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si"}); uiAplicar(); await irA("bitacora"); await abrirFicha(q1.nombre, q1.nombre);
         const acs = q(".lc-fi-acs"), mx = qa(".lc-mx-c"), v = document.getElementById("lcVista");
         chk(acs && getComputedStyle(acs).gridTemplateColumns.split(" ").length===2, "En el celular las casillas no van en 2×2");
-        chk(mx.length===12 && mx.every(c=>c.tagName!=="BUTTON" && Math.abs(c.getBoundingClientRect().width-22)<1.5), "En el celular la minimatriz no es de 12 columnas de 22 px sin botones");
+        chk(mx.length===13 && mx.every(c=>{ const w = c.getBoundingClientRect().width; return c.tagName!=="BUTTON" && w>=14 && w<=38.5; }), "En el celular la minimatriz no es de 13 columnas («3 meses») de 14 a 36 px sin botones ("+(mx[0]? Math.round(mx[0].getBoundingClientRect().width) : 0)+" px)");   // 36 px con la ventana grande (38,2 con texto grande); a 375 px de verdad se angostan (minmax(14px,36px); revisión r3: antes 22 px; revisión r4: antes 30 px)
+        /* v166: [3 meses ▾] abre la hoja con los 6 fijos y «Elegir período» queda a la vista, al lado, con sus fechas */
+        const pe = q('.lc-fi-mx [data-acc="per"][data-v="rango"]');
+        chk(pe && visible(pe) && txtDe(pe)==="Elegir período" && pe.scrollWidth<=pe.clientWidth+1, "En el celular «Elegir período» no está a la vista en la ficha (lo pidió Manuel)", "grave");
+        await tocar('#lcVista [data-acc="hperf"]', "[3 meses ▾] de la Actividad");
+        chk(modalAbierto() && document.querySelectorAll("#capaModal .lc-hoja-chips .lc-chip").length===6 && !buscar({texto:/^Elegir período$/, sel:"#capaModal .lc-chip"}), "[3 meses ▾] no abre la hoja con los 6 períodos fijos", "media");
+        if(modalAbierto()) await tocar({texto:/^1 año$/, sel:"#capaModal .lc-chip"}, "1 año");
+        chk(nav.lc.per==="1a" && qa(".lc-mx-c").length===12 && document.activeElement===q('[data-acc="hperf"]'), "Elegir en la hoja no cambió la Actividad o el foco no volvió a [Período ▾]", "media");
+        await tocar(q('.lc-fi-mx [data-acc="per"][data-v="rango"]'), "Elegir período (celular)");
+        const dT = document.getElementById("lcR_d_t"), hT = document.getElementById("lcR_h_t");
+        chk(nav.lc.per==="rango" && dT && hT && visible(dT) && visible(hT), "En el celular, la ficha: «Elegir período» no muestra Desde y Hasta", "grave");
+        await fecha("lcR_d", masDias(H,-30), "desde (celular)"); await fecha("lcR_h", H, "hasta (celular)");
+        chk(document.getElementById("lcR_d_t")===dT && document.getElementById("lcR_h_t")===hT && qa(".lc-mx-c").length===(_lcFi.W||[]).length && (_lcFi.W||[])[0].t==="sem", "En el celular, cambiar una fecha en la ficha repintó las casillas o no armó las columnas", "media");
+        const r18 = q("#lcFiMx").getBoundingClientRect();
+        await fecha("lcR_d", (+H.slice(0,4)-1)+"-06-01", "desde 18 meses"); await fecha("lcR_h", (+H.slice(0,4))+"-11-30", "hasta 18 meses");
+        chk(qa(".lc-mx-c").length===18 && q("#lcFiMx").scrollWidth<=q("#lcFiMx").clientWidth+1 && q("#lcFiMx").getBoundingClientRect().right<=r18.right+1, "En el celular 18 columnas no caben en la Actividad", "media");
+        await tocar('#lcVista [data-acc="hperf"]', "[Período ▾]");
+        if(modalAbierto()) await tocar({texto:/^3 meses$/, sel:"#capaModal .lc-chip"}, "3 meses");
         const vr = v.getBoundingClientRect(), fuera = [...v.querySelectorAll("*")].filter(e=>{ const r = e.getBoundingClientRect(); return r.width>0 && r.right>vr.right+1 && !e.closest(".lc-chips, .lc-fi-dsl, .lc-menu"); });   // los chips deslizables llegan al borde a propósito (margen -12 px)
         chk(document.documentElement.scrollWidth<=innerWidth+1 && !fuera.length && txtDe(q('[data-acc="volver"]'))===fu, "En el celular la ficha se sale por el costado"+(fuera.length? " («"+(fuera[0].className||fuera[0].tagName)+"»)" : "")+" o no vuelve con «‹ "+fu+"»");
         D.sync = Object.assign({}, D.sync||{}, {rol:"receptor"}); uiAplicar(); render(); await pausa();
@@ -8075,6 +10676,59 @@ BOTS.push({id:"ficha", modulo:"Bitácora", nombre:"Tomás, mira un cuartel", ico
         chk(h && !h.querySelector('[data-acc="estrella"]') && !h.querySelector('[data-acc="editar"]') && h.querySelector(".lc-star-ro"), "En el espejo el detalle deja tocar la ★ o Editar");
         if(modalAbierto()) await cancelarModal();
       } finally { if(D.sync) D.sync.rol = rol0; D.ui = JSON.parse(ui0); uiAplicar(); render(); }
+    });
+    /* revisión r3: a 375 px los rótulos de «Mes» se montaban («9–1516–2223–2»: 27 px en columnas de 22 px), y en el celular el rótulo es lo único que dice de qué semana es cada número.
+       revisión r4: columnas de 36 px (38,2 con texto grande, por el zoom de 1,06) y comprobación con letra ancha, que no depende de la letra del equipo: en el iPhone la letra es más ancha que en este PC */
+    await paso("Celular a 375 px: con «Mes» (los últimos 13 meses, también con ★) ningún rótulo de la Actividad se monta con el vecino ni se sale de su columna (medido con Range), tampoco con letra ancha (33 px, 35 con texto grande); la ★ no toca el año en «1 año»; y sin scroll de lado con 14 días, 3 meses, 1 año y texto grande", async ()=>{
+      const app = document.getElementById("app");
+      const rect = e=>{ const g = document.createRange(); g.selectNodeContents(e); return g.getBoundingClientRect(); };
+      const medir = ()=>{ const cs = qa(".lc-mx-c"), R = cs.map(c=>{ const d = c.querySelector(".lc-ch-d"), r = rect(d), w = c.getBoundingClientRect(); return {t:txtDe(d), a:r.left, b:r.right, ca:w.left, cb:w.right}; }), mx = q("#lcFiMx");
+        return {n:R.length, w:cs.length? cs[0].getBoundingClientRect().width : 0, mont:R.filter((x, i)=>i && R[i-1].b>x.a+0.5).map(x=>x.t), sal:R.filter(x=>x.a<x.ca-0.5 || x.b>x.cb+0.5).map(x=>x.t), sw:mx.scrollWidth, cw:mx.clientWidth}; };
+      const ver = async (per, ref, rango)=>{ const L = lcNav(); L.per = per; if(ref) L.ref = ref; else delete L.ref; if(rango) L.rango = rango; render(); await pausa(.2); await esperar(40); return medir(); };
+      try{
+        for(const grande of [false, true]){
+          const Tx = s=>(grande? "[texto grande] " : "")+s, m1 = lcMes1(H);
+          D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande}); uiAplicar(); app.style.width = "375px"; app.style.maxWidth = "375px";
+          await irA("bitacora"); await abrirFicha(q1.nombre, q1.nombre);
+          for(let i=0;i<13;i++){
+            const ref = i? lcMesSum(m1, -i) : "", M = await ver("mes", ref);
+            chk(M.n>=4 && M.n<=6 && !M.mont.length && !M.sal.length && M.sw===M.cw && (grande? M.w>=37.9 && M.w<=38.4 : M.w>=35.8 && M.w<=36.2), Tx("A 375 px, «Mes» "+(ref || H).slice(0,7)+": "+M.mont.length+" rótulos montados («"+M.mont.join("», «")+"»), "+M.sal.length+" fuera de su columna, columnas de "+M.w.toFixed(1)+" px, scrollWidth "+M.sw+" y clientWidth "+M.cw), "media");
+            /* con ★ en todas las columnas: la ★ va en la esquina y no ocupa ancho (al lado del rótulo, «19–25★» medía 36 px en columnas de 30) */
+            qa(".lc-mx-c").forEach(c=>c.classList.add("st")); const S = medir(), anchoD = qa(".lc-ch-d").map(d=>d.getBoundingClientRect().width), posE = getComputedStyle(qa(".lc-ch-d")[0], "::after").position;
+            chk(!S.mont.length && !S.sal.length && S.sw===S.cw && posE==="absolute" && Math.max(...anchoD)<=S.w, Tx("A 375 px, «Mes» "+(ref || H).slice(0,7)+" con ★: "+S.mont.length+" rótulos montados, "+S.sal.length+" fuera, la ★ "+posE+", rótulo de hasta "+Math.max(...anchoD).toFixed(1)+" px en columnas de "+S.w.toFixed(1)+" px, scrollWidth "+S.sw+" y clientWidth "+S.cw), "media");
+            /* revisión r4: con letra ancha, sin depender de la letra del equipo. Con un <style> temporal, letter-spacing hasta que el rótulo más ancho mida 33 px (35 con texto grande); si ya llega, sin espaciado.
+               Cuánto crece con 1 px se mide, no se supone: así sirve también con el zoom del texto grande */
+            await ver("mes", ref);
+            const obj = grande? 35 : 33, rAnc = qa(".lc-ch-d").reduce((a, d)=>rect(d).width>rect(a).width? d : a), W = rect(rAnc).width, est = document.createElement("style");
+            try{
+              document.head.appendChild(est); let ls = 0;
+              if(W<obj){ est.textContent = ".lc-mx .lc-ch-d{letter-spacing:1px !important;}"; ls = (obj-W)/(rect(rAnc).width-W); }
+              est.textContent = ls? ".lc-mx .lc-ch-d{letter-spacing:"+ls+"px !important;}" : "";
+              const wT = rect(rAnc).width, A = medir();
+              chk(Math.abs(wT-Math.max(obj, W))<=0.3 && !A.mont.length && !A.sal.length && A.sw===A.cw, Tx("A 375 px, «Mes» "+(ref || H).slice(0,7)+" con letra ancha («"+txtDe(rAnc)+"» de "+W.toFixed(1)+" a "+wT.toFixed(1)+" px): "+A.mont.length+" rótulos montados («"+A.mont.join("», «")+"»), "+A.sal.length+" fuera de su columna, columnas de "+A.w.toFixed(1)+" px, scrollWidth "+A.sw+" y clientWidth "+A.cw), "media");
+              qa(".lc-mx-c").forEach(c=>c.classList.add("st")); const B = medir();
+              chk(!B.mont.length && !B.sal.length && B.sw===B.cw, Tx("A 375 px, «Mes» "+(ref || H).slice(0,7)+" con letra ancha y ★: "+B.mont.length+" rótulos montados («"+B.mont.join("», «")+"»), "+B.sal.length+" fuera de su columna, columnas de "+B.w.toFixed(1)+" px, scrollWidth "+B.sw+" y clientWidth "+B.cw), "media");
+            } finally { est.remove(); }
+          }
+          for(const [nom, per, rango, nC] of [["14 días", "rango", {desde:masDias(H,-13), hasta:H}, 14], ["3 meses", "3m", null, 13], ["1 año", "1a", null, 12]]){
+            const M = await ver(per, "", rango);
+            chk(M.n===nC && M.sw===M.cw, Tx("A 375 px, «"+nom+"»: "+M.n+" columnas de "+M.w.toFixed(1)+" px, scrollWidth "+M.sw+" y clientWidth "+M.cw), "media");
+          }
+          /* revisión r4: en «1 año» la ★ de la esquina no toca el año de arriba. ::after no tiene rectángulo: su caja sale de getComputedStyle. Las cajas se cruzan (la del año lleva aire arriba), así que se compara la tinta:
+             measureText a 16 veces el tamaño, porque a tamaño real redondea a px enteros */
+          await ver("1a", ""); qa(".lc-mx-c").forEach(c=>c.classList.add("st"));
+          const cv = document.createElement("canvas").getContext("2d"), conAnio = qa(".lc-mx-c").filter(c=>/^[0-9]{4}$/.test(txtDe(c.querySelector(".lc-ch-m"))));
+          const tinta = (t, cs)=>{ cv.font = cs.fontStyle+" "+cs.fontWeight+" "+(parseFloat(cs.fontSize)*16)+"px "+cs.fontFamily; const m = cv.measureText(t); return {A:m.fontBoundingBoxAscent/16, D:m.fontBoundingBoxDescent/16, sube:m.actualBoundingBoxAscent/16, baja:m.actualBoundingBoxDescent/16}; };
+          chk(conAnio.length>=1, Tx("A 375 px, «1 año»: ninguna columna trae el año arriba"), "media");
+          conAnio.forEach(c=>{
+            const hd = c.querySelector(".lc-mx-h"), hR = hd.getBoundingClientRect(), z = hR.width/parseFloat(getComputedStyle(hd).width), a = getComputedStyle(c.querySelector(".lc-ch-d"), "::after"), m = c.querySelector(".lc-ch-m"), y = rect(m), tS = tinta("★", a), tY = tinta(txtDe(m), getComputedStyle(m));
+            const baseS = hR.top+parseFloat(a.top)*z+(parseFloat(a.height)-(tS.A+tS.D))/2*z+tS.A*z, baseY = y.top+(y.height/z-(tY.A+tY.D))/2*z+tY.A*z, aire = (baseY-tY.sube*z)-(baseS+tS.baja*z);
+            chk(a.position==="absolute" && a.top==="0px" && a.right==="0px" && a.fontSize==="8px" && aire>=0, Tx("A 375 px, «1 año», «"+txtDe(m)+"» con ★: la ★ "+a.position+", arriba "+a.top+", a la derecha "+a.right+", de "+a.fontSize+"; entre la tinta de la ★ y la del año hay "+aire.toFixed(2)+" px"), "media");
+          });
+          await ver("3m", "");
+          app.style.width = ""; app.style.maxWidth = "";
+        }
+      } finally { app.style.width = ""; app.style.maxWidth = ""; D.ui = JSON.parse(ui0); uiAplicar(); render(); }
     });
   } finally {
     nuevos.forEach(([col, o])=>{ D[col] = (D[col]||[]).filter(x=>x!==o); }); if(nuevos.length) guardar();
@@ -8153,7 +10807,7 @@ BOTS.push({id:"celular", modulo:"Bitácora: celular", nombre:"Pía, anota desde 
   s.url = "https://bots.invalid"; s.clave = "bots";
   const celular = ()=>{ s.rol = "receptor"; D.ui = Object.assign({}, JSON.parse(ui0), {movil:"si", sol:false, grande:false}); uiAplicar(); guardar(); };
   const ipad = ()=>{ s.rol = "emisor"; D.ui = Object.assign({}, JSON.parse(ui0), {movil:"no", sol:false, grande:false}); uiAplicar(); guardar(); };
-  const dia = async ()=>{ nav.lc = {v:"dia", per:"7"}; await irA("bitacora"); };
+  const dia = async ()=>{ nav.lc = {v:"dia", per:"3m"}; await irA("bitacora"); };
   const cuenta = ()=>({n:D.notas.length, r:D.registros.length, b:(D.bitacora||[]).length, f:fenAll().length});
   const camino = re=>[...document.querySelectorAll("#lcVista .lc-cam-it")].filter(visible).filter(el=>!re || re.test(txtDe(el)));
   const filaDe = tit=>[...document.querySelectorAll("#lcVista .lc-it")].find(el=>txtDe(el.querySelector(".lc-it-t b"))===tit && el.closest(".lc-dia") && el.closest(".lc-dia").getAttribute("data-dia")===H && txtDe(el).indexOf(qU.nombre)>=0) || null;
@@ -8828,6 +11482,354 @@ BOTS.push({id:"celular", modulo:"Bitácora: celular", nombre:"Pía, anota desde 
           "50 registros de 45.000 letras no salieron en envíos de hasta ~1,5 MB: "+JSON.stringify({ok, envios:tams, enCola:A.cola.filter(x=>mios.indexOf(x.id)>=0).length, err:A.colaErr}), "media");
       } finally { window.syncFetch = pf; A.cola = A.cola.filter(x=>mios.indexOf(x.id)<0); A.enviados = asisEnv(A).filter(x=>x && mios.indexOf(x.id)<0); A.colaErr = ""; PB.bandeja = PB.bandeja.filter(x=>mios.indexOf(x.id)<0); guardar(); }
     });
+    /* revisión 3 de la v164 (seguridad del celular, medio): con la clave de celular el puente v4 deja entrar a la bandeja un ítem de CUALQUIER forma (solo mira
+       el id y el tamaño). El iPad lo vuelve a armar con lo que manda un celular (lista blanca, asisDeBandeja): los adjuntos salen SOLO de adjIds revisados, un
+       id raro no se guarda y todo se pinta escapado. 19 trampas por la bandeja simulada, junto a un registro bueno. Las marcas no hacen nada fuera de la prueba:
+       la imagen «x-bot» (si se pegara, sumaría en window.__xss) y window._botXss=N dentro de un onclick, que se revisa SIN ejecutarlo (correria: todo de mentira) */
+    await paso("CE15 · Bandeja con trampas (lista blanca): 19 ítems armados a mano (código en _adj, adjIds, ids, textos, tipo de labor, pedido, campos del iPad, __proto__) no corren en el iPad ni en el celular, no dejan nada raro en el cuaderno y el registro bueno de al lado se guarda bien", async ()=>{
+      ipad(); PB.caido = false; PB.postErr = 0; window._botXss = undefined; window.__xss = 0;
+      const sfx = Date.now().toString(36), Q = "'", M = n=>"window._botXss="+n;
+      const IMG = n=>'x"><img src="x-bot" onerror="window.__xss=(window.__xss||0)+1;'+M(n)+'">', CQ = n=>"x"+Q+");"+M(n)+";//", CE = n=>"x&#39;);"+M(n)+";//", CJ = n=>"Poda&quot;);"+M(n)+";//";
+      const idB = "fcBotCE15b"+sfx, idDoc = "dcBotCE15d"+sfx, idOk = "asBotCE15ok"+sfx, bid = i=>"asBotCE15t"+i+"x"+sfx, tl0 = JSON.stringify((D.catalogos && D.catalogos.tiposLabor)||[]);
+      const duB = await new Promise(async res=>{ const fr = new FileReader(); fr.onload = ()=>res(fr.result); fr.readAsDataURL(await fotoBot(40, 30, "buena_ce15.png")); });
+      PB.fotos[idB] = duB; PB.fotos[idDoc] = "data:application/pdf;base64,JVBERi0xLjQKJeLjz9MK"; fcIds.push(idB, idDoc);
+      const B = o=>Object.assign({tipo:"nota", fecha:H, fundo:FC, cuarteles:[QD.nombre], texto:"Bot CE15", origen:"asis", equipo:"celular", mano:true, dictadoFh:ahora()}, o);
+      const T = [
+        ["_adj con una foto que cierra el atributo (tarjetaNota, verNota)", B({_adj:{fotos:[IMG(1)], docs:[]}})],
+        ["_adj con un documento con ' (chipsDocs)", B({_adj:{fotos:[], docs:[{id:CQ(2), nombre:"orden.pdf"}]}})],
+        ["_adj con un documento con &#39;", B({_adj:{fotos:[], docs:[{id:CE(3), nombre:"orden.pdf"}]}})],
+        ["fenología con _adj (abrirVisor de la pestaña)", B({tipo:"fenologia", cuarteles:[QC.nombre], bbch:"65", bbch_sec:[], _adj:{fotos:[CQ(4)], docs:[]}})],
+        ["adjIds que fallan y _adj a la vez", B({adjIds:{fotos:[IMG(5)], docs:[{id:CQ(6), nombre:"x.pdf"}]}, _adj:{fotos:[IMG(7)], docs:[{id:CQ(7), nombre:"y.pdf"}]}})],
+        ["un documento bueno con un nombre con código", B({adjIds:{fotos:[], docs:[{id:idDoc, nombre:"orden"+Q+");"+M(8)+";//"+IMG(8)+".pdf"}]}})],
+        ["título y texto con etiquetas", B({titulo:IMG(9), texto:"</textarea><script>"+M(9)+"</script>"+IMG(9)})],
+        ["un avance con un tipo de labor con &quot; (Bitácora, Gantt)", B({tipo:"avance", labor_tipo:CJ(10), cantidad:2, unidad:"plantas"})],
+        ["una labor nueva con un tipo con <img>", B({tipo:"labor", labor_tipo:IMG(11), texto:"Bot CE15 labor"})],
+        ["autor y equipo con código (y el origen de la bandeja)", B({autor:"Pía"+IMG(12), equipoId:'Cel"><img src="x-bot" onerror="'+M(12)+'">'})],
+        ["fecha, hora y hora del dictado con código", B({tipo:"recordatorio", titulo:"Bot CE15 recordatorio", fecha:H+IMG(13), hora:"<b>", dictadoFh:IMG(13)})],
+        ["BBCH y «también hay» con código", B({tipo:"fenologia", cuarteles:[QC.nombre], bbch:'65"'+IMG(14), bbch_sec:[CQ(14), "57"]})],
+        ["id del ítem y asisLote con código", B({id:CQ(15), asisLote:IMG(15)})],
+        ["un pedido con ref, refs y título raros", {tipo:"pedido", accion:"corregir", texto:IMG(16), tit:IMG(16), fundo:FC, ref:{st:"notas", id:CQ(16), k:IMG(16)}, refs:[{st:"__proto__", id:1}, {st:"registros", id:{a:1}}]}],
+        ["una aplicación con campos que solo arma el iPad", B({tipo:"aplicacion", producto:"Bot CE15 producto", dosis:"1 L/ha", _cuNo:[IMG(17)], _fundoNo:IMG(17), incl:IMG(17), prodId:CQ(17), carOrigen:"registro", carencia:"1e400", aplicado:true})],
+        ["__proto__ y constructor", JSON.parse('{"tipo":"nota","fecha":"'+H+'","texto":"Bot CE15 proto","fundo":"'+FC+'","__proto__":{"_botProto":1},"constructor":{"prototype":{"_botProto":1}}}')],
+        ["números raros (Infinity, 1e999)", B({tipo:"registro", registro_tipo:"Riego", registro_valor:"Infinity", cantidad:"1e999"})],
+        ["un tipo raro (toString)", B({tipo:"toString", texto:"Bot CE15 tipo raro"})],
+        ["algo que no es un ítem (un texto suelto)", IMG(19)]
+      ];
+      T.forEach(([nom, it], i)=>{ ids.push(bid(i)); if(it && typeof it==="object" && it.id==null) it.id = bid(i);
+        PB.bandeja.push({id:bid(i), ts:Date.now(), origen:i===9? 'Cel"><img src="x-bot" onerror="'+M(20)+'">' : "Celular-bot", item:it}); });
+      ids.push(idOk);
+      PB.bandeja.push({id:idOk, ts:Date.now(), origen:"Celular-bot", item:B({id:idOk, asisId:idOk, tipo:"fenologia", cuarteles:[QC.nombre], bbch:"65", bbch_sec:["57"], texto:"Bot CE15 bueno", autor:"Pía", equipoId:"Celular-bot", asisLote:"alBotCE15", adjIds:{fotos:[idB], docs:[]}})});
+      /* un onclick con lo del celular: ¿asignaría window._botXss? Se corre con TODO de mentira (cada nombre es un objeto vacío): nada de la app se llama */
+      const correria = code=>{ let hit = false; const set = (t, k)=>{ if(String(k)==="_botXss") hit = true; return true; };
+        const any = new Proxy(function(){}, {get:(t, k)=>k===Symbol.toPrimitive? ()=>"" : k==="then"? undefined : any, apply:()=>any, construct:()=>any, set});
+        const sc = new Proxy({}, {has:()=>true, get:(t, k)=>k===Symbol.unscopables? undefined : any, set});
+        try{ (new Function("__s", "with(__s){ (function(){\n"+code+"\n}).call(__s); }"))(sc); }catch(e){}
+        return hit; };
+      const revisarDom = donde=>{
+        const fuera = el=>!el.closest("#botsUI"), mal = [];
+        document.querySelectorAll("[onerror],[onload]").forEach(el=>{ if(fuera(el)) mal.push("<"+el.tagName.toLowerCase()+" "+(el.hasAttribute("onerror")? "onerror" : "onload")+">"); });
+        document.querySelectorAll("script").forEach(el=>{ if(fuera(el) && /_botXss|__xss/.test(el.textContent||"")) mal.push("<script> con lo del celular"); });
+        document.querySelectorAll("[href],[src]").forEach(el=>{ const v = String(el.getAttribute("href")||el.getAttribute("src")||"").replace(/\s+/g, ""); if(fuera(el) && /^javascript:/i.test(v)) mal.push("<"+el.tagName.toLowerCase()+"> con javascript:"); });
+        document.querySelectorAll("*").forEach(el=>{ if(!fuera(el)) return; for(const a of el.attributes){ if(/^on/i.test(a.name) && a.value.indexOf("_botXss")>=0 && correria(a.value)) mal.push("<"+el.tagName.toLowerCase()+" "+a.name+"> corre lo del celular"); } });
+        chk(!mal.length && window._botXss===undefined && !window.__xss, "En "+donde+" quedó pegado o corrió lo que mandó el celular: "+[...new Set(mal)].slice(0,4).join(" · ")+(window._botXss!==undefined? " · corrió window._botXss="+window._botXss : "")+(window.__xss? " · cargó la imagen de prueba" : ""), "grave");
+        window.__xss = 0;
+      };
+      try{
+        await asisBandejaMirar(true); await pausa(); _undoSnap = null;
+        const todos = ids.filter(id=>/CE15/.test(id)), mio = x=>!!x && todos.indexOf(String(x.asisId||""))>=0;
+        /* 1. el registro bueno */
+        const r = fenAll().find(x=>x.asisId===idOk);
+        chk(r && r.fecha===H && r.bbch==="65" && JSON.stringify(r.bbchSec)==='["57"]' && JSON.stringify(r.fotos)===JSON.stringify([idB]) && r.equipo==="celular" && r.autor==="Pía" && r.equipoId==="Celular-bot" && r.nota==="Bot CE15 bueno" && (await fotoGetLocal(idB))===duB,
+          "El registro bueno que venía junto a las trampas no se guardó bien: "+JSON.stringify(r && {fecha:r.fecha, bbch:r.bbch, sec:r.bbchSec, fotos:r.fotos, autor:r.autor, eq:r.equipoId, nota:r.nota}), "grave");
+        /* 2. la bandeja quedó vacía y todo se acusó (con el equipo sin símbolos) */
+        chk(!PB.bandeja.some(x=>todos.indexOf(String(x.id))>=0) && todos.every(id=>(D.buzonAcuse||[]).some(a=>a && a.id===id)) && (D.buzonAcuse||[]).every(a=>/^[\w .-]*$/.test(String((a && a.eq)||""))),
+          "Después de leer la bandeja con trampas quedó algo en la bandeja, sin acuse, o un acuse con símbolos en el equipo", "media");
+        /* 3. nada raro en el cuaderno, y el cuaderno no se rompe */
+        const lst = [], malos = [];
+        ["notas","registros","fenologia","labores","recordatorios","bitacora"].forEach(st=>(D[st]||[]).forEach(o=>{ if(mio(o) || (st==="bitacora" && o && (o.lineas||[]).some(mio))) lst.push([st, o]); }));
+        lst.forEach(([st, o])=>{
+          (o.fotos||[]).concat(o.audios||[]).forEach(f=>{ if(!fidOk(f)) malos.push(st+": foto «"+String(f).slice(0,30)+"»"); });
+          (o.docs||[]).forEach(d=>{ if(!d || !fidOk(d.id)) malos.push(st+": documento «"+String(d && d.id).slice(0,30)+"»"); });
+          ["_adj","_cuNo","_fundoNo","incl","adjIds","fotosB64","prodId"].forEach(k=>{ if(Object.prototype.hasOwnProperty.call(o, k) && !(k==="prodId" && typeof o.prodId==="number")) malos.push(st+" con la clave "+k); });
+          if(o.fecha!=null && !/^\d{4}-\d{2}-\d{2}$/.test(String(o.fecha))) malos.push(st+": fecha «"+String(o.fecha).slice(0,20)+"»");
+          if(o.dictadoFh && !asisFhCel(o.dictadoFh)) malos.push(st+": hora del dictado «"+String(o.dictadoFh).slice(0,20)+"»");
+          if(o.equipoId && !/^[\w .-]{1,40}$/.test(o.equipoId)) malos.push(st+": equipo «"+o.equipoId+"»");
+          if(o.asisLote && !/^[\w-]{1,40}$/.test(o.asisLote)) malos.push(st+": asisLote «"+String(o.asisLote).slice(0,20)+"»");
+          if(st==="fenologia" && !/^\d{2}$/.test(String(o.bbch||""))) malos.push("fenología con el BBCH «"+String(o.bbch).slice(0,20)+"»");
+          if(o.ref && !(typeof o.ref.id==="number" || fidOk(o.ref.id))) malos.push(st+": una referencia rara");
+        });
+        /* v165: los 2 tipos de labor nuevos con comillas, & y < entran al catálogo tal cual, como escritos en el iPad (r1 de la v165: el de <img>, entero; antes se cortaba a 60 letras) */
+        const tl = (D.catalogos && D.catalogos.tiposLabor)||[], tN = [IMG(11).trim(), CJ(10)];   // primero la labor (asisAplicarTodos) y después el avance (asisAvances)
+        if(JSON.stringify(tl)!==JSON.stringify(JSON.parse(tl0).concat(tN))) malos.push("el catálogo de labores no quedó con los 2 tipos nuevos tal cual: "+JSON.stringify(tl.slice(-3)));
+        if(({})._botProto!==undefined || Object.prototype._botProto!==undefined) malos.push("Object.prototype quedó ensuciado");
+        let roto = ""; try{ JSON.parse(JSON.stringify(D)); lcIdx(); }catch(x){ roto = String((x && x.message)||x); }
+        chk(!malos.length && !roto && lst.length>=17, "Lo que mandó el celular dejó cosas raras en el cuaderno (o lo rompió): "+(roto || malos.slice(0,5).join(" · ") || "se guardaron solo "+lst.length+" registros"), "grave");
+        /* 4. lo que debía pasar con algunas trampas */
+        const nota = i=>D.notas.find(n=>n.asisId===bid(i)), n4 = nota(4), n5 = nota(5), dc = n5 && (n5.docs||[])[0];
+        chk(n4 && !(n4.fotos||[]).length && !(n4.docs||[]).length && /No llegó desde el celular/.test(n4.texto||"") && dc && dc.id===idDoc && /window\._botXss=8/.test(dc.nombre||"") && (await fotoGetLocal(idDoc)),
+          "adjIds que fallan con _adj al lado (o un documento bueno con un nombre raro) no quedaron como debían: "+JSON.stringify({n4:n4 && {f:n4.fotos, d:n4.docs, t:n4.texto}, doc:dc}), "grave");
+        /* v165: ya no hay regla de nombres. Un tipo de labor nuevo con comillas, & o < que llega del celular entra al catálogo como escrito en el iPad: el avance
+           queda en la Bitácora y la labor en la Gantt con ese tipo exacto, sin nota «(revisar)» ni «Labor: …»; las pantallas de abajo revisan que nada se pegue ni corra */
+        const n7 = nota(7), n8 = nota(8), av = (D.bitacora||[]).find(b=>(b.lineas||[]).some(l=>l.asisId===bid(7))) || null, lab = (D.labores||[]).find(l=>l.asisId===bid(8)) || null;
+        const l7 = av && av.lineas.find(l=>l.asisId===bid(7));
+        chk(!n7 && !n8 && l7 && l7.tipo===tN[1] && l7.cantidad===2 && lab && lab.tipo===tN[0] && lab.desc==="Bot CE15 labor" && JSON.stringify(tl.slice(-2))===JSON.stringify(tN),
+          "Un tipo de labor con comillas, & o < que llegó del celular no entró al catálogo tal cual (o el avance o la labor quedaron como nota): "+JSON.stringify({tipos:tl.slice(-2), n7:!!n7, n8:!!n8, l7:l7 && l7.tipo, lab:lab && lab.tipo}), "media");
+        const rc = recs().find(x=>x.asisId===bid(10)), fz = nota(11), n12 = nota(12), ped = nota(13), ap = (D.registros||[]).find(x=>x.asisId===bid(14));
+        chk(rc && rc.fecha===H && rc.hora==="" && (!rc.dictadoFh || asisFhCel(rc.dictadoFh)) && fz && /\(revisar\)/.test(fz.titulo||"") && !fenAll().some(e=>e.asisId===bid(11)) && n12 && !n12.asisLote,
+          "La fecha, la hora, el BBCH o el asisLote con código no se descartaron: "+JSON.stringify({rc:rc && {f:rc.fecha, h:rc.hora, fh:rc.dictadoFh}, fz:fz && fz.titulo, lote:n12 && n12.asisLote}), "media");
+        chk(ped && /^Por corregir: /.test(ped.titulo||"") && !ped.ref && ap && ap.tipo==="Aplicación" && ap.producto==="Bot CE15 producto" && !/_botXss|Infinity/.test(JSON.stringify(ap)) && !D.notas.some(n=>n.asisId===bid(18)),
+          "El pedido raro, la aplicación con campos del iPad o el texto suelto no quedaron como debían: "+JSON.stringify({ped:ped && {t:ped.titulo, ref:ped.ref}, ap:ap && {p:ap.producto, c:ap.carencia}}), "media");
+        /* 5. las pantallas, en el iPad y en el celular: nada se pega ni corre */
+        await irA("notas"); await posNotas(); await pausa(.3); revisarDom("Notas (iPad)");
+        for(const n of D.notas.filter(mio)){ verNota(n.id); await posNotas(); await pausa(.15); revisarDom("la nota «"+lcLinea(n.titulo||n.texto, 30)+"»"); cerrarModal(); }
+        fenNav().fundo = FC; fenNav().cuartel = ""; fenNav().vista = "actual"; await irA("fenologia"); await fenCargarThumbs(); revisarDom("Fenología, estado actual (iPad)");
+        fenNav().vista = "hist"; render(); await fenCargarThumbs(); await pausa(.3); revisarDom("Fenología, historial (iPad)");
+        await dia(); revisarDom("Bitácora, Día a día (iPad)");
+        { const tmp = document.createElement("div"); document.body.appendChild(tmp);
+          try{ for(const g of _lcFilas.values()) tmp.insertAdjacentHTML("beforeend", lcHojaDetHTML(g)); await pausa(.2); revisarDom("el detalle de las filas de la Bitácora"); } finally { tmp.remove(); } }
+        for(const q of [QD, QC]){ lcAbrirCu(FC, q.nombre); await pausa(.5); revisarDom("la ficha de "+q.nombre); }
+        await irA("panel"); revisarDom("Hoy");
+        await irA("gantt"); revisarDom("la Carta Gantt");
+        gtColores(); await pausa(.3); revisarDom("los colores de la Gantt"); await cerrarTodo();   // v165: los 2 tipos nuevos ya están en el catálogo
+        nav.datosSec = "personalizar"; await irA("datos"); revisarDom("Datos → Personalizar catálogos");
+        bitNueva(H); await pausa(.3); if(BIT){ BIT.mas = true; bitPinta(); } await pausa(.2); revisarDom("la Labor del día (todos los chips)"); await cerrarTodo();
+        { const labV = lab || (D.labores||[]).slice(-1)[0]; if(labV){ gtEditar(labV.id); await pausa(.3); Object.keys(GT_CB).forEach(k=>{ try{ gtCbLista(k, false); }catch(x){} }); revisarDom("editar la labor (y sus listas)"); await cerrarTodo(); } }
+        { const avV = av || (D.bitacora||[]).slice(-1)[0]; if(avV){ bitEditar(avV.id); await pausa(.3); revisarDom("editar una anotación de la Bitácora"); await cerrarTodo(); } }
+        await irA("aplic"); revisarDom("Aplicaciones");
+        abrirInforme(H); await pausa(.5); revisarDom("el informe semanal"); cerrarVisor();
+        celular();
+        await fenIr(); await fenCargarThumbs(); revisarDom("Fenología (celular)");
+        await dia(); revisarDom("Bitácora (celular)");
+        await irA("notas"); await posNotas(); await pausa(.3); revisarDom("Notas (celular)");
+      } finally { await cerrarTodo(); try{ cerrarVisor(); }catch(x){} if(D.catalogos) D.catalogos.tiposLabor = JSON.parse(tl0); delete window._botXss; PB.bandeja = PB.bandeja.filter(x=>!/CE15/.test(String(x.id))); ipad(); guardar(); }
+    });
+    /* revisión 3 de la v164: el reenvío también sale por tamaño (antes mandaba todos los perdidos en un solo POST: 40 grandes pasaban los 2 MB de la bandeja v4) */
+    await paso("CE16 · El reenvío sale por tamaño, como la cola: 40 registros perdidos de 45.000 letras se reenvían en envíos de hasta ~1,5 MB; lo que no cabe sale en la vuelta siguiente, sin esperar otra subida del iPad", async ()=>{
+      celular(); PB.caido = false; PB.postErr = 0;
+      const A = asisCfg(), E = asisEnv(A, true), mios = [], tams = [], pf = window.syncFetch, t0 = Date.now(), sfx = Date.now().toString(36), u0 = s.ultTs;
+      window.syncFetch = async (ruta, o)=>{ if(ruta==="bandeja" && String((o && o.method)||"GET").toUpperCase()==="POST"){ const n = String((o && o.body)||"").length; tams.push(n);
+        if(n>2*1024*1024) throw Object.assign(new Error("la bandeja está llena: abre el iPad para que importe lo pendiente"), {status:507}); } return pf(ruta, o); };   // como el puente v4
+      try{
+        await esperarQue(()=>!_asisColaOcup && !_asisCamOcup, 3000);
+        for(let i=0;i<40;i++){ const id = "asBotRe"+i+"x"+sfx; mios.push(id); ids.push(id);
+          E.push({id, item:{id, tipo:"nota", fecha:H, fundo:GENERAL, cuarteles:[], texto:"Bot CE16 "+i+" "+"z".repeat(45000), asisId:id, origen:"asis", equipo:"celular"}, fhEnv:ahora(), msEnv:t0-25*60000, reenvios:0}); }
+        s.ultTs = t0-25*60000+6*60000; guardar();   // el iPad subió el cuaderno después del envío y no los acusó: se perdieron
+        await asisCaminoRevisar();
+        const ya = ()=>mios.filter(id=>PB.bandeja.some(x=>x.id===id)).length, n1 = ya(), quedan = mios.filter(id=>{ const e = env(id); return e && !PB.bandeja.some(x=>x.id===id) && !e.msUlt && !e.reenvios; }).length;
+        chk(tams.length>=1 && tams[0]<=1.6e6 && n1>0 && n1<40 && quedan===40-n1, "El reenvío de 40 registros grandes no se cortó por tamaño (o lo que no cupo quedó esperando otra subida del iPad): "+JSON.stringify({envios:tams, enBandeja:n1, quedan}), "media");
+        for(let k=0; k<3 && ya()<40; k++){ await esperarQue(()=>!_asisCamOcup, 3000); await asisCaminoRevisar(); }
+        chk(ya()===40 && tams.every(n=>n<=1.6e6) && tams.length>=2 && mios.every(id=>(env(id)||{}).reenvios===1), "Los 40 registros perdidos no terminaron de reenviarse en envíos de hasta ~1,5 MB, una vez cada uno: "+JSON.stringify({envios:tams, enBandeja:ya()}), "media");
+      } finally { window.syncFetch = pf; A.enviados = asisEnv(A).filter(x=>x && mios.indexOf(x.id)<0); PB.bandeja = PB.bandeja.filter(x=>mios.indexOf(x.id)<0); s.ultTs = u0; guardar(); }
+    });
+    /* revisión 3 de la v164: con la clave de celular, «Contar» de Fotos sincronizadas recibía un 403 (el v4 no le da la lista de fotos) y salía un alert feo */
+    await paso("CE17 · «Contar» las fotos de Cloudflare con la clave de celular: sin alert, dice que se cuentan en el iPad; con CLAVE_SYNC sigue contando", async ()=>{
+      celular();
+      const pf = window.syncFetch, fo0 = s.fotos, fa0 = s.fotosArriba, ar0 = syncFotosTanda._arriba, ts0 = syncFotosTanda._ts, d0 = s.donde, a0 = R.alerts.length;
+      const el = document.createElement("div"); el.id = "espacioInfo"; document.body.appendChild(el);
+      try{
+        s.fotos = true; delete s.fotosArriba; syncFotosTanda._arriba = null; _espContarCel = false;
+        window.syncFetch = async (ruta, o)=>{ if(/^fotos(\?|$)/.test(ruta)) throw Object.assign(new Error("esta clave es de celular: puede mirar y enviar al iPad, pero no cambiar el cuaderno"), {status:403}); return pf(ruta, o); };
+        await espacioPintar();
+        necesito(el.querySelector('[onclick="espacioContarNube()"]'), "el botón «Contar» de Fotos sincronizadas");
+        await espacioContarNube(); await pausa(.2);
+        chk(R.alerts.length===a0 && !el.querySelector('[onclick="espacioContarNube()"]') && /se cuentan en el iPad/.test(txtDe(el)) && /clave de celular/.test(txtDe(el)),
+          "Con la clave de celular «Contar» mostró un alert o no dijo que el conteo se ve en el iPad: "+JSON.stringify({alerts:R.alerts.slice(a0).map(x=>x.t), txt:txtDe(el).slice(0,200)}), "leve");
+        _espContarCel = false; delete s.fotosArriba; syncFotosTanda._arriba = null;
+        window.syncFetch = async (ruta, o)=>/^fotos(\?|$)/.test(ruta)? {ids:["fBotCuenta1","fBotCuenta2"], cursor:null, donde:"kv"} : pf(ruta, o);
+        await espacioPintar(); await espacioContarNube(); await pausa(.2);
+        chk(R.alerts.length===a0 && s.fotosArriba===2 && !/se cuentan en el iPad/.test(txtDe(el)), "Con CLAVE_SYNC «Contar» ya no cuenta las fotos de Cloudflare: "+txtDe(el).slice(0,200), "leve");
+      } finally { window.syncFetch = pf; el.remove(); _espContarCel = false; if(fo0===undefined) delete s.fotos; else s.fotos = fo0; if(fa0===undefined) delete s.fotosArriba; else s.fotosArriba = fa0; syncFotosTanda._arriba = ar0; syncFotosTanda._ts = ts0; if(d0===undefined) delete s.donde; else s.donde = d0; guardar(); }
+    });
+    /* v165 (03-11-2026): ya no hay regla de nombres para lo que llega del celular. Los 7 tipos de LAB_RAROS (nuevos: no están en el catálogo) llegan por la
+       bandeja simulada como labor (7 labores de la Gantt) y como avance (una anotación de la Bitácora con 7 líneas, sumadas a esas labores): entran al
+       catálogo tal cual y una vez cada uno, sin nota «(revisar)», y se ven y funcionan como escritos en el iPad. Después, en el celular, el formulario corto
+       los ofrece y uno vuelve al iPad exacto. El catálogo queda como estaba (las labores, la bitácora y bitCfg los repone el finally del bot) */
+    await paso("CE18 · Tipos de labor con comillas, &, dos puntos, apóstrofo, <, ª y ñ y emoji desde el celular (labor y avance por la bandeja): entran al catálogo tal cual, sin nota «(revisar)», y se ven y funcionan igual en el iPad y en el celular", async ()=>{
+      ipad(); PB.caido = false; PB.postErr = 0;
+      const N = LAB_RAROS, sfx = Date.now().toString(36), tl0 = JSON.stringify(tiposLabor()), lote = "alBotCE18"+sfx, ds1 = nav.datosSec;
+      if(N.some(n=>tiposLabor().indexOf(n)>=0)) throw new SinProbar("El catálogo ya tiene alguno de los tipos de prueba");
+      const idL = i=>"asBotCE18l"+i+"x"+sfx, idA = i=>"asBotCE18a"+i+"x"+sfx, todos = [];
+      const B = o=>Object.assign({fecha:H, fundo:qU.fundo, cuarteles:[qU.nombre], origen:"asis", equipo:"celular", mano:true, dictadoFh:ahora(), asisLote:lote, texto:""}, o);
+      N.forEach((n, i)=>{ ids.push(idL(i), idA(i)); todos.push(idL(i), idA(i));
+        PB.bandeja.push({id:idL(i), ts:Date.now(), origen:"Celular-bot", item:B({id:idL(i), asisId:idL(i), tipo:"labor", labor_tipo:n, fecha_fin:masDias(H,2)})});
+        PB.bandeja.push({id:idA(i), ts:Date.now(), origen:"Celular-bot", item:B({id:idA(i), asisId:idA(i), tipo:"avance", labor_tipo:n, cantidad:12, unidad:"plantas", personas:2})}); });
+      const rev = donde=>{ const m = labRevisar(); chk(!m.length, "En "+donde+" un tipo de labor que llegó del celular se ve distinto o rompe un botón: "+m.slice(0,4).join(" · "), "grave"); };
+      let idC = "";
+      /* revisión 1 de la v165: el tipo de labor llega ENTERO (antes se cortaba a 60 letras: el avance no se sumaba a su labor) y con su emoji; los caracteres de
+         control se limpian (asisDeBandeja, sin tocar el cuaderno) */
+      { const lt = t=>(asisDeBandeja({tipo:"labor", labor_tipo:t}, "bBotCE18")||{}).labor_tipo, x59 = "x".repeat(59), y90 = "y".repeat(90), ctl = String.fromCharCode(7);
+        chk(lt(x59+"🍒")===x59+"🍒" && lt(y90)===y90 && lt("Poda"+ctl+" \"en verde\"")===N[0] && lt(N[6])===N[6],
+          "asisDeBandeja cortó el tipo de labor (o no limpió el carácter de control): "+JSON.stringify([lt(x59+"🍒").length, lt(y90).length, lt("Poda"+ctl+" \"en verde\"")]), "media"); }
+      try{
+        await esperarQue(()=>!_asisBandOcup, 3000);
+        await asisBandejaMirar(true); await pausa(); _undoSnap = null;
+        chk(JSON.stringify(tiposLabor())===JSON.stringify(JSON.parse(tl0).concat(N)), "Los 7 tipos que llegaron del celular no entraron al catálogo tal cual y una vez cada uno: "+JSON.stringify(tiposLabor().slice(-8)), "grave");
+        chk(!D.notas.some(x=>todos.indexOf(String(x.asisId||""))>=0) && !PB.bandeja.some(x=>todos.indexOf(x.id)>=0), "Algún tipo de labor del celular quedó como nota «(revisar)» (o siguió en la bandeja)", "grave");
+        const labs = N.map((n, i)=>D.labores.find(l=>l.asisId===idL(i)) || null);
+        chk(labs.every((l, i)=>l && l.tipo===N[i] && l.fundo===qU.fundo && l.cuartel===qU.nombre && l.fecha===H && l.fecha2===masDias(H,2) && l.desc==="" && l.equipo==="celular"),
+          "Las 7 labores del celular no quedaron con su tipo exacto (sin «Labor: …» en el detalle): "+JSON.stringify(labs.map(l=>l && [l.tipo, l.desc])), "grave");
+        const bE = (D.bitacora||[]).filter(b=>(b.lineas||[]).some(l=>todos.indexOf(String(l.asisId||""))>=0)), ln = bE.length===1? bE[0].lineas : [];
+        chk(bE.length===1 && JSON.stringify(ln.map(l=>l.tipo))===JSON.stringify(N) && ln.every((l, i)=>l.asisId===idA(i) && l.cantidad===12 && l.personas===2 && l.unidad==="plantas" && l.cuartel===qU.nombre && labs[i] && l.laborId===labs[i].id && (labs[i].avances||[]).some(a=>a.bitId===bE[0].id && a.cantidad===12)),
+          "Los 7 avances del celular no quedaron en una anotación de la Bitácora con su tipo exacto, sumados a la labor de su tipo: "+JSON.stringify(ln.map(l=>[l.tipo, l.laborId])), "grave");
+        /* las pantallas del iPad */
+        await dia();
+        chk(N.every(n=>filaDe(n)), "En Día a día del iPad falta la fila de: "+N.filter(n=>!filaDe(n)).join(" | "), "media");
+        rev("Día a día (iPad)");
+        { const f2 = necesito(filaDe(N[3]), "la fila de «"+N[3]+"»"); await tocar(f2.querySelector(".lc-it-b"), "abrir «"+N[3]+"»");
+          chk(txtDe(document.getElementById(f2.id) || f2).indexOf(N[3])>=0, "El detalle de «"+N[3]+"» no lo muestra tal cual", "media"); rev("el detalle de «"+N[3]+"» (iPad)"); }
+        lcAbrirCu(qU.fundo, qU.nombre); await pausa(.5); rev("la ficha de "+qU.nombre);
+        await irA("gantt"); await tocar("[onclick='gtHoy()']", "Hoy");
+        { const etq = [...document.querySelectorAll("#app .gdlbl")].map(txtDe);
+          chk(N.every(n=>etq.indexOf(n)>=0), "En la Carta Gantt no se ven tal cual: "+N.filter(n=>etq.indexOf(n)<0).join(" | "), "media"); }
+        rev("la Carta Gantt");
+        await tocar('[onclick="gtColores()"]', "Colores"); rev("Colores de la Gantt");
+        chk(N.every(n=>[...document.querySelectorAll("#capaModal .colrow .colnom")].some(x=>txtDe(x)===n)), "En Colores de la Gantt no están los 7 tipos tal cual", "leve");
+        await cerrarTodo();
+        bitNueva(H, qU.fundo, qU.nombre); await pausa();
+        if(buscar("#bitTipos .bitchip-mas") && !BIT.mas) await tocar("#bitTipos .bitchip-mas", "Más labores…");
+        const chipB = n=>[...document.querySelectorAll("#bitTipos .bitchip")].find(b=>b.lastChild && b.lastChild.nodeType===3 && b.lastChild.textContent.trim()===n);
+        await tocar(necesito(chipB(N[2]), "el chip «"+N[2]+"»"), "labor «"+N[2]+"»");
+        chk(BIT.lineas.length===1 && BIT.lineas[0].tipo===N[2] && BIT.lineas[0].cuartel===qU.nombre && BIT.lineas[0].unidad==="plantas", "El chip «"+N[2]+"» de la Labor del día no armó su línea con el tipo exacto y su unidad habitual: "+JSON.stringify(BIT.lineas), "media");
+        rev("la Labor del día"); await cancelarModal();
+        nav.datosSec = "personalizar"; await irA("datos"); rev("Datos → Personalizar catálogos");
+        await irA("panel"); rev("Hoy");
+        abrirInforme(H); await pausa(.5); rev("el informe semanal");
+        { const t = txtDe(visorAbierto()); chk(N.every(n=>t.indexOf(n)>=0), "El informe semanal no muestra los tipos del celular tal cual", "leve"); }
+        cerrarVisor();
+        { const fl = csvFilas(await csvBot("labores")), iT = (fl[0]||[]).indexOf("Tipo"); chk(iT>=0 && N.every(n=>fl.some(r=>r[iT]===n)), "El CSV de labores no trae los tipos del celular tal cual", "media"); }
+        /* en el celular: Día a día y el formulario corto, que ofrece los 7 (en chips o en «Otra labor») y manda uno exacto */
+        celular(); await dia();
+        chk(N.every(n=>filaDe(n)), "En Día a día del celular falta la fila de: "+N.filter(n=>!filaDe(n)).join(" | "), "media");
+        rev("Día a día (celular)");
+        await tocar('#lcVista [data-acc="anotar"]', "+ Anotar (celular)"); await chipCe("que", "lab", "Labor hecha");
+        const selV = n=>`#capaModal [data-ce="lab"][data-v="${n.replace(/["\\]/g,"\\$&")}"]`;
+        const ofrece = n=>!!document.querySelector(selV(n)) || [...((document.getElementById("lcCeLabO")||{}).options||[])].some(o=>o.value===n);
+        chk(N.every(ofrece), "El formulario corto del celular no ofrece los 7 tipos tal cual: faltan "+N.filter(n=>!ofrece(n)).join(" | "), "media");
+        rev("el formulario corto (Labor hecha)");
+        await chipCe("fu", qU.fundo); await chipCe("cu", qU.nombre);
+        const nc = N[1];
+        if(document.querySelector(selV(nc))) await chipCe("lab", nc, "labor «"+nc+"»"); else await elegir("lcCeLabO", nc, "Otra labor");
+        chk(_lcCe && _lcCe.lab===nc, "Elegir «"+nc+"» en el formulario corto dejó «"+(_lcCe && _lcCe.lab)+"»", "grave");
+        await escribir("lcCeCant", "3", "cantidad"); await escribir("lcCePers", "1", "personas");
+        await esperarQue(()=>!_asisColaOcup, 3000);
+        const b0 = PB.bandeja.length; await enviarCe();
+        await esperarQue(()=>!_asisColaOcup && PB.bandeja.length>b0, 4000);
+        const itC = (PB.bandeja[PB.bandeja.length-1]||{}).item || null; idC = itC? String(itC.id) : ""; if(idC) ids.push(idC);
+        chk(itC && itC.tipo==="avance" && itC.labor_tipo===nc && itC.cantidad===3 && (itC.cuarteles||[]).join()===qU.nombre, "El formulario corto no mandó «"+nc+"» exacto: "+JSON.stringify(itC||{}).slice(0,200), "grave");
+        ipad(); await esperarQue(()=>!_asisBandOcup, 3000); await asisBandejaMirar(true); await pausa(); _undoSnap = null;
+        const lC = idC? [].concat(...(D.bitacora||[]).map(b=>b.lineas||[])).find(l=>l.asisId===idC) : null;
+        chk(lC && lC.tipo===nc && lC.cantidad===3 && tiposLabor().filter(x=>x===nc).length===1, "Lo que mandó el formulario corto con «"+nc+"» no llegó exacto al iPad (o se repitió en el catálogo): "+JSON.stringify(lC||{}), "grave");
+      } finally { await cerrarTodo(); D.catalogos.tiposLabor = JSON.parse(tl0); nav.datosSec = ds1; PB.bandeja = PB.bandeja.filter(x=>!/CE18/.test(String(x.id)) && String(x.id)!==idC); ipad(); guardar(); }
+    });
+    /* revisión 1 de la v165 (Manuel: nada de lo que manda su celular se puede perder): por la bandeja simulada llega lo LARGO que antes la lista blanca cortaba
+       en silencio (un tipo de labor de 77 letras que ya está en el catálogo, con su labor en la Gantt; una categoría de nota de 76; una unidad de 50; un producto
+       de más de 160 y un objetivo de más de 300 con 14 productos en la mezcla; un documento con un nombre de más de 160), una hora del dictado rara (queda la
+       del iPad, como en la v164) y un tipo con comillas curvas del teclado («Poda “en verde”») que en el catálogo está con comillas rectas. Lo creado lo
+       quita el finally del bot (por asisId, labores y bitCfg); el catálogo y las categorías, el finally de este paso */
+    await paso("CE19 · Lo largo y lo raro del celular llega entero: tipo de labor de 77 letras (se suma a su labor), categoría de 76, unidad, producto y objetivo largos, 14 productos, un documento de nombre largo con su «.pdf», la hora del dictado rara (queda la del iPad) y comillas curvas", async ()=>{
+      ipad(); PB.caido = false; PB.postErr = 0;
+      const sfx = Date.now().toString(36), lote = "alBotCE19"+sfx, tl0 = JSON.stringify(D.catalogos.tiposLabor||[]), cn0 = JSON.stringify(D.catalogos.catsNota||[]);
+      const L77 = "Aplicación de fertilizante foliar con boro y zinc en floración temprana (2ª)", C76 = "Plaga / Enfermedad de la madera y del cuello (revisar con el asesor externo)";
+      const UNI = "metros lineales de hilera (doble lado, con rebaje)", PROD = ("Mezcla casera bot: "+"aceite de neem prensado en frío + jabón potásico + ".repeat(4)).trim(), OBJ = "Chanchito blanco (Pseudococcus viburni) en racimos y ramillas; ".repeat(6).trim();
+      const RV = 'Poda "en verde"', tP = tiposLabor().indexOf("Poda")>=0? "Poda" : tiposLabor()[0], DOC = "Informe de análisis foliar del laboratorio "+"x".repeat(150)+" & «Nº 7».pdf", idDoc = "dcBotCE19"+sfx;
+      const id = k=>"asBotCE19"+k+"x"+sfx, todos = ["a","n","u","p","d","h","c"].map(id);
+      todos.forEach(x=>ids.push(x));
+      chk(L77.length>60 && C76.length>60 && UNI.length>40 && PROD.length>160 && OBJ.length>300 && DOC.length>160, "Los textos de prueba no son tan largos como deben", "leve");
+      /* asisBusca: las comillas curvas del teclado cuentan como las rectas (y una simple no es una doble) */
+      chk(asisBusca([RV, "Poda d'invierno"], "poda “EN VERDE”")===RV && asisBusca([RV, "Poda d'invierno"], "PODA d’invierno")==="Poda d'invierno" && asisBusca([RV], "Poda ‘en verde’")==="",
+        "asisBusca no reconoce las comillas curvas del teclado del iPad o del iPhone como las rectas del catálogo", "media");
+      try{
+        if(D.catalogos.tiposLabor.indexOf(L77)<0) D.catalogos.tiposLabor.push(L77);
+        if(D.catalogos.tiposLabor.indexOf(RV)<0) D.catalogos.tiposLabor.push(RV);
+        if(D.catalogos.catsNota.indexOf(C76)<0) D.catalogos.catsNota.push(C76);
+        const labL = {id:nid(), gid:"", estado:"pendiente", avances:[], meta:0, av:0, fecha:masDias(H,-1), fecha2:masDias(H,5), tipo:L77, fundo:qU.fundo, cuartel:qU.nombre, desc:"Bot CE19", resp:"", nota:"", unidad:"ha"};
+        D.labores.push(labL); guardar();
+        PB.fotos[idDoc] = "data:application/pdf;base64,JVBERi0xLjQKJeLjz9MK"; fcIds.push(idDoc);
+        const B = (k, o)=>({id:id(k), ts:Date.now(), origen:"Celular-bot", item:Object.assign({id:id(k), asisId:id(k), fecha:H, fundo:qU.fundo, cuarteles:[qU.nombre], origen:"asis", equipo:"celular", mano:true, dictadoFh:ahora(), asisLote:lote, texto:""}, o)});
+        PB.bandeja.push(B("a", {tipo:"avance", labor_tipo:L77, cantidad:2.5, unidad:"ha", personas:3}),
+          B("n", {tipo:"nota", titulo:"Bot CE19 categoría larga", texto:"Bot CE19 nota", categoria:C76}),
+          B("u", {tipo:"avance", labor_tipo:tP, cantidad:3, unidad:UNI, personas:2}),
+          B("p", {tipo:"aplicacion", producto:PROD, dosis:"2 L/ha", objetivo:OBJ, aplicado:true, mezcla:[{producto:PROD, dosis:"2 L/ha"}].concat(Array.from({length:13}, (v, i)=>({producto:"Bot CE19 producto "+(i+1), dosis:(i+1)+" cc/100 L"})))}),
+          B("d", {tipo:"nota", titulo:"Bot CE19 documento", texto:"Bot CE19 doc", adjIds:{fotos:[], docs:[{id:idDoc, nombre:DOC}]}}),
+          B("h", {tipo:"nota", titulo:"Bot CE19 hora rara", texto:"Bot CE19 hora", dictadoFh:"ayer a las 5"}),
+          B("c", {tipo:"avance", labor_tipo:"Poda “en verde”", cantidad:4, unidad:"plantas", personas:1}));
+        const t0 = Date.now(), nTl = tiposLabor().length;
+        await esperarQue(()=>!_asisBandOcup, 3000);
+        await asisBandejaMirar(true); await pausa(); _undoSnap = null;
+        chk(!PB.bandeja.some(x=>todos.indexOf(x.id)>=0), "Lo del celular siguió en la bandeja", "media");
+        const lin = k=>{ for(const b of (D.bitacora||[])) for(const l of (b.lineas||[])) if(l.asisId===id(k)) return l; return null; }, nota = k=>D.notas.find(n=>n.asisId===id(k)) || null;
+        const la = lin("a"), lab = D.labores.find(l=>l.id===labL.id);
+        chk(la && la.tipo===L77 && la.laborId===labL.id && lab && lab.estado==="encurso" && (lab.avances||[]).some(a=>a.cantidad===2.5 && a.personas===3),
+          "El avance con un tipo de labor de 77 letras no se sumó a su labor de la Gantt: "+JSON.stringify({largo:la && la.tipo.length, laborId:la && la.laborId, lab:lab && [lab.estado, lab.avances]}), "grave");
+        const nn = nota("n");
+        chk(nn && nn.cat===C76, "La nota con una categoría de 76 letras no quedó en esa categoría: «"+(nn && nn.cat)+"»", "grave");
+        const lu = lin("u");
+        chk(lu && lu.unidad===UNI && ((D.bitCfg||{}).unidades||{})[tP]===UNI, "La unidad de "+UNI.length+" letras se cortó (en la línea o en la unidad habitual de «"+tP+"»): «"+(lu && lu.unidad)+"»", "media");
+        const rp = D.registros.find(r=>r.asisId===id("p"));
+        chk(rp && rp.producto===PROD && rp.objetivo===OBJ && (rp.mezcla||[]).length===13, "La aplicación con un producto de "+PROD.length+" letras, un objetivo de "+OBJ.length+" y 14 productos no llegó entera: "+JSON.stringify(rp && {p:(rp.producto||"").length, o:(rp.objetivo||"").length, m:(rp.mezcla||[]).length}), "grave");
+        const nd = nota("d"), dn = nd && (nd.docs||[])[0];
+        chk(dn && dn.id===idDoc && /\.pdf$/.test(dn.nombre||"") && dn.nombre.indexOf("Informe de análisis foliar")===0, "El documento de nombre largo no llegó con su «.pdf»: "+JSON.stringify(dn||null), "media");
+        const nh = nota("h"), th = nh? Date.parse(nh.dictadoFh||"") : NaN, oh = document.createElement("div");
+        if(nh) oh.innerHTML = lcOrigenHTML({origen:"asis", st:"notas"}, nh, null);
+        chk(nh && !isNaN(th) && th>=t0-2000 && th<=Date.now()+2000 && txtDe(oh).indexOf(fmtFH(nh.dictadoFh))>=0, "Con una hora del dictado rara no quedó la hora del iPad (o el Origen no dice cuándo): "+JSON.stringify({fh:nh && nh.dictadoFh, origen:txtDe(oh).slice(0,160)}), "media");
+        const lc = lin("c");
+        chk(lc && lc.tipo===RV, "«Poda “en verde”» (comillas curvas) no se reconoció como «"+RV+"» del catálogo: «"+(lc && lc.tipo)+"»", "media");
+        chk(tiposLabor().length===nTl, "Lo del celular agregó tipos de labor al catálogo (cortados o casi iguales): "+JSON.stringify(tiposLabor().slice(nTl)), "media");
+      } finally { D.catalogos.tiposLabor = JSON.parse(tl0); D.catalogos.catsNota = JSON.parse(cn0); PB.bandeja = PB.bandeja.filter(x=>todos.indexOf(x.id)<0); ipad(); guardar(); }
+    });
+    /* revisión 2 de la v165 (verificación de la r1): (a) asisBusca busca primero el nombre igual: con 'Poda "en verde"' y 'Poda “en verde”' en el catálogo,
+       cada una es la suya; (b) un tipo de labor con dos espacios seguidos entra una sola vez al catálogo y el mismo con un espacio se suma a esa labor (antes se
+       agregaba otra vez cada vez que llegaba); (c) una fecha que no existe («el 31 de noviembre»), una fecha de término que no existe o una hora que no se puede
+       leer ya no se cambian en silencio: «Ojo: …» queda en lo guardado (en un recordatorio, en su título); «24:00» vale (como en el asistente del iPad) y
+       «7:30» pasa a «07:30» */
+    await paso("CE20 · Lo del celular con el nombre exacto y fechas u horas raras: comillas curvas y rectas en el catálogo (cada una la suya), dos espacios sin repetir el tipo, el 31 de noviembre y la hora 25:61 quedan dichos en lo guardado, 24:00 y 7:30 valen", async ()=>{
+      ipad(); PB.caido = false; PB.postErr = 0;
+      const sfx = Date.now().toString(36), lote = "alBotCE20"+sfx, tl0 = JSON.stringify(D.catalogos.tiposLabor||[]);
+      const RV = 'Bot CE20 "en verde"', CV = 'Bot CE20 “en verde”', ESP2 = "Bot CE20  doble espacio", ESP1 = "Bot CE20 doble espacio";
+      const id = k=>"asBotCE20"+k+"x"+sfx, todos = ["c","r","e1","e2","e3","f","g","h1","h2","h3","h4"].map(id);
+      todos.forEach(x=>ids.push(x));
+      chk(asisBusca([RV, CV], CV)===CV && asisBusca([RV, CV], RV)===RV && asisBusca([RV], CV)===RV && asisBusca([ESP2], ESP1)===ESP2 && asisBusca([ESP1, ESP2], ESP2)===ESP2 && asisBusca([ESP2, ESP1], ESP1)===ESP1 && asisBusca([ESP2], "  ")==="",
+        "asisBusca no busca primero el nombre igual (comillas o espacios): "+JSON.stringify([asisBusca([RV, CV], CV), asisBusca([RV, CV], RV), asisBusca([ESP2], ESP1), asisBusca([ESP1, ESP2], ESP2)]), "media");
+      try{
+        D.catalogos.tiposLabor.push(RV, CV); guardar();
+        const nTl = tiposLabor().length;
+        const B = (k, o)=>({id:id(k), ts:Date.now(), origen:"Celular-bot", item:Object.assign({id:id(k), asisId:id(k), fecha:H, fundo:qU.fundo, cuarteles:[qU.nombre], origen:"asis", equipo:"celular", dictadoFh:ahora(), asisLote:lote, texto:""}, o)});
+        PB.bandeja.push(B("c", {tipo:"avance", labor_tipo:CV, cantidad:2, unidad:"plantas", personas:1}),
+          B("r", {tipo:"avance", labor_tipo:RV, cantidad:3, unidad:"plantas", personas:1}),
+          B("e1", {tipo:"labor", labor_tipo:ESP2, fecha_fin:masDias(H,3), texto:"Bot CE20 con dos espacios"}),
+          B("e2", {tipo:"avance", labor_tipo:ESP2, cantidad:4, unidad:"plantas", personas:1}),
+          B("e3", {tipo:"avance", labor_tipo:ESP1, cantidad:5, unidad:"plantas", personas:1}),
+          B("f", {tipo:"labor", labor_tipo:RV, fecha:"2026-11-31", fecha_fin:"2026-12-05", texto:"Bot CE20 el 31 de noviembre"}),
+          B("g", {tipo:"labor", labor_tipo:RV, titulo:"Bot CE20 término raro", fecha_fin:"2026-11-31"}),
+          B("h1", {tipo:"recordatorio", titulo:"Bot CE20 regar a medianoche", fecha:masDias(H,2), hora:"24:00", cuarteles:[]}),
+          B("h2", {tipo:"recordatorio", titulo:"Bot CE20 llamar", fecha:masDias(H,2), hora:"7:30", cuarteles:[]}),
+          B("h3", {tipo:"recordatorio", titulo:"Bot CE20 revisar goteros", fecha:masDias(H,2), hora:"25:61", cuarteles:[]}),
+          B("h4", {tipo:"recordatorio", titulo:"", texto:"Bot CE20 sin título", fecha:masDias(H,2), hora:"a las cinco", cuarteles:[]}));
+        await esperarQue(()=>!_asisBandOcup, 3000);
+        await asisBandejaMirar(true); await pausa(); _undoSnap = null;
+        chk(!PB.bandeja.some(x=>todos.indexOf(x.id)>=0), "Lo del celular siguió en la bandeja", "media");
+        const lin = k=>{ for(const b of (D.bitacora||[])) for(const l of (b.lineas||[])) if(l.asisId===id(k)) return l; return null; };
+        const lab = k=>D.labores.find(l=>l.asisId===id(k)) || null, rec = k=>recs().find(r=>r.asisId===id(k)) || null;
+        chk(lin("c") && lin("c").tipo===CV && lin("r") && lin("r").tipo===RV, "Con las dos formas en el catálogo, cada avance no quedó con la suya: "+JSON.stringify([lin("c") && lin("c").tipo, lin("r") && lin("r").tipo]), "media");
+        const tl = tiposLabor().slice(nTl), l1 = lab("e1"), a2 = lin("e2"), a3 = lin("e3");
+        chk(JSON.stringify(tl)===JSON.stringify([ESP2]) && l1 && l1.tipo===ESP2 && a2 && a2.tipo===ESP2 && a3 && a3.tipo===ESP2 && a2.laborId===l1.id && a3.laborId===l1.id,
+          "El tipo con dos espacios entró más de una vez al catálogo (o «… doble espacio» con uno no se sumó a esa labor): "+JSON.stringify({nuevos:tl, labor:l1 && l1.id, e2:a2 && [a2.tipo, a2.laborId], e3:a3 && [a3.tipo, a3.laborId]}), "media");
+        const lf = lab("f"), lg = lab("g");
+        chk(lf && lf.fecha===H && lf.fecha2==="2026-12-05" && lf.tipo===RV && (lf.desc||"")==="Bot CE20 el 31 de noviembre · Ojo: la fecha «31-11-2026» no existe: se guardó con la de hoy.",
+          "La labor del 31 de noviembre no quedó con la fecha de hoy y el «Ojo…» en la descripción: "+JSON.stringify(lf && {fecha:lf.fecha, fecha2:lf.fecha2, desc:lf.desc}), "media");
+        chk(lg && lg.fecha===H && !lg.fecha2 && (lg.desc||"")==="Bot CE20 término raro · Ojo: la fecha de término «31-11-2026» no existe: quedó sin fecha de término.",
+          "La labor con la fecha de término del 31 de noviembre no lo dice: "+JSON.stringify(lg && {fecha2:lg.fecha2, desc:lg.desc}), "media");
+        const r1 = rec("h1"), r2 = rec("h2"), r3 = rec("h3"), r4 = rec("h4");
+        chk(r1 && r1.hora==="24:00" && r1.t==="Bot CE20 regar a medianoche" && r2 && r2.hora==="07:30" && r2.t==="Bot CE20 llamar" && r3 && r3.hora==="" && r3.t==="Bot CE20 revisar goteros (Ojo: la hora «25:61» no se pudo leer: quedó sin hora.)"
+          && r4 && r4.hora==="" && r4.t==="Bot CE20 sin título (Ojo: la hora «a las cinco» no se pudo leer: quedó sin hora.)",
+          "Las horas del celular: 24:00 debía quedar, 7:30 pasar a 07:30 y 25:61 y «a las cinco» quedar dichas en el recordatorio (en una sola línea): "+JSON.stringify([r1 && [r1.hora, r1.t], r2 && r2.hora, r3 && [r3.hora, r3.t], r4 && [r4.hora, r4.t]]), "media");
+        /* lo dicho se ve tal cual en Hoy («Próximas acciones») y en la Gantt (editar la labor) */
+        { const it = hoyProximas("", null, []).find(x=>x.on==="formRecordatorio("+(r3 && r3.id)+")");
+          chk(it && it.t===r3.t, "En «Próximas acciones» el recordatorio de la hora 25:61 no dice el «Ojo…»: "+JSON.stringify(it && it.t), "leve"); }
+        if(lf){ gtEditar(lf.id); await pausa(); const m = modalAbierto(), dsc = m && m.querySelector("#gt_desc");
+          chk(dsc && dsc.value===lf.desc, "Al editar la labor del 31 de noviembre en la Gantt, la descripción no trae el «Ojo…»: "+JSON.stringify(dsc && dsc.value), "leve"); await cerrarTodo(); }
+      } finally { D.catalogos.tiposLabor = JSON.parse(tl0); PB.bandeja = PB.bandeja.filter(x=>todos.indexOf(x.id)<0); ipad(); guardar(); }
+    });
   } finally {
     sinSenal(false);
     window.syncFetch = sf0; s.url = s0.url; s.clave = s0.clave; s.rol = s0.rol;
@@ -8880,7 +11882,7 @@ BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ic
               if(!document.querySelector("#lcVista .lc-cf .lc-cr:not(.lc-cr-h), #lcVista .lc-cf .lc-crm")) avisar("Portada sin filas", "Bitácora ("+nom+"): la portada Cuarteles no muestra filas de cuarteles", "media");
               if(nom==="celular"){
                 const fc = [...document.querySelectorAll("#lcVista .lc-fbs button")].filter(visible);
-                if(fc.length!==2 || fc.some(b=>{ const r = b.getBoundingClientRect(); return r.left<0 || r.right>innerWidth+1; })) avisar("Filtros fuera de la pantalla", "Bitácora › Cuarteles (celular): [Orden ▾] [★] no se ven completos", "media");
+                if(fc.length!==3 || fc.some(b=>{ const r = b.getBoundingClientRect(); return r.left<0 || r.right>innerWidth+1; })) avisar("Filtros fuera de la pantalla", "Bitácora › Cuarteles (celular): [Orden ▾] [Elegir período] [★] no se ven completos", "media");
                 if(document.querySelector("#lcVista .lc-tira")) avisar("Tira en el celular", "Bitácora › Cuarteles (celular): sigue la tira de semanas (va solo en la ficha)", "leve");
               }
               await tocar('#lcVista [data-acc="vista"][data-v="dia"]', "Día a día ("+nom+")");
@@ -8891,13 +11893,31 @@ BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ic
               if(nb.length) avisar("Tocables que no son botones", nb.length+" en Día a día ("+nom+"): "+nb.slice(0,4).map(e=>"«"+(e.getAttribute("data-acc")+" "+txtDe(e)).slice(0,20)+"»").join(", "), "leve");
             }
             if(nom==="celular"){
-              const fbs = [...document.querySelectorAll("#lcVista .lc-fbs button")].filter(visible);
+              const fbs = [...document.querySelectorAll('#lcVista [data-acc="hper"], #lcVista [data-acc="hcat"], #lcVista [data-acc="solodest"]')].filter(visible), per0 = document.querySelector('#lcVista .lc-fbs [data-acc="per"][data-v="rango"]');
               if(fbs.length!==3 || fbs.some(b=>{ const r = b.getBoundingClientRect(); return r.left<0 || r.right>innerWidth+1; })) avisar("Filtros fuera de la pantalla", "Bitácora (celular): [Período ▾] [Qué ▾] [★] no se ven completos", "media");
+              if(!per0 || !visible(per0) || per0.getBoundingClientRect().right>innerWidth+1 || per0.scrollWidth>per0.clientWidth+1) avisar("Elegir período", "Bitácora (celular): «Elegir período» no se ve completo", "media");
               const d1 = document.querySelector("#lcVista .lc-dia");
               if(modalAbierto()) await cancelarModal();
               if(d1){ window.scrollTo(0,0); await pausa(.3); const top = Math.round(d1.getBoundingClientRect().top); if(top>380) avisar("Primer día muy abajo", "Bitácora (celular): el primer día queda a "+top+" px del borde (el plan pide unos 260)", "leve"); }
             }
             if(modalAbierto()) await cancelarModal();
+            /* v166: la línea ‹ título › [Hoy] y las fechas de «Elegir período» no se salen por el costado (ni en iPad vertical ni con texto grande, ni a 375 px); la Día a día y la portada */
+            for(const vp of ["dia", "cu"]){
+              if(vp==="cu" && !enCu) continue;
+              if(nav.lc.v!==vp){ await tocar(`#lcVista [data-acc="vista"][data-v="${vp}"]`, "vista ("+nom+")"); }
+              const fuera = sel=>{ const w = document.getElementById("lcVista").getBoundingClientRect(); return [...document.querySelectorAll(sel)].filter(visible).filter(e=>{ const r = e.getBoundingClientRect(); return r.left<w.left-1 || r.right>w.right+1; }); };
+              const movil = nom==="celular", per1 = movil? "sem" : "3m";
+              Object.assign(lcNav(), {per:per1, ref:""}); lcPintarCuerpo(); await pausa(.3);
+              const pasado = lcPerRefMover(lcNav(), hoy(), -1); lcNav().ref = pasado; lcPintarCuerpo(); await pausa(.3);   // con «Hoy»: lo más largo de la línea
+              if((vp==="dia" || !movil) && !document.querySelector("#lcVista .lc-pnav")) avisar("Sin flechas", "Bitácora ("+nom+", "+vp+"): falta la línea ‹ título ›", "media");
+              const f1 = fuera("#lcVista .lc-pnav, #lcVista .lc-pnav *, #lcVista .lc-fbs, #lcVista .lc-fbs *");
+              if(f1.length) avisar("Período fuera de la pantalla", "Bitácora ("+nom+", "+vp+"): se sale «"+(f1[0].className||f1[0].tagName)+"»", "media");
+              if(movil && vp==="dia"){ const pa = [...document.querySelectorAll('#lcVista [data-acc="pmov"]')].filter(visible); if(pa.length!==2 || pa.some(b=>b.getBoundingClientRect().height<34 || b.getBoundingClientRect().width<34)) avisar("Flechas chicas", "Bitácora (celular): las flechas no son 2 de 34 px o más", "media"); }
+              lcSet("per", "rango"); await pausa(.3);
+              const f2 = fuera("#lcVista .lc-rango, #lcVista .lc-rango *");
+              if(f2.length) avisar("Fechas fuera de la pantalla", "Bitácora ("+nom+", "+vp+"): «Elegir período» saca «"+(f2[0].className||f2[0].tagName)+"» por el costado", "media");
+              lcSet("limpiar"); await pausa(.3);
+            }
             if(enCu) await tocar('#lcVista [data-acc="vista"][data-v="cu"]', "Cuarteles ("+nom+")");
             /* la ficha de un cuartel (Etapa 2): casillas, minimatriz y libro, con una fila abierta; botones chicos y casillas 2×2 en el celular */
             const fc = enCu? buscar("#lcVista .lc-cf .lc-cr-a, #lcVista .lc-cf .lc-crm") : null;
@@ -8938,6 +11958,41 @@ BOTS.push({id:"pantallas", modulo:"Pantallas", nombre:"Revisor de pantallas", ic
     if(pB0==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", pB0);
     D.ui = JSON.parse(ui0); uiAplicar(); render();
   }
+  /* v166: el período de la Bitácora en sus anchos reales (#lcVista: 920 = iPad 1180, 677 = iPad 820, 803 = iPad con texto grande, 351 = celular 375), con cada período: nada se sale por el costado */
+  await paso("El período de la Bitácora no se sale: iPad a 1180 y 820 px, celular a 375 px, también con texto grande y modo sol", async ()=>{
+    const fuV = fundosConCuarteles()[0], cuV = fuV? plantados(fuV)[0] : null; if(!cuV) throw new SinProbar("Hace falta un fundo con cuarteles");
+    const lcV = ("lc" in nav)? JSON.stringify(nav.lc) : null, prV = localStorage.getItem("agronotasBitacora"), malos = [], H = hoy();
+    const casos = [["iPad 1180",{movil:"no"},920],["iPad 820",{movil:"no"},677],["iPad con texto grande",{movil:"no",grande:true},803],["iPad sol",{movil:"no",sol:true},920],["celular 375",{movil:"si"},351],["celular 375 con texto grande",{movil:"si",grande:true},351],["celular 375 sol",{movil:"si",sol:true},351]];
+    const pers = [["3m",0],["3m",1],["sem",1],["mes",0],["dia",1],["1a",1],["rango",0],["temp",0]];
+    try{
+      for(const [nom, u, w] of casos){
+        D.ui = Object.assign({}, JSON.parse(ui0), {sol:false, grande:false}, u); uiAplicar();
+        nav.lc = {v:"dia", per:"3m", fuAb:{[fuV]:true}, rango:{desde:masDias(H,-200), hasta:H}}; await irA("bitacora"); await pausa(.3);
+        const v = document.getElementById("lcVista"); v.style.width = w+"px"; await pausa(.3);
+        const revisa = etq=>{
+          const vr = v.getBoundingClientRect(), fu = [...v.querySelectorAll(".lc-pnav, .lc-pnav *, .lc-fbs, .lc-fbs *, .lc-rango, .lc-rango *, .lc-chips2, .lc-chips2 *, .lc-fi-mx, .lc-fi-mxh *, #lcFiMx")].filter(visible).filter(e=>{ const r = e.getBoundingClientRect(); return r.left<vr.left-1 || r.right>vr.right+1; });
+          if(fu.length) malos.push(nom+" · "+etq+": se sale «"+(fu[0].className||fu[0].tagName)+"»");
+          const pa = [...v.querySelectorAll('[data-acc="pmov"], [data-acc="phoy"]')].filter(visible).filter(b=>{ const r = b.getBoundingClientRect(); return r.height<34 || r.width<34; });
+          if(pa.length) malos.push(nom+" · "+etq+": flecha o «Hoy» de menos de 34 px");
+          const pe = [...v.querySelectorAll('[data-acc="per"][data-v="rango"]')].filter(visible);
+          if(pe.length!==1 || pe[0].scrollWidth>pe[0].clientWidth+1) malos.push(nom+" · "+etq+": «Elegir período» no está a la vista y entero");
+        };
+        for(const vista of ["dia", "cu", "ficha"]){
+          if(vista==="ficha"){ nav.lc.v = "cu"; lcAbrirCu(fuV, cuV.nombre); await pausa(.3); } else { nav.lc.v = vista; lcPintar(); await pausa(.2); }
+          for(const [per, atras] of pers){
+            const L = lcNav(); L.per = per; L.ref = ""; L.ref = atras? lcPerRefMover(L, H, -1) : ""; lcPintarCuerpo(); await pausa(.2);
+            revisa(vista+" "+per+(atras? " pasado" : ""));
+          }
+        }
+      }
+      chk(!malos.length, "El período de la Bitácora se sale: "+malos.slice(0,6).join(" · ")+(malos.length>6? " · y "+(malos.length-6)+" más" : ""), "media");
+    } finally {
+      const v = document.getElementById("lcVista"); if(v) v.style.width = "";
+      if(lcV) nav.lc = JSON.parse(lcV); else delete nav.lc;
+      if(prV==null) localStorage.removeItem("agronotasBitacora"); else localStorage.setItem("agronotasBitacora", prV);
+      D.ui = JSON.parse(ui0); uiAplicar(); render();
+    }
+  });
   /* v164 (30-10-2026): el formulario de fenología con «También hay» abierto, la grilla del cerezo (5 columnas en el iPad, 2 en el celular) y
      «Referencias del cerezo» a 375 px: nada se sale y nada tocable bajo 30 px. Todo en la copia (no se guarda ningún registro) */
   await paso("Fenología v164: el formulario con «También hay», la grilla del cerezo y «Referencias del cerezo» en el iPad y a 375 px", async ()=>{
@@ -9154,6 +12209,19 @@ BOTS.push({id:"auditor", modulo:"Datos guardados", nombre:"Auditor de datos", ic
     }
     chk(!malos.length, malos.length+" problema(s) en el acuse de recibo: "+malos.slice(0,4).join(" · "), "media");
   });
+  /* revisión 3 de la v164 (seguridad del celular): lo que se pinta como id (data-fotos, data-fid, abrirVisor, abrirDoc) es siempre de letras, números, _ y -;
+     uno que no cumple no se muestra (fidOk). Aquí se mira que en el cuaderno no haya ninguno así, ni claves que solo arma el iPad al importar */
+  await paso("Revisión 3 de la v164: en el cuaderno todo id de foto, audio o documento es de letras, números, _ y - (fidOk), y nada guardado trae _adj, _cuNo, _fundoNo, adjIds ni fotosB64", async ()=>{
+    if(typeof fidOk!=="function") throw new SinProbar("La app no tiene fidOk (revisión 3 de la v164)");
+    const malos = [];
+    ["notas","registros","fenologia","labores","bitacora","recordatorios"].forEach(st=>(D[st]||[]).forEach(o=>{
+      if(!o || typeof o!=="object") return;
+      ["fotos","audios"].forEach(k=>{ if(o[k]!=null && !Array.isArray(o[k])) malos.push(st+" "+o.id+": "+k+" no es una lista"); (Array.isArray(o[k])? o[k] : []).forEach(f=>{ if(!fidOk(f)) malos.push(st+" "+o.id+": "+k+" «"+String(f).slice(0,30)+"»"); }); });
+      (Array.isArray(o.docs)? o.docs : []).forEach(d=>{ if(!d || !fidOk(d.id)) malos.push(st+" "+o.id+": documento «"+String(d && d.id).slice(0,30)+"»"); });
+      ["_adj","_cuNo","_fundoNo","adjIds","fotosB64"].forEach(k=>{ if(Object.prototype.hasOwnProperty.call(o, k)) malos.push(st+" "+o.id+" con la clave "+k); });
+    }));
+    chk(!malos.length, malos.length+" id(s) o clave(s) raros en el cuaderno: "+malos.slice(0,5).join(" · "), "media");
+  });
   await paso("Riego v163: las copias de la hoja, lo confirmado y la suspensión están sanos (lunes, orden, números, estados y tamaño)", async ()=>{
     const r = D.riego || {}, P = r.prog || {}, RE = r.real || {}, PA = r.pausa || [], malos = [];
     const iso = s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||"")) && !isNaN(new Date(s+"T12:00:00")), fin = x=>x == null || (isFinite(+x) && +x >= 0);
@@ -9311,6 +12379,19 @@ BOTS.push({id:"demostracion", modulo:"Demostración guiada", nombre:"Revisor de 
         log("🎬 " + g.id + ": " + r.pasos + " frases en " + r.ms + " ms" + (r.respaldos && r.respaldos.length? " · resaltados de respaldo: " + r.respaldos.length : ""), "bien");
       });
     }
+    await paso("Bitácora en la demostración (v166): la frase del período y «3 meses» en la fila del cuartel, sin importar el período elegido", async ()=>{
+      const fr = (AgroDemo.FRASES||{}).BIT||[];
+      chk(fr.some(t=>/una tira con lo que se hizo en el período que elijas/.test(t)) && !fr.some(t=>/doce semanas/.test(t)), "BIT·1 no tiene la frase nueva: "+fr[1], "media");
+      await cerrarTodo();
+      const L = lcNav(); L.per = "sem"; L.ref = ""; lcGuardarPrefs(L);
+      const og = window.lcCuFilaHTML, vistos = []; let r = null;
+      window.lcCuFilaHTML = function(x, Lx){ vistos.push(Lx.per); return og.apply(this, arguments); };
+      try{ r = await AgroDemo.probar("jefe"); } finally { window.lcCuFilaHTML = og; }
+      chk(r && !r.error && !r.errores.length, "La demostración no corrió: "+JSON.stringify(r && (r.error || r.errores)), "grave");
+      chk(vistos.length>0 && vistos[vistos.length-1]==="3m", "En el paso de la fila del cuartel la tira no está en «3 meses»: "+vistos.slice(-3).join(), "media");
+      chk(nav.lc.per==="sem", "Al salir de la demostración no vuelve el período elegido («"+nav.lc.per+"»)", "media");
+      nav.lc.per = "3m"; lcGuardarPrefs(nav.lc);
+    });
     await paso("Panel de inicio con bots corriendo", async ()=>{
       AgroDemo.abrir("riego");
       const p = document.getElementById("demoPanel");
